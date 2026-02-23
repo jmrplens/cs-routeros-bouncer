@@ -52,6 +52,7 @@ type MikroTikConfig struct {
 	TLSInsecure       bool          `yaml:"tls_insecure" mapstructure:"tls_insecure"`
 	ConnectionTimeout time.Duration `yaml:"connection_timeout" mapstructure:"connection_timeout"`
 	CommandTimeout    time.Duration `yaml:"command_timeout" mapstructure:"command_timeout"`
+	PoolSize          int           `yaml:"pool_size" mapstructure:"pool_size"`
 }
 
 // FirewallConfig holds firewall rule management settings.
@@ -117,6 +118,7 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("mikrotik.tls_insecure", false)
 	v.SetDefault("mikrotik.connection_timeout", "10s")
 	v.SetDefault("mikrotik.command_timeout", "30s")
+	v.SetDefault("mikrotik.pool_size", 4)
 
 	v.SetDefault("firewall.ipv4.enabled", true)
 	v.SetDefault("firewall.ipv4.address_list", "crowdsec-banned")
@@ -165,6 +167,7 @@ func Load(configPath string) (*Config, error) {
 		"mikrotik.tls_insecure":       "MIKROTIK_TLS_INSECURE",
 		"mikrotik.connection_timeout": "MIKROTIK_CONN_TIMEOUT",
 		"mikrotik.command_timeout":    "MIKROTIK_CMD_TIMEOUT",
+		"mikrotik.pool_size":          "MIKROTIK_POOL_SIZE",
 		// Firewall
 		"firewall.ipv4.enabled":                "FIREWALL_IPV4_ENABLED",
 		"firewall.ipv4.address_list":           "FIREWALL_IPV4_ADDRESS_LIST",
@@ -237,6 +240,9 @@ func (c *Config) Validate() error {
 	}
 	if c.MikroTik.Password == "" {
 		return fmt.Errorf("mikrotik.password is required")
+	}
+	if c.MikroTik.PoolSize < 1 || c.MikroTik.PoolSize > 20 {
+		return fmt.Errorf("mikrotik.pool_size must be between 1 and 20, got %d", c.MikroTik.PoolSize)
 	}
 	if !c.Firewall.IPv4.Enabled && !c.Firewall.IPv6.Enabled {
 		return fmt.Errorf("at least one of firewall.ipv4 or firewall.ipv6 must be enabled")

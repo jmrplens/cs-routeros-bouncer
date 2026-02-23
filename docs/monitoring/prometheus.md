@@ -93,7 +93,7 @@ Total number of errors by category:
 
 Latency of operations:
 
-- `add` — time to add an IP to MikroTik address list (~1ms typical)
+- `add` — time to add an IP to MikroTik address list (~1–3 ms typical)
 - `remove` — time to remove an IP from MikroTik address list
 - `reconcile` — time for a full reconciliation
 

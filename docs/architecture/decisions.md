@@ -65,8 +65,8 @@ The `crowdsec.origins` setting controls which decisions are processed:
 Community blocklists (CAPI) can contain 20,000+ IP addresses. Pushing all of these to a MikroTik router:
 
 - Increases memory usage on the router
-- Slows down reconciliation on restart
-- May not be necessary if your CrowdSec engine detects threats locally
+- Takes longer during initial reconciliation (~2 min 50 s for ~25,000 IPs vs ~9 s for ~1,500 local IPs)
+- Increases steady-state router CPU usage (15–20% vs 8–11% for local-only)
 
 For most home and small-business setups, `origins: ["crowdsec", "cscli"]` is recommended.
 

@@ -139,7 +139,7 @@ func TestValidateMissingAPIKey(t *testing.T) {
 func TestValidateMissingAPIURL(t *testing.T) {
 	cfg := Config{
 		CrowdSec: CrowdSecConfig{APIKey: "key", APIURL: ""},
-		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass"},
+		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass", PoolSize: 4},
 		Firewall: FirewallConfig{
 			IPv4: ProtoConfig{Enabled: true}, IPv6: ProtoConfig{Enabled: true},
 			Filter: RuleConfig{Enabled: true}, Raw: RuleConfig{Enabled: true},
@@ -158,7 +158,7 @@ func TestValidateMissingAPIURL(t *testing.T) {
 func TestValidateMissingMikroTikAddress(t *testing.T) {
 	cfg := Config{
 		CrowdSec: CrowdSecConfig{APIKey: "key", APIURL: "http://localhost:8080/"},
-		MikroTik: MikroTikConfig{Address: "", Username: "admin", Password: "pass"},
+		MikroTik: MikroTikConfig{Address: "", Username: "admin", Password: "pass", PoolSize: 4},
 		Firewall: FirewallConfig{
 			IPv4: ProtoConfig{Enabled: true}, IPv6: ProtoConfig{Enabled: true},
 			Filter: RuleConfig{Enabled: true}, Raw: RuleConfig{Enabled: true},
@@ -177,7 +177,7 @@ func TestValidateMissingMikroTikAddress(t *testing.T) {
 func TestValidateMissingMikroTikCredentials(t *testing.T) {
 	cfg := Config{
 		CrowdSec: CrowdSecConfig{APIKey: "key", APIURL: "http://localhost:8080/"},
-		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "", Password: "pass"},
+		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "", Password: "pass", PoolSize: 4},
 		Firewall: FirewallConfig{
 			IPv4: ProtoConfig{Enabled: true}, IPv6: ProtoConfig{Enabled: true},
 			Filter: RuleConfig{Enabled: true}, Raw: RuleConfig{Enabled: true},
@@ -212,7 +212,7 @@ func TestValidateInvalidDenyAction(t *testing.T) {
 func TestValidateDenyActionReject(t *testing.T) {
 	cfg := Config{
 		CrowdSec: CrowdSecConfig{APIKey: "key", APIURL: "http://localhost:8080/"},
-		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass"},
+		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass", PoolSize: 4},
 		Firewall: FirewallConfig{
 			IPv4: ProtoConfig{Enabled: true}, IPv6: ProtoConfig{Enabled: true},
 			Filter: RuleConfig{Enabled: true}, Raw: RuleConfig{Enabled: true},
@@ -229,7 +229,7 @@ func TestValidateDenyActionReject(t *testing.T) {
 func TestValidateBothIPDisabled(t *testing.T) {
 	cfg := Config{
 		CrowdSec: CrowdSecConfig{APIKey: "key", APIURL: "http://localhost:8080/"},
-		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass"},
+		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass", PoolSize: 4},
 		Firewall: FirewallConfig{
 			IPv4: ProtoConfig{Enabled: false}, IPv6: ProtoConfig{Enabled: false},
 			Filter: RuleConfig{Enabled: true}, Raw: RuleConfig{Enabled: true},
@@ -248,7 +248,7 @@ func TestValidateBothIPDisabled(t *testing.T) {
 func TestValidateBothRuleTypesDisabled(t *testing.T) {
 	cfg := Config{
 		CrowdSec: CrowdSecConfig{APIKey: "key", APIURL: "http://localhost:8080/"},
-		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass"},
+		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass", PoolSize: 4},
 		Firewall: FirewallConfig{
 			IPv4: ProtoConfig{Enabled: true}, IPv6: ProtoConfig{Enabled: true},
 			Filter: RuleConfig{Enabled: false}, Raw: RuleConfig{Enabled: false},
@@ -267,7 +267,7 @@ func TestValidateBothRuleTypesDisabled(t *testing.T) {
 func TestValidateBlockOutputRequiresInterface(t *testing.T) {
 	cfg := Config{
 		CrowdSec: CrowdSecConfig{APIKey: "key", APIURL: "http://localhost:8080/"},
-		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass"},
+		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass", PoolSize: 4},
 		Firewall: FirewallConfig{
 			IPv4: ProtoConfig{Enabled: true}, IPv6: ProtoConfig{Enabled: true},
 			Filter: RuleConfig{Enabled: true}, Raw: RuleConfig{Enabled: true},
@@ -287,7 +287,7 @@ func TestValidateBlockOutputRequiresInterface(t *testing.T) {
 func TestValidateBlockOutputWithInterface(t *testing.T) {
 	cfg := Config{
 		CrowdSec: CrowdSecConfig{APIKey: "key", APIURL: "http://localhost:8080/"},
-		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass"},
+		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass", PoolSize: 4},
 		Firewall: FirewallConfig{
 			IPv4: ProtoConfig{Enabled: true}, IPv6: ProtoConfig{Enabled: true},
 			Filter: RuleConfig{Enabled: true}, Raw: RuleConfig{Enabled: true},
@@ -305,7 +305,7 @@ func TestValidateBlockOutputWithInterface(t *testing.T) {
 func TestValidateBlockOutputWithInterfaceList(t *testing.T) {
 	cfg := Config{
 		CrowdSec: CrowdSecConfig{APIKey: "key", APIURL: "http://localhost:8080/"},
-		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass"},
+		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass", PoolSize: 4},
 		Firewall: FirewallConfig{
 			IPv4: ProtoConfig{Enabled: true}, IPv6: ProtoConfig{Enabled: true},
 			Filter: RuleConfig{Enabled: true}, Raw: RuleConfig{Enabled: true},
@@ -323,7 +323,7 @@ func TestValidateBlockOutputWithInterfaceList(t *testing.T) {
 func TestValidateCompleteConfig(t *testing.T) {
 	cfg := Config{
 		CrowdSec: CrowdSecConfig{APIKey: "key", APIURL: "http://localhost:8080/"},
-		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass"},
+		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass", PoolSize: 4},
 		Firewall: FirewallConfig{
 			IPv4:          ProtoConfig{Enabled: true, AddressList: "crowdsec-banned"},
 			IPv6:          ProtoConfig{Enabled: true, AddressList: "crowdsec6-banned"},
@@ -414,7 +414,7 @@ func TestLoadInvalidConfigFile(t *testing.T) {
 func TestValidateLogPrefixRequiresLog(t *testing.T) {
 	cfg := Config{
 		CrowdSec: CrowdSecConfig{APIKey: "key", APIURL: "http://localhost:8080/"},
-		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass"},
+		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass", PoolSize: 4},
 		Firewall: FirewallConfig{
 			IPv4: ProtoConfig{Enabled: true}, IPv6: ProtoConfig{Enabled: true},
 			Filter: RuleConfig{Enabled: true}, Raw: RuleConfig{Enabled: true},
@@ -433,7 +433,7 @@ func TestValidateLogPrefixRequiresLog(t *testing.T) {
 func TestValidateFilterOnlyEnabled(t *testing.T) {
 	cfg := Config{
 		CrowdSec: CrowdSecConfig{APIKey: "key", APIURL: "http://localhost:8080/"},
-		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass"},
+		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass", PoolSize: 4},
 		Firewall: FirewallConfig{
 			IPv4: ProtoConfig{Enabled: true}, IPv6: ProtoConfig{Enabled: true},
 			Filter:     RuleConfig{Enabled: true},
@@ -451,7 +451,7 @@ func TestValidateFilterOnlyEnabled(t *testing.T) {
 func TestValidateIPv4OnlyEnabled(t *testing.T) {
 	cfg := Config{
 		CrowdSec: CrowdSecConfig{APIKey: "key", APIURL: "http://localhost:8080/"},
-		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass"},
+		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass", PoolSize: 4},
 		Firewall: FirewallConfig{
 			IPv4: ProtoConfig{Enabled: true}, IPv6: ProtoConfig{Enabled: false},
 			Filter:     RuleConfig{Enabled: true},
@@ -496,5 +496,86 @@ func TestLapiMetricsIntervalEnvOverride(t *testing.T) {
 	if cfg.CrowdSec.LapiMetricsInterval.String() != want {
 		t.Errorf("expected LapiMetricsInterval=%s, got %s",
 			want, cfg.CrowdSec.LapiMetricsInterval)
+	}
+}
+
+// TestValidatePoolSizeBounds verifies that pool_size validation enforces
+// the allowed range of 1 to 20.
+func TestValidatePoolSizeBounds(t *testing.T) {
+	base := Config{
+		CrowdSec: CrowdSecConfig{APIKey: "key", APIURL: "http://localhost:8080/"},
+		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass"},
+		Firewall: FirewallConfig{
+			IPv4: ProtoConfig{Enabled: true}, IPv6: ProtoConfig{Enabled: true},
+			Filter: RuleConfig{Enabled: true}, Raw: RuleConfig{Enabled: true},
+			DenyAction: "drop",
+		},
+	}
+
+	// Zero should fail
+	base.MikroTik.PoolSize = 0
+	if err := base.Validate(); err == nil {
+		t.Error("expected error for pool_size=0")
+	}
+
+	// Negative should fail
+	base.MikroTik.PoolSize = -1
+	if err := base.Validate(); err == nil {
+		t.Error("expected error for pool_size=-1")
+	}
+
+	// Over 20 should fail
+	base.MikroTik.PoolSize = 21
+	if err := base.Validate(); err == nil {
+		t.Error("expected error for pool_size=21")
+	}
+
+	// 1 should pass
+	base.MikroTik.PoolSize = 1
+	if err := base.Validate(); err != nil {
+		t.Errorf("pool_size=1 should be valid: %v", err)
+	}
+
+	// 20 should pass
+	base.MikroTik.PoolSize = 20
+	if err := base.Validate(); err != nil {
+		t.Errorf("pool_size=20 should be valid: %v", err)
+	}
+
+	// 4 (default) should pass
+	base.MikroTik.PoolSize = 4
+	if err := base.Validate(); err != nil {
+		t.Errorf("pool_size=4 should be valid: %v", err)
+	}
+}
+
+// TestPoolSizeDefault verifies that the default pool_size is 4 when loaded
+// from environment variables without explicit override.
+func TestPoolSizeDefault(t *testing.T) {
+	setMinimalEnv(t)
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.MikroTik.PoolSize != 4 {
+		t.Errorf("expected default pool_size=4, got %d", cfg.MikroTik.PoolSize)
+	}
+}
+
+// TestPoolSizeEnvOverride verifies that MIKROTIK_POOL_SIZE environment
+// variable correctly overrides the default pool size.
+func TestPoolSizeEnvOverride(t *testing.T) {
+	setMinimalEnv(t)
+	t.Setenv("MIKROTIK_POOL_SIZE", "8")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.MikroTik.PoolSize != 8 {
+		t.Errorf("expected pool_size=8, got %d", cfg.MikroTik.PoolSize)
 	}
 }

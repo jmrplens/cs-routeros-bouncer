@@ -1,0 +1,3 @@
+# Exclude test scripts and support files from GitHub language statistics.
+# The project is a Go application; bash tests are auxiliary tooling.
+tests/functional/** linguist-detectable=false

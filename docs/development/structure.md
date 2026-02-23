@@ -27,7 +27,21 @@ cs-routeros-bouncer/
 ├── grafana/
 │   └── dashboard.json          # Grafana dashboard
 ├── tests/
-│   └── integration/            # Integration tests (build-tagged)
+│   ├── integration/            # Integration tests (build-tagged)
+│   └── functional/             # Bash test suite against real hardware
+│       ├── run_tests.sh        # Test runner (CLI entrypoint)
+│       ├── lib/
+│       │   └── helpers.sh      # Shared library (SSH, SNMP, LAPI, framework)
+│       ├── t1_integrity.sh     # T1: Data integrity (completeness, format)
+│       ├── t2_cache.sh         # T2: Cache consistency (ban/unban lifecycle)
+│       ├── t3_bulk.sh          # T3: Bulk operations (reconciliation, sync)
+│       ├── t4_pool.sh          # T4: Connection pool verification
+│       ├── t5_edge.sh          # T5: Edge cases (duplicates, stress, IPv6)
+│       ├── t6_cpu.sh           # T6: CPU monitoring via SNMP
+│       ├── t7_timing.sh        # T7: Timing & latency measurements
+│       ├── t8_capi.sh          # T8: CAPI stress test (~25k IPs)
+│       ├── .env.example        # Configuration template
+│       └── .env                # Local config (git-ignored)
 ├── docs/                       # Documentation site (mkdocs-material)
 ├── .github/
 │   ├── workflows/
