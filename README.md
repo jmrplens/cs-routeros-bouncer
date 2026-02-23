@@ -224,6 +224,17 @@ See [`config/cs-routeros-bouncer.yaml`](config/cs-routeros-bouncer.yaml) for the
 | `mikrotik.tls_insecure` | `MIKROTIK_TLS_INSECURE` | `false` | Skip TLS certificate verification for RouterOS |
 | `mikrotik.connection_timeout` | `MIKROTIK_CONN_TIMEOUT` | `10s` | Connection timeout |
 | `mikrotik.command_timeout` | `MIKROTIK_CMD_TIMEOUT` | `30s` | Command execution timeout |
+| `mikrotik.pool_size` | `MIKROTIK_POOL_SIZE` | `4` | Number of parallel API connections for bulk operations (1–20) |
+
+> **Auto-capping:** On startup the bouncer queries the router's `max-sessions` for the API service and automatically reduces `pool_size` if it would exceed the router limit. To check or change the limit on your router:
+>
+> ```routeros
+> # Check current max-sessions for the API service
+> /ip/service/print where name=api
+>
+> # Increase the limit (default is 20, maximum 100)
+> /ip/service/set api max-sessions=100
+> ```
 
 ### Firewall
 

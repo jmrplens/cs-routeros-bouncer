@@ -58,6 +58,7 @@ All options at a glance, grouped by section. See the dedicated pages for detaile
 | `mikrotik.tls_insecure` | `MIKROTIK_TLS_INSECURE` | `false` | Skip TLS verify |
 | `mikrotik.connection_timeout` | `MIKROTIK_CONN_TIMEOUT` | `10s` | Connect timeout |
 | `mikrotik.command_timeout` | `MIKROTIK_CMD_TIMEOUT` | `30s` | Command timeout |
+| `mikrotik.pool_size` | `MIKROTIK_POOL_SIZE` | `4` | Parallel API connections (1–20) |
 
 ### [Firewall](firewall.md)
 
