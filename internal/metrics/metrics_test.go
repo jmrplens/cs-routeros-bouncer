@@ -363,7 +363,8 @@ func TestServerStartAndShutdown(t *testing.T) {
 // Per-origin active decision tracking
 // ─────────────────────────────────────────────────────────────────────────────
 
-// TestSetActiveDecisionsByOrigin verifies storing and retrieving per-origin counts.
+// TestSetActiveDecisionsByOrigin verifies storing and retrieving per-origin counts,
+// including the Prometheus gauge vec.
 func TestSetActiveDecisionsByOrigin(t *testing.T) {
 	resetOriginAndDropped()
 
@@ -381,10 +382,21 @@ func TestSetActiveDecisionsByOrigin(t *testing.T) {
 	if got["CAPI"] != 2000 {
 		t.Errorf("CAPI: want 2000, got %d", got["CAPI"])
 	}
+
+	// Verify Prometheus gauge vec reflects the same values.
+	if v := testutil.ToFloat64(activeDecisionsByOrigin.WithLabelValues("crowdsec")); v != 100 {
+		t.Errorf("prometheus gauge crowdsec: want 100, got %v", v)
+	}
+	if v := testutil.ToFloat64(activeDecisionsByOrigin.WithLabelValues("cscli")); v != 5 {
+		t.Errorf("prometheus gauge cscli: want 5, got %v", v)
+	}
+	if v := testutil.ToFloat64(activeDecisionsByOrigin.WithLabelValues("CAPI")); v != 2000 {
+		t.Errorf("prometheus gauge CAPI: want 2000, got %v", v)
+	}
 }
 
 // TestSetActiveDecisionsByOriginZeroDeletes verifies that setting count to 0
-// removes the origin entry.
+// removes the origin entry and sets the Prometheus gauge to 0.
 func TestSetActiveDecisionsByOriginZeroDeletes(t *testing.T) {
 	resetOriginAndDropped()
 
@@ -394,6 +406,10 @@ func TestSetActiveDecisionsByOriginZeroDeletes(t *testing.T) {
 	got := GetActiveDecisionsByOrigin()
 	if _, exists := got["crowdsec"]; exists {
 		t.Error("expected crowdsec to be deleted when count is 0")
+	}
+
+	if v := testutil.ToFloat64(activeDecisionsByOrigin.WithLabelValues("crowdsec")); v != 0 {
+		t.Errorf("prometheus gauge should be 0 after deletion, got %v", v)
 	}
 }
 
@@ -451,11 +467,21 @@ func TestOriginDecisionsConcurrency(t *testing.T) {
 // Dropped counter delta tracking
 // ─────────────────────────────────────────────────────────────────────────────
 
-// TestDroppedCountersDelta verifies the basic delta calculation.
+// TestDroppedCountersDelta verifies the basic delta calculation and
+// Prometheus gauge values.
 func TestDroppedCountersDelta(t *testing.T) {
 	resetOriginAndDropped()
 
 	SetDroppedCounters(1000, 50)
+
+	// Verify Prometheus gauges are set.
+	if v := testutil.ToFloat64(droppedBytesTotal); v != 1000 {
+		t.Errorf("prometheus dropped bytes: want 1000, got %v", v)
+	}
+	if v := testutil.ToFloat64(droppedPacketsTotal); v != 50 {
+		t.Errorf("prometheus dropped packets: want 50, got %v", v)
+	}
+
 	b, p := GetAndResetDroppedDeltas()
 	if b != 1000 || p != 50 {
 		t.Errorf("first delta: want (1000,50), got (%d,%d)", b, p)
@@ -463,6 +489,14 @@ func TestDroppedCountersDelta(t *testing.T) {
 
 	// Second call with higher values → returns only the increase.
 	SetDroppedCounters(1500, 80)
+
+	if v := testutil.ToFloat64(droppedBytesTotal); v != 1500 {
+		t.Errorf("prometheus dropped bytes after update: want 1500, got %v", v)
+	}
+	if v := testutil.ToFloat64(droppedPacketsTotal); v != 80 {
+		t.Errorf("prometheus dropped packets after update: want 80, got %v", v)
+	}
+
 	b, p = GetAndResetDroppedDeltas()
 	if b != 500 || p != 30 {
 		t.Errorf("second delta: want (500,30), got (%d,%d)", b, p)
