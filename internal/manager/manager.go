@@ -679,13 +679,14 @@ func (m *Manager) reconcileAddresses(decisions []*crowdsec.Decision) {
 			} else {
 				// Fallback to sequential
 				for _, entry := range toRemove {
-					if err := m.ros.RemoveAddress(proto, entry.ID); err != nil {
-						if !strings.Contains(err.Error(), "no such item") {
-							m.logger.Error().Err(err).Str("address", entry.Address).Msg("reconcile: error removing address")
-							metrics.RecordError("remove")
-						}
-					} else {
+					err := m.ros.RemoveAddress(proto, entry.ID)
+					if err == nil {
 						removed++
+					} else if strings.Contains(err.Error(), "no such item") {
+						removed++ // expired items count as removed
+					} else {
+						m.logger.Error().Err(err).Str("address", entry.Address).Msg("reconcile: error removing address")
+						metrics.RecordError("remove")
 					}
 				}
 			}

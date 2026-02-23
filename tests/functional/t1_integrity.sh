@@ -128,8 +128,11 @@ t1_5_comments() {
     local total bad=0
     total=$(ssh_count_addresses "${TEST_IPV4_LIST}")
     # terse format: each data line has both address= and comment=
+    # Extract the comment value with sed and check the prefix is anchored at start.
     bad=$(ssh_list_addresses_full "${TEST_IPV4_LIST}" \
-        | grep 'address=' | grep -c -v "comment=${TEST_COMMENT_PREFIX}" || true)
+        | grep 'address=' \
+        | sed -n 's/.*comment=\([^ ]*\).*/\1/p' \
+        | grep -c -v "^${TEST_COMMENT_PREFIX}" || true)
 
     if (( bad > 0 )); then
         echo "FAIL: $bad/$total entries missing '${TEST_COMMENT_PREFIX}' comment prefix"

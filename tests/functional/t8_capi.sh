@@ -33,6 +33,10 @@ readonly BOUNCER_CONFIG="/etc/cs-routeros-bouncer/config.yaml"
 readonly CAPI_ORIGINS='["crowdsec", "cscli", "CAPI"]'
 readonly LOCAL_ORIGINS='["crowdsec", "cscli"]'
 
+# Safety trap: always restore local-only origins on exit/interrupt so the
+# production config is never left in CAPI mode after an interrupted test run.
+trap 'set_origins "$LOCAL_ORIGINS" 2>/dev/null' EXIT INT TERM
+
 # ---- Helpers for config switching ----
 set_origins() {
     local origins="$1"
