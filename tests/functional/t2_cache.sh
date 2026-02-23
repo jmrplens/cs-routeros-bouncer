@@ -1,19 +1,40 @@
 # =============================================================================
 # T2: Cache Consistency — Ban / Unban Lifecycle
 # =============================================================================
-# Tests the bouncer service's ability to track bans/unbans by adding and
-# removing decisions via cscli and verifying the router state via SSH.
+# Tests the bouncer's ability to track individual ban/unban decisions by
+# adding and removing decisions via cscli, then verifying router state via SSH.
+# Covers the full decision lifecycle: metrics accuracy, live ban/unban
+# propagation, RouterOS-side expiry handling, cache fast-path, and rapid
+# ban/unban race conditions.
+#
+# Prerequisites:
+#   - Bouncer running with Prometheus metrics on :2112/metrics
+#   - LAPI accessible (cscli / lapi_add_decision / lapi_remove_decision)
+#   - SSH access to router
+#   - Uses RFC 5737 TEST-NET-2 (198.51.100.0/24) addresses to avoid conflicts
+#
+# Tests:
+#   T2.1  Metrics vs router count   — Prometheus gauge matches SSH count
+#   T2.2  Live ban → router         — decision appears on router within 60 s
+#   T2.3  Live unban → removed      — decision removed from router within 60 s
+#   T2.4  Expired-on-router         — RouterOS auto-expires, LAPI remove is graceful
+#   T2.5  Cache fast-path           — no panics when cache skips unknown IPs
+#   T2.6  Rapid ban/unban cycle     — 3 rapid add/delete cycles, no panics
 # =============================================================================
 
 TEST_IP_BAN="198.51.100.1"
 TEST_IP_EXPIRE="198.51.100.2"
 
+# Helper: remove test IPs from LAPI to ensure a clean state between tests.
 _cleanup_test_ips() {
     lapi_remove_decision "$TEST_IP_BAN"
     lapi_remove_decision "$TEST_IP_EXPIRE"
 }
 
-# T2.1 — Metrics match router count
+# T2.1 — Metrics vs router count.
+# Reads the crowdsec_bouncer_active_decisions{proto="ipv4"} Prometheus gauge
+# and compares it with the SSH-counted address list size.
+# Pass: difference ≤10 (small IPv6 accounting variance is expected).
 t2_1_metrics_vs_router() {
     bouncer_running || skip_test "bouncer not running"
 
@@ -35,7 +56,10 @@ t2_1_metrics_vs_router() {
 }
 run_test "T2.1 Metrics vs router count" t2_1_metrics_vs_router
 
-# T2.2 — Live ban appears on router
+# T2.2 — Live ban appears on router.
+# Adds a 5-minute ban via LAPI and polls the router every 5 s (up to 60 s)
+# until the IP appears in the address list.
+# Pass: IP found on router within the polling window.
 t2_2_live_ban() {
     bouncer_running || skip_test "bouncer not running"
     _cleanup_test_ips
@@ -62,7 +86,10 @@ t2_2_live_ban() {
 }
 run_test "T2.2 Live ban → router" t2_2_live_ban
 
-# T2.3 — Live unban removes from router
+# T2.3 — Live unban removes from router.
+# Depends on T2.2 leaving TEST_IP_BAN on the router.  Removes the decision
+# from LAPI and polls until the IP disappears (up to 60 s).
+# Pass: IP no longer present on router.
 t2_3_live_unban() {
     bouncer_running || skip_test "bouncer not running"
 
@@ -90,7 +117,11 @@ t2_3_live_unban() {
 }
 run_test "T2.3 Live unban → removed" t2_3_live_unban
 
-# T2.4 — Expired-on-router scenario
+# T2.4 — Expired-on-router resilience.
+# Adds a 30 s decision so RouterOS auto-expires the entry before the bouncer
+# processes the LAPI removal.  The bouncer must handle the "already gone"
+# condition gracefully (no panic/fatal when unbanning a missing address).
+# Pass: zero panic/fatal/error messages in bouncer logs.
 t2_4_expired_resilience() {
     bouncer_running || skip_test "bouncer not running"
     _cleanup_test_ips
@@ -121,7 +152,11 @@ t2_4_expired_resilience() {
 }
 run_test "T2.4 Expired-on-router resilience" t2_4_expired_resilience
 
-# T2.5 — Cache fast-path for unknown IPs
+# T2.5 — Cache fast-path (no panics).
+# The bouncer's internal cache avoids unnecessary API calls for IPs that were
+# never added.  This test verifies no panics appear in recent logs, which
+# would indicate the cache failed to prevent an invalid operation.
+# Pass: zero panics in last 5 minutes of logs.
 t2_5_cache_fast_path() {
     bouncer_running || skip_test "bouncer not running"
 
@@ -141,7 +176,11 @@ t2_5_cache_fast_path() {
 }
 run_test "T2.5 Cache fast-path (no panics)" t2_5_cache_fast_path
 
-# T2.6 — Rapid ban/unban same IP
+# T2.6 — Rapid ban/unban cycle.
+# Performs 3 quick add/remove cycles on the same IP (1 s apart) to stress the
+# cache and decision pipeline.  Rapid toggling can trigger race conditions
+# if the bouncer processes additions and deletions concurrently.
+# Pass: zero panic/fatal messages in bouncer logs.
 t2_6_rapid_cycle() {
     bouncer_running || skip_test "bouncer not running"
     _cleanup_test_ips

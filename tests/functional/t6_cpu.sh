@@ -3,9 +3,23 @@
 # =============================================================================
 # Monitors MikroTik CPU usage via SNMP (hrProcessorLoad) during and after
 # bouncer operations.  Requires snmpget and SNMP access to the router.
+#
+# Prerequisites:
+#   - snmpget installed and MIKROTIK_SSH_HOST reachable via SNMP
+#   - Helper functions: query_cpu (samples, interval), query_cpu_instant,
+#     snmp_available, bouncer_*, ssh_clean_list
+#   - TEST_CPU_THRESHOLD env var (default: 30%)
+#
+# Coverage:
+#   T6.1  Steady-state CPU (idle bouncer)
+#   T6.2  Peak CPU during a full reconciliation
+#   T6.3  CPU recovery after reconciliation settles
 # =============================================================================
 
 # T6.1 — Steady-state CPU
+# Samples router CPU 6 times at 5 s intervals (30 s window) while the
+# bouncer is idle (no reconciliation in progress).
+# Pass: average CPU ≤ TEST_CPU_THRESHOLD (default 30%).
 t6_1_steady_state() {
     snmp_available || skip_test "snmpget not available or MIKROTIK_SSH_HOST not set"
     bouncer_running || skip_test "bouncer not running"
@@ -27,6 +41,9 @@ t6_1_steady_state() {
 run_test "T6.1 Steady-state CPU" t6_1_steady_state
 
 # T6.2 — Reconciliation CPU peak
+# Stops bouncer, clears address lists, then starts bouncer so a full
+# reconciliation runs.  Polls CPU 12 × 5 s (60 s) during the reconciliation.
+# Pass: peak CPU ≤ TEST_CPU_THRESHOLD + 20%.
 t6_2_reconciliation_peak() {
     snmp_available || skip_test "snmpget not available or MIKROTIK_SSH_HOST not set"
 
@@ -61,6 +78,9 @@ t6_2_reconciliation_peak() {
 run_test "T6.2 Reconciliation CPU peak" t6_2_reconciliation_peak
 
 # T6.3 — Post-reconciliation CPU recovery
+# Waits 2 minutes after T6.2's reconciliation for CPU to settle, then
+# samples 4 × 5 s (20 s window).
+# Pass: average CPU returns to ≤ TEST_CPU_THRESHOLD (default 30%).
 t6_3_recovery() {
     snmp_available || skip_test "snmpget not available or MIKROTIK_SSH_HOST not set"
     bouncer_running || skip_test "bouncer not running"

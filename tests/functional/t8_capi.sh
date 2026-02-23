@@ -8,9 +8,26 @@
 # Config change: origins: ["crowdsec", "cscli", "CAPI"]
 # Expected IPs: ~25,000 (varies with community list size)
 #
-# IMPORTANT: T8 restores the original config at the end (T8.10).
+# Prerequisites:
+#   - CrowdSec enrolled in CAPI with community blocklist available
+#   - Config file at /etc/cs-routeros-bouncer/config.yaml (writable)
+#   - SNMP access for CPU tests (T8.2, T8.7)
+#   - All standard helpers: bouncer_*, ssh_*, lapi_*, snmp_available
+#
+# Coverage:
+#   T8.1  Full reconciliation of ~25k CAPI IPs
+#   T8.2  CPU peak during CAPI reconciliation
+#   T8.3  IP completeness: LAPI total vs router total (IPv4+IPv6)
+#   T8.4  IPv6 parity: LAPI IPv6 count vs router IPv6 list
+#   T8.5  Restart idempotency with ~25k entries
+#   T8.6  Single unban latency with 25k-entry cache
+#   T8.7  Steady-state CPU with 25k entries loaded
+#   T8.8  Restore to local-only origins (mass CAPI removal / cleanup)
+#
+# IMPORTANT: T8.8 always restores the config to local-only at the end.
 # =============================================================================
 
+# Config path and origin presets used by set_origins() / restore_local_origins().
 readonly BOUNCER_CONFIG="/etc/cs-routeros-bouncer/config.yaml"
 readonly CAPI_ORIGINS='["crowdsec", "cscli", "CAPI"]'
 readonly LOCAL_ORIGINS='["crowdsec", "cscli"]'
@@ -29,6 +46,9 @@ restore_local_origins() {
 # ---- Tests ----
 
 # T8.1 — Full reconciliation with ALL origins (~25k IPs)
+# Enables CAPI origins, clears address lists, and runs a full reconciliation.
+# Checks for bulk errors (EOF, connection reset, message too large) in logs.
+# Pass: router receives ≥50 % of LAPI total and no bulk errors.
 t8_1_full_reconciliation_capi() {
     log "Stopping bouncer, enabling CAPI origins..."
     bouncer_stop; sleep 2
@@ -71,6 +91,8 @@ t8_1_full_reconciliation_capi() {
 run_test "T8.1 CAPI full reconciliation (~25k IPs)" t8_1_full_reconciliation_capi
 
 # T8.2 — CPU peak during CAPI reconciliation
+# Samples CPU 12 × 5 s (60 s window) immediately after T8.1's reconciliation.
+# Pass: peak CPU ≤ 60 %.
 t8_2_cpu_peak() {
     snmp_available || skip_test "snmpget not available or MIKROTIK_SSH_HOST not set"
 
@@ -87,6 +109,9 @@ t8_2_cpu_peak() {
 run_test "T8.2 CAPI CPU peak" t8_2_cpu_peak
 
 # T8.3 — IP completeness with ALL origins
+# Compares total LAPI decision count (all origins) against router total
+# (IPv4 + IPv6 address lists combined).
+# Pass: absolute difference ≤ 100 entries.
 t8_3_completeness() {
     bouncer_running || skip_test "bouncer not running"
 
@@ -107,6 +132,9 @@ t8_3_completeness() {
 run_test "T8.3 CAPI IP completeness" t8_3_completeness
 
 # T8.4 — IPv6 parity with CAPI
+# Compares LAPI IPv6 decision count (all origins) against the router's
+# IPv6 address list.
+# Pass: absolute difference ≤ 20 entries.
 t8_4_ipv6_parity() {
     bouncer_running || skip_test "bouncer not running"
 
@@ -125,6 +153,9 @@ t8_4_ipv6_parity() {
 run_test "T8.4 CAPI IPv6 parity" t8_4_ipv6_parity
 
 # T8.5 — Restart idempotency with ~25k entries
+# Restarts bouncer with ~25k addresses already on the router and verifies
+# the count is preserved after reconciliation.
+# Pass: address count difference ≤ 50 before/after restart.
 t8_5_restart_idempotency() {
     bouncer_running || skip_test "bouncer not running"
 
@@ -155,7 +186,10 @@ t8_5_restart_idempotency() {
 }
 run_test "T8.5 CAPI restart idempotency" t8_5_restart_idempotency
 
-# T8.6 — Unban latency with large cache
+# T8.6 — Unban latency with large cache (~25k entries)
+# Adds a single test IP, waits for it to appear, then unbans and measures
+# removal latency while the bouncer's internal cache holds ~25k entries.
+# Pass: informational (warns if >30 s but does not hard-fail).
 t8_6_unban_latency_large() {
     bouncer_running || skip_test "bouncer not running"
 
@@ -194,7 +228,9 @@ t8_6_unban_latency_large() {
 }
 run_test "T8.6 CAPI unban latency (large cache)" t8_6_unban_latency_large
 
-# T8.7 — Steady-state CPU with ~25k entries
+# T8.7 — Steady-state CPU with ~25k entries loaded
+# Waits 2 minutes for activity to settle, then samples CPU 4 × 5 s (20 s).
+# Pass: average CPU ≤ 30 %.
 t8_7_steady_state_cpu() {
     snmp_available || skip_test "snmpget not available or MIKROTIK_SSH_HOST not set"
     bouncer_running || skip_test "bouncer not running"
@@ -214,7 +250,11 @@ t8_7_steady_state_cpu() {
 }
 run_test "T8.7 CAPI steady-state CPU" t8_7_steady_state_cpu
 
-# T8.8 — Restore to local-only (mass removal)
+# T8.8 — Restore to local-only origins (cleanup / mass removal)
+# Switches config back to LOCAL_ORIGINS (no CAPI), restarts bouncer, and
+# waits for reconciliation to remove ~23k CAPI-only entries.
+# Pass: final router count matches LAPI local-only count (within ±20).
+# NOTE: This test always runs last to leave the system in its original state.
 t8_8_restore_local() {
     local count_before; count_before=$(ssh_count_addresses "${TEST_IPV4_LIST}")
     log "Current count: $count_before"

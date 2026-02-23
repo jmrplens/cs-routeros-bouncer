@@ -1,11 +1,26 @@
 # =============================================================================
 # T4: Connection Pool — Verification via Logs
 # =============================================================================
-# The pool is an internal implementation detail; we verify it through the
-# binary's log output and behaviour, not by calling pool functions directly.
+# The SSH connection pool is an internal implementation detail; we verify it
+# indirectly through the bouncer's log output and observable behaviour rather
+# than by calling pool functions directly.
+#
+# Prerequisites:
+#   - Bouncer service running (with pool-enabled configuration)
+#   - SSH access to router for address count verification
+#   - Bouncer log accessible via bouncer_logs_since
+#
+# Tests:
+#   T4.1  Pool establishment     — log messages confirm pool was created
+#   T4.2  Concurrent operations  — parallel/worker log entries during reconciliation
+#   T4.3  Clean shutdown/restart — no panics on stop, address count preserved
 # =============================================================================
 
-# T4.1 — Pool establishment logged
+# T4.1 — Pool establishment (logs).
+# Searches the last 10 minutes of bouncer logs for pool-related messages
+# (e.g. "pool", "connections ready", "pool size").  This is a soft check:
+# absence of messages is only a warning, not a failure, because the pool
+# may have been established outside the log window.
 t4_1_pool_established() {
     bouncer_running || skip_test "bouncer not running"
 
@@ -21,7 +36,11 @@ t4_1_pool_established() {
 }
 run_test "T4.1 Pool establishment (logs)" t4_1_pool_established
 
-# T4.2 — Concurrent operations during reconciliation
+# T4.2 — Concurrent operations (logs).
+# Looks for "parallel", "worker", or "pool" entries that indicate the pool
+# dispatched work across multiple SSH connections.  Also logs the most recent
+# reconciliation line — fast reconciliation with a large address set implies
+# the pool is functioning correctly.
 t4_2_concurrent_ops() {
     bouncer_running || skip_test "bouncer not running"
 
@@ -42,7 +61,12 @@ t4_2_concurrent_ops() {
 }
 run_test "T4.2 Concurrent operations (logs)" t4_2_concurrent_ops
 
-# T4.3 — Clean shutdown
+# T4.3 — Clean shutdown / restart.
+# Stops the bouncer and inspects recent logs for panics, connection refused,
+# or broken pipe errors that would indicate ungraceful pool teardown.
+# Then restarts and verifies the address count is preserved (±5) — shutdown
+# must not remove addresses from the router.
+# Pass: zero shutdown errors AND address count stable.
 t4_3_clean_shutdown() {
     bouncer_running || skip_test "bouncer not running"
 

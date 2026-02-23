@@ -3,9 +3,24 @@
 # =============================================================================
 # Measures real-world latencies of key bouncer operations by parsing
 # timestamps from journalctl logs and SSH verification.
+#
+# Prerequisites:
+#   - Bouncer installed, LAPI reachable, SSH access to MikroTik
+#   - Helper functions: bouncer_*, ssh_*, lapi_*, run_test, skip_test
+#   - TEST_IPV4_LIST / TEST_IPV6_LIST env vars set
+#
+# Coverage:
+#   T7.1  Full reconciliation wall-clock time (empty → full)
+#   T7.2  Single ban latency (LAPI decision → router address)
+#   T7.3  Single unban latency (LAPI removal → router removal)
+#   T7.4  Restart time with existing data on router
+#   T7.5  Bulk add throughput estimate (informational, no threshold)
 # =============================================================================
 
 # T7.1 — Full reconciliation time (empty → full)
+# Clears all address lists, starts bouncer, and measures wall-clock seconds
+# until reconciliation completes.
+# Pass: elapsed ≤ 60 s.
 t7_1_reconciliation_time() {
     log "Stopping bouncer, cleaning lists for timing..."
     bouncer_stop; sleep 2
@@ -31,6 +46,9 @@ t7_1_reconciliation_time() {
 run_test "T7.1 Full reconciliation time" t7_1_reconciliation_time
 
 # T7.2 — Single ban latency (LAPI → router)
+# Adds a decision via cscli, then polls the router via SSH every 2 s until
+# the IP appears on the address list.
+# Pass: IP appears within 30 s.
 t7_2_ban_latency() {
     bouncer_running || skip_test "bouncer not running"
 
@@ -67,6 +85,9 @@ t7_2_ban_latency() {
 run_test "T7.2 Single ban latency" t7_2_ban_latency
 
 # T7.3 — Single unban latency
+# First ensures a test IP is present on the router, then removes the
+# decision via LAPI and polls every 2 s until the IP disappears.
+# Pass: IP removed within 30 s.
 t7_3_unban_latency() {
     bouncer_running || skip_test "bouncer not running"
 
@@ -116,7 +137,11 @@ t7_3_unban_latency() {
 }
 run_test "T7.3 Single unban latency" t7_3_unban_latency
 
-# T7.4 — Restart with existing data (skip reconciliation)
+# T7.4 — Restart with existing data
+# Restarts the bouncer while addresses already exist on the router,
+# measuring time to reconciliation completion. Tests differential (diff-only)
+# reconciliation speed.
+# Pass: elapsed ≤ 30 s. Requires >100 existing addresses for a meaningful test.
 t7_4_restart_time() {
     bouncer_running || skip_test "bouncer not running"
 
@@ -141,7 +166,10 @@ t7_4_restart_time() {
 }
 run_test "T7.4 Restart time (existing data)" t7_4_restart_time
 
-# T7.5 — Bulk add throughput estimate
+# T7.5 — Bulk add throughput estimate (informational)
+# Parses recent bouncer logs for "added" count and "elapsed" time fields,
+# then computes addresses/second throughput.
+# No pass/fail threshold — purely informational.
 t7_5_bulk_throughput() {
     bouncer_running || skip_test "bouncer not running"
 

@@ -3,9 +3,26 @@
 # =============================================================================
 # Tests unusual scenarios: duplicates, rapid cycles, restart idempotency,
 # and deleteCh drain — all through the binary's external behaviour.
+#
+# Prerequisites:
+#   - Bouncer installed and configured with SSH access to MikroTik router
+#   - LAPI (CrowdSec Local API) reachable via cscli
+#   - Helper functions sourced: bouncer_*, ssh_*, lapi_*, run_test, skip_test
+#   - TEST_IPV4_LIST / TEST_IPV6_LIST / TEST_COMMENT_PREFIX env vars set
+#
+# Coverage:
+#   T5.1  Duplicate IP handling during reconciliation
+#   T5.2  Rapid ban/unban within a single poll cycle
+#   T5.3  Stress: 20 concurrent ban requests
+#   T5.4  Restart idempotency (address count stability)
+#   T5.5  DeleteCh drain / pre-filter optimization check
+#   T5.6  IPv6 full ban/unban lifecycle
 # =============================================================================
 
-# T5.1 — Duplicate IP handling (inject duplicate, bouncer handles it)
+# T5.1 — Duplicate IP handling
+# Injects a duplicate address directly on the router via SSH, then restarts
+# the bouncer so reconciliation encounters the duplicate entry.
+# Pass: no panics during reconciliation (duplicate may or may not be cleaned).
 t5_1_duplicates() {
     bouncer_running || skip_test "bouncer not running"
     bouncer_stop; sleep 2
@@ -43,6 +60,9 @@ t5_1_duplicates() {
 run_test "T5.1 Duplicate IP handling" t5_1_duplicates
 
 # T5.2 — Rapid ban/unban within single poll cycle
+# Bans and immediately unbans an IP within ~1 s, then waits one poll cycle.
+# Both outcomes are valid (IP present briefly then removed, or never appears).
+# Pass: no panics in bouncer logs.
 t5_2_rapid_ban_unban() {
     bouncer_running || skip_test "bouncer not running"
 
@@ -65,7 +85,11 @@ t5_2_rapid_ban_unban() {
 }
 run_test "T5.2 Rapid ban/unban" t5_2_rapid_ban_unban
 
-# T5.3 — Stress: 20 rapid bans in parallel
+# T5.3 — Stress: 20 parallel bans
+# Fires 20 lapi_add_decision calls concurrently as background processes,
+# then waits ~2 poll cycles and checks how many IPs reached the router.
+# Pass: ≥15 out of 20 IPs appear on the router (allows for minor loss).
+# Cleanup removes all 20 IPs afterward.
 t5_3_stress() {
     bouncer_running || skip_test "bouncer not running"
 
@@ -102,7 +126,10 @@ t5_3_stress() {
 }
 run_test "T5.3 Stress: 20 parallel bans" t5_3_stress
 
-# T5.4 — Restart idempotency (3 restarts, count stable)
+# T5.4 — Restart idempotency
+# Performs 3 consecutive bouncer restarts and records the address count
+# after each reconciliation.
+# Pass: spread (max − min) across all 3 counts is ≤10.
 t5_4_restart_idempotency() {
     bouncer_running || skip_test "bouncer not running"
 
@@ -131,7 +158,11 @@ t5_4_restart_idempotency() {
 }
 run_test "T5.4 Restart idempotency" t5_4_restart_idempotency
 
-# T5.5 — DeleteCh drain effectiveness
+# T5.5 — DeleteCh drain effectiveness (optimization verification)
+# Scans recent bouncer logs for "drain", "skip", or "pre-filter" references
+# that indicate the delete-channel optimization is working.
+# Pass: no panics in the last 10 minutes of logs. Log mention count is
+# informational only.
 t5_5_delete_drain() {
     bouncer_running || skip_test "bouncer not running"
 
@@ -150,6 +181,11 @@ t5_5_delete_drain() {
 run_test "T5.5 DeleteCh drain" t5_5_delete_drain
 
 # T5.6 — IPv6 ban/unban lifecycle
+# Adds IPv6 decision 2001:db8::dead:beef via LAPI, polls the router's
+# crowdsec6-banned list until it appears (up to 60 s), then unbans and
+# verifies removal.
+# Pass: IPv6 address appears on router within 60 s; no hard failure on
+# slow removal (may be timeout-based).
 t5_6_ipv6_lifecycle() {
     bouncer_running || skip_test "bouncer not running"
 

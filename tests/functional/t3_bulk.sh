@@ -1,12 +1,33 @@
 # =============================================================================
 # T3: Bulk Operations — Reconciliation from Different States
 # =============================================================================
-# Tests the binary's reconciliation by stopping/starting the service and
-# verifying router state via SSH.  This is a black-box test of the
-# compiled bouncer's bulk-add and bulk-remove behaviour.
+# Tests the bouncer's reconciliation logic by stopping the service, mutating
+# the router's address lists, then restarting and verifying the router converges
+# to the LAPI source of truth.  Exercises bulk-add (empty → full), partial
+# restore, orphan removal, and batch decision removal.
+#
+# Prerequisites:
+#   - Bouncer service controllable (bouncer_stop / bouncer_start)
+#   - SSH access to router (address list manipulation)
+#   - LAPI accessible for decision count and decision add/remove
+#
+# Tests:
+#   T3.1  Full reconciliation    — empty router → full sync from LAPI
+#   T3.2  Partial sync           — ~20 addresses removed, bouncer restores them
+#   T3.3  Orphan removal         — fake address injected, bouncer removes it
+#   T3.4  No bulk script errors  — recent logs free of EOF/reset/oversize errors
+#   T3.5  No stale scripts       — no leftover crowdsec-bulk scripts on router
+#   T3.6  Batch remove           — 5 test IPs added then removed via LAPI
+#
+# NOTE: T3.1 and T3.2 stop/start the bouncer service and will temporarily
+#       interrupt normal operation.
 # =============================================================================
 
-# T3.1 — Full reconciliation from empty router
+# T3.1 — Full reconciliation (empty → full).
+# Stops the bouncer, wipes both IPv4 and IPv6 address lists, then restarts.
+# After reconciliation completes, the router count must match LAPI (±10)
+# and logs must be free of bulk-script transport errors.
+# Pass: count within threshold AND zero bulk errors in logs.
 t3_1_full_reconciliation() {
     log "Stopping bouncer..."
     bouncer_stop; sleep 2
@@ -53,7 +74,10 @@ t3_1_full_reconciliation() {
 }
 run_test "T3.1 Full reconciliation (empty→full)" t3_1_full_reconciliation
 
-# T3.2 — Partial sync (router has most, missing some)
+# T3.2 — Partial sync (restore missing addresses).
+# Removes ~20 random addresses from the router via SSH, then restarts the
+# bouncer.  Reconciliation should detect the missing entries and re-add them.
+# Pass: recovered count ≥ (removed − 5).
 t3_2_partial_sync() {
     bouncer_running || skip_test "bouncer not running"
     bouncer_stop; sleep 2
@@ -93,7 +117,11 @@ t3_2_partial_sync() {
 }
 run_test "T3.2 Partial sync (restore missing)" t3_2_partial_sync
 
-# T3.3 — Orphan removal (stale addresses on router)
+# T3.3 — Orphan removal.
+# Injects a fake address (192.0.2.99, RFC 5737 TEST-NET-1) into the router list
+# with the bouncer's comment prefix, then restarts.  The reconciliation diff
+# should identify the address as absent from LAPI and remove it.
+# Pass: fake IP no longer on router after reconciliation.
 t3_3_orphan_removal() {
     bouncer_running || skip_test "bouncer not running"
     bouncer_stop; sleep 2
@@ -117,7 +145,11 @@ t3_3_orphan_removal() {
 }
 run_test "T3.3 Orphan removal" t3_3_orphan_removal
 
-# T3.4 — No bulk script errors (chunk size validation)
+# T3.4 — No bulk script errors.
+# Scans the last 5 minutes of bouncer logs for transport-level errors that
+# indicate the bulk RouterOS script exceeded size limits or the SSH channel
+# was interrupted (EOF, connection reset, message too large, script failed).
+# Pass: zero matching log lines.
 t3_4_no_script_errors() {
     bouncer_running || skip_test "bouncer not running"
 
@@ -132,7 +164,10 @@ t3_4_no_script_errors() {
 }
 run_test "T3.4 No bulk script errors" t3_4_no_script_errors
 
-# T3.5 — No stale scripts left on router
+# T3.5 — No stale scripts on router.
+# After bulk operations the bouncer uploads temporary RouterOS scripts named
+# "crowdsec-bulk*".  They must be cleaned up after execution.
+# Pass: zero scripts matching "crowdsec-bulk" in /system/script.
 t3_5_script_cleanup() {
     bouncer_running || skip_test "bouncer not running"
 
@@ -147,7 +182,10 @@ t3_5_script_cleanup() {
 }
 run_test "T3.5 No stale scripts on router" t3_5_script_cleanup
 
-# T3.6 — Batch remove (stop bouncer, remove decisions, restart)
+# T3.6 — Batch remove.
+# Adds 5 test IPs (198.51.100.10–14) via LAPI, waits 20 s for them to appear
+# on the router, then removes them from LAPI and waits another 20 s.
+# Pass: ≤1 test IP remains on router (allows for one poll-cycle lag).
 t3_6_batch_remove() {
     bouncer_running || skip_test "bouncer not running"
 
