@@ -63,6 +63,9 @@ type mockROS struct {
 	findRuleEntry *ros.RuleEntry
 	findRuleErr   error
 
+	getCountersResult *ros.FirewallCounters
+	getCountersErr    error
+
 	// Call tracking — inspected in assertions after calling the method under test.
 	connectCalls       int
 	closeCalls         int
@@ -76,6 +79,7 @@ type mockROS struct {
 	addRuleCalls       []addRuleCall
 	removeRuleCalls    []removeRuleCall
 	findRuleCalls      []findRuleCall
+	getCountersCalls   int
 }
 
 // addAddressCall captures the arguments to a single AddAddress invocation.
@@ -204,6 +208,16 @@ func (m *mockROS) FindFirewallRuleByComment(proto, mode, comment string) (*ros.R
 	defer m.mu.Unlock()
 	m.findRuleCalls = append(m.findRuleCalls, findRuleCall{proto, mode, comment})
 	return m.findRuleEntry, m.findRuleErr
+}
+
+func (m *mockROS) GetFirewallCounters(commentPrefix string) (*ros.FirewallCounters, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.getCountersCalls++
+	if m.getCountersResult != nil {
+		return m.getCountersResult, m.getCountersErr
+	}
+	return &ros.FirewallCounters{}, m.getCountersErr
 }
 
 // ---------------------------------------------------------------------------

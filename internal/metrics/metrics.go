@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -81,6 +82,84 @@ func SetActiveDecisions(proto string, count int) {
 // GetTotalActiveDecisions returns the total active decisions across all protocols.
 func GetTotalActiveDecisions() int64 {
 	return activeDecisionCounts.ipv4.Load() + activeDecisionCounts.ipv6.Load()
+}
+
+// GetActiveDecisionsByIPType returns the active decision count per IP protocol.
+func GetActiveDecisionsByIPType() (ipv4, ipv6 int64) {
+	return activeDecisionCounts.ipv4.Load(), activeDecisionCounts.ipv6.Load()
+}
+
+// --- Per-origin active decision tracking for LAPI ---
+
+// originDecisionsMu protects originDecisions map.
+var originDecisionsMu sync.RWMutex
+
+// originDecisions tracks active decision counts per origin.
+var originDecisions = map[string]int64{}
+
+// SetActiveDecisionsByOrigin stores the active decision count for a given origin.
+func SetActiveDecisionsByOrigin(origin string, count int64) {
+	originDecisionsMu.Lock()
+	defer originDecisionsMu.Unlock()
+	if count <= 0 {
+		delete(originDecisions, origin)
+	} else {
+		originDecisions[origin] = count
+	}
+}
+
+// GetActiveDecisionsByOrigin returns a snapshot of active decisions per origin.
+func GetActiveDecisionsByOrigin() map[string]int64 {
+	originDecisionsMu.RLock()
+	defer originDecisionsMu.RUnlock()
+	result := make(map[string]int64, len(originDecisions))
+	for k, v := range originDecisions {
+		result[k] = v
+	}
+	return result
+}
+
+// --- Firewall dropped counters for LAPI ---
+
+// DroppedCounters holds cumulative byte/packet counters from the firewall.
+type DroppedCounters struct {
+	Bytes   uint64
+	Packets uint64
+}
+
+var droppedCountersMu sync.Mutex
+var droppedCounters DroppedCounters
+var lastSentCounters DroppedCounters
+
+// SetDroppedCounters updates the current firewall dropped counters (cumulative).
+func SetDroppedCounters(bytes, packets uint64) {
+	droppedCountersMu.Lock()
+	defer droppedCountersMu.Unlock()
+	droppedCounters = DroppedCounters{Bytes: bytes, Packets: packets}
+}
+
+// GetAndResetDroppedDeltas returns the delta since last call and resets the baseline.
+// This implements the "decrement after send" approach from the CrowdSec spec.
+func GetAndResetDroppedDeltas() (bytes, packets uint64) {
+	droppedCountersMu.Lock()
+	defer droppedCountersMu.Unlock()
+
+	// Handle counter wrap-around or reset (rule recreation).
+	if droppedCounters.Bytes >= lastSentCounters.Bytes {
+		bytes = droppedCounters.Bytes - lastSentCounters.Bytes
+	} else {
+		bytes = droppedCounters.Bytes // counter was reset
+	}
+
+	if droppedCounters.Packets >= lastSentCounters.Packets {
+		packets = droppedCounters.Packets - lastSentCounters.Packets
+	} else {
+		packets = droppedCounters.Packets
+	}
+
+	lastSentCounters = droppedCounters
+
+	return bytes, packets
 }
 
 // SetConnected sets the RouterOS connection gauge.

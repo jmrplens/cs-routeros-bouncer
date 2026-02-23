@@ -28,4 +28,5 @@ type RouterOSClient interface {
 	AddFirewallRule(proto, mode string, rule ros.FirewallRule) (string, error)
 	RemoveFirewallRule(proto, mode, id string) error
 	FindFirewallRuleByComment(proto, mode, comment string) (*ros.RuleEntry, error)
+	GetFirewallCounters(commentPrefix string) (*ros.FirewallCounters, error)
 }

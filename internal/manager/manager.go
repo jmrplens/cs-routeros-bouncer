@@ -123,6 +123,17 @@ func (m *Manager) Start(ctx context.Context) error {
 		if err != nil {
 			m.logger.Warn().Err(err).Msg("failed to initialize LAPI metrics, continuing without metrics reporting")
 		} else {
+			// Register firewall counter collector so LAPI metrics include
+			// dropped bytes/packets from MikroTik firewall rules.
+			lapiProvider.SetCounterCollector(func() {
+				fc, err := m.ros.GetFirewallCounters("crowdsec-bouncer:")
+				if err != nil {
+					m.logger.Debug().Err(err).Msg("failed to collect firewall counters for LAPI metrics")
+					return
+				}
+				metrics.SetDroppedCounters(fc.TotalBytes, fc.TotalPkts)
+			})
+
 			m.logger.Info().Dur("interval", m.cfg.CrowdSec.LapiMetricsInterval).Msg("LAPI usage metrics reporting enabled")
 			go func() {
 				if err := lapiProvider.Run(ctx); err != nil {
@@ -731,6 +742,19 @@ func (m *Manager) reconcileAddresses(decisions []*crowdsec.Decision) {
 		metrics.RecordReconciliation("removed", removed)
 		metrics.RecordReconciliation("unchanged", unchanged)
 		metrics.SetActiveDecisions(metricsProto, len(shouldExist))
+
+		// Track per-origin active decision counts for LAPI metrics.
+		originCounts := map[string]int64{}
+		for _, d := range shouldExist {
+			origin := d.Origin
+			if origin == "" {
+				origin = "unknown"
+			}
+			originCounts[origin]++
+		}
+		for origin, count := range originCounts {
+			metrics.SetActiveDecisionsByOrigin(origin, count)
+		}
 
 		m.logger.Info().
 			Str("proto", proto).
