@@ -61,9 +61,11 @@ while [[ $# -gt 0 ]]; do
             echo "  t5  Edge cases (duplicates, rapid cycle, restart idempotency)"
             echo "  t6  CPU monitoring (steady-state, peak, recovery)"
             echo "  t7  Timing measurements (reconciliation, ban/unban latency)"
-            echo "  t8  CAPI stress test ~25k IPs (requires --capi flag)"
+            echo "  t8  CAPI stress test ~25k IPs (skipped unless --capi flag is set)"
             exit 0 ;;
-        t[1-8]) RUN_GROUPS+=("$1"); shift ;;
+        t[1-7]) RUN_GROUPS+=("$1"); shift ;;
+        t8) if ! $ENABLE_CAPI; then err "t8 requires --capi flag"; exit 1; fi
+            RUN_GROUPS+=("$1"); shift ;;
         *)  err "Unknown argument: $1"; exit 1 ;;
     esac
 done

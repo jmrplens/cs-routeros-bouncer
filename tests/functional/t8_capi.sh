@@ -31,10 +31,12 @@
 # Config path and origin presets used by set_origins() / restore_local_origins().
 readonly BOUNCER_CONFIG="/etc/cs-routeros-bouncer/config.yaml"
 readonly CAPI_ORIGINS='["crowdsec", "cscli", "CAPI"]'
+# shellcheck disable=SC2089
 readonly LOCAL_ORIGINS='["crowdsec", "cscli"]'
 
 # Safety trap: always restore local-only origins on exit/interrupt so the
 # production config is never left in CAPI mode after an interrupted test run.
+# shellcheck disable=SC2090,SC2089
 trap 'set_origins "$LOCAL_ORIGINS" 2>/dev/null' EXIT INT TERM
 
 # ---- Helpers for config switching ----
@@ -74,8 +76,10 @@ t8_1_full_reconciliation_capi() {
     local end_ts; end_ts=$(date +%s)
     local elapsed=$(( end_ts - start_ts ))
     local count; count=$(ssh_count_addresses "${TEST_IPV4_LIST}")
+    local count6; count6=$(ssh_count_addresses "${TEST_IPV6_LIST}")
+    local total_count=$(( count + count6 ))
 
-    log "CAPI reconciliation: ${elapsed}s, router has $count IPv4 (expected ~$expected)"
+    log "CAPI reconciliation: ${elapsed}s, router has $total_count total ($count IPv4 + $count6 IPv6, expected ~$expected)"
 
     # Check for bulk errors
     local errors
@@ -87,11 +91,11 @@ t8_1_full_reconciliation_capi() {
         return 1
     fi
 
-    if (( count < expected / 2 )); then
-        echo "FAIL: only $count addresses on router (expected ~$expected)"
+    if (( total_count < expected / 2 )); then
+        echo "FAIL: only $total_count addresses on router (expected ~$expected)"
         return 1
     fi
-    log "CAPI T8.1 PASS: $count IPs in ${elapsed}s"
+    log "CAPI T8.1 PASS: $total_count IPs in ${elapsed}s"
 }
 run_test "T8.1 CAPI full reconciliation (~25k IPs)" t8_1_full_reconciliation_capi
 
@@ -206,9 +210,8 @@ t8_6_unban_latency_large() {
     sleep 20  # wait for add
 
     if ! ssh_list_addresses "${TEST_IPV4_LIST}" | grep -qF "$ip"; then
-        warn "Test IP not on router, skipping unban test"
         lapi_remove_decision "$ip"
-        return 0
+        skip_test "Test IP not on router after 20s — cannot measure unban latency"
     fi
 
     local start_ts; start_ts=$(date +%s)

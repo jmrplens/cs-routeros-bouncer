@@ -80,7 +80,7 @@ t5_2_rapid_ban_unban() {
     # - IP not on router (delete arrived before/with add) → OK
     # - IP on router then removed (processed sequentially) → OK
     local panics
-    panics=$(bouncer_logs_since "30 seconds ago" | grep -ci "panic" || true)
+    panics=$(bouncer_logs_since "60 seconds ago" | grep -ci "panic" || true)
     [[ $panics -eq 0 ]] || { echo "FAIL: panics during rapid ban/unban"; return 1; }
     log "Rapid ban/unban: no panics"
 }

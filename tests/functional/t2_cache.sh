@@ -131,9 +131,14 @@ t2_4_expired_resilience() {
     lapi_add_decision "$TEST_IP_EXPIRE" "30s" "test-expire"
     log "Added $TEST_IP_EXPIRE with 30s duration, waiting for it to reach router..."
 
-    wait_for "IP on router" 40 5 \
-        ssh_list_addresses "${TEST_IPV4_LIST}" '|' grep -qF "$TEST_IP_EXPIRE" 2>/dev/null \
-        || true
+    local _found=false
+    for _ in $(seq 1 8); do
+        if ssh_list_addresses "${TEST_IPV4_LIST}" | grep -qF "$TEST_IP_EXPIRE" 2>/dev/null; then
+            _found=true; break
+        fi
+        sleep 5
+    done
+    $_found || warn "IP may not have reached router in time"
 
     # Wait for RouterOS timeout to expire it
     log "Waiting 40s for RouterOS auto-expiry..."
@@ -200,11 +205,11 @@ t2_6_rapid_cycle() {
     # Check no errors
     local errors
     errors=$(bouncer_logs_since "1 minute ago" | grep -ci "panic\|fatal" || true)
+    lapi_remove_decision "$ip"
     if (( errors > 0 )); then
         echo "FAIL: Panics during rapid cycle"
         return 1
     fi
-    lapi_remove_decision "$ip"
     log "Rapid ban/unban cycle completed without errors"
 }
 run_test "T2.6 Rapid ban/unban cycle" t2_6_rapid_cycle

@@ -40,14 +40,18 @@ func (c *Client) BulkAddAddresses(proto, list string, entries []BulkEntry) (adde
 		if scriptErr != nil {
 			// Fall back to individual adds for this chunk
 			log.Warn().Err(scriptErr).Int("chunk_size", len(chunk)).Msg("bulk script failed, falling back to individual adds")
+			var fallbackErrs []error
 			for _, e := range chunk {
 				if _, addErr := c.AddAddress(proto, list, e.Address, e.Timeout, e.Comment); addErr != nil {
 					if !strings.Contains(addErr.Error(), "already have") {
-						err = addErr
+						fallbackErrs = append(fallbackErrs, addErr)
 					}
 				} else {
 					total++
 				}
+			}
+			if len(fallbackErrs) > 0 {
+				err = fmt.Errorf("%d fallback add errors (last: %w)", len(fallbackErrs), fallbackErrs[len(fallbackErrs)-1])
 			}
 			continue
 		}
@@ -76,8 +80,9 @@ func buildBulkAddScript(proto, list string, entries []BulkEntry) string {
 
 	for _, e := range entries {
 		addr := NormalizeAddress(e.Address, proto)
-		// Escape quotes in comment
-		comment := strings.ReplaceAll(e.Comment, "\"", "\\\"")
+		// Escape backslashes and quotes for RouterOS scripting
+		comment := strings.ReplaceAll(e.Comment, "\\", "\\\\")
+		comment = strings.ReplaceAll(comment, "\"", "\\\"")
 
 		sb.WriteString(":do {\n")
 		fmt.Fprintf(&sb, "  %s/firewall/address-list/add list=\"%s\" address=\"%s\" comment=\"%s\"",

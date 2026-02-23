@@ -550,7 +550,7 @@ make docker-build   # Build Docker image
 ### Functional Tests (Real Hardware)
 
 A comprehensive Bash test suite validates the compiled binary against a
-real MikroTik router. Tests use SSH, `cscli`, `systemctl`, and InfluxDB —
+real MikroTik router. Tests use SSH, `cscli`, `systemctl`, and SNMP —
 no Go internals are imported.
 
 ```bash

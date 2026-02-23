@@ -41,8 +41,8 @@ t3_1_full_reconciliation() {
     before_count=$(ssh_count_addresses "${TEST_IPV4_LIST}")
     [[ "$before_count" -eq 0 ]] || { echo "FAIL: lists not empty ($before_count)"; return 1; }
 
-    local expected; expected=$(lapi_count)
-    log "LAPI has $expected active decisions"
+    local expected; expected=$(lapi_get_ipv4 | grep -c . || echo 0)
+    log "LAPI has $expected active IPv4 decisions"
 
     local ts_before; ts_before=$(date '+%Y-%m-%d %H:%M:%S')
     log "Starting bouncer..."
