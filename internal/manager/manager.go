@@ -25,10 +25,14 @@ const (
 	channelBuffer = 256
 )
 
+// poolSize is the number of parallel RouterOS connections for bulk operations.
+const poolSize = 4
+
 // Manager orchestrates the CrowdSec stream and MikroTik firewall operations.
 type Manager struct {
 	cfg     config.Config
 	ros     *rosClient.Client
+	pool    *rosClient.Pool
 	stream  *crowdsec.Stream
 	logger  zerolog.Logger
 	version string
@@ -36,17 +40,24 @@ type Manager struct {
 	// Track created firewall rule IDs for cleanup
 	ruleIDs map[string]string // comment -> .id
 	ruleMu  sync.Mutex
+
+	// addressCache tracks addresses known to be on the router (for fast-path unban).
+	// Protected by cacheMu. Keys are normalized addresses (e.g., "1.2.3.4", "::1/128").
+	addressCache map[string]struct{}
+	cacheMu      sync.RWMutex
 }
 
 // NewManager creates a new bouncer manager.
 func NewManager(cfg config.Config, version string) *Manager {
 	return &Manager{
-		cfg:     cfg,
-		ros:     rosClient.NewClient(cfg.MikroTik),
-		stream:  crowdsec.NewStream(cfg.CrowdSec, version),
-		logger:  log.With().Str("component", "manager").Logger(),
-		version: version,
-		ruleIDs: make(map[string]string),
+		cfg:          cfg,
+		ros:          rosClient.NewClient(cfg.MikroTik),
+		pool:         rosClient.NewPool(cfg.MikroTik, poolSize),
+		stream:       crowdsec.NewStream(cfg.CrowdSec, version),
+		logger:       log.With().Str("component", "manager").Logger(),
+		version:      version,
+		ruleIDs:      make(map[string]string),
+		addressCache: make(map[string]struct{}),
 	}
 }
 
@@ -61,6 +72,12 @@ func (m *Manager) Start(ctx context.Context) error {
 		return fmt.Errorf("connecting to MikroTik: %w", err)
 	}
 	metrics.SetConnected(true)
+
+	// 1b. Connect the parallel pool for bulk operations
+	if err := m.pool.Connect(); err != nil {
+		m.logger.Warn().Err(err).Msg("could not create connection pool, falling back to single connection")
+		m.pool = nil
+	}
 
 	identity, err := m.ros.GetIdentity()
 	if err != nil {
@@ -117,9 +134,21 @@ func (m *Manager) Start(ctx context.Context) error {
 
 	// Collect first-poll decisions (CrowdSec sends ALL active decisions on first poll).
 	// We use a short idle timeout to detect when the initial batch is complete.
+	// Both bans AND deletes are collected to avoid processing stale deletes after reconciliation.
 	var initialBans []*crowdsec.Decision
+	initialDeletes := make(map[string]struct{}) // addresses to skip (already expired)
 	idleTimeout := time.NewTimer(10 * time.Second)
 	defer idleTimeout.Stop()
+
+	resetIdleTimer := func() {
+		if !idleTimeout.Stop() {
+			select {
+			case <-idleTimeout.C:
+			default:
+			}
+		}
+		idleTimeout.Reset(3 * time.Second)
+	}
 
 collectLoop:
 	for {
@@ -130,23 +159,40 @@ collectLoop:
 			return fmt.Errorf("CrowdSec stream error: %w", err)
 		case d := <-banCh:
 			initialBans = append(initialBans, d)
-			// Reset idle timer — more decisions coming
-			if !idleTimeout.Stop() {
-				select {
-				case <-idleTimeout.C:
-				default:
-				}
+			resetIdleTimer()
+		case d := <-deleteCh:
+			if d != nil {
+				addr := rosClient.NormalizeAddress(d.Value, d.Proto)
+				initialDeletes[addr] = struct{}{}
 			}
-			idleTimeout.Reset(3 * time.Second)
+			resetIdleTimer()
 		case <-idleTimeout.C:
 			break collectLoop
 		}
 	}
 
-	m.logger.Info().Int("decisions", len(initialBans)).Msg("initial decisions collected, starting reconciliation")
+	m.logger.Info().
+		Int("bans", len(initialBans)).
+		Int("deletes", len(initialDeletes)).
+		Msg("initial decisions collected, starting reconciliation")
 
 	// 5. Reconcile: compare CrowdSec state with router state
-	m.reconcileAddresses(initialBans)
+	// Filter out bans that are immediately followed by deletes (expired decisions)
+	filteredBans := make([]*crowdsec.Decision, 0, len(initialBans))
+	skipped := 0
+	for _, d := range initialBans {
+		addr := rosClient.NormalizeAddress(d.Value, d.Proto)
+		if _, deleted := initialDeletes[addr]; deleted {
+			skipped++
+			continue
+		}
+		filteredBans = append(filteredBans, d)
+	}
+	if skipped > 0 {
+		m.logger.Info().Int("skipped", skipped).Msg("skipped decisions that were immediately deleted")
+	}
+
+	m.reconcileAddresses(filteredBans)
 
 	m.logger.Info().Msg("reconciliation complete, processing live decisions")
 
@@ -173,6 +219,9 @@ collectLoop:
 func (m *Manager) Shutdown() {
 	m.logger.Info().Msg("cleaning up firewall rules")
 	m.removeFirewallRules()
+	if m.pool != nil {
+		m.pool.Close()
+	}
 	m.ros.Close()
 	metrics.SetConnected(false)
 	m.logger.Info().Msg("shutdown complete")
@@ -240,6 +289,12 @@ func (m *Manager) handleBan(d *crowdsec.Decision) {
 		return
 	}
 
+	// Update address cache
+	addr := rosClient.NormalizeAddress(d.Value, d.Proto)
+	m.cacheMu.Lock()
+	m.addressCache[addr] = struct{}{}
+	m.cacheMu.Unlock()
+
 	metrics.RecordDecision("ban", metricsProto, d.Origin)
 	metrics.ObserveOperationDuration("add", time.Since(start))
 
@@ -253,6 +308,7 @@ func (m *Manager) handleBan(d *crowdsec.Decision) {
 }
 
 // handleUnban processes a decision deletion.
+// Uses address cache to skip FindAddress for addresses not on the router.
 func (m *Manager) handleUnban(d *crowdsec.Decision) {
 	if d == nil {
 		return
@@ -274,6 +330,19 @@ func (m *Manager) handleUnban(d *crowdsec.Decision) {
 	}
 
 	listName := m.getAddressListName(d.Proto)
+	addr := rosClient.NormalizeAddress(d.Value, d.Proto)
+
+	// Fast-path: check address cache — skip API call if address is not on router
+	m.cacheMu.RLock()
+	_, inCache := m.addressCache[addr]
+	m.cacheMu.RUnlock()
+
+	if !inCache {
+		m.logger.Debug().
+			Str("address", d.Value).
+			Msg("address not in cache, skipping unban (already expired or never added)")
+		return
+	}
 
 	// Find the address in MikroTik
 	entry, err := m.ros.FindAddress(d.Proto, listName, d.Value)
@@ -286,6 +355,11 @@ func (m *Manager) handleUnban(d *crowdsec.Decision) {
 	}
 
 	if entry == nil {
+		// Remove from cache — it expired on MikroTik
+		m.cacheMu.Lock()
+		delete(m.addressCache, addr)
+		m.cacheMu.Unlock()
+
 		m.logger.Debug().
 			Str("address", d.Value).
 			Msg("address not found in MikroTik (already expired?)")
@@ -301,6 +375,11 @@ func (m *Manager) handleUnban(d *crowdsec.Decision) {
 		metrics.RecordError("remove")
 		return
 	}
+
+	// Remove from cache
+	m.cacheMu.Lock()
+	delete(m.addressCache, addr)
+	m.cacheMu.Unlock()
 
 	metrics.RecordDecision("unban", metricsProto, d.Origin)
 	metrics.ObserveOperationDuration("remove", time.Since(start))
@@ -463,6 +542,7 @@ func (m *Manager) removeFirewallRules() {
 // reconcileAddresses performs initial state reconciliation on startup.
 // Compares CrowdSec active decisions with MikroTik address lists
 // and adds/removes entries as needed.
+// Uses script-based bulk add and parallel workers for maximum speed.
 func (m *Manager) reconcileAddresses(decisions []*crowdsec.Decision) {
 	m.logger.Info().Int("decisions", len(decisions)).Msg("reconciling addresses with MikroTik")
 
@@ -501,46 +581,116 @@ func (m *Manager) reconcileAddresses(decisions []*crowdsec.Decision) {
 			currentMap[e.Address] = e
 		}
 
-		// Add missing addresses
-		added := 0
+		// Populate address cache with current router state
+		m.cacheMu.Lock()
+		for addr := range currentMap {
+			m.addressCache[addr] = struct{}{}
+		}
+		m.cacheMu.Unlock()
+
+		// Collect addresses to add
+		var toAdd []rosClient.BulkEntry
 		for addr, d := range shouldExist {
 			if _, exists := currentMap[addr]; !exists {
-				addStart := time.Now()
 				timeout := ""
 				if d.Duration > 0 {
 					timeout = rosClient.DurationToMikroTik(d.Duration)
 				}
-				comment := buildAddressComment(d)
-				if _, err := m.ros.AddAddress(proto, listName, d.Value, timeout, comment); err != nil {
-					m.logger.Error().Err(err).Str("address", d.Value).Msg("reconcile: error adding address")
-					metrics.RecordError("add")
-				} else {
-					added++
-					metrics.RecordDecision("ban", metricsProto, d.Origin)
-					metrics.ObserveOperationDuration("add", time.Since(addStart))
-				}
+				toAdd = append(toAdd, rosClient.BulkEntry{
+					Address: d.Value,
+					Timeout: timeout,
+					Comment: buildAddressComment(d),
+				})
 			}
 		}
 
-		// Remove stale addresses
-		removed := 0
+		// Collect addresses to remove
+		var toRemove []rosClient.AddressEntry
 		for addr, entry := range currentMap {
-			if _, shouldExist := shouldExist[addr]; !shouldExist {
-				removeStart := time.Now()
-				if err := m.ros.RemoveAddress(proto, entry.ID); err != nil {
-					// "no such item" means the address expired before we removed it — harmless
-					if strings.Contains(err.Error(), "no such item") {
-						m.logger.Debug().Str("address", addr).Msg("reconcile: address already expired")
-					} else {
-						m.logger.Error().Err(err).Str("address", addr).Msg("reconcile: error removing address")
+			if _, ok := shouldExist[addr]; !ok {
+				toRemove = append(toRemove, entry)
+			}
+		}
+
+		// === BULK ADD via script (fastest) ===
+		added := 0
+		if len(toAdd) > 0 {
+			addStart := time.Now()
+
+			n, addErr := m.ros.BulkAddAddresses(proto, listName, toAdd)
+			if addErr != nil {
+				m.logger.Warn().Err(addErr).Msg("some addresses failed to add during reconciliation")
+			}
+			added = n
+
+			// Update cache with newly added addresses
+			m.cacheMu.Lock()
+			for _, e := range toAdd {
+				addr := rosClient.NormalizeAddress(e.Address, proto)
+				m.addressCache[addr] = struct{}{}
+			}
+			m.cacheMu.Unlock()
+
+			for i := 0; i < added; i++ {
+				metrics.RecordDecision("ban", metricsProto, "reconcile")
+			}
+			metrics.ObserveOperationDuration("bulk_add", time.Since(addStart))
+
+			m.logger.Info().
+				Int("added", added).
+				Dur("elapsed", time.Since(addStart)).
+				Msg("bulk add complete")
+		}
+
+		// === PARALLEL REMOVE via pool ===
+		removed := 0
+		if len(toRemove) > 0 {
+			removeStart := time.Now()
+
+			if m.pool != nil {
+				// Use connection pool for parallel removes
+				errs := rosClient.ParallelExec(m.pool, toRemove, func(c *rosClient.Client, entry rosClient.AddressEntry) error {
+					return c.RemoveAddress(proto, entry.ID)
+				})
+				removed = len(toRemove) - len(errs)
+				for _, e := range errs {
+					if !strings.Contains(e.Error(), "no such item") {
+						m.logger.Error().Err(e).Msg("reconcile: error removing address")
 						metrics.RecordError("remove")
+					} else {
+						removed++ // expired items count as removed
 					}
-				} else {
-					removed++
-					metrics.RecordDecision("unban", metricsProto, "reconcile")
-					metrics.ObserveOperationDuration("remove", time.Since(removeStart))
+				}
+			} else {
+				// Fallback to sequential
+				for _, entry := range toRemove {
+					if err := m.ros.RemoveAddress(proto, entry.ID); err != nil {
+						if !strings.Contains(err.Error(), "no such item") {
+							m.logger.Error().Err(err).Str("address", entry.Address).Msg("reconcile: error removing address")
+							metrics.RecordError("remove")
+						}
+					} else {
+						removed++
+					}
 				}
 			}
+
+			// Update cache
+			m.cacheMu.Lock()
+			for _, entry := range toRemove {
+				delete(m.addressCache, entry.Address)
+			}
+			m.cacheMu.Unlock()
+
+			for i := 0; i < removed; i++ {
+				metrics.RecordDecision("unban", metricsProto, "reconcile")
+			}
+			metrics.ObserveOperationDuration("bulk_remove", time.Since(removeStart))
+
+			m.logger.Info().
+				Int("removed", removed).
+				Dur("elapsed", time.Since(removeStart)).
+				Msg("bulk remove complete")
 		}
 
 		unchanged := len(shouldExist) - added
@@ -559,6 +709,7 @@ func (m *Manager) reconcileAddresses(decisions []*crowdsec.Decision) {
 			Int("expected", len(shouldExist)).
 			Int("added", added).
 			Int("removed", removed).
+			Dur("elapsed", time.Since(start)).
 			Msg("address reconciliation complete")
 	}
 
