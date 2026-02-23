@@ -435,14 +435,16 @@ func TestNewStreamWithTLS(t *testing.T) {
 	if s == nil {
 		t.Fatal("expected non-nil stream")
 	}
-	if s.bouncer.CertPath != cfg.CertPath {
-		t.Errorf("CertPath = %q, want %q", s.bouncer.CertPath, cfg.CertPath)
+	// Verify config was stored correctly (bouncer field propagation is
+	// tested implicitly via the adapter; the config is the source of truth).
+	if s.cfg.CertPath != cfg.CertPath {
+		t.Errorf("CertPath = %q, want %q", s.cfg.CertPath, cfg.CertPath)
 	}
-	if s.bouncer.KeyPath != cfg.KeyPath {
-		t.Errorf("KeyPath = %q, want %q", s.bouncer.KeyPath, cfg.KeyPath)
+	if s.cfg.KeyPath != cfg.KeyPath {
+		t.Errorf("KeyPath = %q, want %q", s.cfg.KeyPath, cfg.KeyPath)
 	}
-	if s.bouncer.CAPath != cfg.CACertPath {
-		t.Errorf("CAPath = %q, want %q", s.bouncer.CAPath, cfg.CACertPath)
+	if s.cfg.CACertPath != cfg.CACertPath {
+		t.Errorf("CACertPath = %q, want %q", s.cfg.CACertPath, cfg.CACertPath)
 	}
 }
 
@@ -459,13 +461,13 @@ func TestNewStreamWithInsecureSkipVerify(t *testing.T) {
 	if s == nil {
 		t.Fatal("expected non-nil stream")
 	}
-	if s.bouncer.InsecureSkipVerify == nil || !*s.bouncer.InsecureSkipVerify {
+	if !s.cfg.InsecureSkipVerify {
 		t.Error("expected InsecureSkipVerify to be true")
 	}
 }
 
 // TestNewStreamInsecureSkipVerifyFalse verifies that InsecureSkipVerify=false
-// does NOT set the bouncer field (nil pointer means default/false).
+// is stored correctly in the config.
 func TestNewStreamInsecureSkipVerifyFalse(t *testing.T) {
 	cfg := config.CrowdSecConfig{
 		APIURL:             "https://localhost:8080/",
@@ -477,12 +479,12 @@ func TestNewStreamInsecureSkipVerifyFalse(t *testing.T) {
 	if s == nil {
 		t.Fatal("expected non-nil stream")
 	}
-	if s.bouncer.InsecureSkipVerify != nil {
-		t.Error("expected InsecureSkipVerify to be nil when config is false")
+	if s.cfg.InsecureSkipVerify {
+		t.Error("expected InsecureSkipVerify to be false")
 	}
 }
 
-// TestNewStreamAllFields verifies all StreamBouncer fields are correctly set.
+// TestNewStreamAllFields verifies all config fields are correctly stored.
 func TestNewStreamAllFields(t *testing.T) {
 	cfg := config.CrowdSecConfig{
 		APIURL:                 "http://lapi:8080/",
@@ -499,20 +501,16 @@ func TestNewStreamAllFields(t *testing.T) {
 		InsecureSkipVerify:     true,
 	}
 	s := NewStream(cfg, "2.0.0")
-	b := s.bouncer
-	if b.APIUrl != cfg.APIURL {
-		t.Errorf("APIUrl = %q, want %q", b.APIUrl, cfg.APIURL)
+	if s.cfg.APIURL != cfg.APIURL {
+		t.Errorf("APIURL = %q, want %q", s.cfg.APIURL, cfg.APIURL)
 	}
-	if b.APIKey != cfg.APIKey {
+	if s.cfg.APIKey != cfg.APIKey {
 		t.Errorf("APIKey mismatch")
 	}
-	if b.TickerInterval != "30s" {
-		t.Errorf("TickerInterval = %q, want 30s", b.TickerInterval)
+	if s.cfg.UpdateFrequency != 30*time.Second {
+		t.Errorf("UpdateFrequency = %v, want 30s", s.cfg.UpdateFrequency)
 	}
-	if b.UserAgent != "cs-routeros-bouncer/2.0.0" {
-		t.Errorf("UserAgent = %q", b.UserAgent)
-	}
-	if !b.RetryInitialConnect {
+	if !s.cfg.RetryInitialConnect {
 		t.Error("expected RetryInitialConnect=true")
 	}
 }

@@ -29,7 +29,7 @@ type Decision struct {
 
 // Stream wraps the CrowdSec StreamBouncer for decision streaming.
 type Stream struct {
-	bouncer *csbouncer.StreamBouncer
+	bouncer BouncerEngine
 	cfg     config.CrowdSecConfig
 	logger  zerolog.Logger
 }
@@ -59,9 +59,13 @@ func NewStream(cfg config.CrowdSecConfig, version string) *Stream {
 	}
 
 	return &Stream{
-		bouncer: bouncer,
-		cfg:     cfg,
-		logger:  log.With().Str("component", "crowdsec").Logger(),
+		bouncer: &bouncerAdapter{
+			inner:        bouncer,
+			streamPtr:    &bouncer.Stream,
+			apiClientPtr: &bouncer.APIClient,
+		},
+		cfg:    cfg,
+		logger: log.With().Str("component", "crowdsec").Logger(),
 	}
 }
 
@@ -84,7 +88,7 @@ func (s *Stream) Init() error {
 // APIClient returns the underlying CrowdSec API client for use with
 // the MetricsProvider. Must be called after Init().
 func (s *Stream) APIClient() *apiclient.ApiClient {
-	return s.bouncer.APIClient
+	return s.bouncer.Client()
 }
 
 // Run starts the stream bouncer and returns channels for new and deleted decisions.
@@ -103,7 +107,7 @@ func (s *Stream) Run(ctx context.Context, banCh chan<- *Decision, deleteCh chan<
 			s.logger.Info().Msg("CrowdSec stream stopped")
 			return nil
 
-		case decisions, ok := <-s.bouncer.Stream:
+		case decisions, ok := <-s.bouncer.DecisionStream():
 			if !ok {
 				return fmt.Errorf("CrowdSec stream channel closed")
 			}
