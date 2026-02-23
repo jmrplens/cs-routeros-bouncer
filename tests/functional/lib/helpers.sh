@@ -380,19 +380,19 @@ lapi_remove_decision() {
 # stale entries from a previous run.
 
 # The following functions are invoked indirectly by test scripts that source
-# this library.  shellcheck SC2317 is suppressed because static analysis
+# this library.  SC2317/SC2329 are suppressed because static analysis
 # within helpers.sh alone cannot see calls in t1-t8 files.
-# shellcheck disable=SC2317
+# shellcheck disable=SC2317,SC2329
 
 # bouncer_start — start the bouncer service.
 bouncer_start()   { systemctl start cs-routeros-bouncer 2>/dev/null; }
 # bouncer_stop — stop the bouncer service.
 bouncer_stop()    { systemctl stop cs-routeros-bouncer 2>/dev/null; }
 # bouncer_restart — restart the bouncer service.
-# shellcheck disable=SC2317
+# shellcheck disable=SC2317,SC2329
 bouncer_restart() { systemctl restart cs-routeros-bouncer 2>/dev/null; }
 # bouncer_running — return 0 if the bouncer service is active.
-# shellcheck disable=SC2317
+# shellcheck disable=SC2317,SC2329
 bouncer_running() { systemctl is-active --quiet cs-routeros-bouncer; }
 
 # Timestamp of the last bouncer_start / bouncer_restart, used by

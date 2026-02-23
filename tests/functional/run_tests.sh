@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck source-path=SCRIPTDIR
 # =============================================================================
 # Functional Test Runner — CrowdSec RouterOS Bouncer
 # =============================================================================
