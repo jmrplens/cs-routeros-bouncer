@@ -68,10 +68,10 @@ fi
 log "MikroTik SSH: ${GREEN}OK${NC}"
 log "CrowdSec LAPI: ${GREEN}OK${NC}"
 
-if influx_available; then
-    log "InfluxDB: ${GREEN}OK${NC} (CPU monitoring enabled)"
+if snmp_available; then
+    log "SNMP monitoring: ${GREEN}OK${NC} (CPU tests enabled)"
 else
-    warn "InfluxDB not configured — CPU tests will be skipped"
+    warn "snmpget not available — CPU tests will be skipped"
 fi
 
 if bouncer_running; then

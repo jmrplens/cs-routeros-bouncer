@@ -192,27 +192,89 @@ bouncer_logs_since() {
     journalctl -u cs-routeros-bouncer --since "$since" --no-pager 2>/dev/null
 }
 
-# ─── InfluxDB / CPU monitoring ──────────────────────────────────────────────
-influx_available() {
-    [[ -n "${INFLUXDB_URL:-}" && -n "${INFLUXDB_TOKEN:-}" ]]
+# ─── SNMP helpers (CPU / system monitoring) ─────────────────────────────────
+# Uses standard HOST-RESOURCES-MIB — no vendor-specific dependencies.
+# Only requires the 'snmpget' binary (package: snmp / net-snmp-utils).
+
+# OIDs
+_OID_CPU_PREFIX=".1.3.6.1.2.1.25.3.3.1.2"   # hrProcessorLoad per core
+_OID_UPTIME=".1.3.6.1.2.1.1.3.0"             # sysUpTime
+_OID_MEM_TOTAL=".1.3.6.1.2.1.25.2.3.1.5.65536"  # hrStorageSize (main memory)
+_OID_MEM_USED=".1.3.6.1.2.1.25.2.3.1.6.65536"   # hrStorageUsed (main memory)
+
+snmp_available() {
+    command -v snmpget &>/dev/null && [[ -n "${MIKROTIK_SSH_HOST:-}" ]]
 }
 
-# Query CPU usage for a time window, returns "avg max"
+# Raw SNMP get — returns just the integer value
+_snmp_get_int() {
+    local oid="$1"
+    snmpget -v2c -c "${SNMP_COMMUNITY:-public}" -Oqv \
+        "${MIKROTIK_SSH_HOST}" "$oid" 2>/dev/null | awk '{print $1}'
+}
+
+# Get per-core CPU array — echo space-separated percentages
+snmp_cpu_cores() {
+    local cores="${MIKROTIK_CPU_CORES:-4}"
+    local vals=()
+    for i in $(seq 1 "$cores"); do
+        vals+=("$(_snmp_get_int "${_OID_CPU_PREFIX}.$i")")
+    done
+    echo "${vals[*]}"
+}
+
+# Average CPU across all cores — returns integer percentage
+snmp_cpu_avg() {
+    local cores="${MIKROTIK_CPU_CORES:-4}"
+    local sum=0 val
+    for i in $(seq 1 "$cores"); do
+        val=$(_snmp_get_int "${_OID_CPU_PREFIX}.$i")
+        sum=$((sum + ${val:-0}))
+    done
+    echo $((sum / cores))
+}
+
+# Sample CPU N times over a window and return "avg max"
+# Usage: query_cpu [samples] [interval_secs]
 query_cpu() {
-    local window="${1:-2m}"
-    local query="SELECT mean(usage) as avg_cpu, max(usage) as max_cpu \
-FROM mikrotik_cpu WHERE time > now() - interval '${window}'"
+    local samples="${1:-6}" interval="${2:-5}"
+    local sum=0 max_val=0 current
+    for _ in $(seq 1 "$samples"); do
+        current=$(snmp_cpu_avg)
+        sum=$((sum + current))
+        (( current > max_val )) && max_val=$current
+        sleep "$interval"
+    done
+    local avg=$((sum / samples))
+    echo "$avg $max_val"
+}
 
-    local result
-    result=$(curl -s --max-time 10 \
-        "${INFLUXDB_URL}/api/v3/query_sql?db=${INFLUXDB_BUCKET}&format=json" \
-        -H "Authorization: Bearer ${INFLUXDB_TOKEN}" \
-        --data-urlencode "q=${query}" 2>/dev/null)
+# Quick single-shot CPU reading (no sleep, for fast checks)
+query_cpu_instant() {
+    snmp_cpu_avg
+}
 
-    local avg max
-    avg=$(echo "$result" | jq -r '.[0].avg_cpu // 0' 2>/dev/null || echo 0)
-    max=$(echo "$result" | jq -r '.[0].max_cpu // 0' 2>/dev/null || echo 0)
-    echo "$avg $max"
+# Memory used percentage
+snmp_mem_percent() {
+    local total used
+    total=$(_snmp_get_int "$_OID_MEM_TOTAL")
+    used=$(_snmp_get_int "$_OID_MEM_USED")
+    if [[ -n "$total" && "$total" -gt 0 ]]; then
+        echo $(( used * 100 / total ))
+    else
+        echo 0
+    fi
+}
+
+# Router uptime in seconds (parses D:H:M:S.cs format from -Oqv)
+snmp_uptime_secs() {
+    local raw
+    raw=$(snmpget -v2c -c "${SNMP_COMMUNITY:-public}" -Oqv \
+        "${MIKROTIK_SSH_HOST}" "$_OID_UPTIME" 2>/dev/null)
+    # Format: D:H:M:S.cs — extract numeric parts
+    local d h m s
+    IFS=':' read -r d h m s <<< "${raw%%.*}"
+    echo $(( d*86400 + h*3600 + m*60 + s ))
 }
 
 # ─── Metrics helpers ────────────────────────────────────────────────────────

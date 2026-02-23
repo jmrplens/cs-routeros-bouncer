@@ -72,15 +72,14 @@ run_test "T8.1 CAPI full reconciliation (~25k IPs)" t8_1_full_reconciliation_cap
 
 # T8.2 — CPU peak during CAPI reconciliation
 t8_2_cpu_peak() {
-    influx_available || skip_test "InfluxDB not configured"
+    snmp_available || skip_test "snmpget not available or MIKROTIK_SSH_HOST not set"
 
-    local result; result=$(query_cpu "5m")
+    local result; result=$(query_cpu 12 5)  # 12 samples × 5s = 60s window covering reconciliation
     local avg=${result%% *} max=${result##* }
-    local max_int=${max%.*}
 
     log "CAPI reconciliation CPU: avg=${avg}% peak=${max}%"
 
-    if (( max_int > 60 )); then
+    if (( max > 60 )); then
         echo "FAIL: CAPI CPU peak ${max}% exceeds 60%"
         return 1
     fi
@@ -197,19 +196,18 @@ run_test "T8.6 CAPI unban latency (large cache)" t8_6_unban_latency_large
 
 # T8.7 — Steady-state CPU with ~25k entries
 t8_7_steady_state_cpu() {
-    influx_available || skip_test "InfluxDB not configured"
+    snmp_available || skip_test "snmpget not available or MIKROTIK_SSH_HOST not set"
     bouncer_running || skip_test "bouncer not running"
 
     log "Waiting 2 minutes for CAPI steady state..."
     sleep 120
 
-    local result; result=$(query_cpu "1m")
+    local result; result=$(query_cpu 4 5)  # 4 samples × 5s = 20s window
     local avg=${result%% *} max=${result##* }
 
     log "CAPI steady-state CPU: avg=${avg}% max=${max}%"
 
-    local avg_int=${avg%.*}
-    if (( avg_int > 30 )); then
+    if (( avg > 30 )); then
         echo "FAIL: CAPI steady-state avg CPU ${avg}% exceeds 30%"
         return 1
     fi
