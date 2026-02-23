@@ -234,7 +234,7 @@ See [`config/cs-routeros-bouncer.yaml`](config/cs-routeros-bouncer.yaml) for the
 > /ip/service/print where name=api
 >
 > # Increase the limit (default is 20, maximum 1000)
-> /ip/service/set api max-sessions=100
+> /ip/service/set api max-sessions=1000
 > ```
 
 ### Firewall
@@ -388,7 +388,7 @@ chain=input action=drop src-address-list=crowdsec-banned
 chain=prerouting action=drop src-address-list=crowdsec-banned
 ```
 
-Rules are placed at the **top** of the chain by default (`rule_placement: top`) to ensure they are evaluated first. If dynamic/builtin rules occupy the top positions (e.g., RouterOS fasttrack counters), the bouncer iterates through subsequent positions until it finds one where the rule can be placed.
+Rules are placed at the **top** of the chain by default (`rule_placement: top`) to ensure they are evaluated first. If dynamic/built-in rules occupy the top positions (e.g., RouterOS fasttrack counters), the bouncer iterates through subsequent positions until it finds one where the rule can be placed.
 
 ### Performance
 
@@ -524,7 +524,7 @@ The dashboard provides real-time visibility into the bouncer's operation:
 <details>
 <summary><b>Firewall rules not at the top of the chain</b></summary>
 
-- RouterOS dynamic/builtin rules (e.g., fasttrack counters) cannot be moved — the bouncer iterates through positions until it finds one where the rule can be placed
+- RouterOS dynamic/built-in rules (e.g., fasttrack counters) cannot be moved — the bouncer iterates through positions until it finds one where the rule can be placed
 - Verify with: `/ip/firewall/filter/print` on the router
 - Ensure `firewall.rule_placement: "top"` is set in your config
 

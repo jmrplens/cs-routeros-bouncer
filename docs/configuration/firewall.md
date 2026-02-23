@@ -121,7 +121,7 @@ Where to place new firewall rules in the chain:
 - `bottom` — at the end of the chain
 
 !!! note
-    If a dynamic/builtin rule occupies position 0 (e.g., RouterOS fasttrack counters), the bouncer iterates through subsequent positions until it finds one where the rule can be placed.
+    If a dynamic/built-in rule occupies position 0 (e.g., RouterOS fasttrack counters), the bouncer iterates through subsequent positions until it finds one where the rule can be placed.
 
 ### `firewall.comment_prefix`
 

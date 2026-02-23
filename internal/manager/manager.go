@@ -438,15 +438,7 @@ func (m *Manager) createFirewallRules() error {
 					Log:            m.cfg.Firewall.Log,
 					LogPrefix:      m.cfg.Firewall.LogPrefix,
 				}
-				if m.cfg.Firewall.BlockInput.Interface != "" {
-					rule.InInterface = m.cfg.Firewall.BlockInput.Interface
-				}
-				if m.cfg.Firewall.BlockInput.InterfaceList != "" {
-					rule.InInterfaceList = m.cfg.Firewall.BlockInput.InterfaceList
-				}
-				if m.cfg.Firewall.RulePlacement == "top" {
-					rule.PlaceBefore = "0"
-				}
+				m.applyInputRuleOptions(&rule)
 
 				if err := m.ensureFirewallRule(proto, "filter", rule); err != nil {
 					return err
@@ -492,15 +484,7 @@ func (m *Manager) createFirewallRules() error {
 					Log:            m.cfg.Firewall.Log,
 					LogPrefix:      m.cfg.Firewall.LogPrefix,
 				}
-				if m.cfg.Firewall.BlockInput.Interface != "" {
-					rule.InInterface = m.cfg.Firewall.BlockInput.Interface
-				}
-				if m.cfg.Firewall.BlockInput.InterfaceList != "" {
-					rule.InInterfaceList = m.cfg.Firewall.BlockInput.InterfaceList
-				}
-				if m.cfg.Firewall.RulePlacement == "top" {
-					rule.PlaceBefore = "0"
-				}
+				m.applyInputRuleOptions(&rule)
 
 				if err := m.ensureFirewallRule(proto, "raw", rule); err != nil {
 					return err
@@ -514,6 +498,20 @@ func (m *Manager) createFirewallRules() error {
 		Msg("firewall rules ready")
 
 	return nil
+}
+
+// applyInputRuleOptions sets InInterface, InInterfaceList and PlaceBefore on
+// a firewall rule based on the current BlockInput and RulePlacement config.
+func (m *Manager) applyInputRuleOptions(rule *rosClient.FirewallRule) {
+	if m.cfg.Firewall.BlockInput.Interface != "" {
+		rule.InInterface = m.cfg.Firewall.BlockInput.Interface
+	}
+	if m.cfg.Firewall.BlockInput.InterfaceList != "" {
+		rule.InInterfaceList = m.cfg.Firewall.BlockInput.InterfaceList
+	}
+	if m.cfg.Firewall.RulePlacement == "top" {
+		rule.PlaceBefore = "0"
+	}
 }
 
 // ensureFirewallRule creates a firewall rule if it doesn't already exist.

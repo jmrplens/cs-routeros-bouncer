@@ -15,6 +15,7 @@ package manager
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -891,7 +892,7 @@ func TestReconcileAddresses_BulkAddPartialError(t *testing.T) {
 	for i := range decisions {
 		decisions[i] = &crowdsec.Decision{
 			Proto:  "ip",
-			Value:  "10.0.0." + string(rune('1'+i)),
+			Value:  fmt.Sprintf("10.0.0.%d", i+1),
 			Origin: "test",
 			Type:   "ban",
 		}

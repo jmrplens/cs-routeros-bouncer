@@ -280,10 +280,10 @@ func TestParseDurationFractionalSeconds(t *testing.T) {
 	}
 }
 
-// TestParseDurationPlainNumber verifies that a plain number without "s"
+// TestParseDurationPlainNumber verifies that a plain number without any unit
 // suffix is treated as seconds via the fallback path.
 func TestParseDurationPlainNumber(t *testing.T) {
-	d, err := ParseDuration("3600s")
+	d, err := ParseDuration("3600")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

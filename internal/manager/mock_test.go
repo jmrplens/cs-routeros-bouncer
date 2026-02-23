@@ -23,6 +23,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/jmrplens/cs-routeros-bouncer/internal/config"
 	"github.com/jmrplens/cs-routeros-bouncer/internal/crowdsec"
@@ -307,7 +308,7 @@ func TestHandleBan_Success(t *testing.T) {
 	mock := &mockROS{addAddressID: "*1"}
 	mgr := newTestManager(mock, baseConfig())
 
-	mgr.handleBan(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1", Duration: 3600})
+	mgr.handleBan(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1", Duration: 3600 * time.Second})
 
 	if len(mock.addAddressCalls) != 1 {
 		t.Fatalf("expected 1 AddAddress call, got %d", len(mock.addAddressCalls))
@@ -371,7 +372,7 @@ func TestHandleBan_AlreadyExists_UpdateTimeout(t *testing.T) {
 	}
 	mgr := newTestManager(mock, baseConfig())
 
-	mgr.handleBan(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1", Duration: 7200})
+	mgr.handleBan(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1", Duration: 7200 * time.Second})
 
 	if len(mock.findAddressCalls) != 1 {
 		t.Fatalf("expected FindAddress call for already-existing, got %d", len(mock.findAddressCalls))
@@ -410,7 +411,7 @@ func TestHandleBan_AlreadyExists_FindReturnsNil(t *testing.T) {
 	}
 	mgr := newTestManager(mock, baseConfig())
 
-	mgr.handleBan(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1", Duration: 3600})
+	mgr.handleBan(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1", Duration: 3600 * time.Second})
 
 	// FindAddress was called but returned nil → no UpdateAddressTimeout
 	if len(mock.findAddressCalls) != 1 {
@@ -952,8 +953,8 @@ func TestReconcileAddresses_AddOnly(t *testing.T) {
 	mgr := newTestManager(mock, baseConfig())
 
 	decisions := []*crowdsec.Decision{
-		{Proto: "ip", Value: "10.0.0.1", Duration: 3600, Origin: "cscli"},
-		{Proto: "ip", Value: "10.0.0.2", Duration: 3600, Origin: "cscli"},
+		{Proto: "ip", Value: "10.0.0.1", Duration: 3600 * time.Second, Origin: "cscli"},
+		{Proto: "ip", Value: "10.0.0.2", Duration: 3600 * time.Second, Origin: "cscli"},
 	}
 
 	mgr.reconcileAddresses(decisions)
