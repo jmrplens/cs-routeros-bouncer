@@ -1,3 +1,22 @@
+// Tests for the manager package covering the core orchestration methods that
+// interact with the RouterOS client. These tests use a mock implementation of
+// the RouterOSClient interface (defined in routeros_iface.go) to verify
+// ban/unban logic, firewall rule lifecycle, and address reconciliation
+// without needing a real MikroTik router.
+//
+// Test structure:
+//   - mockROS:       configurable mock implementing RouterOSClient
+//   - newTestManager: creates a Manager wired to the mock
+//   - baseConfig:    returns a minimal valid config for most tests
+//
+// Covered methods (Manager):
+//   - handleBan          — optimistic-add with "already exists" fallback
+//   - handleUnban        — cache-aware find-and-remove
+//   - ensureFirewallRule — idempotent create-if-not-exists
+//   - createFirewallRules— multi-proto, multi-chain rule creation
+//   - removeFirewallRules— best-effort cleanup with error tolerance
+//   - reconcileAddresses — diff-based bulk add/remove on startup
+//   - getAddressListName — proto→list mapping
 package manager
 
 import (
@@ -15,10 +34,14 @@ import (
 // Mock RouterOS client
 // ---------------------------------------------------------------------------
 
+// mockROS is a test double for RouterOSClient that records every call and
+// returns pre-configured values. All methods are guarded by a mutex so the
+// mock is safe for concurrent use (e.g. reconcileAddresses iterates protos
+// sequentially but could be extended to parallel in the future).
 type mockROS struct {
 	mu sync.Mutex
 
-	// Return values
+	// Return values — set these before calling the method under test.
 	connectErr       error
 	identityName     string
 	identityErr      error
@@ -40,13 +63,13 @@ type mockROS struct {
 	findRuleEntry *ros.RuleEntry
 	findRuleErr   error
 
-	// Call tracking
+	// Call tracking — inspected in assertions after calling the method under test.
 	connectCalls       int
 	closeCalls         int
 	addAddressCalls    []addAddressCall
 	findAddressCalls   []findAddressCall
 	updateTimeoutCalls []updateTimeoutCall
-	removeAddressCalls []string // ids
+	removeAddressCalls []removeAddressCall
 	listAddressesCalls int
 	bulkAddCalls       []bulkAddCall
 	addRuleCalls       []addRuleCall
@@ -54,26 +77,45 @@ type mockROS struct {
 	findRuleCalls      []findRuleCall
 }
 
+// addAddressCall captures the arguments to a single AddAddress invocation.
 type addAddressCall struct {
 	Proto, List, Address, Timeout, Comment string
 }
+
+// findAddressCall captures the arguments to a single FindAddress invocation.
 type findAddressCall struct {
 	Proto, List, Address string
 }
+
+// updateTimeoutCall captures the arguments to a single UpdateAddressTimeout invocation.
 type updateTimeoutCall struct {
 	Proto, ID, Timeout string
 }
+
+// removeAddressCall captures the arguments to a single RemoveAddress invocation,
+// including the proto so tests can verify the correct address family was used.
+type removeAddressCall struct {
+	Proto, ID string
+}
+
+// bulkAddCall captures the arguments to a single BulkAddAddresses invocation.
 type bulkAddCall struct {
 	Proto, List string
 	Entries     []ros.BulkEntry
 }
+
+// addRuleCall captures the arguments to a single AddFirewallRule invocation.
 type addRuleCall struct {
 	Proto, Mode string
 	Rule        ros.FirewallRule
 }
+
+// removeRuleCall captures the arguments to a single RemoveFirewallRule invocation.
 type removeRuleCall struct {
 	Proto, Mode, ID string
 }
+
+// findRuleCall captures the arguments to a single FindFirewallRuleByComment invocation.
 type findRuleCall struct {
 	Proto, Mode, Comment string
 }
@@ -121,7 +163,7 @@ func (m *mockROS) UpdateAddressTimeout(proto, id, timeout string) error {
 func (m *mockROS) RemoveAddress(proto, id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.removeAddressCalls = append(m.removeAddressCalls, id)
+	m.removeAddressCalls = append(m.removeAddressCalls, removeAddressCall{proto, id})
 	return m.removeAddressErr
 }
 
@@ -161,9 +203,12 @@ func (m *mockROS) FindFirewallRuleByComment(proto, mode, comment string) (*ros.R
 }
 
 // ---------------------------------------------------------------------------
-// Helper: create a Manager with mock
+// Helpers
 // ---------------------------------------------------------------------------
 
+// newTestManager creates a Manager wired to the given mock with a no-op logger,
+// empty caches, and the provided config. This bypasses NewManager (which creates
+// a real Client and Stream) so the test has full control.
 func newTestManager(mock *mockROS, cfg config.Config) *Manager {
 	return &Manager{
 		cfg:          cfg,
@@ -175,6 +220,9 @@ func newTestManager(mock *mockROS, cfg config.Config) *Manager {
 	}
 }
 
+// baseConfig returns a minimal config with both IPv4 and IPv6 enabled,
+// the "drop" deny action (required by config validation), and sensible
+// address list names. Callers can override individual fields as needed.
 func baseConfig() config.Config {
 	return config.Config{
 		Firewall: config.FirewallConfig{
@@ -191,10 +239,12 @@ func baseConfig() config.Config {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Tests: handleBan
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// handleBan tests
+// ===========================================================================
 
+// TestHandleBan_NilDecision verifies that a nil decision is silently ignored
+// without any RouterOS API calls.
 func TestHandleBan_NilDecision(t *testing.T) {
 	mock := &mockROS{}
 	mgr := newTestManager(mock, baseConfig())
@@ -204,6 +254,8 @@ func TestHandleBan_NilDecision(t *testing.T) {
 	}
 }
 
+// TestHandleBan_DisabledProtoIPv4 verifies that an IPv4 ban is skipped when
+// the IPv4 protocol family is disabled in configuration.
 func TestHandleBan_DisabledProtoIPv4(t *testing.T) {
 	mock := &mockROS{}
 	cfg := baseConfig()
@@ -216,6 +268,8 @@ func TestHandleBan_DisabledProtoIPv4(t *testing.T) {
 	}
 }
 
+// TestHandleBan_DisabledProtoIPv6 verifies that an IPv6 ban is skipped when
+// the IPv6 protocol family is disabled in configuration.
 func TestHandleBan_DisabledProtoIPv6(t *testing.T) {
 	mock := &mockROS{}
 	cfg := baseConfig()
@@ -228,6 +282,9 @@ func TestHandleBan_DisabledProtoIPv6(t *testing.T) {
 	}
 }
 
+// TestHandleBan_Success verifies the happy path: a new address is added to
+// the correct list, a non-empty timeout is set for Duration > 0, and the
+// address is recorded in the internal cache.
 func TestHandleBan_Success(t *testing.T) {
 	mock := &mockROS{addAddressID: "*1"}
 	mgr := newTestManager(mock, baseConfig())
@@ -245,7 +302,7 @@ func TestHandleBan_Success(t *testing.T) {
 		t.Error("expected non-empty timeout for duration > 0")
 	}
 
-	// Should be in cache
+	// Address must be present in the local cache after a successful add.
 	mgr.cacheMu.RLock()
 	_, inCache := mgr.addressCache["10.0.0.1"]
 	mgr.cacheMu.RUnlock()
@@ -254,6 +311,8 @@ func TestHandleBan_Success(t *testing.T) {
 	}
 }
 
+// TestHandleBan_IPv6Success verifies that an IPv6 decision is routed to the
+// correct IPv6 address list.
 func TestHandleBan_IPv6Success(t *testing.T) {
 	mock := &mockROS{addAddressID: "*2"}
 	mgr := newTestManager(mock, baseConfig())
@@ -268,6 +327,8 @@ func TestHandleBan_IPv6Success(t *testing.T) {
 	}
 }
 
+// TestHandleBan_ZeroDurationNoTimeout verifies that a duration of 0 (permanent
+// ban) results in an empty timeout string, meaning the address never expires.
 func TestHandleBan_ZeroDurationNoTimeout(t *testing.T) {
 	mock := &mockROS{addAddressID: "*1"}
 	mgr := newTestManager(mock, baseConfig())
@@ -282,6 +343,9 @@ func TestHandleBan_ZeroDurationNoTimeout(t *testing.T) {
 	}
 }
 
+// TestHandleBan_AlreadyExists_UpdateTimeout verifies the "already have" fallback:
+// when AddAddress fails because the entry already exists and the decision has
+// a non-zero duration, the manager finds the existing entry and updates its timeout.
 func TestHandleBan_AlreadyExists_UpdateTimeout(t *testing.T) {
 	mock := &mockROS{
 		addAddressErr:    errors.New("failure: already have such entry"),
@@ -302,13 +366,15 @@ func TestHandleBan_AlreadyExists_UpdateTimeout(t *testing.T) {
 	}
 }
 
+// TestHandleBan_AlreadyExists_ZeroDuration verifies that when an address
+// already exists and the decision has duration 0 (permanent), the manager
+// does NOT attempt to find/update it — the existing permanent entry is fine.
 func TestHandleBan_AlreadyExists_ZeroDuration(t *testing.T) {
 	mock := &mockROS{
 		addAddressErr: errors.New("failure: already have such entry"),
 	}
 	mgr := newTestManager(mock, baseConfig())
 
-	// Duration 0 → no timeout → should NOT try to find/update
 	mgr.handleBan(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1", Duration: 0})
 
 	if len(mock.findAddressCalls) != 0 {
@@ -316,14 +382,35 @@ func TestHandleBan_AlreadyExists_ZeroDuration(t *testing.T) {
 	}
 }
 
+// TestHandleBan_AlreadyExists_FindReturnsNil verifies that when AddAddress
+// returns "already have" but FindAddress returns nil (entry disappeared between
+// the two calls, e.g. expired), the manager does not panic or crash.
+func TestHandleBan_AlreadyExists_FindReturnsNil(t *testing.T) {
+	mock := &mockROS{
+		addAddressErr:    errors.New("failure: already have such entry"),
+		findAddressEntry: nil, // disappeared between add and find
+	}
+	mgr := newTestManager(mock, baseConfig())
+
+	mgr.handleBan(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1", Duration: 3600})
+
+	// FindAddress was called but returned nil → no UpdateAddressTimeout
+	if len(mock.findAddressCalls) != 1 {
+		t.Fatalf("expected 1 FindAddress call, got %d", len(mock.findAddressCalls))
+	}
+	if len(mock.updateTimeoutCalls) != 0 {
+		t.Error("should not call UpdateAddressTimeout when FindAddress returns nil")
+	}
+}
+
+// TestHandleBan_AddError verifies that a non-"already have" AddAddress error
+// is handled gracefully (no panic) and the address is NOT added to the cache.
 func TestHandleBan_AddError(t *testing.T) {
 	mock := &mockROS{addAddressErr: errors.New("connection refused")}
 	mgr := newTestManager(mock, baseConfig())
 
-	// Should not panic
 	mgr.handleBan(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1"})
 
-	// Should not be in cache
 	mgr.cacheMu.RLock()
 	_, inCache := mgr.addressCache["10.0.0.1"]
 	mgr.cacheMu.RUnlock()
@@ -332,10 +419,11 @@ func TestHandleBan_AddError(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Tests: handleUnban
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// handleUnban tests
+// ===========================================================================
 
+// TestHandleUnban_NilDecision verifies that a nil decision is silently ignored.
 func TestHandleUnban_NilDecision(t *testing.T) {
 	mock := &mockROS{}
 	mgr := newTestManager(mock, baseConfig())
@@ -345,6 +433,8 @@ func TestHandleUnban_NilDecision(t *testing.T) {
 	}
 }
 
+// TestHandleUnban_DisabledProto verifies that an unban for a disabled protocol
+// family is skipped entirely.
 func TestHandleUnban_DisabledProto(t *testing.T) {
 	mock := &mockROS{}
 	cfg := baseConfig()
@@ -357,11 +447,13 @@ func TestHandleUnban_DisabledProto(t *testing.T) {
 	}
 }
 
+// TestHandleUnban_NotInCache verifies the fast-path: if the address is not in
+// the local cache, no RouterOS API call is made (it was never added or already
+// expired and was cleaned up).
 func TestHandleUnban_NotInCache(t *testing.T) {
 	mock := &mockROS{}
 	mgr := newTestManager(mock, baseConfig())
 
-	// Address not in cache → should skip without API call
 	mgr.handleUnban(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1"})
 
 	if len(mock.findAddressCalls) != 0 {
@@ -369,13 +461,14 @@ func TestHandleUnban_NotInCache(t *testing.T) {
 	}
 }
 
+// TestHandleUnban_InCache_FoundAndRemoved verifies the full unban flow: address
+// is in cache → FindAddress locates it on the router → RemoveAddress deletes it
+// → cache entry is cleared.
 func TestHandleUnban_InCache_FoundAndRemoved(t *testing.T) {
 	mock := &mockROS{
 		findAddressEntry: &ros.AddressEntry{ID: "*7", Address: "10.0.0.1"},
 	}
 	mgr := newTestManager(mock, baseConfig())
-
-	// Pre-populate cache
 	mgr.addressCache["10.0.0.1"] = struct{}{}
 
 	mgr.handleUnban(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1"})
@@ -383,11 +476,10 @@ func TestHandleUnban_InCache_FoundAndRemoved(t *testing.T) {
 	if len(mock.removeAddressCalls) != 1 {
 		t.Fatalf("expected 1 RemoveAddress call, got %d", len(mock.removeAddressCalls))
 	}
-	if mock.removeAddressCalls[0] != "*7" {
-		t.Errorf("expected remove ID *7, got %s", mock.removeAddressCalls[0])
+	if mock.removeAddressCalls[0].ID != "*7" {
+		t.Errorf("expected remove ID *7, got %s", mock.removeAddressCalls[0].ID)
 	}
 
-	// Should be removed from cache
 	mgr.cacheMu.RLock()
 	_, inCache := mgr.addressCache["10.0.0.1"]
 	mgr.cacheMu.RUnlock()
@@ -396,6 +488,9 @@ func TestHandleUnban_InCache_FoundAndRemoved(t *testing.T) {
 	}
 }
 
+// TestHandleUnban_InCache_NotFoundOnRouter verifies that when an address is in
+// the local cache but not found on the router (expired naturally), the cache
+// entry is cleaned up without attempting a remove call.
 func TestHandleUnban_InCache_NotFoundOnRouter(t *testing.T) {
 	mock := &mockROS{findAddressEntry: nil}
 	mgr := newTestManager(mock, baseConfig())
@@ -407,7 +502,6 @@ func TestHandleUnban_InCache_NotFoundOnRouter(t *testing.T) {
 		t.Error("should not call RemoveAddress when entry not found on router")
 	}
 
-	// Should be removed from cache (expired on router)
 	mgr.cacheMu.RLock()
 	_, inCache := mgr.addressCache["10.0.0.1"]
 	mgr.cacheMu.RUnlock()
@@ -416,6 +510,9 @@ func TestHandleUnban_InCache_NotFoundOnRouter(t *testing.T) {
 	}
 }
 
+// TestHandleUnban_FindError verifies that a FindAddress error preserves the
+// cache entry (we don't know if the address is still on the router) and does
+// not attempt a remove.
 func TestHandleUnban_FindError(t *testing.T) {
 	mock := &mockROS{findAddressErr: errors.New("timeout")}
 	mgr := newTestManager(mock, baseConfig())
@@ -426,7 +523,6 @@ func TestHandleUnban_FindError(t *testing.T) {
 	if len(mock.removeAddressCalls) != 0 {
 		t.Error("should not try remove after find error")
 	}
-	// Cache should still contain the entry (we don't know if it's on router)
 	mgr.cacheMu.RLock()
 	_, inCache := mgr.addressCache["10.0.0.1"]
 	mgr.cacheMu.RUnlock()
@@ -435,6 +531,8 @@ func TestHandleUnban_FindError(t *testing.T) {
 	}
 }
 
+// TestHandleUnban_RemoveError verifies that a RemoveAddress error preserves
+// the cache entry (the address may still be on the router).
 func TestHandleUnban_RemoveError(t *testing.T) {
 	mock := &mockROS{
 		findAddressEntry: &ros.AddressEntry{ID: "*7", Address: "10.0.0.1"},
@@ -445,7 +543,6 @@ func TestHandleUnban_RemoveError(t *testing.T) {
 
 	mgr.handleUnban(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1"})
 
-	// Cache should still contain the entry (remove failed)
 	mgr.cacheMu.RLock()
 	_, inCache := mgr.addressCache["10.0.0.1"]
 	mgr.cacheMu.RUnlock()
@@ -454,10 +551,12 @@ func TestHandleUnban_RemoveError(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Tests: ensureFirewallRule
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// ensureFirewallRule tests
+// ===========================================================================
 
+// TestEnsureFirewallRule_AlreadyExists verifies that when a rule with the same
+// comment already exists, no new rule is created and the existing ID is stored.
 func TestEnsureFirewallRule_AlreadyExists(t *testing.T) {
 	mock := &mockROS{
 		findRuleEntry: &ros.RuleEntry{ID: "*A1", Comment: "crowdsec-bouncer:filter-input-input-v4"},
@@ -481,6 +580,8 @@ func TestEnsureFirewallRule_AlreadyExists(t *testing.T) {
 	}
 }
 
+// TestEnsureFirewallRule_Creates verifies the creation path: no existing rule
+// found → AddFirewallRule is called → the returned ID is stored in ruleIDs.
 func TestEnsureFirewallRule_Creates(t *testing.T) {
 	mock := &mockROS{
 		findRuleEntry: nil,
@@ -513,6 +614,8 @@ func TestEnsureFirewallRule_Creates(t *testing.T) {
 	}
 }
 
+// TestEnsureFirewallRule_FindError verifies that a FindFirewallRuleByComment
+// failure is propagated as an error.
 func TestEnsureFirewallRule_FindError(t *testing.T) {
 	mock := &mockROS{findRuleErr: errors.New("timeout")}
 	mgr := newTestManager(mock, baseConfig())
@@ -524,6 +627,8 @@ func TestEnsureFirewallRule_FindError(t *testing.T) {
 	}
 }
 
+// TestEnsureFirewallRule_AddError verifies that an AddFirewallRule failure
+// is propagated as an error.
 func TestEnsureFirewallRule_AddError(t *testing.T) {
 	mock := &mockROS{addRuleErr: errors.New("out of memory")}
 	mgr := newTestManager(mock, baseConfig())
@@ -535,10 +640,12 @@ func TestEnsureFirewallRule_AddError(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Tests: createFirewallRules
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// createFirewallRules tests
+// ===========================================================================
 
+// TestCreateFirewallRules_FilterOnly verifies that enabling only the filter
+// table with a single chain creates rules for both IPv4 and IPv6.
 func TestCreateFirewallRules_FilterOnly(t *testing.T) {
 	mock := &mockROS{addRuleID: "*R1"}
 	cfg := baseConfig()
@@ -556,6 +663,8 @@ func TestCreateFirewallRules_FilterOnly(t *testing.T) {
 	}
 }
 
+// TestCreateFirewallRules_FilterWithOutput verifies that enabling block_output
+// doubles the number of filter rules (input + output per proto).
 func TestCreateFirewallRules_FilterWithOutput(t *testing.T) {
 	mock := &mockROS{addRuleID: "*R1"}
 	cfg := baseConfig()
@@ -574,6 +683,8 @@ func TestCreateFirewallRules_FilterWithOutput(t *testing.T) {
 	}
 }
 
+// TestCreateFirewallRules_RawOnly verifies that enabling only the raw table
+// creates rules for both protocol families.
 func TestCreateFirewallRules_RawOnly(t *testing.T) {
 	mock := &mockROS{addRuleID: "*R1"}
 	cfg := baseConfig()
@@ -591,6 +702,29 @@ func TestCreateFirewallRules_RawOnly(t *testing.T) {
 	}
 }
 
+// TestCreateFirewallRules_FilterAndRaw verifies that enabling both filter and
+// raw tables creates the combined set of rules.
+func TestCreateFirewallRules_FilterAndRaw(t *testing.T) {
+	mock := &mockROS{addRuleID: "*R1"}
+	cfg := baseConfig()
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"input"}
+	cfg.Firewall.Raw.Enabled = true
+	cfg.Firewall.Raw.Chains = []string{"prerouting"}
+	mgr := newTestManager(mock, cfg)
+
+	if err := mgr.createFirewallRules(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// (filter input + raw prerouting) × 2 protos = 4
+	if len(mock.addRuleCalls) != 4 {
+		t.Errorf("expected 4 rule creations (filter+raw × ipv4+ipv6), got %d", len(mock.addRuleCalls))
+	}
+}
+
+// TestCreateFirewallRules_WithInterface verifies that the block_input.interface
+// config option is propagated to all input rules as in-interface.
 func TestCreateFirewallRules_WithInterface(t *testing.T) {
 	mock := &mockROS{addRuleID: "*R1"}
 	cfg := baseConfig()
@@ -610,6 +744,8 @@ func TestCreateFirewallRules_WithInterface(t *testing.T) {
 	}
 }
 
+// TestCreateFirewallRules_WithInterfaceList verifies that the
+// block_input.interface_list config option is propagated to all input rules.
 func TestCreateFirewallRules_WithInterfaceList(t *testing.T) {
 	mock := &mockROS{addRuleID: "*R1"}
 	cfg := baseConfig()
@@ -629,6 +765,8 @@ func TestCreateFirewallRules_WithInterfaceList(t *testing.T) {
 	}
 }
 
+// TestCreateFirewallRules_TopPlacement verifies that rule_placement: "top"
+// sets PlaceBefore=0 on all created rules.
 func TestCreateFirewallRules_TopPlacement(t *testing.T) {
 	mock := &mockROS{addRuleID: "*R1"}
 	cfg := baseConfig()
@@ -648,10 +786,11 @@ func TestCreateFirewallRules_TopPlacement(t *testing.T) {
 	}
 }
 
+// TestCreateFirewallRules_NoneEnabled verifies that no rules are created when
+// both filter and raw tables are disabled.
 func TestCreateFirewallRules_NoneEnabled(t *testing.T) {
 	mock := &mockROS{}
 	cfg := baseConfig()
-	// filter and raw both disabled (default)
 	mgr := newTestManager(mock, cfg)
 
 	if err := mgr.createFirewallRules(); err != nil {
@@ -663,6 +802,9 @@ func TestCreateFirewallRules_NoneEnabled(t *testing.T) {
 	}
 }
 
+// TestCreateFirewallRules_OutputInterfaceSettings verifies that
+// block_output.interface and block_output.interface_list are applied only to
+// output rules (not input rules).
 func TestCreateFirewallRules_OutputInterfaceSettings(t *testing.T) {
 	mock := &mockROS{addRuleID: "*R1"}
 	cfg := baseConfig()
@@ -677,7 +819,6 @@ func TestCreateFirewallRules_OutputInterfaceSettings(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Find output rules
 	for _, call := range mock.addRuleCalls {
 		if call.Rule.Chain == "output" {
 			if call.Rule.OutInterface != "ether2" {
@@ -690,15 +831,16 @@ func TestCreateFirewallRules_OutputInterfaceSettings(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Tests: removeFirewallRules
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// removeFirewallRules tests
+// ===========================================================================
 
+// TestRemoveFirewallRules verifies that all tracked rules are removed from the
+// router and the ruleIDs map is cleared afterwards.
 func TestRemoveFirewallRules(t *testing.T) {
 	mock := &mockROS{}
 	mgr := newTestManager(mock, baseConfig())
 
-	// Pre-populate ruleIDs
 	mgr.ruleIDs["crowdsec-bouncer:filter-input-input-v4"] = "*A1"
 	mgr.ruleIDs["crowdsec-bouncer:raw-prerouting-input-v4"] = "*A2"
 
@@ -713,24 +855,64 @@ func TestRemoveFirewallRules(t *testing.T) {
 	}
 }
 
+// TestRemoveFirewallRules_ErrorContinues verifies that removal errors do not
+// stop the cleanup of remaining rules. All tracked rules are attempted and the
+// ruleIDs map is reset regardless of errors.
 func TestRemoveFirewallRules_ErrorContinues(t *testing.T) {
 	mock := &mockROS{removeRuleErr: errors.New("not found")}
 	mgr := newTestManager(mock, baseConfig())
 	mgr.ruleIDs["crowdsec-bouncer:filter-input-input-v4"] = "*A1"
 	mgr.ruleIDs["crowdsec-bouncer:raw-prerouting-input-v6"] = "*A2"
 
-	// Should not panic even on errors
 	mgr.removeFirewallRules()
 
 	if len(mock.removeRuleCalls) != 2 {
 		t.Errorf("expected 2 remove attempts despite errors, got %d", len(mock.removeRuleCalls))
 	}
+	if len(mgr.ruleIDs) != 0 {
+		t.Errorf("ruleIDs should be cleared even after errors, got %d entries", len(mgr.ruleIDs))
+	}
 }
 
-// ---------------------------------------------------------------------------
-// Tests: reconcileAddresses
-// ---------------------------------------------------------------------------
+// TestRemoveFirewallRules_Empty verifies that calling removeFirewallRules with
+// no tracked rules is a no-op.
+func TestRemoveFirewallRules_Empty(t *testing.T) {
+	mock := &mockROS{}
+	mgr := newTestManager(mock, baseConfig())
 
+	mgr.removeFirewallRules()
+
+	if len(mock.removeRuleCalls) != 0 {
+		t.Errorf("expected 0 remove calls for empty ruleIDs, got %d", len(mock.removeRuleCalls))
+	}
+}
+
+// TestRemoveFirewallRules_UnparseableComment verifies that a rule with an
+// unparseable comment is skipped (not sent to RemoveFirewallRule) but the
+// ruleIDs map is still reset.
+func TestRemoveFirewallRules_UnparseableComment(t *testing.T) {
+	mock := &mockROS{}
+	mgr := newTestManager(mock, baseConfig())
+	mgr.ruleIDs["invalid-comment-format"] = "*X1"
+	mgr.ruleIDs["crowdsec-bouncer:filter-input-input-v4"] = "*A1"
+
+	mgr.removeFirewallRules()
+
+	// Only the valid comment should result in a remove call
+	if len(mock.removeRuleCalls) != 1 {
+		t.Errorf("expected 1 remove call (skipping unparseable), got %d", len(mock.removeRuleCalls))
+	}
+	if len(mgr.ruleIDs) != 0 {
+		t.Errorf("ruleIDs should be cleared, got %d entries", len(mgr.ruleIDs))
+	}
+}
+
+// ===========================================================================
+// reconcileAddresses tests
+// ===========================================================================
+
+// TestReconcileAddresses_Empty verifies that nil decisions with an empty router
+// list results in no bulk-add or remove calls.
 func TestReconcileAddresses_Empty(t *testing.T) {
 	mock := &mockROS{listAddresses: []ros.AddressEntry{}}
 	mgr := newTestManager(mock, baseConfig())
@@ -742,6 +924,8 @@ func TestReconcileAddresses_Empty(t *testing.T) {
 	}
 }
 
+// TestReconcileAddresses_AddOnly verifies that when the router list is empty
+// and there are CrowdSec decisions, all addresses are bulk-added.
 func TestReconcileAddresses_AddOnly(t *testing.T) {
 	mock := &mockROS{
 		listAddresses: []ros.AddressEntry{},
@@ -764,6 +948,9 @@ func TestReconcileAddresses_AddOnly(t *testing.T) {
 	}
 }
 
+// TestReconcileAddresses_RemoveOnly verifies that addresses on the router that
+// are NOT in the CrowdSec decision list are removed during reconciliation.
+// Uses IPv4-only config to keep assertions simple.
 func TestReconcileAddresses_RemoveOnly(t *testing.T) {
 	mock := &mockROS{
 		listAddresses: []ros.AddressEntry{
@@ -771,25 +958,25 @@ func TestReconcileAddresses_RemoveOnly(t *testing.T) {
 		},
 	}
 	cfg := baseConfig()
-	cfg.Firewall.IPv6.Enabled = false // Test only IPv4 for simplicity
+	cfg.Firewall.IPv6.Enabled = false
 	mgr := newTestManager(mock, cfg)
 
-	// No decisions → the existing entry should be removed
 	mgr.reconcileAddresses([]*crowdsec.Decision{})
 
 	if len(mock.removeAddressCalls) != 1 {
 		t.Fatalf("expected 1 RemoveAddress call, got %d", len(mock.removeAddressCalls))
 	}
-	if mock.removeAddressCalls[0] != "*1" {
-		t.Errorf("expected remove ID *1, got %s", mock.removeAddressCalls[0])
+	if mock.removeAddressCalls[0].ID != "*1" {
+		t.Errorf("expected remove ID *1, got %s", mock.removeAddressCalls[0].ID)
 	}
 }
 
+// TestReconcileAddresses_ListError verifies that a ListAddresses error is
+// handled gracefully: no bulk-add is attempted and the proto is skipped.
 func TestReconcileAddresses_ListError(t *testing.T) {
 	mock := &mockROS{listAddressesErr: errors.New("connection reset")}
 	mgr := newTestManager(mock, baseConfig())
 
-	// Should not panic on list error
 	mgr.reconcileAddresses([]*crowdsec.Decision{
 		{Proto: "ip", Value: "10.0.0.1"},
 	})
@@ -799,6 +986,9 @@ func TestReconcileAddresses_ListError(t *testing.T) {
 	}
 }
 
+// TestReconcileAddresses_MixedAddRemove verifies the core reconcile logic:
+// addresses that should exist are added, and stale addresses are removed.
+// Uses IPv4-only config to keep assertions simple.
 func TestReconcileAddresses_MixedAddRemove(t *testing.T) {
 	mock := &mockROS{
 		listAddresses: []ros.AddressEntry{
@@ -808,7 +998,7 @@ func TestReconcileAddresses_MixedAddRemove(t *testing.T) {
 		bulkAddCount: 1,
 	}
 	cfg := baseConfig()
-	cfg.Firewall.IPv6.Enabled = false // Test only IPv4 for simplicity
+	cfg.Firewall.IPv6.Enabled = false
 	mgr := newTestManager(mock, cfg)
 
 	decisions := []*crowdsec.Decision{
@@ -818,7 +1008,6 @@ func TestReconcileAddresses_MixedAddRemove(t *testing.T) {
 
 	mgr.reconcileAddresses(decisions)
 
-	// Should add 10.0.0.2 and remove 10.0.0.99
 	if len(mock.bulkAddCalls) != 1 {
 		t.Fatalf("expected 1 BulkAdd call, got %d", len(mock.bulkAddCalls))
 	}
@@ -830,10 +1019,46 @@ func TestReconcileAddresses_MixedAddRemove(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Tests: getAddressListName
-// ---------------------------------------------------------------------------
+// TestReconcileAddresses_PopulatesCache verifies that the address cache is
+// populated with both existing router addresses and newly added addresses
+// after reconciliation.
+func TestReconcileAddresses_PopulatesCache(t *testing.T) {
+	mock := &mockROS{
+		listAddresses: []ros.AddressEntry{
+			{ID: "*1", Address: "10.0.0.1", Comment: "crowdsec-bouncer|existing"},
+		},
+		bulkAddCount: 1,
+	}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	mgr := newTestManager(mock, cfg)
 
+	decisions := []*crowdsec.Decision{
+		{Proto: "ip", Value: "10.0.0.1", Origin: "cscli"},
+		{Proto: "ip", Value: "10.0.0.2", Origin: "cscli"},
+	}
+
+	mgr.reconcileAddresses(decisions)
+
+	mgr.cacheMu.RLock()
+	_, has1 := mgr.addressCache["10.0.0.1"]
+	_, has2 := mgr.addressCache["10.0.0.2"]
+	mgr.cacheMu.RUnlock()
+
+	if !has1 {
+		t.Error("expected existing address 10.0.0.1 in cache")
+	}
+	if !has2 {
+		t.Error("expected newly added address 10.0.0.2 in cache")
+	}
+}
+
+// ===========================================================================
+// getAddressListName tests
+// ===========================================================================
+
+// TestGetAddressListName verifies the protocol-to-list-name mapping for both
+// IPv4 and IPv6.
 func TestGetAddressListName(t *testing.T) {
 	mgr := newTestManager(&mockROS{}, baseConfig())
 

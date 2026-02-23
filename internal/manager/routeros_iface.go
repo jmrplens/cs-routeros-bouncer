@@ -4,8 +4,12 @@ import (
 	ros "github.com/jmrplens/cs-routeros-bouncer/internal/routeros"
 )
 
-// RouterOSClient abstracts the RouterOS operations used by Manager.
-// This interface enables unit testing with mock implementations.
+// RouterOSClient abstracts the RouterOS operations that Manager depends on.
+// It is defined in the consumer package (manager) following the Go idiom
+// "accept interfaces, return structs". The concrete *routeros.Client
+// implicitly satisfies this interface; no explicit implements declaration
+// is needed. Test code provides a mock implementation (mockROS) to exercise
+// Manager logic without a real MikroTik router.
 type RouterOSClient interface {
 	Connect() error
 	Close()
