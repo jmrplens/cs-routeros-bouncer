@@ -680,11 +680,12 @@ func (m *Manager) reconcileAddresses(decisions []*crowdsec.Decision) {
 				// Fallback to sequential
 				for _, entry := range toRemove {
 					err := m.ros.RemoveAddress(proto, entry.ID)
-					if err == nil {
+					switch {
+					case err == nil:
 						removed++
-					} else if strings.Contains(err.Error(), "no such item") {
+					case strings.Contains(err.Error(), "no such item"):
 						removed++ // expired items count as removed
-					} else {
+					default:
 						m.logger.Error().Err(err).Str("address", entry.Address).Msg("reconcile: error removing address")
 						metrics.RecordError("remove")
 					}
