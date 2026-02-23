@@ -561,16 +561,14 @@ snmp_mem_percent() {
 
 # snmp_uptime_secs — return the router's uptime in whole seconds.
 #
-# Parses the sysUpTime timetick value (D:H:M:S.centiseconds format from
-# snmpget -Oqv) into plain seconds.
+# Uses -Ot to get raw timeticks (hundredths of a second) from sysUpTime,
+# then converts to whole seconds via integer division.
 snmp_uptime_secs() {
     local raw
-    raw=$(snmpget -v2c -c "${SNMP_COMMUNITY:-public}" -Oqv \
+    raw=$(snmpget -v2c -c "${SNMP_COMMUNITY:-public}" -Oqvt \
         "${MIKROTIK_SSH_HOST}" "$_OID_UPTIME" 2>/dev/null)
-    # Format: D:H:M:S.cs — extract numeric parts
-    local d h m s
-    IFS=':' read -r d h m s <<< "${raw%%.*}"
-    echo $(( d*86400 + h*3600 + m*60 + s ))
+    # Raw timeticks are in hundredths of a second
+    echo $(( raw / 100 ))
 }
 
 # ─── Metrics helpers ────────────────────────────────────────────────────────

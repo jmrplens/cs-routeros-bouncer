@@ -257,7 +257,11 @@ func (c *Client) GetIdentity() (string, error) {
 // GetAPIMaxSessions queries the router for the API service max-sessions limit.
 // Returns 0 if the value cannot be determined (non-fatal).
 func (c *Client) GetAPIMaxSessions() int {
-	result, err := c.Find("/ip/service", []string{"?name=api"}, []string{"max-sessions"})
+	serviceName := "api"
+	if c.cfg.TLS {
+		serviceName = "api-ssl"
+	}
+	result, err := c.Find("/ip/service", []string{"?name=" + serviceName}, []string{"max-sessions"})
 	if err != nil {
 		c.logger.Warn().Err(err).Msg("could not query API max-sessions")
 		return 0
