@@ -114,7 +114,12 @@ Decision scopes to process. Supported values: `ip`, `range`.
 | **Env** | `CROWDSEC_DECISIONS_TYPES` |
 | **Default** | `["ban"]` |
 
-Only decisions of these types are processed. The bouncer currently implements the `ban` action (drop/reject).
+Only decisions of these types are processed.
+
+!!! warning
+    This bouncer only implements the **`ban`** action, which translates to drop/reject firewall
+    rules on MikroTik. Other CrowdSec decision types such as `captcha` or `throttle` are not
+    applicable to a network firewall bouncer and will be silently ignored even if listed here.
 
 ### `crowdsec.scenarios_containing`
 
