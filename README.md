@@ -536,6 +536,41 @@ make lint           # Run linter
 make docker-build   # Build Docker image
 ```
 
+### Functional Tests (Real Hardware)
+
+A comprehensive bash test suite validates the compiled binary against a
+real MikroTik router. Tests use SSH, `cscli`, `systemctl`, and InfluxDB —
+no Go internals are imported.
+
+```bash
+# Setup: copy and fill in your environment
+cp tests/functional/.env.example tests/functional/.env
+# Edit .env with your MikroTik SSH credentials, CrowdSec API key, etc.
+
+# Run all groups (except CAPI stress test)
+tests/functional/run_tests.sh
+
+# Run specific groups
+tests/functional/run_tests.sh t1 t2
+
+# Include CAPI stress test (~25k IPs — takes several minutes)
+tests/functional/run_tests.sh --capi
+
+# List available groups
+tests/functional/run_tests.sh --list
+```
+
+| Group | Tests | Description |
+|-------|-------|-------------|
+| `t1`  | 7     | Data integrity — IP completeness, format, comments |
+| `t2`  | 6     | Cache consistency — live ban/unban, expiry |
+| `t3`  | 6     | Bulk operations — reconciliation, partial sync, orphans |
+| `t4`  | 3     | Connection pool — establishment, shutdown |
+| `t5`  | 6     | Edge cases — duplicates, rapid cycle, restart idempotency |
+| `t6`  | 3     | CPU monitoring — steady-state, peak, recovery |
+| `t7`  | 5     | Timing — reconciliation time, ban/unban latency |
+| `t8`  | 8     | CAPI stress ~25k IPs (requires `--capi`) |
+
 ## Security
 
 See [SECURITY.md](SECURITY.md) for the security policy and responsible disclosure process.
