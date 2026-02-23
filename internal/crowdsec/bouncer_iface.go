@@ -41,7 +41,7 @@ type bouncerAdapter struct {
 }
 
 func (a *bouncerAdapter) Init() error                   { return a.inner.Init() }
-func (a *bouncerAdapter) Run(ctx context.Context) error  { return a.inner.Run(ctx) }
+func (a *bouncerAdapter) Run(ctx context.Context) error { return a.inner.Run(ctx) }
 func (a *bouncerAdapter) DecisionStream() <-chan *models.DecisionsStreamResponse {
 	return *a.streamPtr
 }

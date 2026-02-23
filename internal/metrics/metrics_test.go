@@ -365,86 +365,86 @@ func TestServerStartAndShutdown(t *testing.T) {
 
 // TestSetActiveDecisionsByOrigin verifies storing and retrieving per-origin counts.
 func TestSetActiveDecisionsByOrigin(t *testing.T) {
-resetOriginAndDropped()
+	resetOriginAndDropped()
 
-SetActiveDecisionsByOrigin("crowdsec", 100)
-SetActiveDecisionsByOrigin("cscli", 5)
-SetActiveDecisionsByOrigin("CAPI", 2000)
+	SetActiveDecisionsByOrigin("crowdsec", 100)
+	SetActiveDecisionsByOrigin("cscli", 5)
+	SetActiveDecisionsByOrigin("CAPI", 2000)
 
-got := GetActiveDecisionsByOrigin()
-if got["crowdsec"] != 100 {
-t.Errorf("crowdsec: want 100, got %d", got["crowdsec"])
-}
-if got["cscli"] != 5 {
-t.Errorf("cscli: want 5, got %d", got["cscli"])
-}
-if got["CAPI"] != 2000 {
-t.Errorf("CAPI: want 2000, got %d", got["CAPI"])
-}
+	got := GetActiveDecisionsByOrigin()
+	if got["crowdsec"] != 100 {
+		t.Errorf("crowdsec: want 100, got %d", got["crowdsec"])
+	}
+	if got["cscli"] != 5 {
+		t.Errorf("cscli: want 5, got %d", got["cscli"])
+	}
+	if got["CAPI"] != 2000 {
+		t.Errorf("CAPI: want 2000, got %d", got["CAPI"])
+	}
 }
 
 // TestSetActiveDecisionsByOriginZeroDeletes verifies that setting count to 0
 // removes the origin entry.
 func TestSetActiveDecisionsByOriginZeroDeletes(t *testing.T) {
-resetOriginAndDropped()
+	resetOriginAndDropped()
 
-SetActiveDecisionsByOrigin("crowdsec", 50)
-SetActiveDecisionsByOrigin("crowdsec", 0)
+	SetActiveDecisionsByOrigin("crowdsec", 50)
+	SetActiveDecisionsByOrigin("crowdsec", 0)
 
-got := GetActiveDecisionsByOrigin()
-if _, exists := got["crowdsec"]; exists {
-t.Error("expected crowdsec to be deleted when count is 0")
-}
+	got := GetActiveDecisionsByOrigin()
+	if _, exists := got["crowdsec"]; exists {
+		t.Error("expected crowdsec to be deleted when count is 0")
+	}
 }
 
 // TestSetActiveDecisionsByOriginNegativeDeletes verifies that negative counts
 // also remove the entry.
 func TestSetActiveDecisionsByOriginNegativeDeletes(t *testing.T) {
-resetOriginAndDropped()
+	resetOriginAndDropped()
 
-SetActiveDecisionsByOrigin("test", 10)
-SetActiveDecisionsByOrigin("test", -1)
+	SetActiveDecisionsByOrigin("test", 10)
+	SetActiveDecisionsByOrigin("test", -1)
 
-got := GetActiveDecisionsByOrigin()
-if _, exists := got["test"]; exists {
-t.Error("expected entry to be deleted for negative count")
-}
+	got := GetActiveDecisionsByOrigin()
+	if _, exists := got["test"]; exists {
+		t.Error("expected entry to be deleted for negative count")
+	}
 }
 
 // TestGetActiveDecisionsByOriginReturnsSnapshot verifies that the returned map
 // is a copy that doesn't alias the internal state.
 func TestGetActiveDecisionsByOriginReturnsSnapshot(t *testing.T) {
-resetOriginAndDropped()
+	resetOriginAndDropped()
 
-SetActiveDecisionsByOrigin("crowdsec", 42)
+	SetActiveDecisionsByOrigin("crowdsec", 42)
 
-snap := GetActiveDecisionsByOrigin()
-snap["crowdsec"] = 999 // mutate the snapshot
+	snap := GetActiveDecisionsByOrigin()
+	snap["crowdsec"] = 999 // mutate the snapshot
 
-got := GetActiveDecisionsByOrigin()
-if got["crowdsec"] != 42 {
-t.Errorf("internal state was mutated via snapshot: got %d", got["crowdsec"])
-}
+	got := GetActiveDecisionsByOrigin()
+	if got["crowdsec"] != 42 {
+		t.Errorf("internal state was mutated via snapshot: got %d", got["crowdsec"])
+	}
 }
 
 // TestOriginDecisionsConcurrency exercises concurrent read/write to check
 // for data races (run with -race).
 func TestOriginDecisionsConcurrency(t *testing.T) {
-resetOriginAndDropped()
+	resetOriginAndDropped()
 
-var wg sync.WaitGroup
-for i := 0; i < 50; i++ {
-wg.Add(2)
-go func(n int) {
-defer wg.Done()
-SetActiveDecisionsByOrigin(fmt.Sprintf("origin-%d", n%5), int64(n))
-}(i)
-go func() {
-defer wg.Done()
-_ = GetActiveDecisionsByOrigin()
-}()
-}
-wg.Wait()
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(2)
+		go func(n int) {
+			defer wg.Done()
+			SetActiveDecisionsByOrigin(fmt.Sprintf("origin-%d", n%5), int64(n))
+		}(i)
+		go func() {
+			defer wg.Done()
+			_ = GetActiveDecisionsByOrigin()
+		}()
+	}
+	wg.Wait()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -453,67 +453,67 @@ wg.Wait()
 
 // TestDroppedCountersDelta verifies the basic delta calculation.
 func TestDroppedCountersDelta(t *testing.T) {
-resetOriginAndDropped()
+	resetOriginAndDropped()
 
-SetDroppedCounters(1000, 50)
-b, p := GetAndResetDroppedDeltas()
-if b != 1000 || p != 50 {
-t.Errorf("first delta: want (1000,50), got (%d,%d)", b, p)
-}
+	SetDroppedCounters(1000, 50)
+	b, p := GetAndResetDroppedDeltas()
+	if b != 1000 || p != 50 {
+		t.Errorf("first delta: want (1000,50), got (%d,%d)", b, p)
+	}
 
-// Second call with higher values → returns only the increase.
-SetDroppedCounters(1500, 80)
-b, p = GetAndResetDroppedDeltas()
-if b != 500 || p != 30 {
-t.Errorf("second delta: want (500,30), got (%d,%d)", b, p)
-}
+	// Second call with higher values → returns only the increase.
+	SetDroppedCounters(1500, 80)
+	b, p = GetAndResetDroppedDeltas()
+	if b != 500 || p != 30 {
+		t.Errorf("second delta: want (500,30), got (%d,%d)", b, p)
+	}
 }
 
 // TestDroppedCountersNoDelta verifies that calling GetAndResetDroppedDeltas
 // twice without setting new counters returns zero.
 func TestDroppedCountersNoDelta(t *testing.T) {
-resetOriginAndDropped()
+	resetOriginAndDropped()
 
-SetDroppedCounters(100, 10)
-_, _ = GetAndResetDroppedDeltas()
+	SetDroppedCounters(100, 10)
+	_, _ = GetAndResetDroppedDeltas()
 
-b, p := GetAndResetDroppedDeltas()
-if b != 0 || p != 0 {
-t.Errorf("want (0,0), got (%d,%d)", b, p)
-}
+	b, p := GetAndResetDroppedDeltas()
+	if b != 0 || p != 0 {
+		t.Errorf("want (0,0), got (%d,%d)", b, p)
+	}
 }
 
 // TestDroppedCountersWrapAround verifies that if counters decrease (rule
 // recreation), the full new value is reported instead of a negative delta.
 func TestDroppedCountersWrapAround(t *testing.T) {
-resetOriginAndDropped()
+	resetOriginAndDropped()
 
-SetDroppedCounters(5000, 200)
-_, _ = GetAndResetDroppedDeltas()
+	SetDroppedCounters(5000, 200)
+	_, _ = GetAndResetDroppedDeltas()
 
-// Counter resets to a smaller value (rule was recreated).
-SetDroppedCounters(300, 10)
-b, p := GetAndResetDroppedDeltas()
-if b != 300 || p != 10 {
-t.Errorf("after wrap: want (300,10), got (%d,%d)", b, p)
-}
+	// Counter resets to a smaller value (rule was recreated).
+	SetDroppedCounters(300, 10)
+	b, p := GetAndResetDroppedDeltas()
+	if b != 300 || p != 10 {
+		t.Errorf("after wrap: want (300,10), got (%d,%d)", b, p)
+	}
 }
 
 // TestDroppedCountersConcurrency exercises concurrent access (run with -race).
 func TestDroppedCountersConcurrency(t *testing.T) {
-resetOriginAndDropped()
+	resetOriginAndDropped()
 
-var wg sync.WaitGroup
-for i := 0; i < 50; i++ {
-wg.Add(2)
-go func(n uint64) {
-defer wg.Done()
-SetDroppedCounters(n*100, n*10)
-}(uint64(i))
-go func() {
-defer wg.Done()
-_, _ = GetAndResetDroppedDeltas()
-}()
-}
-wg.Wait()
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(2)
+		go func(n uint64) {
+			defer wg.Done()
+			SetDroppedCounters(n*100, n*10)
+		}(uint64(i))
+		go func() {
+			defer wg.Done()
+			_, _ = GetAndResetDroppedDeltas()
+		}()
+	}
+	wg.Wait()
 }

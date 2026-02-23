@@ -1160,10 +1160,10 @@ func TestBulkAddAddresses_SingleChunk(t *testing.T) {
 	}
 
 	// runBulkScript flow: Find existing script → not found, Add script, Run script, Remove script
-	mc.pushReply(emptyReply())                                       // Find existing → no results
-	mc.pushReply(doneReply(map[string]string{"ret": "*SCRIPT1"}))    // Add script
-	mc.pushReply(emptyReply())                                       // Run script
-	mc.pushReply(emptyReply())                                       // Remove script
+	mc.pushReply(emptyReply())                                    // Find existing → no results
+	mc.pushReply(doneReply(map[string]string{"ret": "*SCRIPT1"})) // Add script
+	mc.pushReply(emptyReply())                                    // Run script
+	mc.pushReply(emptyReply())                                    // Remove script
 
 	added, err := c.BulkAddAddresses("ip", "list", entries)
 	if err != nil {
@@ -1282,10 +1282,10 @@ func TestRemoveAddresses_NoSuchItemTolerated(t *testing.T) {
 	mc := newMockConn()
 	c := newTestClient(mc)
 
-	mc.pushReply(emptyReply())                                    // *1 OK
-	mc.pushError(errors.New("no such item"))                      // *2 already gone
-	mc.pushError(errors.New("no such item"))                      // reconnect retry for *2
-	mc.pushReply(emptyReply())                                    // *3 OK
+	mc.pushReply(emptyReply())               // *1 OK
+	mc.pushError(errors.New("no such item")) // *2 already gone
+	mc.pushError(errors.New("no such item")) // reconnect retry for *2
+	mc.pushReply(emptyReply())               // *3 OK
 
 	removed, errs := c.RemoveAddresses("ip", []string{"*1", "*2", "*3"})
 	if len(errs) != 0 {
@@ -1301,9 +1301,9 @@ func TestRemoveAddresses_MixedErrors(t *testing.T) {
 	mc := newMockConn()
 	c := newTestClient(mc)
 
-	mc.pushReply(emptyReply())                       // *1 OK
-	mc.pushError(errors.New("timeout"))              // *2 fails
-	mc.pushError(errors.New("timeout"))              // reconnect retry for *2
+	mc.pushReply(emptyReply())          // *1 OK
+	mc.pushError(errors.New("timeout")) // *2 fails
+	mc.pushError(errors.New("timeout")) // reconnect retry for *2
 
 	removed, errs := c.RemoveAddresses("ip", []string{"*1", "*2"})
 	if len(errs) != 1 {
@@ -1527,132 +1527,132 @@ func TestParallelExec_WorkersLimitedByItems(t *testing.T) {
 // TestGetFirewallCounters_AllPaths verifies that GetFirewallCounters queries
 // all 4 firewall paths and aggregates bytes/packets per IP type.
 func TestGetFirewallCounters_AllPaths(t *testing.T) {
-mc := newMockConn()
-c := newTestClient(mc)
+	mc := newMockConn()
+	c := newTestClient(mc)
 
-// Path 1: ip/firewall/filter — one matching rule
-mc.pushReply(reReply(
-map[string]string{".id": "*1", "bytes": "1000", "packets": "10", "comment": "crowdsec-bouncer:filter-input-v4"},
-map[string]string{".id": "*2", "bytes": "500", "packets": "5", "comment": "other-rule"},
-))
-// Path 2: ip/firewall/raw — one matching rule
-mc.pushReply(reReply(
-map[string]string{".id": "*3", "bytes": "2000", "packets": "20", "comment": "crowdsec-bouncer:raw-prerouting-v4"},
-))
-// Path 3: ipv6/firewall/filter — one matching rule
-mc.pushReply(reReply(
-map[string]string{".id": "*4", "bytes": "300", "packets": "3", "comment": "crowdsec-bouncer:filter-input-v6"},
-))
-// Path 4: ipv6/firewall/raw — one matching rule
-mc.pushReply(reReply(
-map[string]string{".id": "*5", "bytes": "700", "packets": "7", "comment": "crowdsec-bouncer:raw-prerouting-v6"},
-))
+	// Path 1: ip/firewall/filter — one matching rule
+	mc.pushReply(reReply(
+		map[string]string{".id": "*1", "bytes": "1000", "packets": "10", "comment": "crowdsec-bouncer:filter-input-v4"},
+		map[string]string{".id": "*2", "bytes": "500", "packets": "5", "comment": "other-rule"},
+	))
+	// Path 2: ip/firewall/raw — one matching rule
+	mc.pushReply(reReply(
+		map[string]string{".id": "*3", "bytes": "2000", "packets": "20", "comment": "crowdsec-bouncer:raw-prerouting-v4"},
+	))
+	// Path 3: ipv6/firewall/filter — one matching rule
+	mc.pushReply(reReply(
+		map[string]string{".id": "*4", "bytes": "300", "packets": "3", "comment": "crowdsec-bouncer:filter-input-v6"},
+	))
+	// Path 4: ipv6/firewall/raw — one matching rule
+	mc.pushReply(reReply(
+		map[string]string{".id": "*5", "bytes": "700", "packets": "7", "comment": "crowdsec-bouncer:raw-prerouting-v6"},
+	))
 
-fc, err := c.GetFirewallCounters("crowdsec-bouncer:")
-if err != nil {
-t.Fatalf("unexpected error: %v", err)
-}
+	fc, err := c.GetFirewallCounters("crowdsec-bouncer:")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
-// Only 4 rules should match (not "other-rule").
-if len(fc.Rules) != 4 {
-t.Errorf("want 4 matching rules, got %d", len(fc.Rules))
-}
+	// Only 4 rules should match (not "other-rule").
+	if len(fc.Rules) != 4 {
+		t.Errorf("want 4 matching rules, got %d", len(fc.Rules))
+	}
 
-// IPv4 totals: 1000 + 2000 = 3000 bytes, 10 + 20 = 30 packets.
-if fc.IPv4Bytes != 3000 || fc.IPv4Pkts != 30 {
-t.Errorf("IPv4: want (3000,30), got (%d,%d)", fc.IPv4Bytes, fc.IPv4Pkts)
-}
+	// IPv4 totals: 1000 + 2000 = 3000 bytes, 10 + 20 = 30 packets.
+	if fc.IPv4Bytes != 3000 || fc.IPv4Pkts != 30 {
+		t.Errorf("IPv4: want (3000,30), got (%d,%d)", fc.IPv4Bytes, fc.IPv4Pkts)
+	}
 
-// IPv6 totals: 300 + 700 = 1000 bytes, 3 + 7 = 10 packets.
-if fc.IPv6Bytes != 1000 || fc.IPv6Pkts != 10 {
-t.Errorf("IPv6: want (1000,10), got (%d,%d)", fc.IPv6Bytes, fc.IPv6Pkts)
-}
+	// IPv6 totals: 300 + 700 = 1000 bytes, 3 + 7 = 10 packets.
+	if fc.IPv6Bytes != 1000 || fc.IPv6Pkts != 10 {
+		t.Errorf("IPv6: want (1000,10), got (%d,%d)", fc.IPv6Bytes, fc.IPv6Pkts)
+	}
 
-// Grand totals: 3000 + 1000 = 4000 bytes, 30 + 10 = 40 packets.
-if fc.TotalBytes != 4000 || fc.TotalPkts != 40 {
-t.Errorf("Total: want (4000,40), got (%d,%d)", fc.TotalBytes, fc.TotalPkts)
-}
+	// Grand totals: 3000 + 1000 = 4000 bytes, 30 + 10 = 40 packets.
+	if fc.TotalBytes != 4000 || fc.TotalPkts != 40 {
+		t.Errorf("Total: want (4000,40), got (%d,%d)", fc.TotalBytes, fc.TotalPkts)
+	}
 }
 
 // TestGetFirewallCounters_EmptyPrefix verifies that an empty comment prefix
 // matches ALL rules, not just those with the bouncer prefix.
 func TestGetFirewallCounters_EmptyPrefix(t *testing.T) {
-mc := newMockConn()
-c := newTestClient(mc)
+	mc := newMockConn()
+	c := newTestClient(mc)
 
-// Only one path with two rules (both should match with empty prefix).
-mc.pushReply(reReply(
-map[string]string{".id": "*1", "bytes": "100", "packets": "1", "comment": "anything"},
-map[string]string{".id": "*2", "bytes": "200", "packets": "2", "comment": ""},
-))
-mc.pushReply(reReply()) // empty paths
-mc.pushReply(reReply())
-mc.pushReply(reReply())
+	// Only one path with two rules (both should match with empty prefix).
+	mc.pushReply(reReply(
+		map[string]string{".id": "*1", "bytes": "100", "packets": "1", "comment": "anything"},
+		map[string]string{".id": "*2", "bytes": "200", "packets": "2", "comment": ""},
+	))
+	mc.pushReply(reReply()) // empty paths
+	mc.pushReply(reReply())
+	mc.pushReply(reReply())
 
-fc, err := c.GetFirewallCounters("")
-if err != nil {
-t.Fatalf("unexpected error: %v", err)
-}
+	fc, err := c.GetFirewallCounters("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
-if len(fc.Rules) != 2 {
-t.Errorf("want 2 rules with empty prefix, got %d", len(fc.Rules))
-}
-if fc.TotalBytes != 300 {
-t.Errorf("want 300 total bytes, got %d", fc.TotalBytes)
-}
+	if len(fc.Rules) != 2 {
+		t.Errorf("want 2 rules with empty prefix, got %d", len(fc.Rules))
+	}
+	if fc.TotalBytes != 300 {
+		t.Errorf("want 300 total bytes, got %d", fc.TotalBytes)
+	}
 }
 
 // TestGetFirewallCounters_PathError verifies that errors on individual paths
 // are skipped without failing the entire operation.
 func TestGetFirewallCounters_PathError(t *testing.T) {
-mc := newMockConn()
-c := newTestClient(mc)
+	mc := newMockConn()
+	c := newTestClient(mc)
 
-// Path 1: success
-mc.pushReply(reReply(
-map[string]string{".id": "*1", "bytes": "500", "packets": "5", "comment": "cs:test"},
-))
-// Path 2: error (e.g. ipv6 not enabled)
-mc.pushError(errors.New("no such command prefix"))
-// Path 3: success
-mc.pushReply(reReply(
-map[string]string{".id": "*2", "bytes": "100", "packets": "1", "comment": "cs:test6"},
-))
-// Path 4: error
-mc.pushError(errors.New("no such command prefix"))
+	// Path 1: success
+	mc.pushReply(reReply(
+		map[string]string{".id": "*1", "bytes": "500", "packets": "5", "comment": "cs:test"},
+	))
+	// Path 2: error (e.g. ipv6 not enabled)
+	mc.pushError(errors.New("no such command prefix"))
+	// Path 3: success
+	mc.pushReply(reReply(
+		map[string]string{".id": "*2", "bytes": "100", "packets": "1", "comment": "cs:test6"},
+	))
+	// Path 4: error
+	mc.pushError(errors.New("no such command prefix"))
 
-fc, err := c.GetFirewallCounters("cs:")
-if err != nil {
-t.Fatalf("unexpected error: %v", err)
-}
+	fc, err := c.GetFirewallCounters("cs:")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
-if len(fc.Rules) != 2 {
-t.Errorf("want 2 rules (skipped errored paths), got %d", len(fc.Rules))
-}
-if fc.TotalBytes != 600 {
-t.Errorf("want 600 total bytes, got %d", fc.TotalBytes)
-}
+	if len(fc.Rules) != 2 {
+		t.Errorf("want 2 rules (skipped errored paths), got %d", len(fc.Rules))
+	}
+	if fc.TotalBytes != 600 {
+		t.Errorf("want 600 total bytes, got %d", fc.TotalBytes)
+	}
 }
 
 // TestGetFirewallCounters_InvalidNumbers verifies that non-numeric byte/packet
 // values are parsed as 0 (no error).
 func TestGetFirewallCounters_InvalidNumbers(t *testing.T) {
-mc := newMockConn()
-c := newTestClient(mc)
+	mc := newMockConn()
+	c := newTestClient(mc)
 
-mc.pushReply(reReply(
-map[string]string{".id": "*1", "bytes": "notanumber", "packets": "", "comment": "cs:test"},
-))
-mc.pushReply(reReply())
-mc.pushReply(reReply())
-mc.pushReply(reReply())
+	mc.pushReply(reReply(
+		map[string]string{".id": "*1", "bytes": "notanumber", "packets": "", "comment": "cs:test"},
+	))
+	mc.pushReply(reReply())
+	mc.pushReply(reReply())
+	mc.pushReply(reReply())
 
-fc, err := c.GetFirewallCounters("cs:")
-if err != nil {
-t.Fatalf("unexpected error: %v", err)
-}
+	fc, err := c.GetFirewallCounters("cs:")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
-if fc.TotalBytes != 0 || fc.TotalPkts != 0 {
-t.Errorf("want (0,0) for invalid numbers, got (%d,%d)", fc.TotalBytes, fc.TotalPkts)
-}
+	if fc.TotalBytes != 0 || fc.TotalPkts != 0 {
+		t.Errorf("want (0,0) for invalid numbers, got (%d,%d)", fc.TotalBytes, fc.TotalPkts)
+	}
 }

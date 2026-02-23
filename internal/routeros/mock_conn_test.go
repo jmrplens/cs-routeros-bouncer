@@ -17,9 +17,9 @@ import (
 // mockConn implements RouterConn for testing.
 type mockConn struct {
 	mu      sync.Mutex
-	calls   [][]string              // recorded RunArgs calls
-	replies []*routeros.Reply    // FIFO queue of replies (shifted on each call)
-	errors  []error                 // FIFO queue of errors (shifted on each call)
+	calls   [][]string        // recorded RunArgs calls
+	replies []*routeros.Reply // FIFO queue of replies (shifted on each call)
+	errors  []error           // FIFO queue of errors (shifted on each call)
 	closed  bool
 }
 
@@ -86,15 +86,6 @@ func (m *mockConn) lastArgs() []string {
 		return nil
 	}
 	return m.calls[len(m.calls)-1]
-}
-
-// allCalls returns a copy of all recorded RunArgs invocations.
-func (m *mockConn) allCalls() [][]string {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	cp := make([][]string, len(m.calls))
-	copy(cp, m.calls)
-	return cp
 }
 
 // --- helpers to build routeros.Reply values ---

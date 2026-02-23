@@ -568,7 +568,7 @@ func TestHandleBan_AlreadyExistsNoTimeout(t *testing.T) {
 // during the timeout update path, the error is logged and no update is attempted.
 func TestHandleBan_AlreadyExistsFindError(t *testing.T) {
 	mock := &mockROS{
-		addAddressErr: errors.New("failure: already have such entry"),
+		addAddressErr:  errors.New("failure: already have such entry"),
 		findAddressErr: errors.New("find failed"),
 	}
 	cfg := baseConfig()

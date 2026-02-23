@@ -184,9 +184,9 @@ func TestRunNilDecisionFieldsSkipped(t *testing.T) {
 	// Send decisions with missing required fields — all should be skipped.
 	mb.DecisionCh <- &models.DecisionsStreamResponse{
 		New: models.GetDecisionsResponse{
-			nil,                                                     // nil decision
-			{Value: nil, Type: strPtr("ban"), Duration: strPtr("1h")}, // nil Value
-			{Value: strPtr("1.1.1.1"), Type: nil, Duration: strPtr("1h")}, // nil Type
+			nil, // nil decision
+			{Value: nil, Type: strPtr("ban"), Duration: strPtr("1h")},      // nil Value
+			{Value: strPtr("1.1.1.1"), Type: nil, Duration: strPtr("1h")},  // nil Type
 			{Value: strPtr("1.1.1.1"), Type: strPtr("ban"), Duration: nil}, // nil Duration
 		},
 	}
@@ -481,9 +481,9 @@ func TestRunDeletedNilFields(t *testing.T) {
 
 	mb.DecisionCh <- &models.DecisionsStreamResponse{
 		Deleted: models.GetDecisionsResponse{
-			nil,                                            // nil decision
-			{Value: nil, Type: strPtr("ban")},              // nil Value
-			{Value: strPtr("1.1.1.1"), Type: nil},          // nil Type
+			nil,                                   // nil decision
+			{Value: nil, Type: strPtr("ban")},     // nil Value
+			{Value: strPtr("1.1.1.1"), Type: nil}, // nil Type
 		},
 	}
 

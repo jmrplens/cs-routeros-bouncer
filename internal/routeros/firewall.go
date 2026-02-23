@@ -249,13 +249,13 @@ type RuleCounters struct {
 
 // FirewallCounters aggregates counters from all bouncer firewall rules.
 type FirewallCounters struct {
-	Rules       []RuleCounters
-	TotalBytes  uint64
-	TotalPkts   uint64
-	IPv4Bytes   uint64
-	IPv4Pkts    uint64
-	IPv6Bytes   uint64
-	IPv6Pkts    uint64
+	Rules      []RuleCounters
+	TotalBytes uint64
+	TotalPkts  uint64
+	IPv4Bytes  uint64
+	IPv4Pkts   uint64
+	IPv6Bytes  uint64
+	IPv6Pkts   uint64
 }
 
 // GetFirewallCounters queries byte/packet counters from all firewall rules
