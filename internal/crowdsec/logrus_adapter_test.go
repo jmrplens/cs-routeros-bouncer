@@ -246,3 +246,105 @@ func TestZerologWriterWrite(t *testing.T) {
 		t.Errorf("expected 'test write' in output, got: %s", buf.String())
 	}
 }
+
+// TestLogrusAdapterDebug verifies the non-format Debug method.
+func TestLogrusAdapterDebug(t *testing.T) {
+	var buf bytes.Buffer
+	zl := zerolog.New(&buf).Level(zerolog.DebugLevel)
+	adapter := NewLogrusAdapter(zl)
+
+	adapter.Debug("debug plain")
+
+	if !strings.Contains(buf.String(), "debug plain") {
+		t.Errorf("expected 'debug plain' in output, got: %s", buf.String())
+	}
+}
+
+// TestLogrusAdapterWarn verifies the non-format Warn method.
+func TestLogrusAdapterWarn(t *testing.T) {
+	var buf bytes.Buffer
+	zl := zerolog.New(&buf).Level(zerolog.WarnLevel)
+	adapter := NewLogrusAdapter(zl)
+
+	adapter.Warn("warn plain")
+
+	if !strings.Contains(buf.String(), "warn plain") {
+		t.Errorf("expected 'warn plain' in output, got: %s", buf.String())
+	}
+}
+
+// TestLogrusAdapterWarning verifies the non-format Warning alias.
+func TestLogrusAdapterWarning(t *testing.T) {
+	var buf bytes.Buffer
+	zl := zerolog.New(&buf).Level(zerolog.WarnLevel)
+	adapter := NewLogrusAdapter(zl)
+
+	adapter.Warning("warning plain")
+
+	if !strings.Contains(buf.String(), "warning plain") {
+		t.Errorf("expected 'warning plain' in output, got: %s", buf.String())
+	}
+}
+
+// TestLogrusAdapterError verifies the non-format Error method.
+func TestLogrusAdapterError(t *testing.T) {
+	var buf bytes.Buffer
+	zl := zerolog.New(&buf).Level(zerolog.ErrorLevel)
+	adapter := NewLogrusAdapter(zl)
+
+	adapter.Error("error plain")
+
+	if !strings.Contains(buf.String(), "error plain") {
+		t.Errorf("expected 'error plain' in output, got: %s", buf.String())
+	}
+}
+
+// TestLogrusAdapterPanicf verifies Panicf panics with the message.
+func TestLogrusAdapterPanicf(t *testing.T) {
+	var buf bytes.Buffer
+	zl := zerolog.New(&buf).Level(zerolog.PanicLevel)
+	adapter := NewLogrusAdapter(zl)
+
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected panic from Panicf")
+		}
+	}()
+	adapter.Panicf("panic %s", "msg")
+}
+
+// TestLogrusAdapterPanic verifies Panic panics.
+func TestLogrusAdapterPanic(t *testing.T) {
+	var buf bytes.Buffer
+	zl := zerolog.New(&buf).Level(zerolog.PanicLevel)
+	adapter := NewLogrusAdapter(zl)
+
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected panic from Panic")
+		}
+	}()
+	adapter.Panic("panic plain")
+}
+
+// TestLogrusAdapterPanicln verifies Panicln panics.
+func TestLogrusAdapterPanicln(t *testing.T) {
+	var buf bytes.Buffer
+	zl := zerolog.New(&buf).Level(zerolog.PanicLevel)
+	adapter := NewLogrusAdapter(zl)
+
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected panic from Panicln")
+		}
+	}()
+	adapter.Panicln("panicln msg")
+}
+
+// Note: Fatalf, Fatal, and Fatalln call zerolog.Fatal() which invokes os.Exit(1).
+// Testing these would terminate the test process, so they are intentionally excluded.
+// Coverage for these 3 trivial one-line pass-throughs is not worth the complexity
+// of subprocess testing.

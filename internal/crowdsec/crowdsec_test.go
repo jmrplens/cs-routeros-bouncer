@@ -419,3 +419,100 @@ func TestParseDecisionCaseInsensitiveBan(t *testing.T) {
 		}
 	}
 }
+
+// TestNewStreamWithTLS verifies that TLS certificate paths are propagated
+// to the underlying StreamBouncer.
+func TestNewStreamWithTLS(t *testing.T) {
+	cfg := config.CrowdSecConfig{
+		APIURL:          "https://localhost:8080/",
+		APIKey:          "test-key",
+		UpdateFrequency: 10 * time.Second,
+		CertPath:        "/etc/ssl/cert.pem",
+		KeyPath:         "/etc/ssl/key.pem",
+		CACertPath:      "/etc/ssl/ca.pem",
+	}
+	s := NewStream(cfg, "1.0.0")
+	if s == nil {
+		t.Fatal("expected non-nil stream")
+	}
+	if s.bouncer.CertPath != cfg.CertPath {
+		t.Errorf("CertPath = %q, want %q", s.bouncer.CertPath, cfg.CertPath)
+	}
+	if s.bouncer.KeyPath != cfg.KeyPath {
+		t.Errorf("KeyPath = %q, want %q", s.bouncer.KeyPath, cfg.KeyPath)
+	}
+	if s.bouncer.CAPath != cfg.CACertPath {
+		t.Errorf("CAPath = %q, want %q", s.bouncer.CAPath, cfg.CACertPath)
+	}
+}
+
+// TestNewStreamWithInsecureSkipVerify verifies that the InsecureSkipVerify flag
+// is propagated when set.
+func TestNewStreamWithInsecureSkipVerify(t *testing.T) {
+	cfg := config.CrowdSecConfig{
+		APIURL:             "https://localhost:8080/",
+		APIKey:             "test-key",
+		UpdateFrequency:    10 * time.Second,
+		InsecureSkipVerify: true,
+	}
+	s := NewStream(cfg, "1.0.0")
+	if s == nil {
+		t.Fatal("expected non-nil stream")
+	}
+	if s.bouncer.InsecureSkipVerify == nil || !*s.bouncer.InsecureSkipVerify {
+		t.Error("expected InsecureSkipVerify to be true")
+	}
+}
+
+// TestNewStreamInsecureSkipVerifyFalse verifies that InsecureSkipVerify=false
+// does NOT set the bouncer field (nil pointer means default/false).
+func TestNewStreamInsecureSkipVerifyFalse(t *testing.T) {
+	cfg := config.CrowdSecConfig{
+		APIURL:             "https://localhost:8080/",
+		APIKey:             "test-key",
+		UpdateFrequency:    10 * time.Second,
+		InsecureSkipVerify: false,
+	}
+	s := NewStream(cfg, "1.0.0")
+	if s == nil {
+		t.Fatal("expected non-nil stream")
+	}
+	if s.bouncer.InsecureSkipVerify != nil {
+		t.Error("expected InsecureSkipVerify to be nil when config is false")
+	}
+}
+
+// TestNewStreamAllFields verifies all StreamBouncer fields are correctly set.
+func TestNewStreamAllFields(t *testing.T) {
+	cfg := config.CrowdSecConfig{
+		APIURL:                 "http://lapi:8080/",
+		APIKey:                 "key123",
+		UpdateFrequency:        30 * time.Second,
+		Scopes:                 []string{"ip", "range"},
+		ScenariosContaining:    []string{"http"},
+		ScenariosNotContaining: []string{"ssh"},
+		Origins:                []string{"crowdsec", "cscli", "CAPI"},
+		RetryInitialConnect:    true,
+		CertPath:               "/cert",
+		KeyPath:                "/key",
+		CACertPath:             "/ca",
+		InsecureSkipVerify:     true,
+	}
+	s := NewStream(cfg, "2.0.0")
+	b := s.bouncer
+	if b.APIUrl != cfg.APIURL {
+		t.Errorf("APIUrl = %q, want %q", b.APIUrl, cfg.APIURL)
+	}
+	if b.APIKey != cfg.APIKey {
+		t.Errorf("APIKey mismatch")
+	}
+	if b.TickerInterval != "30s" {
+		t.Errorf("TickerInterval = %q, want 30s", b.TickerInterval)
+	}
+	if b.UserAgent != "cs-routeros-bouncer/2.0.0" {
+		t.Errorf("UserAgent = %q", b.UserAgent)
+	}
+	if !b.RetryInitialConnect {
+		t.Error("expected RetryInitialConnect=true")
+	}
+}
