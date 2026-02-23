@@ -28,7 +28,7 @@ const (
 // Manager orchestrates the CrowdSec stream and MikroTik firewall operations.
 type Manager struct {
 	cfg     config.Config
-	ros     *rosClient.Client
+	ros     RouterOSClient
 	pool    *rosClient.Pool
 	stream  *crowdsec.Stream
 	logger  zerolog.Logger
