@@ -181,12 +181,16 @@ require_var() {
 #   $1 — RouterOS CLI command string (e.g. "/ip/firewall/address-list/print")
 #
 # Returns: command output with \r stripped; stderr is suppressed.
-# Uses env vars: MIKROTIK_SSH_KEY, MIKROTIK_SSH_PORT, MIKROTIK_SSH_USER,
+# Uses env vars: MIKROTIK_SSH_KEY (optional), MIKROTIK_SSH_PORT, MIKROTIK_SSH_USER,
 #                MIKROTIK_SSH_HOST.
 # shellcheck disable=SC2153
 ssh_cmd() {
+    local ssh_key_opt=()
+    if [[ -n "${MIKROTIK_SSH_KEY:-}" && -f "${MIKROTIK_SSH_KEY}" ]]; then
+        ssh_key_opt=(-i "${MIKROTIK_SSH_KEY}")
+    fi
     ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes \
-        -i "${MIKROTIK_SSH_KEY}" -p "${MIKROTIK_SSH_PORT}" \
+        "${ssh_key_opt[@]}" -p "${MIKROTIK_SSH_PORT}" \
         "${MIKROTIK_SSH_USER}@${MIKROTIK_SSH_HOST}" "$1" 2>/dev/null | tr -d '\r'
 }
 

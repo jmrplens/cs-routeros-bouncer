@@ -61,12 +61,21 @@ Unix timestamp of when the bouncer started. Useful for calculating uptime.
 
 Number of currently active ban decisions, broken down by protocol.
 
+### `crowdsec_bouncer_active_decisions_by_origin`
+
+| | |
+|---|---|
+| **Type** | Gauge |
+| **Labels** | `origin` (`crowdsec`, `cscli`, `CAPI`) |
+
+Number of currently active ban decisions, broken down by CrowdSec origin.
+
 ### `crowdsec_bouncer_decisions_total`
 
 | | |
 |---|---|
 | **Type** | Counter |
-| **Labels** | `action` (`ban`, `unban`), `protocol` (`ipv4`, `ipv6`) |
+| **Labels** | `action` (`ban`, `unban`), `proto` (`ipv4`, `ipv6`), `origin` (`crowdsec`, `cscli`, `CAPI`) |
 
 Total number of decisions processed since startup.
 
@@ -75,13 +84,15 @@ Total number of decisions processed since startup.
 | | |
 |---|---|
 | **Type** | Counter |
-| **Labels** | `type` (`api`, `routeros`, `reconcile`) |
+| **Labels** | `operation` (`api`, `routeros`, `reconcile`, `add`, `find`) |
 
 Total number of errors by category:
 
 - `api` — CrowdSec LAPI communication errors
 - `routeros` — MikroTik API errors
 - `reconcile` — Reconciliation errors
+- `add` — Address add/update errors
+- `find` — Address lookup errors
 
 ### `crowdsec_bouncer_operation_duration_seconds`
 
@@ -110,8 +121,25 @@ RouterOS connection status: `1` = connected, `0` = disconnected.
 | | |
 |---|---|
 | **Type** | Counter |
+| **Labels** | `action` (`added`, `removed`) |
 
-Total number of reconciliation events since startup.
+Total number of reconciliation actions performed since startup.
+
+### `crowdsec_bouncer_dropped_bytes_total`
+
+| | |
+|---|---|
+| **Type** | Gauge |
+
+Cumulative bytes dropped by firewall rules managed by the bouncer. Read from MikroTik firewall counters across all 4 paths (filter+raw × IPv4+IPv6).
+
+### `crowdsec_bouncer_dropped_packets_total`
+
+| | |
+|---|---|
+| **Type** | Gauge |
+
+Cumulative packets dropped by firewall rules managed by the bouncer. Read from MikroTik firewall counters across all 4 paths (filter+raw × IPv4+IPv6).
 
 ## CrowdSec LAPI Metrics
 
@@ -133,8 +161,8 @@ Each push also includes bouncer metadata:
 | Field | Example |
 |-------|---------|
 | Type | `cs-routeros-bouncer` |
-| Version | `v1.1.0` |
-| OS | `debian 13.3` |
+| Version | `vX.Y.Z` |
+| OS | `linux` |
 | Startup timestamp | UTC epoch |
 | Feature flags | `[]` (expected empty for bouncers) |
 

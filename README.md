@@ -421,6 +421,7 @@ The bouncer uses a **connection pool** (4 parallel API connections), **script-ba
 | Operation | Typical latency | Notes |
 |-----------|----------------|-------|
 | Ban (add IP) | **~1–3 ms** | Optimistic-add, no lookup needed |
+| Ban (duplicate IP, new duration) | **~5–8 ms** | Detects "already have" → updates timeout to new duration |
 | Unban (remove IP) | **~7 s** end-to-end | Includes LAPI polling interval (15 s max). API call itself ~2 ms |
 | Unban cache fast-path | **< 1 ms** | IP not in cache → skip API call entirely |
 
@@ -441,13 +442,25 @@ The bouncer uses a **connection pool** (4 parallel API connections), **script-ba
 
 ---
 
+### Duplicate IP handling
+
+When CrowdSec sends a new ban decision for an IP that already exists in the MikroTik address list (e.g., a 24-hour ban is replaced by a 7-day ban), the bouncer handles it automatically:
+
+1. **Optimistic add** — attempts to add the address to RouterOS
+2. **Conflict detection** — RouterOS returns an "already have" error
+3. **Timeout update** — the bouncer finds the existing entry and updates its timeout to the new duration
+
+This ensures the most recent ban duration always takes effect, without creating duplicate entries. The operation typically takes ~5–8 ms (find + update).
+
+---
+
 ## Monitoring
 
 ### Health Endpoint
 
 ```bash
 curl http://localhost:2112/health
-# {"status":"ok","routeros_connected":true,"version":"v1.1.0"}
+# {"status":"ok","routeros_connected":true,"version":"vX.Y.Z"}
 ```
 
 ### Prometheus Metrics
@@ -456,12 +469,17 @@ Enable with `metrics.enabled: true`. Available at `http://localhost:2112/metrics
 
 | Metric | Type | Description |
 |--------|------|-------------|
-| `crowdsec_bouncer_active_decisions` | Gauge | Active decisions by protocol (ipv4/ipv6) |
-| `crowdsec_bouncer_decisions_total` | Counter | Total decisions processed (ban/unban) |
-| `crowdsec_bouncer_errors_total` | Counter | Total errors by type |
-| `crowdsec_bouncer_operation_duration_seconds` | Histogram | Operation latency (add/remove/reconcile) |
-| `crowdsec_bouncer_routeros_connected` | Gauge | RouterOS connection status (1/0) |
 | `crowdsec_bouncer_info` | Gauge | Build info (version, RouterOS identity) |
+| `crowdsec_bouncer_start_time_seconds` | Gauge | Unix timestamp of bouncer startup |
+| `crowdsec_bouncer_active_decisions` | Gauge | Active decisions by protocol (`ipv4`/`ipv6`) |
+| `crowdsec_bouncer_active_decisions_by_origin` | Gauge | Active decisions by CrowdSec origin (`crowdsec`/`cscli`/`CAPI`) |
+| `crowdsec_bouncer_decisions_total` | Counter | Total decisions processed (action, protocol, origin) |
+| `crowdsec_bouncer_errors_total` | Counter | Total errors by type (`api`/`routeros`/`reconcile`) |
+| `crowdsec_bouncer_operation_duration_seconds` | Histogram | Operation latency (`add`/`remove`/`reconcile`) |
+| `crowdsec_bouncer_routeros_connected` | Gauge | RouterOS connection status (1/0) |
+| `crowdsec_bouncer_reconciliation_total` | Counter | Total reconciliation actions (`added`/`removed`) |
+| `crowdsec_bouncer_dropped_bytes_total` | Gauge | Cumulative bytes dropped by firewall rules |
+| `crowdsec_bouncer_dropped_packets_total` | Gauge | Cumulative packets dropped by firewall rules |
 
 ### CrowdSec LAPI Metrics
 

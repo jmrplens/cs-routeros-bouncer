@@ -224,9 +224,9 @@ Key variables:
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `MIKROTIK_SSH_HOST` | Router IP address | `192.168.0.1` |
-| `MIKROTIK_SSH_PORT` | SSH port | `2200` |
+| `MIKROTIK_SSH_PORT` | SSH port | `22` |
 | `MIKROTIK_SSH_USER` | SSH username | `admin` |
-| `MIKROTIK_SSH_KEY` | Path to SSH private key | `~/.ssh/id_mikrotik` |
+| `MIKROTIK_SSH_KEY` | Path to SSH private key (optional) | `~/.ssh/id_rsa` |
 | `MIKROTIK_SNMP_COMMUNITY` | SNMP v2c community string | `public` |
 | `CROWDSEC_LIST_IPV4` | IPv4 address list name | `crowdsec-banned` |
 | `CROWDSEC_LIST_IPV6` | IPv6 address list name | `crowdsec6-banned` |
@@ -319,7 +319,7 @@ The shared library (`lib/helpers.sh`) provides these function categories:
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| SSH tests fail with "connection refused" | Wrong port or key | Verify `MIKROTIK_SSH_PORT` and `MIKROTIK_SSH_KEY` in `.env` |
+| SSH tests fail with "connection refused" | Wrong port or firewall | Verify `MIKROTIK_SSH_PORT` in `.env` |
 | SNMP tests skipped | `snmpget` not installed | `apt install snmp` or `dnf install net-snmp-utils` |
 | T1.1 fails with >5 diff | Timing drift between LAPI query and SSH query | Re-run — transient decisions may expire between queries |
 | T3.1 hangs at "waiting for reconciliation" | Bouncer failed to start | Check `journalctl -u cs-routeros-bouncer` |

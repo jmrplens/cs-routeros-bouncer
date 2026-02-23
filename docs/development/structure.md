@@ -3,33 +3,60 @@
 ```
 cs-routeros-bouncer/
 ├── cmd/
+│   ├── benchmark/
+│   │   └── main.go             # Connection pool benchmark utility
 │   └── cs-routeros-bouncer/
 │       ├── main.go             # CLI entrypoint, subcommand routing
 │       └── setup.go            # setup/uninstall subcommands
 ├── internal/
 │   ├── config/
-│   │   └── config.go           # Configuration loading, validation, env binding
+│   │   ├── config.go           # Configuration loading, validation, env binding
+│   │   ├── config_test.go      # Config unit tests
+│   │   └── doc.go              # Package documentation
 │   ├── crowdsec/
-│   │   └── client.go           # CrowdSec LAPI streaming client
+│   │   ├── bouncer_iface.go    # BouncerEngine interface (for testing)
+│   │   ├── stream.go           # CrowdSec LAPI streaming client
+│   │   ├── stream_test.go      # Stream unit tests
+│   │   ├── logrus_adapter.go   # Logrus-to-zerolog adapter
+│   │   ├── logrus_adapter_test.go
+│   │   └── doc.go              # Package documentation
 │   ├── manager/
-│   │   └── manager.go          # Central orchestrator
+│   │   ├── manager.go          # Central orchestrator
+│   │   ├── manager_test.go     # Manager unit tests
+│   │   ├── start_test.go       # Start/Shutdown lifecycle tests
+│   │   ├── routeros_iface.go   # RouterOSClient interface (for testing)
+│   │   ├── crowdsec_iface.go   # CrowdSecStream interface (for testing)
+│   │   └── doc.go              # Package documentation
 │   ├── metrics/
-│   │   ├── metrics.go          # Prometheus metrics and health endpoint
+│   │   ├── metrics.go          # Prometheus metrics definitions and helpers
+│   │   ├── metrics_test.go     # Metrics unit tests
+│   │   ├── server.go           # HTTP server for /metrics and /health
+│   │   ├── doc.go              # Package documentation
 │   │   └── lapi/
-│   │       └── lapi.go         # CrowdSec LAPI usage metrics reporting
+│   │       ├── lapi.go         # CrowdSec LAPI usage metrics reporting
+│   │       └── lapi_test.go    # LAPI metrics unit tests
 │   └── routeros/
-│       ├── client.go           # RouterOS API connection
-│       ├── addresses.go        # Address list management
-│       └── firewall.go         # Firewall rule management
+│       ├── client.go           # RouterOS API connection and pool
+│       ├── pool.go             # Connection pool implementation
+│       ├── addresslist.go      # Address list management
+│       ├── bulk.go             # Bulk operations (script-based)
+│       ├── firewall.go         # Firewall rule management and counters
+│       ├── conn_iface.go       # RouterConn interface (for testing)
+│       ├── routeros_test.go    # RouterOS unit tests
+│       └── doc.go              # Package documentation
 ├── config/
-│   └── cs-routeros-bouncer.yaml  # Annotated config reference
+│   ├── cs-routeros-bouncer.yaml  # Annotated config reference
+│   └── test.yaml               # Test configuration
 ├── docker/
 │   ├── Dockerfile              # Multi-stage build
+│   ├── Dockerfile.goreleaser   # GoReleaser-specific Dockerfile
 │   └── docker-compose.yml      # Example compose file
 ├── grafana/
-│   └── dashboard.json          # Grafana dashboard
+│   └── dashboard.json          # Grafana dashboard (portable with ${DS_PROMETHEUS})
 ├── tests/
 │   ├── integration/            # Integration tests (build-tagged)
+│   │   ├── docker_test.go      # Docker integration tests
+│   │   └── routeros_test.go    # RouterOS integration tests
 │   └── functional/             # Bash test suite against real hardware
 │       ├── run_tests.sh        # Test runner (CLI entrypoint)
 │       ├── lib/
@@ -47,17 +74,21 @@ cs-routeros-bouncer/
 ├── docs/                       # Documentation site (mkdocs-material)
 ├── .github/
 │   ├── workflows/
-│   │   ├── ci.yml              # CI pipeline (lint, test, build, docker)
-│   │   ├── release.yml         # Release pipeline (binaries + Docker)
-│   │   └── docs.yml            # Documentation deployment
+│   │   ├── ci.yml              # CI pipeline (lint, shellcheck, vulncheck, test, build, docker)
+│   │   ├── release.yml         # Release pipeline (GoReleaser: binaries + Docker)
+│   │   └── docs.yml            # Documentation deployment (GitHub Pages)
 │   ├── ISSUE_TEMPLATE/         # Bug report and feature request templates
+│   ├── PULL_REQUEST_TEMPLATE.md
 │   ├── CODEOWNERS              # Code ownership
 │   └── FUNDING.yml             # GitHub Sponsors
 ├── mkdocs.yml                  # MkDocs configuration
 ├── Makefile                    # Build commands
+├── .goreleaser.yaml            # GoReleaser v2 configuration
 ├── go.mod / go.sum             # Go module files
 ├── .golangci.yml               # Linter configuration (v2)
+├── docker-compose.yml          # Root-level compose file
 ├── CONTRIBUTING.md             # Contribution guide
+├── CHANGELOG.md                # Release changelog
 ├── SECURITY.md                 # Security policy
 ├── LICENSE                     # MIT License
 └── README.md                   # Project overview
@@ -98,8 +129,11 @@ Central orchestrator that ties everything together:
 
 - Coordinates CrowdSec decisions → MikroTik actions
 - Manages firewall rule lifecycle (create on start, remove on stop)
-- Handles reconciliation on startup
+- Handles reconciliation on startup (bulk add/remove)
 - Decision filtering (origins, scenarios, scopes)
+- Address cache for unban fast-path (avoids API calls for unknown IPs)
+- Duplicate IP handling with timeout update (if a ban already exists, the timeout is updated)
+- Connection pool delegation for parallel reconciliation
 
 ### `internal/metrics`
 
@@ -107,7 +141,7 @@ Observability:
 
 - Prometheus metric definitions and registration
 - HTTP server for `/metrics` and `/health` endpoints
-- 8 metrics (gauges, counters, histograms)
+- 11 Prometheus metrics (gauges, counters, histograms)
 
 ### `internal/metrics/lapi`
 
@@ -124,6 +158,8 @@ CrowdSec LAPI usage metrics reporting:
 MikroTik RouterOS API client:
 
 - Connection management (plaintext and TLS)
-- Address list operations (add, remove, list)
-- Firewall rule operations (create, delete, list, move)
+- Connection pool for parallel operations
+- Bulk script-based address operations (chunked, 100 per script)
+- Address list operations (add, remove, list, find, update timeout)
+- Firewall rule operations (create, delete, list, move, counters)
 - Comment-based resource identification
