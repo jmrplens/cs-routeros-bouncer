@@ -118,24 +118,28 @@ func (c *Client) AddFirewallRule(proto, mode string, rule FirewallRule) (string,
 		return id, nil
 	}
 
-	// Move our rule before the first rule using internal IDs
-	moveErr := c.moveRule(path, id, firstID)
-	if moveErr != nil {
-		// If first rule is builtin/dynamic, try moving before second rule
-		if strings.Contains(moveErr.Error(), "builtin") && len(allRules) > 1 {
-			secondID := allRules[1][".id"]
-			moveErr = c.moveRule(path, id, secondID)
-			if moveErr != nil {
-				log.Warn().Err(moveErr).Msg("failed to move rule to position 1, left at current position")
-			} else {
-				log.Info().Str("id", id).Msg("firewall rule moved to position 1 (after builtin)")
-			}
-		} else {
-			log.Warn().Err(moveErr).Msg("failed to move rule to top, left at current position")
+	// Try each position starting from 0, skipping builtin/dynamic rules
+	// that cannot be displaced.
+	for i, r := range allRules {
+		targetID := r[".id"]
+		if targetID == id {
+			// Reached our own rule — already as high as possible
+			log.Info().Str("id", id).Int("position", i).Msg("firewall rule placed at highest available position")
+			return id, nil
 		}
-	} else {
-		log.Info().Str("id", id).Msg("firewall rule moved to top")
+		moveErr := c.moveRule(path, id, targetID)
+		if moveErr == nil {
+			if i == 0 {
+				log.Info().Str("id", id).Msg("firewall rule moved to top")
+			} else {
+				log.Info().Str("id", id).Int("position", i).Msg("firewall rule moved to position (after builtin rules)")
+			}
+			return id, nil
+		}
+		log.Debug().Err(moveErr).Int("position", i).Msg("cannot move before this rule, trying next position")
 	}
+
+	log.Warn().Str("id", id).Msg("could not move rule to any higher position, left at current position")
 
 	return id, nil
 }

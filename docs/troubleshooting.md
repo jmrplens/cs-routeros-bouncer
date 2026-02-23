@@ -47,16 +47,16 @@ Common issues and their solutions.
 ### Rules not at the top of the chain
 
 !!! warning "Symptoms"
-    Bouncer rules appear at position 1 instead of position 0.
+    Bouncer rules appear at a position other than 0.
 
-**Explanation:** RouterOS dynamic/builtin rules (e.g., fasttrack counters) occupy position 0 and cannot be moved. The bouncer detects this and places rules at position 1.
+**Explanation:** RouterOS dynamic/builtin rules (e.g., fasttrack counters) occupy the top positions and cannot be moved. The bouncer iterates through positions starting from 0 and places the rule at the first available position.
 
 **Verification:**
 ```routeros
 /ip/firewall/filter/print
 ```
 
-If the first rule is a dynamic rule, position 1 is the expected and correct placement.
+If rules above the bouncer's rule are dynamic/builtin, the placement is expected and correct.
 
 ### Rules not being created
 

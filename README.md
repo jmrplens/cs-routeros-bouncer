@@ -322,6 +322,8 @@ firewall:
     chains: ["prerouting"]
   deny_action: "drop"
   rule_placement: "top"
+  block_input:
+    interface_list: "WAN"
   block_output:
     enabled: true
     interface_list: "WAN"
@@ -385,7 +387,7 @@ chain=input action=drop src-address-list=crowdsec-banned
 chain=prerouting action=drop src-address-list=crowdsec-banned
 ```
 
-Rules are placed at the **top** of the chain by default (`rule_placement: top`) to ensure they are evaluated first. If a dynamic/builtin rule occupies position 0 (e.g., RouterOS fasttrack counters), the bouncer automatically places the rule at position 1.
+Rules are placed at the **top** of the chain by default (`rule_placement: top`) to ensure they are evaluated first. If dynamic/builtin rules occupy the top positions (e.g., RouterOS fasttrack counters), the bouncer iterates through subsequent positions until it finds one where the rule can be placed.
 
 ### Performance
 
@@ -511,7 +513,7 @@ The dashboard provides real-time visibility into the bouncer's operation:
 <details>
 <summary><b>Firewall rules not at the top of the chain</b></summary>
 
-- RouterOS dynamic/builtin rules (e.g., fasttrack counters) cannot be moved — the bouncer places rules at position 1 in this case
+- RouterOS dynamic/builtin rules (e.g., fasttrack counters) cannot be moved — the bouncer iterates through positions until it finds one where the rule can be placed
 - Verify with: `/ip/firewall/filter/print` on the router
 - Ensure `firewall.rule_placement: "top"` is set in your config
 
