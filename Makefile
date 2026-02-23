@@ -5,7 +5,8 @@ COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 LDFLAGS := -X $(MODULE)/internal/config.Version=$(VERSION) \
            -X $(MODULE)/internal/config.Commit=$(COMMIT) \
-           -X $(MODULE)/internal/config.BuildDate=$(BUILD_DATE)
+           -X $(MODULE)/internal/config.BuildDate=$(BUILD_DATE) \
+           -X github.com/crowdsecurity/go-cs-lib/version.Version=$(VERSION)
 
 .PHONY: all build test lint vulncheck clean docker-build docker-push fmt vet install uninstall release-snapshot
 

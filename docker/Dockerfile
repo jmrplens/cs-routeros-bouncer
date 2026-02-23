@@ -16,7 +16,8 @@ RUN CGO_ENABLED=0 go build \
     -ldflags "-s -w \
       -X github.com/jmrplens/cs-routeros-bouncer/internal/config.Version=${VERSION} \
       -X github.com/jmrplens/cs-routeros-bouncer/internal/config.Commit=${COMMIT} \
-      -X github.com/jmrplens/cs-routeros-bouncer/internal/config.BuildDate=${BUILD_DATE}" \
+      -X github.com/jmrplens/cs-routeros-bouncer/internal/config.BuildDate=${BUILD_DATE} \
+      -X github.com/crowdsecurity/go-cs-lib/version.Version=${VERSION}" \
     -o /cs-routeros-bouncer \
     ./cmd/cs-routeros-bouncer/
 
