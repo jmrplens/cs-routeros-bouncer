@@ -1,0 +1,147 @@
+project_name: cs-routeros-bouncer
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: cs-routeros-bouncer
+    main: ./cmd/cs-routeros-bouncer/
+    binary: cs-routeros-bouncer
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - freebsd
+      - windows
+    goarch:
+      - amd64
+      - arm64
+      - arm
+      - "386"
+      - mips64le
+      - mipsle
+      - riscv64
+    goarm:
+      - "6"
+      - "7"
+    ignore:
+      # Windows: only amd64 and arm64
+      - goos: windows
+        goarch: arm
+      - goos: windows
+        goarch: "386"
+      - goos: windows
+        goarch: mips64le
+      - goos: windows
+        goarch: mipsle
+      - goos: windows
+        goarch: riscv64
+      # macOS: only amd64 and arm64
+      - goos: darwin
+        goarch: arm
+      - goos: darwin
+        goarch: "386"
+      - goos: darwin
+        goarch: mips64le
+      - goos: darwin
+        goarch: mipsle
+      - goos: darwin
+        goarch: riscv64
+      # FreeBSD: amd64, arm64, arm
+      - goos: freebsd
+        goarch: "386"
+      - goos: freebsd
+        goarch: mips64le
+      - goos: freebsd
+        goarch: mipsle
+      - goos: freebsd
+        goarch: riscv64
+    ldflags:
+      - -s -w
+      - -X github.com/jmrplens/cs-routeros-bouncer/internal/config.Version={{.Version}}
+      - -X github.com/jmrplens/cs-routeros-bouncer/internal/config.Commit={{.ShortCommit}}
+      - -X github.com/jmrplens/cs-routeros-bouncer/internal/config.BuildDate={{.Date}}
+
+archives:
+  - id: default
+    formats:
+      - tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - LICENSE
+      - README.md
+      - config/cs-routeros-bouncer.yaml
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+changelog:
+  sort: asc
+  groups:
+    - title: "Features"
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: "Bug Fixes"
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: "Performance"
+      regexp: '^.*?perf(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: "Other"
+      order: 999
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+
+dockers_v2:
+  - images:
+      - "ghcr.io/jmrplens/cs-routeros-bouncer"
+    tags:
+      - "v{{ .Version }}"
+      - latest
+    platforms:
+      - linux/amd64
+      - linux/arm64
+      - linux/arm/v7
+    dockerfile: docker/Dockerfile.goreleaser
+    labels:
+      "org.opencontainers.image.title": "cs-routeros-bouncer"
+      "org.opencontainers.image.description": "CrowdSec bouncer for MikroTik RouterOS"
+      "org.opencontainers.image.source": "https://github.com/jmrplens/cs-routeros-bouncer"
+      "org.opencontainers.image.license": "MIT"
+      "org.opencontainers.image.version": "{{ .Version }}"
+      "org.opencontainers.image.revision": "{{ .FullCommit }}"
+      "org.opencontainers.image.created": "{{ .Date }}"
+
+release:
+  github:
+    owner: jmrplens
+    name: cs-routeros-bouncer
+  draft: false
+  prerelease: auto
+  name_template: "v{{ .Version }}"
+  header: |
+    ## CrowdSec Bouncer for MikroTik RouterOS — {{ .Tag }}
+
+    Install via binary download, Docker, or build from source.
+    See [documentation](https://jmrplens.github.io/cs-routeros-bouncer/) for setup instructions.
+  footer: |
+    ---
+    **Docker:** `docker pull ghcr.io/jmrplens/cs-routeros-bouncer:{{ .Version }}`
+    **Full Changelog:** https://github.com/jmrplens/cs-routeros-bouncer/compare/{{ .PreviousTag }}...{{ .Tag }}

@@ -1,0 +1,95 @@
+# cs-routeros-bouncer configuration
+# All options can also be set via environment variables (see README.md)
+
+crowdsec:
+  # CrowdSec LAPI URL
+  api_url: "http://localhost:8080/"
+  # Bouncer API key (register with: cscli bouncers add cs-routeros-bouncer)
+  api_key: ""
+  # How often to poll LAPI for decision updates
+  update_frequency: "10s"
+  # Filter decisions by origin (empty = all decisions)
+  # Use ["crowdsec", "cscli"] for local-only mode (no community blocklists)
+  origins: []
+  # Filter decisions by scope
+  scopes: ["ip", "range"]
+  # Only process these decision types
+  supported_decisions_types: ["ban"]
+  # Retry connecting to LAPI on startup failure
+  retry_initial_connect: true
+  # Interval for reporting usage metrics to LAPI (0 to disable)
+  lapi_metrics_interval: "15m"
+  # TLS authentication (optional)
+  # cert_path: "/etc/cs-routeros-bouncer/tls/cert.pem"
+  # key_path: "/etc/cs-routeros-bouncer/tls/key.pem"
+  # ca_cert_path: "/etc/cs-routeros-bouncer/tls/ca.pem"
+  # insecure_skip_verify: false
+
+mikrotik:
+  # RouterOS API address (host:port)
+  address: "192.168.0.1:8728"
+  # API username (create a dedicated user with minimal permissions)
+  username: "crowdsec"
+  # API password
+  password: ""
+  # Use TLS (port 8729)
+  tls: false
+  # Skip TLS certificate verification
+  tls_insecure: false
+  # Connection timeout
+  connection_timeout: "10s"
+  # Command execution timeout
+  command_timeout: "30s"
+
+firewall:
+  ipv4:
+    enabled: true
+    # Name of the IPv4 address list in MikroTik
+    address_list: "crowdsec-banned"
+  ipv6:
+    enabled: true
+    # Name of the IPv6 address list in MikroTik
+    address_list: "crowdsec6-banned"
+  filter:
+    # Create filter firewall rules
+    enabled: true
+    # Chains where filter rules are created
+    chains: ["input"]
+  raw:
+    # Create raw firewall rules (prerouting — blocks before connection tracking)
+    enabled: true
+    # Chains where raw rules are created
+    chains: ["prerouting"]
+  # Action for firewall rules: "drop" or "reject"
+  deny_action: "drop"
+  block_output:
+    # Block outgoing traffic to banned IPs (disabled by default)
+    enabled: false
+    # WAN interface for output rules (required if block_output enabled)
+    # interface: "ether1"
+    # Or use an interface list instead
+    # interface_list: "WAN"
+  # Where to place new rules: "top" (most secure) or "bottom"
+  rule_placement: "top"
+  # Comment prefix used to identify bouncer-managed resources in MikroTik
+  comment_prefix: "crowdsec-bouncer"
+  # Enable logging on firewall rules (logs matched packets in RouterOS log)
+  log: false
+  # Prefix for RouterOS log entries when log is enabled
+  log_prefix: "crowdsec-bouncer"
+
+logging:
+  # Log level: debug, info, warn, error
+  level: "info"
+  # Log format: text (human-readable) or json (structured)
+  format: "text"
+  # Log to file (optional, empty = stdout only)
+  # file: "/var/log/cs-routeros-bouncer.log"
+
+metrics:
+  # Enable Prometheus metrics endpoint
+  enabled: false
+  # Listen address for metrics server
+  listen_addr: "0.0.0.0"
+  # Listen port for metrics server
+  listen_port: 2112

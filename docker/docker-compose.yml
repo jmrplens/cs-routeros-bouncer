@@ -1,0 +1,18 @@
+services:
+  cs-routeros-bouncer:
+    image: ghcr.io/jmrplens/cs-routeros-bouncer:latest
+    container_name: cs-routeros-bouncer
+    restart: unless-stopped
+    volumes:
+      - ./config.yaml:/etc/cs-routeros-bouncer/config.yaml:ro
+    ports:
+      - "2112:2112"  # Prometheus metrics (optional, remove if not needed)
+    # Environment variables override config file values:
+    # environment:
+    #   CROWDSEC_API_URL: "http://crowdsec:8080/"
+    #   CROWDSEC_API_KEY: "your-api-key"
+    #   MIKROTIK_ADDRESS: "192.168.0.1:8728"
+    #   MIKROTIK_USERNAME: "crowdsec"
+    #   MIKROTIK_PASSWORD: "your-password"
+    #   METRICS_ENABLED: "true"
+    # network_mode: host  # Use if CrowdSec is on the host network

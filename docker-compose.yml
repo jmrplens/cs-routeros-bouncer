@@ -1,0 +1,41 @@
+services:
+  cs-routeros-bouncer:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: ghcr.io/jmrplens/cs-routeros-bouncer:latest
+    restart: unless-stopped
+    environment:
+      # CrowdSec LAPI
+      CROWDSEC_URL: "http://crowdsec:8080/"
+      CROWDSEC_BOUNCER_API_KEY: "${CROWDSEC_BOUNCER_API_KEY}"
+      CROWDSEC_UPDATE_FREQUENCY: "10s"
+      # CROWDSEC_ORIGINS: "crowdsec cscli"  # uncomment for local-only mode
+
+      # MikroTik RouterOS
+      MIKROTIK_HOST: "${MIKROTIK_HOST}"
+      MIKROTIK_USER: "${MIKROTIK_USER}"
+      MIKROTIK_PASS: "${MIKROTIK_PASS}"
+      MIKROTIK_TLS: "false"
+
+      # Firewall
+      FIREWALL_IPV4_ENABLED: "true"
+      FIREWALL_IPV6_ENABLED: "true"
+      FIREWALL_FILTER_ENABLED: "true"
+      FIREWALL_RAW_ENABLED: "true"
+      FIREWALL_DENY_ACTION: "drop"
+      # FIREWALL_BLOCK_OUTPUT: "false"
+      # FIREWALL_OUTPUT_INTERFACE: "ether1"
+
+      # Observability
+      METRICS_ENABLED: "true"
+      METRICS_PORT: "2112"
+      LOG_LEVEL: "info"
+    ports:
+      - "2112:2112"  # Prometheus metrics
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:2112/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

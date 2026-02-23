@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 CrowdSec Discourse
+    url: https://discourse.crowdsec.net/
+    about: Ask general CrowdSec questions on the official forum
+  - name: 📖 Documentation
+    url: https://github.com/jmrplens/cs-routeros-bouncer#readme
+    about: Check the README for configuration and troubleshooting

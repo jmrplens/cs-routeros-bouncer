@@ -1,0 +1,45 @@
+# Binaries
+/cs-routeros-bouncer
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Build output
+/dist/
+/bin/
+
+# Test binary
+*.test
+
+# Go coverage
+*.out
+coverage.html
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+*.env.local
+
+# Vendor (optional)
+# vendor/
+
+# Debug
+__debug_bin*
+config/test.yaml
+
+# Local development files (not committed)
+/local/
+
+# MkDocs build output
+/site/

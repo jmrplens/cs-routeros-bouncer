@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <rect width="64" height="64" rx="12" fill="#3F51B5"/>
+  <text x="32" y="26" font-family="monospace" font-size="14" font-weight="bold" fill="white" text-anchor="middle">CS</text>
+  <text x="32" y="42" font-family="monospace" font-size="10" fill="#C5CAE9" text-anchor="middle">ROS</text>
+  <path d="M14 50 h36" stroke="#7986CB" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="20" cy="54" r="2" fill="#7986CB"/>
+  <circle cx="32" cy="54" r="2" fill="#7986CB"/>
+  <circle cx="44" cy="54" r="2" fill="#7986CB"/>
+</svg>

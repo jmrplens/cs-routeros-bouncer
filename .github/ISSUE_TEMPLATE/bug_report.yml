@@ -1,0 +1,83 @@
+name: 🐛 Bug Report
+description: Report a bug or unexpected behavior
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please fill in as much detail as possible.
+
+  - type: input
+    id: version
+    attributes:
+      label: Bouncer version
+      description: "Output of `cs-routeros-bouncer --version` or Docker image tag"
+      placeholder: "v0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: routeros_version
+    attributes:
+      label: RouterOS version
+      description: "MikroTik RouterOS version (e.g., 7.21.3)"
+      placeholder: "7.21.3"
+    validations:
+      required: true
+
+  - type: input
+    id: routeros_model
+    attributes:
+      label: Router model
+      description: "MikroTik router model (e.g., RB5009, hAP ax3)"
+      placeholder: "RB5009UG+S+"
+
+  - type: dropdown
+    id: install_method
+    attributes:
+      label: Installation method
+      options:
+        - Docker / Docker Compose
+        - Binary (systemd)
+        - Binary (manual)
+        - Built from source
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug description
+      description: "What happened? What did you expect to happen?"
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration
+      description: "Relevant parts of your config (redact passwords/API keys!)"
+      render: yaml
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: "Relevant log output (set `logging.level: debug` for more detail)"
+      render: text
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: "How can we reproduce this issue?"
+      placeholder: |
+        1. Configure bouncer with ...
+        2. Start bouncer
+        3. Observe ...
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: "Any other relevant information (screenshots, router config, etc.)"

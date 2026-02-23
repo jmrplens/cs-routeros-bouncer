@@ -1,0 +1,101 @@
+# Router Setup
+
+This guide covers the MikroTik RouterOS configuration required for cs-routeros-bouncer.
+
+## API Service
+
+The bouncer communicates with MikroTik via the RouterOS API. Ensure the API service is enabled:
+
+```routeros
+/ip/service/print
+```
+
+You need either:
+
+- **api** (port 8728) — plaintext connection
+- **api-ssl** (port 8729) — TLS-encrypted connection (recommended for production)
+
+To enable:
+
+```routeros
+# Enable plaintext API
+/ip/service/enable api
+
+# Enable TLS API (recommended)
+/ip/service/enable api-ssl
+```
+
+!!! tip "Production recommendation"
+    Use TLS (port 8729) for production deployments. Configure the bouncer with `mikrotik.tls: true`.
+
+## API User
+
+Create a dedicated user with minimal permissions:
+
+```routeros
+# Create a group with only the required policies
+/user/group/add name=crowdsec policy=read,write,api,sensitive,!ftp,!local,!ssh,!reboot,!policy,!test,!password,!sniff,!romon,!rest-api
+
+# Create the API user
+/user/add name=crowdsec group=crowdsec password=YOUR_SECURE_PASSWORD
+```
+
+### Required policies
+
+| Policy | Why |
+|--------|-----|
+| `read` | Read firewall rules and address lists |
+| `write` | Create/modify/delete firewall rules and address lists |
+| `api` | Access the RouterOS API |
+| `sensitive` | Required for some API operations |
+
+### Denied policies
+
+All other policies are explicitly denied to follow the principle of least privilege:
+
+`!ftp`, `!local`, `!ssh`, `!reboot`, `!policy`, `!test`, `!password`, `!sniff`, `!romon`, `!rest-api`
+
+## Firewall access
+
+If you have firewall rules restricting API access, allow connections from the bouncer host:
+
+```routeros
+/ip/firewall/filter/add chain=input protocol=tcp dst-port=8728 src-address=BOUNCER_IP action=accept comment="Allow CrowdSec bouncer API access" place-before=0
+```
+
+Replace `BOUNCER_IP` with the IP address of the machine running the bouncer.
+
+!!! warning "Security"
+    Restrict API access to only the bouncer host IP. Never expose the API port to the internet.
+
+## TLS Configuration
+
+For TLS connections:
+
+1. Ensure your router has a valid certificate (self-signed or CA-signed)
+2. Enable the `api-ssl` service
+3. Configure the bouncer:
+
+```yaml
+mikrotik:
+  address: "192.168.0.1:8729"
+  tls: true
+  tls_insecure: false  # Set to true for self-signed certs
+```
+
+## Verification
+
+After setup, verify the API user can connect:
+
+```bash
+# Test from the bouncer host
+curl -s telnet://ROUTER_IP:8728
+# Should connect (Ctrl+C to exit)
+```
+
+Or use the bouncer's health endpoint after starting:
+
+```bash
+curl http://localhost:2112/health
+# {"status":"ok","routeros_connected":true,"version":"v0.1.0"}
+```
