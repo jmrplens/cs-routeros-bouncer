@@ -81,10 +81,25 @@ This allows the bouncer to precisely identify and manage its own resources witho
 
 When adding an IP to the address list, the bouncer uses an "optimistic-add" approach:
 
-1. Try to add the IP directly (~1ms)
+1. Try to add the IP directly (~1–3 ms)
 2. If RouterOS returns "already have such entry", silently succeed
 
-This is significantly faster than the "check-first" approach (~400ms per IP), which would require listing all entries first.
+This is significantly faster than the "check-first" approach (~400 ms per IP), which would require listing all entries first.
+
+### Connection pool
+
+The bouncer maintains a pool of 4 persistent RouterOS API connections. During reconciliation, work is distributed across all connections in parallel using the generic `ParallelExec` helper, achieving ~147–168 IPs/s throughput.
+
+### Script-based bulk add
+
+For initial reconciliation, the bouncer generates RouterOS scripts that add entries in chunks of 100 IPs per script. Each entry uses `:do { ... } on-error={}` to gracefully skip duplicates. This approach is ~97× faster than individual sequential API calls for large lists.
+
+### In-memory address cache
+
+An in-memory map (`map[string]struct{}` with `sync.RWMutex`) tracks all addresses currently on the router. This provides:
+
+- **O(1) unban lookups**: When an IP is unbanned, the cache is checked first. If the IP is not in the cache (e.g., already expired on the router), the API call is skipped entirely.
+- **Pre-filtering during startup**: Deletes received during initial decision collection are pre-filtered against incoming bans to avoid unnecessary work.
 
 ### Single named address lists
 

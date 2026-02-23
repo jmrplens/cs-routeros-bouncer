@@ -98,4 +98,4 @@ Maximum time to wait for the initial API connection. Uses Go duration format.
 Maximum time to wait for a single API command to complete. Increase if you have a slow router or large address lists.
 
 !!! tip
-    If you see timeout errors during reconciliation with large IP lists (20,000+), increase `command_timeout` to `60s` or more.
+    If you see timeout errors during reconciliation with large IP lists (20,000+), increase `command_timeout` to `60s` or more. Note that with the script-based bulk add, individual API commands are small (100 IPs per script), so the default `30s` is sufficient for most setups.

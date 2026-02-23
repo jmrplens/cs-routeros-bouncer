@@ -44,14 +44,28 @@ sequenceDiagram
 
 ## Performance
 
-Reconciliation with large lists:
+Reconciliation uses a **connection pool** (4 parallel API connections) and **script-based bulk add** (chunks of 100 entries) to maximize throughput. Benchmarked on a **MikroTik RB5009UG+S+** (ARM64, 4 cores @ 1400 MHz, RouterOS 7.21.3):
 
-| IP count | Typical duration |
-|----------|-----------------|
-| 100 | < 1 second |
-| 1,000 | ~2 seconds |
-| 10,000 | ~15 seconds |
-| 20,000+ | ~30+ seconds |
+### Cold start (empty router)
+
+| IP count | Duration | Throughput | Router CPU peak |
+|----------|----------|------------|-----------------|
+| ~1,500 (local only) | **~9 s** | ~168 IPs/s | 14% |
+| ~25,000 (local + CAPI) | **~2 min 50 s** | ~147 IPs/s | 23% |
+
+### Restart (entries already on router)
+
+| Existing IPs | Duration | Router CPU peak |
+|-------------|----------|-----------------|
+| ~25,000 | **~10 s** | 16% |
+
+When all IPs are already present, reconciliation only performs a diff — no bulk add or remove operations are needed, completing in seconds.
+
+### Mass removal (e.g., switching from CAPI to local-only)
+
+| Removed | Duration | Throughput | Router CPU peak |
+|---------|----------|------------|-----------------|
+| ~23,500 | **~3 min 45 s** | ~105 removes/s | 22% |
 
 !!! tip
     If reconciliation is slow, consider using local-only mode (`origins: ["crowdsec", "cscli"]`) to reduce the number of decisions.

@@ -107,21 +107,30 @@ This should not happen with cs-routeros-bouncer. If you see duplicates:
 ### High memory/CPU usage at startup
 
 !!! info "Expected behavior"
-    Large community blocklists (CAPI) can contain 20,000+ IPs. Initial reconciliation processes them all.
+    Large community blocklists (CAPI) can contain 20,000+ IPs. Initial reconciliation processes them all using script-based bulk add with a connection pool.
+
+**Typical startup times** (benchmarked on RB5009UG+S+, ARM64, RouterOS 7.21.3):
+
+| Scenario | IPs | Duration | Router CPU peak |
+|----------|-----|----------|-----------------|
+| Local decisions only | ~1,500 | ~9 s | 14% |
+| Local + CAPI community | ~25,000 | ~2 min 50 s | 23% |
+| Restart (IPs already present) | ~25,000 | ~10 s | 16% |
 
 **Solutions:**
 
-- Use `crowdsec.origins: ["crowdsec", "cscli"]` to sync only local decisions
-- This is a one-time cost at startup; runtime processing is ~1ms per IP
+- Use `crowdsec.origins: ["crowdsec", "cscli"]` to sync only local decisions (~1,500 IPs, ~9 s startup)
+- Startup is a one-time cost; runtime processing is ~1–3 ms per IP
 - Increase `mikrotik.command_timeout` if you see timeout errors
 
 ### Slow reconciliation
 
-If reconciliation takes too long:
+If reconciliation takes longer than expected:
 
 1. Reduce the number of decisions by using origin filtering
 2. Increase `mikrotik.command_timeout` to avoid timeouts
-3. Check router CPU — the RouterOS API can be slow under load
+3. Check router CPU — ensure the router is not overloaded by other services
+4. Verify the RouterOS API connection is direct (not through NAT or VPN)
 
 ## Logging
 

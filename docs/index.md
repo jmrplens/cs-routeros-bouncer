@@ -17,7 +17,7 @@ hide:
 
     ---
 
-    Adds IPs on ban, removes on unban. No bulk re-upload, no duplicates. ~1ms per operation.
+    Adds IPs on ban, removes on unban. No bulk re-upload, no duplicates. ~1–3 ms per operation.
 
 -   :material-sync:{ .lg .middle } **State Reconciliation**
 

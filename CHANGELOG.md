@@ -39,7 +39,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Performance
 
-- Single IPv4 add: ~1ms (optimistic-add pattern)
-- Single IPv6 add: ~8ms
-- Batch 500 IPv4 IPs: ~5.5s
-- Full reconciliation of 25,000 decisions: ~3 minutes
+- Single IPv4 add: ~1 ms (optimistic-add pattern)
+- Single IPv6 add: ~8 ms
+- **Bulk add** (script-based, chunks of 100): ~168 IPs/s for local (~1,500 IPs in ~9 s), ~147 IPs/s for CAPI (~25,000 IPs in ~2 min 50 s)
+- **Mass removal** (parallel, 4 connections): ~105 removes/s (~23,500 IPs in ~3 min 45 s)
+- **Restart with existing entries**: ~10 s for 25,000 IPs (diff-only, no bulk needed)
+- Router CPU peak during reconciliation: 14% (local), 23% (CAPI 25k)
+- Steady-state router CPU: 8–11% (local-only), 15–20% (with CAPI)

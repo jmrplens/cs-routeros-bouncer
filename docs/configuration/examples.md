@@ -80,7 +80,7 @@ mikrotik:
 ```
 
 !!! tip "When to use local-only mode"
-    Community blocklists (CAPI) can contain 20,000+ IPs. If your router has limited resources or you only want to block IPs detected on your network, local-only mode is recommended.
+    Community blocklists (CAPI) can contain 20,000+ IPs. If your router has limited resources or you only want to block IPs detected on your network, local-only mode is recommended. Local-only (~1,500 IPs) reconciles in ~9 s with 14% CPU peak. Full CAPI (~25,000 IPs) takes ~2 min 50 s with 23% CPU peak.
 
 ## Docker Compose with environment variables
 

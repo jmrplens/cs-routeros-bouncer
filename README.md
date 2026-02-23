@@ -12,6 +12,7 @@ A [CrowdSec](https://www.crowdsec.net/) remediation component (bouncer) for [Mik
 - **Zero manual router configuration** — auto-creates and auto-removes firewall filter/raw rules on start/stop
 - **Individual IP management** — adds on ban, removes on unban (no bulk re-upload, no duplicates)
 - **State reconciliation** — on start/restart, syncs CrowdSec decisions with MikroTik state (adds missing, removes stale)
+- **High-performance sync** — connection pool, script-based bulk add, in-memory cache (~1,500 IPs in ~9 s, ~25,000 IPs in ~2 min 50 s)
 - **Graceful shutdown** — removes firewall rules on stop (address list entries expire via MikroTik timeout)
 - **IPv4 + IPv6** — independently toggleable
 - **Input + Output blocking** — output blocking optional with configurable interface/interface-list
@@ -342,16 +343,17 @@ mikrotik:
 
 ### Startup
 
-1. Connects to CrowdSec LAPI and MikroTik RouterOS API
+1. Connects to CrowdSec LAPI and MikroTik RouterOS API (connection pool with 4 connections)
 2. Creates firewall rules (filter and/or raw) that reference named address lists
-3. Collects all current CrowdSec decisions
-4. **Reconciles** with MikroTik address lists — adds missing IPs, removes stale ones
+3. Collects all current CrowdSec decisions (bans and deletes are collected simultaneously to avoid stale data)
+4. **Reconciles** with MikroTik address lists — adds missing IPs using script-based bulk add (chunks of 100), removes stale ones in parallel
+5. Populates in-memory address cache for O(1) lookups during runtime
 
 ### Runtime
 
-- **Ban**: Adds IP to the MikroTik address list with the CrowdSec ban duration as timeout
-- **Unban**: Finds and removes the IP from the address list immediately
-- Uses an optimistic-add pattern (~1ms per IP vs ~400ms with lookup-first)
+- **Ban**: Adds IP to the MikroTik address list with the CrowdSec ban duration as timeout (~1–3 ms)
+- **Unban**: Checks in-memory cache first — if IP not present, skips API call entirely; otherwise finds and removes the IP immediately
+- Uses an optimistic-add pattern (~1–3 ms per IP vs ~400 ms with lookup-first)
 
 ### Shutdown (SIGTERM / SIGINT)
 
@@ -374,29 +376,52 @@ Rules are placed at the **top** of the chain by default (`rule_placement: top`) 
 
 ### Performance
 
-Tested on a **MikroTik RB5009UG+S+** (ARM64, 4 cores @ 1400MHz, RouterOS 7.21) with the bouncer running on a separate Linux host connected via the RouterOS API (plaintext, port 8728):
+Tested on a **MikroTik RB5009UG+S+** (ARM64, 4 cores @ 1400 MHz, 1 GB RAM, RouterOS 7.21.3) with the bouncer running on a separate Linux host connected via the RouterOS API (plaintext, port 8728).
+
+The bouncer uses a **connection pool** (4 parallel API connections), **script-based bulk add** (chunks of 100 entries), and an **in-memory address cache** for O(1) lookups during unban operations.
+
+#### Initial reconciliation (cold start, empty router)
+
+| Scenario | IPs synced | Time | Throughput | Router CPU peak |
+|----------|-----------|------|------------|-----------------|
+| Local decisions only | **1,510** (IPv4 + IPv6) | **~9 s** | ~168 IPs/s | 14% |
+| Local + CAPI community | **25,059** (24,490 IPv4 + 569 IPv6) | **~2 min 50 s** | ~147 IPs/s | 23% |
+
+#### Restart with existing entries on router
+
+| Scenario | Existing IPs | Time | Router CPU peak |
+|----------|-------------|------|-----------------|
+| Restart, all IPs already present | **25,065** | **~10 s** | 16% |
+| Restart, 5 expired during downtime | **25,065** (added 1, removed 4) | **~10 s** | 16% |
+
+#### Mass removal (switching from CAPI to local-only)
+
+| Removed | Remaining | Time | Throughput | Router CPU peak |
+|---------|-----------|------|------------|-----------------|
+| **23,548** (22,980 IPv4 + 568 IPv6) | 1,519 IPv4 + 1 IPv6 | **~3 min 45 s** | ~105 removes/s | 22% |
+
+#### Live operation (individual ban/unban)
+
+| Operation | Typical latency | Notes |
+|-----------|----------------|-------|
+| Ban (add IP) | **~1–3 ms** | Optimistic-add, no lookup needed |
+| Unban (remove IP) | **~7 s** end-to-end | Includes LAPI polling interval (15 s max). API call itself ~2 ms |
+| Unban cache fast-path | **< 1 ms** | IP not in cache → skip API call entirely |
+
+#### Resource usage
 
 | Metric | Value |
 |--------|-------|
-| Total IPs synced | **25,106** (24,542 IPv4 + 564 IPv6) |
-| Initial sync time | **~6 min 45s** (cold start, empty router) |
-| Firewall rules created | 4 rules in ~2s |
-| Avg throughput | ~62 IPs/second |
-| Bouncer memory (steady) | ~30 MB |
-| Bouncer CPU (steady) | <1% |
+| Firewall rules created | 4 rules in ~2 s |
+| Bouncer memory (steady state) | ~30 MB |
+| Bouncer CPU (steady state) | < 1% |
+| Router CPU (steady state, local-only) | 8–11% |
+| Router CPU (steady state, local + CAPI) | 15–20% |
 
-**Individual operation latency** (RouterOS API, 20 trials per count, median):
-
-| IPs | Add (median) | Remove (median) | Per-IP add | Per-IP remove |
-|-----|-------------|-----------------|------------|---------------|
-| 1   | 2.3 ms      | 2.0 ms          | 2.3 ms     | 2.0 ms        |
-| 2   | 5.2 ms      | 4.6 ms          | 2.6 ms     | 2.3 ms        |
-| 5   | 45.1 ms     | 12.8 ms         | 9.0 ms     | 2.6 ms        |
-| 10  | 13.9 ms     | 10.7 ms         | 1.4 ms     | 1.1 ms        |
-
-> **Note:** Initial sync speed depends on RouterOS API latency and the number of existing entries.
-> Individual operations are typically **1–3 ms per IP** (median). Occasional latency spikes
-> (p95 up to ~50 ms) are caused by RouterOS internal scheduling on large address lists.
+> **Note:** All benchmarks measured on a real RB5009UG+S+ with production traffic. Router CPU includes
+> SNMP monitoring (10 s interval) and normal network forwarding. Individual add/remove operations are
+> typically **1–3 ms per IP** (median). Occasional latency spikes (p95 up to ~50 ms) are caused by
+> RouterOS internal scheduling on large address lists.
 
 ---
 
