@@ -210,7 +210,7 @@ See [`config/cs-routeros-bouncer.yaml`](config/cs-routeros-bouncer.yaml) for the
 | `crowdsec.key_path` | `CROWDSEC_KEY_PATH` | | TLS client key path |
 | `crowdsec.ca_cert_path` | `CROWDSEC_CA_CERT_PATH` | | TLS CA certificate path |
 
-> **Note on `supported_decisions_types`:** This bouncer implements the **`ban`** action (drop/reject at the firewall level). While the field accepts a list, `ban` is the only type that results in firewall rules being created. Other CrowdSec decision types like `captcha` or `throttle` are not applicable to a network firewall bouncer and will be ignored even if listed.
+> **Note on `supported_decisions_types`:** Only `ban` is implemented — see [detailed explanation](docs/configuration/crowdsec.md#crowdsecsupported_decisions_types) in the configuration docs.
 
 ### MikroTik
 

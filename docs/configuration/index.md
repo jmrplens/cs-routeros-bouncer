@@ -80,7 +80,7 @@ All options at a glance, grouped by section. See the dedicated pages for detaile
 | `firewall.block_output.interface` | `FIREWALL_OUTPUT_INTERFACE` | | WAN interface |
 | `firewall.block_output.interface_list` | `FIREWALL_OUTPUT_INTERFACE_LIST` | | WAN interface list |
 
-### [Logging](logging-metrics.md)
+### [Logging](logging-metrics.md#logging)
 
 | Config Key | Env Variable | Default | Description |
 |---|---|---|---|
@@ -88,7 +88,7 @@ All options at a glance, grouped by section. See the dedicated pages for detaile
 | `logging.format` | `LOG_FORMAT` | `text` | Log format: `text` or `json` |
 | `logging.file` | `LOG_FILE` | | Log file path (empty = stdout only) |
 
-### [Metrics](logging-metrics.md)
+### [Metrics](logging-metrics.md#prometheus-metrics)
 
 | Config Key | Env Variable | Default | Description |
 |---|---|---|---|
