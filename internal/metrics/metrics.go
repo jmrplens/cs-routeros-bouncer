@@ -57,6 +57,21 @@ var (
 		Name: "crowdsec_bouncer_start_time_seconds",
 		Help: "Unix timestamp of bouncer startup.",
 	})
+
+	droppedBytesTotal = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "crowdsec_bouncer_dropped_bytes_total",
+		Help: "Cumulative bytes dropped by firewall rules.",
+	})
+
+	droppedPacketsTotal = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "crowdsec_bouncer_dropped_packets_total",
+		Help: "Cumulative packets dropped by firewall rules.",
+	})
+
+	activeDecisionsByOrigin = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "crowdsec_bouncer_active_decisions_by_origin",
+		Help: "Number of active decisions by CrowdSec origin.",
+	}, []string{"origin"})
 )
 
 // RecordDecision increments the decisions counter.
@@ -103,8 +118,10 @@ func SetActiveDecisionsByOrigin(origin string, count int64) {
 	defer originDecisionsMu.Unlock()
 	if count <= 0 {
 		delete(originDecisions, origin)
+		activeDecisionsByOrigin.WithLabelValues(origin).Set(0)
 	} else {
 		originDecisions[origin] = count
+		activeDecisionsByOrigin.WithLabelValues(origin).Set(float64(count))
 	}
 }
 
@@ -136,6 +153,8 @@ func SetDroppedCounters(bytes, packets uint64) {
 	droppedCountersMu.Lock()
 	defer droppedCountersMu.Unlock()
 	droppedCounters = DroppedCounters{Bytes: bytes, Packets: packets}
+	droppedBytesTotal.Set(float64(bytes))
+	droppedPacketsTotal.Set(float64(packets))
 }
 
 // GetAndResetDroppedDeltas returns the delta since last call and resets the baseline.
