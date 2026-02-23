@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # =============================================================================
 # T2: Cache Consistency — Ban / Unban Lifecycle
 # =============================================================================
@@ -68,7 +69,7 @@ t2_2_live_ban() {
     count_before=$(ssh_count_addresses "${TEST_IPV4_LIST}")
 
     lapi_add_decision "$TEST_IP_BAN" "5m" "functional-test-ban"
-    log "Added $TEST_IP_BAN, waiting for bouncer poll..."
+    log "Added $TEST_IP_BAN (list had $count_before entries), waiting for bouncer poll..."
 
     local found=false
     for i in $(seq 1 12); do

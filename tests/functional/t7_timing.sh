@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # =============================================================================
 # T7: Timing Measurements
 # =============================================================================
@@ -59,7 +60,7 @@ t7_2_ban_latency() {
     lapi_add_decision "$ip" "5m" "latency-test"
 
     local found=false
-    for i in $(seq 1 20); do
+    for _ in $(seq 1 20); do
         sleep 2
         if ssh_list_addresses "${TEST_IPV4_LIST}" | grep -qF "$ip"; then
             found=true; break
@@ -101,7 +102,7 @@ t7_3_unban_latency() {
     lapi_add_decision "$ip" "10m" "unban-latency-test"
 
     local setup_ok=false
-    for i in $(seq 1 20); do
+    for _ in $(seq 1 20); do
         sleep 3
         if ssh_list_addresses "${TEST_IPV4_LIST}" | grep -qF "$ip"; then
             setup_ok=true; break
@@ -114,7 +115,7 @@ t7_3_unban_latency() {
     lapi_remove_decision "$ip"
 
     local removed=false
-    for i in $(seq 1 20); do
+    for _ in $(seq 1 20); do
         sleep 2
         if ! ssh_list_addresses "${TEST_IPV4_LIST}" | grep -qF "$ip"; then
             removed=true; break

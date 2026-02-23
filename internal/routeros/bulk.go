@@ -80,10 +80,10 @@ func buildBulkAddScript(proto, list string, entries []BulkEntry) string {
 		comment := strings.ReplaceAll(e.Comment, "\"", "\\\"")
 
 		sb.WriteString(":do {\n")
-		sb.WriteString(fmt.Sprintf("  %s/firewall/address-list/add list=\"%s\" address=\"%s\" comment=\"%s\"",
-			prefix, list, addr, comment))
+		fmt.Fprintf(&sb, "  %s/firewall/address-list/add list=\"%s\" address=\"%s\" comment=\"%s\"",
+			prefix, list, addr, comment)
 		if e.Timeout != "" {
-			sb.WriteString(fmt.Sprintf(" timeout=\"%s\"", e.Timeout))
+			fmt.Fprintf(&sb, " timeout=\"%s\"", e.Timeout)
 		}
 		sb.WriteString("\n  :set count ($count + 1)\n")
 		sb.WriteString("} on-error={}\n") // silently skip duplicates

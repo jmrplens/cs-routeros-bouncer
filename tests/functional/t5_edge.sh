@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # =============================================================================
 # T5: Edge Cases
 # =============================================================================
@@ -139,7 +140,8 @@ t5_4_restart_idempotency() {
         sleep 10
         bouncer_wait_reconciliation 60 || true
         sleep 5
-        counts+=($(ssh_count_addresses "${TEST_IPV4_LIST}"))
+        local _c; _c=$(ssh_count_addresses "${TEST_IPV4_LIST}")
+        counts+=("$_c")
         log "Restart $i: count=${counts[-1]}"
     done
 

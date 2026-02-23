@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # =============================================================================
 # T3: Bulk Operations — Reconciliation from Different States
 # =============================================================================
@@ -50,6 +51,7 @@ t3_1_full_reconciliation() {
     bouncer_wait_reconciliation 120
 
     local ts_after; ts_after=$(date '+%Y-%m-%d %H:%M:%S')
+    log "Reconciliation finished at $ts_after"
     local after_count
     after_count=$(ssh_count_addresses "${TEST_IPV4_LIST}")
 

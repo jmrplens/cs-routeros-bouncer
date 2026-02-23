@@ -37,6 +37,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source the shared helper library (test framework, SSH, LAPI, SNMP, etc.)
+# shellcheck source=lib/helpers.sh
 source "${SCRIPT_DIR}/lib/helpers.sh"
 
 # Load environment variables from .env (router credentials, SNMP community, etc.)
@@ -120,10 +121,11 @@ fi
 # context with access to all helpers.sh functions and global variables.
 for group in "${RUN_GROUPS[@]}"; do
     script="${SCRIPT_DIR}/${group}_*.sh"
-    # shellcheck disable=SC2086
+    # shellcheck disable=SC2086,SC2206
     found=(${script})
     if [[ -f "${found[0]}" ]]; then
         echo -e "\n${BOLD}━━━ ${group^^} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        # shellcheck disable=SC1090
         source "${found[0]}"
     else
         warn "Test group $group not found"

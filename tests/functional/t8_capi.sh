@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # =============================================================================
 # T8: CAPI Stress Test — ~25,000 IPs (Community Blocklist)
 # =============================================================================
@@ -210,7 +211,7 @@ t8_6_unban_latency_large() {
     lapi_remove_decision "$ip"
 
     local removed=false
-    for i in $(seq 1 15); do
+    for _ in $(seq 1 15); do
         sleep 2
         if ! ssh_list_addresses "${TEST_IPV4_LIST}" | grep -qF "$ip"; then
             removed=true; break

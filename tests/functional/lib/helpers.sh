@@ -95,6 +95,7 @@ run_test() {
         TESTS_FAILED=$((TESTS_FAILED + 1))
         FAILED_NAMES+=("$name")
         echo -e "  ${RED}✘ FAIL${NC} (${elapsed_ms}ms)"
+        # shellcheck disable=SC2001
         echo "$output" | sed 's/^/    /'
     fi
 }
@@ -139,7 +140,10 @@ print_summary() {
 load_env() {
     local envfile="${SCRIPT_DIR:-.}/.env"
     if [[ -f "$envfile" ]]; then
-        set -a; source "$envfile"; set +a
+        set -a
+        # shellcheck disable=SC1090
+        source "$envfile"
+        set +a
     else
         err ".env not found at $envfile"; exit 1
     fi
@@ -179,6 +183,7 @@ require_var() {
 # Returns: command output with \r stripped; stderr is suppressed.
 # Uses env vars: MIKROTIK_SSH_KEY, MIKROTIK_SSH_PORT, MIKROTIK_SSH_USER,
 #                MIKROTIK_SSH_HOST.
+# shellcheck disable=SC2153
 ssh_cmd() {
     ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes \
         -i "${MIKROTIK_SSH_KEY}" -p "${MIKROTIK_SSH_PORT}" \
@@ -374,13 +379,20 @@ lapi_remove_decision() {
 # produced after the service was (re)started, avoiding false matches on
 # stale entries from a previous run.
 
+# The following functions are invoked indirectly by test scripts that source
+# this library.  shellcheck SC2317 is suppressed because static analysis
+# within helpers.sh alone cannot see calls in t1-t8 files.
+# shellcheck disable=SC2317
+
 # bouncer_start — start the bouncer service.
 bouncer_start()   { systemctl start cs-routeros-bouncer 2>/dev/null; }
 # bouncer_stop — stop the bouncer service.
 bouncer_stop()    { systemctl stop cs-routeros-bouncer 2>/dev/null; }
 # bouncer_restart — restart the bouncer service.
+# shellcheck disable=SC2317
 bouncer_restart() { systemctl restart cs-routeros-bouncer 2>/dev/null; }
 # bouncer_running — return 0 if the bouncer service is active.
+# shellcheck disable=SC2317
 bouncer_running() { systemctl is-active --quiet cs-routeros-bouncer; }
 
 # Timestamp of the last bouncer_start / bouncer_restart, used by
