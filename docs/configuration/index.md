@@ -26,14 +26,34 @@ The configuration is divided into five sections:
 
 ## Quick reference
 
-All options at a glance, grouped by section. See the dedicated pages for detailed descriptions.
+All options at a glance. See the dedicated pages for detailed descriptions.
 
-### [CrowdSec](crowdsec.md)
+### Basic parameters
+
+The essential settings to get the bouncer running. Most deployments only need these.
 
 | Config Key | Env Variable | Default | Description |
 |---|---|---|---|
 | `crowdsec.api_url` | `CROWDSEC_URL` | `http://localhost:8080/` | CrowdSec LAPI URL |
 | `crowdsec.api_key` | `CROWDSEC_BOUNCER_API_KEY` | *(required)* | Bouncer API key |
+| `mikrotik.address` | `MIKROTIK_HOST` | `192.168.0.1:8728` | RouterOS API address (`host:port`) |
+| `mikrotik.username` | `MIKROTIK_USER` | `crowdsec` | API username |
+| `mikrotik.password` | `MIKROTIK_PASS` | *(required)* | API password |
+| `firewall.ipv4.enabled` | `FIREWALL_IPV4_ENABLED` | `true` | Enable IPv4 blocking |
+| `firewall.ipv6.enabled` | `FIREWALL_IPV6_ENABLED` | `true` | Enable IPv6 blocking |
+| `firewall.filter.enabled` | `FIREWALL_FILTER_ENABLED` | `true` | Create filter firewall rules |
+| `firewall.raw.enabled` | `FIREWALL_RAW_ENABLED` | `true` | Create raw/prerouting rules |
+| `firewall.deny_action` | `FIREWALL_DENY_ACTION` | `drop` | Action: `drop` or `reject` |
+| `logging.level` | `LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
+
+### Advanced parameters
+
+Fine-tuning options for decision filtering, TLS, performance, firewall customization, and observability. The defaults work well for most setups.
+
+#### [CrowdSec](crowdsec.md) — polling, filtering & TLS
+
+| Config Key | Env Variable | Default | Description |
+|---|---|---|---|
 | `crowdsec.update_frequency` | `CROWDSEC_UPDATE_FREQUENCY` | `10s` | Poll interval |
 | `crowdsec.lapi_metrics_interval` | `CROWDSEC_LAPI_METRICS_INTERVAL` | `15m` | Usage metrics reporting interval (`0` = disabled) |
 | `crowdsec.origins` | `CROWDSEC_ORIGINS` | `[]` (all) | Filter by origin |
@@ -47,52 +67,40 @@ All options at a glance, grouped by section. See the dedicated pages for detaile
 | `crowdsec.key_path` | `CROWDSEC_KEY_PATH` | | Client key path |
 | `crowdsec.ca_cert_path` | `CROWDSEC_CA_CERT_PATH` | | CA cert path |
 
-### [MikroTik](mikrotik.md)
+#### [MikroTik](mikrotik.md) — TLS & performance
 
 | Config Key | Env Variable | Default | Description |
 |---|---|---|---|
-| `mikrotik.address` | `MIKROTIK_HOST` | `192.168.0.1:8728` | API address (`host:port`) |
-| `mikrotik.username` | `MIKROTIK_USER` | `crowdsec` | API username |
-| `mikrotik.password` | `MIKROTIK_PASS` | *(required)* | API password |
 | `mikrotik.tls` | `MIKROTIK_TLS` | `false` | Use TLS |
 | `mikrotik.tls_insecure` | `MIKROTIK_TLS_INSECURE` | `false` | Skip TLS verify |
 | `mikrotik.connection_timeout` | `MIKROTIK_CONN_TIMEOUT` | `10s` | Connect timeout |
 | `mikrotik.command_timeout` | `MIKROTIK_CMD_TIMEOUT` | `30s` | Command timeout |
 | `mikrotik.pool_size` | `MIKROTIK_POOL_SIZE` | `4` | Parallel API connections (1–20) |
 
-### [Firewall](firewall.md)
+#### [Firewall](firewall.md) — rules, interfaces & logging
 
 | Config Key | Env Variable | Default | Description |
 |---|---|---|---|
-| `firewall.ipv4.enabled` | `FIREWALL_IPV4_ENABLED` | `true` | Enable IPv4 |
 | `firewall.ipv4.address_list` | `FIREWALL_IPV4_ADDRESS_LIST` | `crowdsec-banned` | IPv4 list name |
-| `firewall.ipv6.enabled` | `FIREWALL_IPV6_ENABLED` | `true` | Enable IPv6 |
 | `firewall.ipv6.address_list` | `FIREWALL_IPV6_ADDRESS_LIST` | `crowdsec6-banned` | IPv6 list name |
-| `firewall.filter.enabled` | `FIREWALL_FILTER_ENABLED` | `true` | Filter rules |
 | `firewall.filter.chains` | `FIREWALL_FILTER_CHAINS` | `["input"]` | Filter chains |
-| `firewall.raw.enabled` | `FIREWALL_RAW_ENABLED` | `true` | Raw rules |
 | `firewall.raw.chains` | `FIREWALL_RAW_CHAINS` | `["prerouting"]` | Raw chains |
-| `firewall.deny_action` | `FIREWALL_DENY_ACTION` | `drop` | Action: `drop` or `reject` |
 | `firewall.rule_placement` | `FIREWALL_RULE_PLACEMENT` | `top` | Placement: `top` or `bottom` |
 | `firewall.comment_prefix` | `FIREWALL_COMMENT_PREFIX` | `crowdsec-bouncer` | Comment prefix |
 | `firewall.log` | `FIREWALL_LOG` | `false` | Enable rule logging |
 | `firewall.log_prefix` | `FIREWALL_LOG_PREFIX` | `crowdsec-bouncer` | Log prefix |
+| `firewall.block_input.interface` | `FIREWALL_INPUT_INTERFACE` | | Restrict input/raw rules to interface (empty = all) |
+| `firewall.block_input.interface_list` | `FIREWALL_INPUT_INTERFACE_LIST` | | Restrict input/raw rules to interface list (empty = all) |
 | `firewall.block_output.enabled` | `FIREWALL_BLOCK_OUTPUT` | `false` | Block outbound |
 | `firewall.block_output.interface` | `FIREWALL_OUTPUT_INTERFACE` | | WAN interface |
 | `firewall.block_output.interface_list` | `FIREWALL_OUTPUT_INTERFACE_LIST` | | WAN interface list |
 
-### [Logging](logging-metrics.md#logging)
+#### [Logging & Metrics](logging-metrics.md) — format, file output & Prometheus
 
 | Config Key | Env Variable | Default | Description |
 |---|---|---|---|
-| `logging.level` | `LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
 | `logging.format` | `LOG_FORMAT` | `text` | Log format: `text` or `json` |
 | `logging.file` | `LOG_FILE` | | Log file path (empty = stdout only) |
-
-### [Metrics](logging-metrics.md#prometheus-metrics)
-
-| Config Key | Env Variable | Default | Description |
-|---|---|---|---|
 | `metrics.enabled` | `METRICS_ENABLED` | `false` | Enable Prometheus `/metrics` endpoint |
 | `metrics.listen_addr` | `METRICS_ADDR` | `0.0.0.0` | Listen address |
 | `metrics.listen_port` | `METRICS_PORT` | `2112` | Listen port |

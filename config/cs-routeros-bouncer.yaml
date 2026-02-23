@@ -1,12 +1,20 @@
 # cs-routeros-bouncer configuration
 # All options can also be set via environment variables (see README.md)
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Basic parameters — the essential settings to get the bouncer running.
+# Most deployments only need to adjust these values.
+# ──────────────────────────────────────────────────────────────────────────────
+
 crowdsec:
   # CrowdSec LAPI URL
   api_url: "http://localhost:8080/"
   # Bouncer API key (register with: cscli bouncers add cs-routeros-bouncer)
   api_key: ""
   # How often to poll LAPI for decision updates
+  # ────────────────────────────────────────────────────────────────────────────
+  # Advanced CrowdSec parameters (defaults work for most setups)
+  # ────────────────────────────────────────────────────────────────────────────
   update_frequency: "10s"
   # Filter decisions by origin (empty = all decisions)
   # Use ["crowdsec", "cscli"] for local-only mode (no community blocklists)
@@ -33,6 +41,9 @@ mikrotik:
   # API password
   password: ""
   # Use TLS (port 8729)
+  # ────────────────────────────────────────────────────────────────────────────
+  # Advanced MikroTik parameters (defaults work for most setups)
+  # ────────────────────────────────────────────────────────────────────────────
   tls: false
   # Skip TLS certificate verification
   tls_insecure: false
@@ -66,6 +77,9 @@ firewall:
     chains: ["prerouting"]
   # Action for firewall rules: "drop" or "reject"
   deny_action: "drop"
+  # ────────────────────────────────────────────────────────────────────────────
+  # Advanced Firewall parameters (defaults work for most setups)
+  # ────────────────────────────────────────────────────────────────────────────
   block_output:
     # Block outgoing traffic to banned IPs (disabled by default)
     enabled: false
@@ -93,12 +107,18 @@ firewall:
 logging:
   # Log level: debug, info, warn, error
   level: "info"
+  # ────────────────────────────────────────────────────────────────────────────
+  # Advanced Logging parameters (defaults work for most setups)
+  # ────────────────────────────────────────────────────────────────────────────
   # Log format: text (human-readable) or json (structured)
   format: "text"
   # Log to file (optional, empty = stdout only)
   # file: "/var/log/cs-routeros-bouncer.log"
 
 metrics:
+  # ────────────────────────────────────────────────────────────────────────────
+  # Advanced Metrics parameters (defaults work for most setups)
+  # ────────────────────────────────────────────────────────────────────────────
   # Enable Prometheus metrics endpoint
   enabled: false
   # Listen address for metrics server

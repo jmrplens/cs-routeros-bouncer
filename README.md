@@ -193,17 +193,38 @@ All options can be set via YAML config file or environment variables. Environmen
 
 See [`config/cs-routeros-bouncer.yaml`](config/cs-routeros-bouncer.yaml) for the full annotated reference.
 
-### CrowdSec
+### Basic parameters
+
+The essential settings to get the bouncer running. Most deployments only need these.
 
 | Config Key | Env Variable | Default | Description |
 |---|---|---|---|
 | `crowdsec.api_url` | `CROWDSEC_URL` | `http://localhost:8080/` | CrowdSec LAPI URL |
 | `crowdsec.api_key` | `CROWDSEC_BOUNCER_API_KEY` | *(required)* | Bouncer API key |
+| `mikrotik.address` | `MIKROTIK_HOST` | `192.168.0.1:8728` | RouterOS API address (`host:port`) |
+| `mikrotik.username` | `MIKROTIK_USER` | `crowdsec` | API username |
+| `mikrotik.password` | `MIKROTIK_PASS` | *(required)* | API password |
+| `firewall.ipv4.enabled` | `FIREWALL_IPV4_ENABLED` | `true` | Enable IPv4 blocking |
+| `firewall.ipv6.enabled` | `FIREWALL_IPV6_ENABLED` | `true` | Enable IPv6 blocking |
+| `firewall.filter.enabled` | `FIREWALL_FILTER_ENABLED` | `true` | Create filter firewall rules |
+| `firewall.raw.enabled` | `FIREWALL_RAW_ENABLED` | `true` | Create raw/prerouting rules |
+| `firewall.deny_action` | `FIREWALL_DENY_ACTION` | `drop` | Action: `drop` or `reject` |
+| `logging.level` | `LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
+
+### Advanced parameters
+
+Fine-tuning options for decision filtering, TLS, performance, firewall customization, and observability. The defaults work well for most setups.
+
+<details>
+<summary><b>CrowdSec — polling, filtering & TLS</b></summary>
+
+| Config Key | Env Variable | Default | Description |
+|---|---|---|---|
 | `crowdsec.update_frequency` | `CROWDSEC_UPDATE_FREQUENCY` | `10s` | Poll interval for decision updates |
 | `crowdsec.lapi_metrics_interval` | `CROWDSEC_LAPI_METRICS_INTERVAL` | `15m` | LAPI usage metrics interval: active decisions, dropped traffic (`0` = disabled) |
 | `crowdsec.origins` | `CROWDSEC_ORIGINS` | `[]` (all) | Filter by origin (`["crowdsec","cscli"]` = local only) |
 | `crowdsec.scopes` | `CROWDSEC_SCOPES` | `["ip","range"]` | Decision scopes to process |
-| `crowdsec.supported_decisions_types` | `CROWDSEC_DECISIONS_TYPES` | `["ban"]` | Decision types to process (see note below) |
+| `crowdsec.supported_decisions_types` | `CROWDSEC_DECISIONS_TYPES` | `["ban"]` | Decision types to process (only `ban` is implemented — see [details](docs/configuration/crowdsec.md#crowdsecsupported_decisions_types)) |
 | `crowdsec.scenarios_containing` | `CROWDSEC_SCENARIOS_CONTAINING` | `[]` | Only process decisions matching these scenarios |
 | `crowdsec.scenarios_not_containing` | `CROWDSEC_SCENARIOS_NOT_CONTAINING` | `[]` | Exclude decisions matching these scenarios |
 | `crowdsec.retry_initial_connect` | `CROWDSEC_RETRY_INITIAL_CONNECT` | `true` | Retry LAPI connection on startup failure |
@@ -212,15 +233,13 @@ See [`config/cs-routeros-bouncer.yaml`](config/cs-routeros-bouncer.yaml) for the
 | `crowdsec.key_path` | `CROWDSEC_KEY_PATH` | | TLS client key path |
 | `crowdsec.ca_cert_path` | `CROWDSEC_CA_CERT_PATH` | | TLS CA certificate path |
 
-> **Note on `supported_decisions_types`:** Only `ban` is implemented — see [detailed explanation](docs/configuration/crowdsec.md#crowdsecsupported_decisions_types) in the configuration docs.
+</details>
 
-### MikroTik
+<details>
+<summary><b>MikroTik — TLS & performance</b></summary>
 
 | Config Key | Env Variable | Default | Description |
 |---|---|---|---|
-| `mikrotik.address` | `MIKROTIK_HOST` | `192.168.0.1:8728` | RouterOS API address (`host:port`) |
-| `mikrotik.username` | `MIKROTIK_USER` | `crowdsec` | API username |
-| `mikrotik.password` | `MIKROTIK_PASS` | *(required)* | API password |
 | `mikrotik.tls` | `MIKROTIK_TLS` | `false` | Use TLS (port 8729) |
 | `mikrotik.tls_insecure` | `MIKROTIK_TLS_INSECURE` | `false` | Skip TLS certificate verification for RouterOS |
 | `mikrotik.connection_timeout` | `MIKROTIK_CONN_TIMEOUT` | `10s` | Connection timeout |
@@ -237,19 +256,17 @@ See [`config/cs-routeros-bouncer.yaml`](config/cs-routeros-bouncer.yaml) for the
 > /ip/service/set api max-sessions=1000
 > ```
 
-### Firewall
+</details>
+
+<details>
+<summary><b>Firewall — rules, interfaces & logging</b></summary>
 
 | Config Key | Env Variable | Default | Description |
 |---|---|---|---|
-| `firewall.ipv4.enabled` | `FIREWALL_IPV4_ENABLED` | `true` | Enable IPv4 blocking |
 | `firewall.ipv4.address_list` | `FIREWALL_IPV4_ADDRESS_LIST` | `crowdsec-banned` | IPv4 address list name in MikroTik |
-| `firewall.ipv6.enabled` | `FIREWALL_IPV6_ENABLED` | `true` | Enable IPv6 blocking |
 | `firewall.ipv6.address_list` | `FIREWALL_IPV6_ADDRESS_LIST` | `crowdsec6-banned` | IPv6 address list name in MikroTik |
-| `firewall.filter.enabled` | `FIREWALL_FILTER_ENABLED` | `true` | Create filter firewall rules |
 | `firewall.filter.chains` | `FIREWALL_FILTER_CHAINS` | `["input"]` | Chains for filter rules |
-| `firewall.raw.enabled` | `FIREWALL_RAW_ENABLED` | `true` | Create raw/prerouting rules |
 | `firewall.raw.chains` | `FIREWALL_RAW_CHAINS` | `["prerouting"]` | Chains for raw rules |
-| `firewall.deny_action` | `FIREWALL_DENY_ACTION` | `drop` | Action: `drop` or `reject` |
 | `firewall.rule_placement` | `FIREWALL_RULE_PLACEMENT` | `top` | Placement: `top` or `bottom` |
 | `firewall.comment_prefix` | `FIREWALL_COMMENT_PREFIX` | `crowdsec-bouncer` | Comment prefix for managed resources |
 | `firewall.log` | `FIREWALL_LOG` | `false` | Enable RouterOS logging on firewall rules |
@@ -260,21 +277,20 @@ See [`config/cs-routeros-bouncer.yaml`](config/cs-routeros-bouncer.yaml) for the
 | `firewall.block_output.interface` | `FIREWALL_OUTPUT_INTERFACE` | | WAN interface for output rules |
 | `firewall.block_output.interface_list` | `FIREWALL_OUTPUT_INTERFACE_LIST` | | WAN interface list for output rules |
 
-### Logging
+</details>
+
+<details>
+<summary><b>Logging & Metrics — format, file output & Prometheus</b></summary>
 
 | Config Key | Env Variable | Default | Description |
 |---|---|---|---|
-| `logging.level` | `LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
 | `logging.format` | `LOG_FORMAT` | `text` | Log format: `text` or `json` |
 | `logging.file` | `LOG_FILE` | | Log to file (empty = stdout only) |
-
-### Metrics
-
-| Config Key | Env Variable | Default | Description |
-|---|---|---|---|
 | `metrics.enabled` | `METRICS_ENABLED` | `false` | Enable Prometheus `/metrics` endpoint |
 | `metrics.listen_addr` | `METRICS_ADDR` | `0.0.0.0` | Metrics server listen address |
 | `metrics.listen_port` | `METRICS_PORT` | `2112` | Metrics server listen port |
+
+</details>
 
 ### Configuration Examples
 
