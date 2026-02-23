@@ -73,11 +73,20 @@ t7_3_unban_latency() {
     local ip="198.51.100.91"
     lapi_remove_decision "$ip" 2>/dev/null || true
 
+    # Ensure bouncer is in steady-state live processing mode (not mid-reconciliation)
+    sleep 5
+
     # First, add and wait for it to appear
     lapi_add_decision "$ip" "10m" "unban-latency-test"
-    wait_for "IP on router" 40 3 \
-        bash -c "ssh_list_addresses ${TEST_IPV4_LIST} | grep -qF $ip" \
-        || { echo "FAIL: ban setup failed"; return 1; }
+
+    local setup_ok=false
+    for i in $(seq 1 20); do
+        sleep 3
+        if ssh_list_addresses "${TEST_IPV4_LIST}" | grep -qF "$ip"; then
+            setup_ok=true; break
+        fi
+    done
+    $setup_ok || { echo "FAIL: ban setup failed"; return 1; }
 
     # Now measure unban
     local start_ts; start_ts=$(date +%s)

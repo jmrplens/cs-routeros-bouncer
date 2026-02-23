@@ -86,34 +86,44 @@ ssh_available() {
 # Count addresses in a list via SSH (out-of-band verification)
 ssh_count_addresses() {
     local list="$1"
+    local path="/ip/firewall/address-list"
+    [[ "$list" == *"6-"* ]] && path="/ipv6/firewall/address-list"
     local count
-    count=$(ssh_cmd "/ip/firewall/address-list/print count-only where list=$list" 2>/dev/null)
+    count=$(ssh_cmd "${path}/print count-only where list=$list" 2>/dev/null)
     echo "${count:-0}"
 }
 
 # List addresses via SSH
 ssh_list_addresses() {
     local list="$1"
-    ssh_cmd "/ip/firewall/address-list/print proplist=address where list=$list" \
-        | awk '/address=/ {sub(/address=/, ""); print $1}'
+    local path="/ip/firewall/address-list"
+    [[ "$list" == *"6-"* ]] && path="/ipv6/firewall/address-list"
+    ssh_cmd "${path}/print terse proplist=address where list=$list" \
+        | awk '/address=/ { for(i=1;i<=NF;i++) if($i ~ /^address=/) {sub(/address=/, "", $i); print $i} }'
 }
 
-# List addresses with comments
+# List addresses with comments (terse format: "... comment=X address=Y")
 ssh_list_addresses_full() {
     local list="$1"
-    ssh_cmd "/ip/firewall/address-list/print proplist=address,comment where list=$list"
+    local path="/ip/firewall/address-list"
+    [[ "$list" == *"6-"* ]] && path="/ipv6/firewall/address-list"
+    ssh_cmd "${path}/print terse proplist=address,comment where list=$list"
 }
 
 # Add an address via SSH (bypass bouncer for test setup)
 ssh_add_address() {
     local list="$1" address="$2" comment="${3:-test-injected}"
-    ssh_cmd "/ip/firewall/address-list/add list=$list address=$address comment=$comment"
+    local path="/ip/firewall/address-list"
+    [[ "$list" == *"6-"* ]] && path="/ipv6/firewall/address-list"
+    ssh_cmd "${path}/add list=$list address=$address comment=$comment"
 }
 
 # Remove ALL addresses from a list
 ssh_clean_list() {
     local list="$1"
-    ssh_cmd "/ip/firewall/address-list/remove [find list=$list]" 2>/dev/null || true
+    local path="/ip/firewall/address-list"
+    [[ "$list" == *"6-"* ]] && path="/ipv6/firewall/address-list"
+    ssh_cmd "${path}/remove [find list=$list]" 2>/dev/null || true
 }
 
 # ─── CrowdSec LAPI helpers ──────────────────────────────────────────────────
@@ -169,12 +179,26 @@ bouncer_stop()    { systemctl stop cs-routeros-bouncer 2>/dev/null; }
 bouncer_restart() { systemctl restart cs-routeros-bouncer 2>/dev/null; }
 bouncer_running() { systemctl is-active --quiet cs-routeros-bouncer; }
 
+# Track when the bouncer was last started (set by bouncer_start/bouncer_restart)
+_BOUNCER_START_TS=""
+
+bouncer_start() {
+    _BOUNCER_START_TS=$(date '+%Y-%m-%d %H:%M:%S')
+    systemctl start cs-routeros-bouncer 2>/dev/null
+}
+bouncer_restart() {
+    _BOUNCER_START_TS=$(date '+%Y-%m-%d %H:%M:%S')
+    systemctl restart cs-routeros-bouncer 2>/dev/null
+}
+
 # Wait for bouncer to complete reconciliation (look for log marker)
+# Uses _BOUNCER_START_TS to avoid matching old log entries.
 bouncer_wait_reconciliation() {
     local timeout="${1:-120}"
+    local since="${_BOUNCER_START_TS:-30s ago}"
     local start; start=$(date +%s)
     while true; do
-        if journalctl -u cs-routeros-bouncer --since "30s ago" --no-pager 2>/dev/null \
+        if journalctl -u cs-routeros-bouncer --since "$since" --no-pager 2>/dev/null \
             | grep -q "reconciliation complete\|reconciliation finished\|initial sync complete"; then
             return 0
         fi

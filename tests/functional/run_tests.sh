@@ -20,7 +20,7 @@ source "${SCRIPT_DIR}/lib/helpers.sh"
 load_env
 
 ENABLE_CAPI=false
-GROUPS=()
+RUN_GROUPS=()
 
 # ─── Parse arguments ────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -37,15 +37,15 @@ while [[ $# -gt 0 ]]; do
             echo "  t7  Timing measurements (reconciliation, ban/unban latency)"
             echo "  t8  CAPI stress test ~25k IPs (requires --capi flag)"
             exit 0 ;;
-        t[1-8]) GROUPS+=("$1"); shift ;;
+        t[1-8]) RUN_GROUPS+=("$1"); shift ;;
         *)  err "Unknown argument: $1"; exit 1 ;;
     esac
 done
 
 # Default: all groups except t8 (CAPI)
-if [[ ${#GROUPS[@]} -eq 0 ]]; then
-    GROUPS=(t1 t2 t3 t4 t5 t6 t7)
-    if $ENABLE_CAPI; then GROUPS+=(t8); fi
+if [[ ${#RUN_GROUPS[@]} -eq 0 ]]; then
+    RUN_GROUPS=(t1 t2 t3 t4 t5 t6 t7)
+    if $ENABLE_CAPI; then RUN_GROUPS+=(t8); fi
 fi
 
 # ─── Preflight checks ──────────────────────────────────────────────────────
@@ -80,13 +80,13 @@ else
     warn "Bouncer service not running — some tests will start it"
 fi
 
-echo -e "\n${BOLD}Running groups: ${GROUPS[*]}${NC}"
+echo -e "\n${BOLD}Running groups: ${RUN_GROUPS[*]}${NC}"
 if $ENABLE_CAPI; then
     echo -e "${YELLOW}⚠  CAPI stress tests enabled (~25k IPs — may take several minutes)${NC}"
 fi
 
 # ─── Run selected groups ───────────────────────────────────────────────────
-for group in "${GROUPS[@]}"; do
+for group in "${RUN_GROUPS[@]}"; do
     script="${SCRIPT_DIR}/${group}_*.sh"
     # shellcheck disable=SC2086
     found=(${script})

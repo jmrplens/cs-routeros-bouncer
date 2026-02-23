@@ -18,7 +18,8 @@ t2_1_metrics_vs_router() {
     bouncer_running || skip_test "bouncer not running"
 
     local metric_count router_count
-    metric_count=$(bouncer_metric "crowdsec_active_decisions" || echo "")
+    metric_count=$(curl -s --max-time 5 "http://localhost:2112/metrics" 2>/dev/null \
+        | awk '/^crowdsec_bouncer_active_decisions\{proto="ipv4"\}/ {print $2}')
     [[ -n "$metric_count" ]] || skip_test "metrics endpoint not available"
 
     router_count=$(ssh_count_addresses "${TEST_IPV4_LIST}")
