@@ -30,7 +30,7 @@ type Manager struct {
 	cfg     config.Config
 	ros     RouterOSClient
 	pool    *rosClient.Pool
-	stream  *crowdsec.Stream
+	stream  CrowdSecStream
 	logger  zerolog.Logger
 	version string
 

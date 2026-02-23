@@ -66,6 +66,7 @@ type mockROS struct {
 	// Call tracking — inspected in assertions after calling the method under test.
 	connectCalls       int
 	closeCalls         int
+	identityCalls      int
 	addAddressCalls    []addAddressCall
 	findAddressCalls   []findAddressCall
 	updateTimeoutCalls []updateTimeoutCall
@@ -136,6 +137,9 @@ func (m *mockROS) Close() {
 func (m *mockROS) GetAPIMaxSessions() int { return m.maxSessions }
 
 func (m *mockROS) GetIdentity() (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.identityCalls++
 	return m.identityName, m.identityErr
 }
 
