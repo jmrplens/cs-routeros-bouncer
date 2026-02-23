@@ -16,17 +16,34 @@ import (
 // Client wraps the RouterOS API connection with reconnection logic.
 type Client struct {
 	cfg    config.MikroTikConfig
-	conn   *routeros.Client
+	conn   RouterConn
 	mu     sync.Mutex
 	logger zerolog.Logger
+
+	// dialFunc is the factory that creates new connections. Defaults to the
+	// real routeros.Dial / routeros.DialTLS. Tests can replace it to inject
+	// a mock RouterConn without touching the network.
+	dialFunc func(cfg config.MikroTikConfig) (RouterConn, error)
 }
 
 // NewClient creates a new RouterOS API client.
 func NewClient(cfg config.MikroTikConfig) *Client {
 	return &Client{
-		cfg:    cfg,
-		logger: log.With().Str("component", "routeros").Logger(),
+		cfg:      cfg,
+		logger:   log.With().Str("component", "routeros").Logger(),
+		dialFunc: defaultDial,
 	}
+}
+
+// defaultDial creates a real RouterOS connection using the go-routeros library.
+func defaultDial(cfg config.MikroTikConfig) (RouterConn, error) {
+	if cfg.TLS {
+		tlsConfig := &tls.Config{
+			InsecureSkipVerify: cfg.TLSInsecure, //nolint:gosec // G402: user-configurable option for self-signed certs
+		}
+		return routeros.DialTLS(cfg.Address, cfg.Username, cfg.Password, tlsConfig)
+	}
+	return routeros.Dial(cfg.Address, cfg.Username, cfg.Password)
 }
 
 // Connect establishes a connection to the RouterOS device.
@@ -48,18 +65,7 @@ func (c *Client) connectLocked() error {
 		Bool("tls", c.cfg.TLS).
 		Msg("connecting to RouterOS")
 
-	var conn *routeros.Client
-	var err error
-
-	if c.cfg.TLS {
-		tlsConfig := &tls.Config{
-			InsecureSkipVerify: c.cfg.TLSInsecure, //nolint:gosec // G402: user-configurable option for self-signed certs
-		}
-		conn, err = routeros.DialTLS(c.cfg.Address, c.cfg.Username, c.cfg.Password, tlsConfig)
-	} else {
-		conn, err = routeros.Dial(c.cfg.Address, c.cfg.Username, c.cfg.Password)
-	}
-
+	conn, err := c.dialFunc(c.cfg)
 	if err != nil {
 		return fmt.Errorf("connecting to RouterOS at %s: %w", c.cfg.Address, err)
 	}

@@ -113,6 +113,42 @@ RouterOS connection status: `1` = connected, `0` = disconnected.
 
 Total number of reconciliation events since startup.
 
+## CrowdSec LAPI Metrics
+
+In addition to Prometheus metrics, the bouncer reports usage metrics directly to the CrowdSec LAPI at a configurable interval (`crowdsec.lapi_metrics_interval`, default `15m`). These are **not** Prometheus metrics — they are sent to the CrowdSec LAPI `/v1/usage-metrics` endpoint and appear in the CrowdSec Console.
+
+### What is reported
+
+| Metric | Unit | Labels | Description |
+|--------|------|--------|-------------|
+| `active_decisions` | `ip` | `origin` | Active decisions by origin (`crowdsec`, `cscli`, `CAPI`) |
+| `active_decisions` | `ip` | `ip_type` | Active decisions by protocol (`ipv4`, `ipv6`) |
+| `dropped` | `byte` | — | Bytes blocked by firewall rules (delta since last push) |
+| `dropped` | `packet` | — | Packets blocked by firewall rules (delta since last push) |
+
+### Bouncer metadata
+
+Each push also includes bouncer metadata:
+
+| Field | Example |
+|-------|---------|
+| Type | `cs-routeros-bouncer` |
+| Version | `v1.1.0` |
+| OS | `debian 13.3` |
+| Startup timestamp | UTC epoch |
+| Feature flags | `[]` (expected empty for bouncers) |
+
+### Dropped traffic counters
+
+The bouncer reads byte and packet counters from MikroTik firewall rules (the rules it manages) just before each LAPI push. It computes deltas between pushes and reports them as `dropped` metrics. This provides CrowdSec with visibility into how much traffic is actually being blocked.
+
+### Configuration
+
+```yaml
+crowdsec:
+  lapi_metrics_interval: "15m"  # Set to "0" to disable
+```
+
 ## Example queries
 
 ### Active blocked IPs

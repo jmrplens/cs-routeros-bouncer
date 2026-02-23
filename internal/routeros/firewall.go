@@ -2,6 +2,7 @@ package routeros
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/rs/zerolog/log"
@@ -118,24 +119,28 @@ func (c *Client) AddFirewallRule(proto, mode string, rule FirewallRule) (string,
 		return id, nil
 	}
 
-	// Move our rule before the first rule using internal IDs
-	moveErr := c.moveRule(path, id, firstID)
-	if moveErr != nil {
-		// If first rule is builtin/dynamic, try moving before second rule
-		if strings.Contains(moveErr.Error(), "builtin") && len(allRules) > 1 {
-			secondID := allRules[1][".id"]
-			moveErr = c.moveRule(path, id, secondID)
-			if moveErr != nil {
-				log.Warn().Err(moveErr).Msg("failed to move rule to position 1, left at current position")
-			} else {
-				log.Info().Str("id", id).Msg("firewall rule moved to position 1 (after builtin)")
-			}
-		} else {
-			log.Warn().Err(moveErr).Msg("failed to move rule to top, left at current position")
+	// Try each position starting from 0, skipping builtin/dynamic rules
+	// that cannot be displaced.
+	for i, r := range allRules {
+		targetID := r[".id"]
+		if targetID == id {
+			// Reached our own rule — already as high as possible
+			log.Info().Str("id", id).Int("position", i).Msg("firewall rule placed at highest available position")
+			return id, nil
 		}
-	} else {
-		log.Info().Str("id", id).Msg("firewall rule moved to top")
+		moveErr := c.moveRule(path, id, targetID)
+		if moveErr == nil {
+			if i == 0 {
+				log.Info().Str("id", id).Msg("firewall rule moved to top")
+			} else {
+				log.Info().Str("id", id).Int("position", i).Msg("firewall rule moved to position (after builtin rules)")
+			}
+			return id, nil
+		}
+		log.Debug().Err(moveErr).Int("position", i).Msg("cannot move before this rule, trying next position")
 	}
+
+	log.Warn().Str("id", id).Msg("could not move rule to any higher position, left at current position")
 
 	return id, nil
 }
@@ -233,4 +238,80 @@ func (c *Client) FindFirewallRuleByComment(proto, mode, comment string) (*RuleEn
 		OutInterfaceList: result["out-interface-list"],
 		Comment:          result["comment"],
 	}, nil
+}
+
+// RuleCounters holds byte and packet counters for a single firewall rule.
+type RuleCounters struct {
+	Comment string
+	Bytes   uint64
+	Packets uint64
+}
+
+// FirewallCounters aggregates counters from all bouncer firewall rules.
+type FirewallCounters struct {
+	Rules      []RuleCounters
+	TotalBytes uint64
+	TotalPkts  uint64
+	IPv4Bytes  uint64
+	IPv4Pkts   uint64
+	IPv6Bytes  uint64
+	IPv6Pkts   uint64
+}
+
+// GetFirewallCounters queries byte/packet counters from all firewall rules
+// matching the given comment prefix. It queries filter and raw rules across
+// both IPv4 and IPv6 (depending on which protocols the rules cover).
+func (c *Client) GetFirewallCounters(commentPrefix string) (*FirewallCounters, error) {
+	fc := &FirewallCounters{}
+
+	type query struct {
+		path  string
+		proto string // "ipv4" or "ipv6" for aggregation
+	}
+
+	queries := []query{
+		{protoPrefix("ip") + "/firewall/filter", "ipv4"},
+		{protoPrefix("ip") + "/firewall/raw", "ipv4"},
+		{protoPrefix("ipv6") + "/firewall/filter", "ipv6"},
+		{protoPrefix("ipv6") + "/firewall/raw", "ipv6"},
+	}
+
+	proplist := []string{".id", "bytes", "packets", "comment"}
+
+	for _, q := range queries {
+		results, err := c.Print(q.path, nil, proplist)
+		if err != nil {
+			log.Debug().Err(err).Str("path", q.path).Msg("skipping counter query (path may not exist)")
+			continue
+		}
+
+		for _, r := range results {
+			comment := r["comment"]
+			if commentPrefix != "" && !strings.HasPrefix(comment, commentPrefix) {
+				continue
+			}
+
+			bytes, _ := strconv.ParseUint(r["bytes"], 10, 64)
+			packets, _ := strconv.ParseUint(r["packets"], 10, 64)
+
+			fc.Rules = append(fc.Rules, RuleCounters{
+				Comment: comment,
+				Bytes:   bytes,
+				Packets: packets,
+			})
+
+			fc.TotalBytes += bytes
+			fc.TotalPkts += packets
+
+			if q.proto == "ipv4" {
+				fc.IPv4Bytes += bytes
+				fc.IPv4Pkts += packets
+			} else {
+				fc.IPv6Bytes += bytes
+				fc.IPv6Pkts += packets
+			}
+		}
+	}
+
+	return fc, nil
 }

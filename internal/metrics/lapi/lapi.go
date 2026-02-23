@@ -3,8 +3,19 @@
 
 // Package lapi provides CrowdSec LAPI usage metrics integration.
 // It uses the go-cs-bouncer MetricsProvider to periodically report
-// active decision counts and bouncer metadata to the CrowdSec LAPI
-// /v1/usage-metrics endpoint.
+// bouncer metrics to the CrowdSec LAPI /v1/usage-metrics endpoint.
+//
+// The provider sends three metric types per the CrowdSec bouncer spec:
+//   - active_decisions: current count of active decisions (by origin + ip_type)
+//   - dropped: bytes and packets blocked by the firewall (delta since last push)
+//
+// The metricsUpdater callback runs on each tick and gathers data from:
+//   - metrics.GetActiveDecisionsByOrigin() for per-origin decision counts
+//   - metrics.GetActiveDecisionsByIPType() for per-protocol decision counts
+//   - metrics.GetAndResetDroppedDeltas() for firewall byte/packet deltas
+//
+// An optional CounterCollector can be registered by the manager to refresh
+// firewall counters from MikroTik just before each LAPI push.
 package lapi
 
 import (
@@ -22,26 +33,43 @@ import (
 
 const bouncerType = "cs-routeros-bouncer"
 
+// CounterCollector is called before each metrics push to refresh firewall
+// counters. The manager registers this to query MikroTik byte/packet stats.
+type CounterCollector func()
+
 // Provider wraps the go-cs-bouncer MetricsProvider for LAPI usage metrics.
 type Provider struct {
-	mp     *csbouncer.MetricsProvider
-	logger zerolog.Logger
+	mp        *csbouncer.MetricsProvider
+	logger    zerolog.Logger
+	collector CounterCollector
 }
 
 // NewProvider creates a LAPI metrics provider that reports active decisions
-// to the CrowdSec LAPI at the given interval. If interval is 0, metrics are disabled.
+// and dropped traffic to the CrowdSec LAPI at the given interval.
 func NewProvider(client *apiclient.ApiClient, interval time.Duration, logrusLogger logrus.FieldLogger, logger zerolog.Logger) (*Provider, error) {
-	mp, err := csbouncer.NewMetricsProvider(client, bouncerType, metricsUpdater, logrusLogger)
+	p := &Provider{
+		logger: logger,
+	}
+
+	updater := func(payload *models.RemediationComponentsMetrics, d time.Duration) {
+		p.metricsUpdater(payload, d)
+	}
+
+	mp, err := csbouncer.NewMetricsProvider(client, bouncerType, updater, logrusLogger)
 	if err != nil {
 		return nil, err
 	}
 
 	mp.Interval = interval
+	p.mp = mp
 
-	return &Provider{
-		mp:     mp,
-		logger: logger,
-	}, nil
+	return p, nil
+}
+
+// SetCounterCollector registers a callback that refreshes firewall counters
+// before each metrics push. Typically called by the manager after startup.
+func (p *Provider) SetCounterCollector(c CounterCollector) {
+	p.collector = c
 }
 
 // Run starts the periodic metrics reporting. Blocks until ctx is canceled.
@@ -54,27 +82,73 @@ func (p *Provider) Run(ctx context.Context) error {
 }
 
 // metricsUpdater is the callback invoked by MetricsProvider on each tick.
-// It populates the payload with active decision counts.
-func metricsUpdater(metricsPayload *models.RemediationComponentsMetrics, interval time.Duration) {
+// It populates the payload with active_decisions and dropped metrics.
+func (p *Provider) metricsUpdater(payload *models.RemediationComponentsMetrics, interval time.Duration) {
+	// Refresh firewall counters from MikroTik if a collector is registered.
+	if p.collector != nil {
+		p.collector()
+	}
+
 	now := time.Now().UTC().Unix()
 	windowSec := int64(interval.Seconds())
+	meta := &models.MetricsMeta{
+		UtcNowTimestamp:   &now,
+		WindowSizeSeconds: &windowSec,
+	}
 
-	activeCount := float64(metrics.GetTotalActiveDecisions())
+	var items []*models.MetricsDetailItem
 
-	name := "active_decisions"
-	unit := "ip"
+	// --- active_decisions per origin ---
+	byOrigin := metrics.GetActiveDecisionsByOrigin()
+	for origin, count := range byOrigin {
+		items = append(items, metricItem("active_decisions", "ip", float64(count), map[string]string{
+			"origin": origin,
+		}))
+	}
 
-	metricsPayload.Metrics = append(metricsPayload.Metrics, &models.DetailedMetrics{
-		Meta: &models.MetricsMeta{
-			UtcNowTimestamp:   &now,
-			WindowSizeSeconds: &windowSec,
-		},
-		Items: []*models.MetricsDetailItem{
-			{
-				Name:  &name,
-				Unit:  &unit,
-				Value: &activeCount,
-			},
-		},
+	// --- active_decisions per ip_type ---
+	ipv4, ipv6 := metrics.GetActiveDecisionsByIPType()
+	if ipv4 > 0 {
+		items = append(items, metricItem("active_decisions", "ip", float64(ipv4), map[string]string{
+			"ip_type": "ipv4",
+		}))
+	}
+	if ipv6 > 0 {
+		items = append(items, metricItem("active_decisions", "ip", float64(ipv6), map[string]string{
+			"ip_type": "ipv6",
+		}))
+	}
+
+	// If no origin data yet, send total as fallback.
+	if len(byOrigin) == 0 {
+		total := float64(metrics.GetTotalActiveDecisions())
+		items = append(items, metricItem("active_decisions", "ip", total, nil))
+	}
+
+	// --- dropped bytes/packets (delta since last push) ---
+	droppedBytes, droppedPkts := metrics.GetAndResetDroppedDeltas()
+	if droppedBytes > 0 {
+		items = append(items, metricItem("dropped", "byte", float64(droppedBytes), nil))
+	}
+	if droppedPkts > 0 {
+		items = append(items, metricItem("dropped", "packet", float64(droppedPkts), nil))
+	}
+
+	payload.Metrics = append(payload.Metrics, &models.DetailedMetrics{
+		Meta:  meta,
+		Items: items,
 	})
+}
+
+// metricItem builds a single MetricsDetailItem with optional labels.
+func metricItem(name, unit string, value float64, labels map[string]string) *models.MetricsDetailItem {
+	item := &models.MetricsDetailItem{
+		Name:  &name,
+		Unit:  &unit,
+		Value: &value,
+	}
+	if len(labels) > 0 {
+		item.Labels = labels
+	}
+	return item
 }

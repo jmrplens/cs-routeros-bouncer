@@ -121,7 +121,7 @@ Where to place new firewall rules in the chain:
 - `bottom` — at the end of the chain
 
 !!! note
-    If a dynamic/builtin rule occupies position 0 (e.g., RouterOS fasttrack counters), the bouncer automatically places the rule at position 1.
+    If a dynamic/built-in rule occupies position 0 (e.g., RouterOS fasttrack counters), the bouncer iterates through subsequent positions until it finds one where the rule can be placed.
 
 ### `firewall.comment_prefix`
 
@@ -165,6 +165,48 @@ firewall:
   log: true
   log_prefix: "crowdsec-bouncer"
 ```
+
+## Input Interface Filtering
+
+Restrict input (filter) and prerouting (raw) rules to specific interfaces. By default, rules apply to **all interfaces**.
+
+!!! info "Default behavior"
+    When both `interface` and `interface_list` are empty (the default), firewall rules match traffic arriving on **every** interface. This blocks banned IPs regardless of whether the traffic comes from WAN, LAN, or any other interface.
+
+Use this setting to limit blocking to the WAN interface only, so that banned IPs on the LAN side can still reach the router (e.g., for management or internal services).
+
+### `firewall.block_input.interface`
+
+| | |
+|---|---|
+| **Env** | `FIREWALL_INPUT_INTERFACE` |
+| **Default** | — (all interfaces) |
+
+Restrict input/raw rules to a single interface.
+
+```yaml
+firewall:
+  block_input:
+    interface: "ether1"
+```
+
+### `firewall.block_input.interface_list`
+
+| | |
+|---|---|
+| **Env** | `FIREWALL_INPUT_INTERFACE_LIST` |
+| **Default** | — (all interfaces) |
+
+Restrict input/raw rules to an interface list. Alternative to specifying a single interface.
+
+```yaml
+firewall:
+  block_input:
+    interface_list: "WAN"
+```
+
+!!! note
+    If both `interface` and `interface_list` are set, both are applied to the rule (RouterOS evaluates them as AND).
 
 ## Output Blocking
 

@@ -62,6 +62,7 @@ type FirewallConfig struct {
 	Filter        RuleConfig        `yaml:"filter" mapstructure:"filter"`
 	Raw           RuleConfig        `yaml:"raw" mapstructure:"raw"`
 	DenyAction    string            `yaml:"deny_action" mapstructure:"deny_action"`
+	BlockInput    BlockInputConfig  `yaml:"block_input" mapstructure:"block_input"`
 	BlockOutput   BlockOutputConfig `yaml:"block_output" mapstructure:"block_output"`
 	RulePlacement string            `yaml:"rule_placement" mapstructure:"rule_placement"`
 	CommentPrefix string            `yaml:"comment_prefix" mapstructure:"comment_prefix"`
@@ -79,6 +80,13 @@ type ProtoConfig struct {
 type RuleConfig struct {
 	Enabled bool     `yaml:"enabled" mapstructure:"enabled"`
 	Chains  []string `yaml:"chains" mapstructure:"chains"`
+}
+
+// BlockInputConfig holds input blocking interface settings.
+// When both Interface and InterfaceList are empty, input rules apply to all interfaces.
+type BlockInputConfig struct {
+	Interface     string `yaml:"interface" mapstructure:"interface"`
+	InterfaceList string `yaml:"interface_list" mapstructure:"interface_list"`
 }
 
 // BlockOutputConfig holds output blocking settings.
@@ -182,6 +190,8 @@ func Load(configPath string) (*Config, error) {
 		"firewall.comment_prefix":              "FIREWALL_COMMENT_PREFIX",
 		"firewall.log":                         "FIREWALL_LOG",
 		"firewall.log_prefix":                  "FIREWALL_LOG_PREFIX",
+		"firewall.block_input.interface":       "FIREWALL_INPUT_INTERFACE",
+		"firewall.block_input.interface_list":  "FIREWALL_INPUT_INTERFACE_LIST",
 		"firewall.block_output.enabled":        "FIREWALL_BLOCK_OUTPUT",
 		"firewall.block_output.interface":      "FIREWALL_OUTPUT_INTERFACE",
 		"firewall.block_output.interface_list": "FIREWALL_OUTPUT_INTERFACE_LIST",

@@ -264,3 +264,253 @@ func TestIsRangeIPv6(t *testing.T) {
 		t.Error("expected 2001:db8::1 not to be a range")
 	}
 }
+
+// --- ParseDuration edge cases ---
+
+// TestParseDurationFractionalSeconds verifies that CrowdSec fractional
+// second durations (e.g., "3599.123456789s") are correctly parsed.
+func TestParseDurationFractionalSeconds(t *testing.T) {
+	d, err := ParseDuration("3599.5s")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := 3599*time.Second + 500*time.Millisecond
+	if d != expected {
+		t.Errorf("expected %v, got %v", expected, d)
+	}
+}
+
+// TestParseDurationPlainNumber verifies that a plain number without any unit
+// suffix is treated as seconds via the fallback path.
+func TestParseDurationPlainNumber(t *testing.T) {
+	d, err := ParseDuration("3600")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if d != time.Hour {
+		t.Errorf("expected 1h, got %v", d)
+	}
+}
+
+// TestParseDurationEmpty verifies that an empty string returns an error.
+func TestParseDurationEmpty(t *testing.T) {
+	_, err := ParseDuration("")
+	if err == nil {
+		t.Error("expected error for empty duration string")
+	}
+}
+
+// TestParseDurationInvalid verifies that a non-numeric string returns an error.
+func TestParseDurationInvalid(t *testing.T) {
+	_, err := ParseDuration("not-a-duration")
+	if err == nil {
+		t.Error("expected error for invalid duration string")
+	}
+}
+
+// TestParseDurationZero verifies that "0s" parses to zero duration.
+func TestParseDurationZero(t *testing.T) {
+	d, err := ParseDuration("0s")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if d != 0 {
+		t.Errorf("expected 0, got %v", d)
+	}
+}
+
+// TestParseDurationComplex verifies a complex duration with all components.
+func TestParseDurationComplex(t *testing.T) {
+	d, err := ParseDuration("1h30m45s")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := time.Hour + 30*time.Minute + 45*time.Second
+	if d != expected {
+		t.Errorf("expected %v, got %v", expected, d)
+	}
+}
+
+// --- parseDecision additional edge cases ---
+
+// TestParseDecisionWithRange verifies that a CIDR range decision is
+// correctly marked as IsRange.
+func TestParseDecisionWithRange(t *testing.T) {
+	d := parseDecision(&models.Decision{
+		Duration: strPtr("2h"),
+		Scope:    strPtr("Range"),
+		Value:    strPtr("10.0.0.0/8"),
+		Type:     strPtr("ban"),
+	})
+	if d == nil {
+		t.Fatal("expected non-nil decision")
+	}
+	if !d.IsRange {
+		t.Error("expected IsRange=true for CIDR range")
+	}
+	if d.Proto != "ip" {
+		t.Errorf("expected proto 'ip', got %q", d.Proto)
+	}
+}
+
+// TestParseDecisionIPv6Range verifies IPv6 CIDR range detection.
+func TestParseDecisionIPv6Range(t *testing.T) {
+	d := parseDecision(&models.Decision{
+		Duration: strPtr("1h"),
+		Scope:    strPtr("Range"),
+		Value:    strPtr("2001:db8::/32"),
+		Type:     strPtr("ban"),
+	})
+	if d == nil {
+		t.Fatal("expected non-nil decision")
+	}
+	if !d.IsRange {
+		t.Error("expected IsRange=true for IPv6 CIDR")
+	}
+	if d.Proto != "ipv6" {
+		t.Errorf("expected proto 'ipv6', got %q", d.Proto)
+	}
+}
+
+// TestParseDecisionBadDurationFallback verifies that an unparseable duration
+// falls back to 4 hours.
+func TestParseDecisionBadDurationFallback(t *testing.T) {
+	d := parseDecision(&models.Decision{
+		Duration: strPtr("invalid-duration"),
+		Scope:    strPtr("Ip"),
+		Value:    strPtr("1.2.3.4"),
+		Type:     strPtr("ban"),
+	})
+	if d == nil {
+		t.Fatal("expected non-nil decision")
+	}
+	if d.Duration != 4*time.Hour {
+		t.Errorf("expected 4h fallback duration, got %v", d.Duration)
+	}
+}
+
+// TestParseDecisionNilDuration verifies that a nil duration gives zero duration.
+func TestParseDecisionNilDuration(t *testing.T) {
+	d := parseDecision(&models.Decision{
+		Duration: nil,
+		Scope:    strPtr("Ip"),
+		Value:    strPtr("10.0.0.1"),
+		Type:     strPtr("ban"),
+	})
+	if d == nil {
+		t.Fatal("expected non-nil decision")
+	}
+	if d.Duration != 0 {
+		t.Errorf("expected zero duration for nil Duration, got %v", d.Duration)
+	}
+}
+
+// TestParseDecisionCaseInsensitiveBan verifies that "BAN", "Ban" etc. are accepted.
+func TestParseDecisionCaseInsensitiveBan(t *testing.T) {
+	tests := []string{"ban", "Ban", "BAN", "bAn"}
+	for _, banType := range tests {
+		d := parseDecision(&models.Decision{
+			Duration: strPtr("1h"),
+			Value:    strPtr("1.2.3.4"),
+			Type:     strPtr(banType),
+		})
+		if d == nil {
+			t.Errorf("expected non-nil decision for type %q", banType)
+		}
+	}
+}
+
+// TestNewStreamWithTLS verifies that TLS certificate paths are propagated
+// to the underlying StreamBouncer.
+func TestNewStreamWithTLS(t *testing.T) {
+	cfg := config.CrowdSecConfig{
+		APIURL:          "https://localhost:8080/",
+		APIKey:          "test-key",
+		UpdateFrequency: 10 * time.Second,
+		CertPath:        "/etc/ssl/cert.pem",
+		KeyPath:         "/etc/ssl/key.pem",
+		CACertPath:      "/etc/ssl/ca.pem",
+	}
+	s := NewStream(cfg, "1.0.0")
+	if s == nil {
+		t.Fatal("expected non-nil stream")
+	}
+	// Verify config was stored correctly (bouncer field propagation is
+	// tested implicitly via the adapter; the config is the source of truth).
+	if s.cfg.CertPath != cfg.CertPath {
+		t.Errorf("CertPath = %q, want %q", s.cfg.CertPath, cfg.CertPath)
+	}
+	if s.cfg.KeyPath != cfg.KeyPath {
+		t.Errorf("KeyPath = %q, want %q", s.cfg.KeyPath, cfg.KeyPath)
+	}
+	if s.cfg.CACertPath != cfg.CACertPath {
+		t.Errorf("CACertPath = %q, want %q", s.cfg.CACertPath, cfg.CACertPath)
+	}
+}
+
+// TestNewStreamWithInsecureSkipVerify verifies that the InsecureSkipVerify flag
+// is propagated when set.
+func TestNewStreamWithInsecureSkipVerify(t *testing.T) {
+	cfg := config.CrowdSecConfig{
+		APIURL:             "https://localhost:8080/",
+		APIKey:             "test-key",
+		UpdateFrequency:    10 * time.Second,
+		InsecureSkipVerify: true,
+	}
+	s := NewStream(cfg, "1.0.0")
+	if s == nil {
+		t.Fatal("expected non-nil stream")
+	}
+	if !s.cfg.InsecureSkipVerify {
+		t.Error("expected InsecureSkipVerify to be true")
+	}
+}
+
+// TestNewStreamInsecureSkipVerifyFalse verifies that InsecureSkipVerify=false
+// is stored correctly in the config.
+func TestNewStreamInsecureSkipVerifyFalse(t *testing.T) {
+	cfg := config.CrowdSecConfig{
+		APIURL:             "https://localhost:8080/",
+		APIKey:             "test-key",
+		UpdateFrequency:    10 * time.Second,
+		InsecureSkipVerify: false,
+	}
+	s := NewStream(cfg, "1.0.0")
+	if s == nil {
+		t.Fatal("expected non-nil stream")
+	}
+	if s.cfg.InsecureSkipVerify {
+		t.Error("expected InsecureSkipVerify to be false")
+	}
+}
+
+// TestNewStreamAllFields verifies all config fields are correctly stored.
+func TestNewStreamAllFields(t *testing.T) {
+	cfg := config.CrowdSecConfig{
+		APIURL:                 "http://lapi:8080/",
+		APIKey:                 "key123",
+		UpdateFrequency:        30 * time.Second,
+		Scopes:                 []string{"ip", "range"},
+		ScenariosContaining:    []string{"http"},
+		ScenariosNotContaining: []string{"ssh"},
+		Origins:                []string{"crowdsec", "cscli", "CAPI"},
+		RetryInitialConnect:    true,
+		CertPath:               "/cert",
+		KeyPath:                "/key",
+		CACertPath:             "/ca",
+		InsecureSkipVerify:     true,
+	}
+	s := NewStream(cfg, "2.0.0")
+	if s.cfg.APIURL != cfg.APIURL {
+		t.Errorf("APIURL = %q, want %q", s.cfg.APIURL, cfg.APIURL)
+	}
+	if s.cfg.APIKey != cfg.APIKey {
+		t.Errorf("APIKey mismatch")
+	}
+	if s.cfg.UpdateFrequency != 30*time.Second {
+		t.Errorf("UpdateFrequency = %v, want 30s", s.cfg.UpdateFrequency)
+	}
+	if !s.cfg.RetryInitialConnect {
+		t.Error("expected RetryInitialConnect=true")
+	}
+}

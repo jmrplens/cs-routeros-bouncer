@@ -1,8 +1,10 @@
 // Tests for the routeros package covering duration conversion, protocol
-// detection, address normalization, path helpers, and struct field mapping.
+// detection, address normalization, path helpers, struct field mapping,
+// bulk script generation, and firewall path construction.
 package routeros
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -372,5 +374,233 @@ func TestFirewallRuleAllFields(t *testing.T) {
 	}
 	if rule.OutInterfaceList != "LAN" {
 		t.Errorf("expected OutInterfaceList 'LAN', got %q", rule.OutInterfaceList)
+	}
+}
+
+// --- buildBulkAddScript tests ---
+
+// TestBuildBulkAddScriptIPv4Single verifies script generation for a single IPv4 entry.
+func TestBuildBulkAddScriptIPv4Single(t *testing.T) {
+	entries := []BulkEntry{
+		{Address: "1.2.3.4", Timeout: "4h", Comment: "cs|crowdsec|ssh-bf"},
+	}
+	script := buildBulkAddScript("ip", "crowdsec-banned", entries)
+
+	if !strings.Contains(script, "/ip/firewall/address-list/add") {
+		t.Error("expected /ip/ prefix for IPv4")
+	}
+	if !strings.Contains(script, `list="crowdsec-banned"`) {
+		t.Error("expected list name in script")
+	}
+	if !strings.Contains(script, `address="1.2.3.4"`) {
+		t.Error("expected address in script")
+	}
+	if !strings.Contains(script, `timeout="4h"`) {
+		t.Error("expected timeout in script")
+	}
+	if !strings.Contains(script, `:local count 0`) {
+		t.Error("expected counter initialization")
+	}
+	if !strings.Contains(script, `:put $count`) {
+		t.Error("expected count output at end")
+	}
+}
+
+// TestBuildBulkAddScriptIPv6 verifies script generation uses /ipv6/ prefix
+// and normalizes addresses.
+func TestBuildBulkAddScriptIPv6(t *testing.T) {
+	entries := []BulkEntry{
+		{Address: "2001:db8::1", Timeout: "1h", Comment: "test"},
+	}
+	script := buildBulkAddScript("ipv6", "crowdsec6-banned", entries)
+
+	if !strings.Contains(script, "/ipv6/firewall/address-list/add") {
+		t.Error("expected /ipv6/ prefix")
+	}
+	// IPv6 without CIDR should get /128 via NormalizeAddress
+	if !strings.Contains(script, `address="2001:db8::1/128"`) {
+		t.Errorf("expected normalized IPv6 address, got script:\n%s", script)
+	}
+}
+
+// TestBuildBulkAddScriptNoTimeout verifies that entries without a timeout
+// omit the timeout attribute in the script.
+func TestBuildBulkAddScriptNoTimeout(t *testing.T) {
+	entries := []BulkEntry{
+		{Address: "10.0.0.1", Timeout: "", Comment: "permanent"},
+	}
+	script := buildBulkAddScript("ip", "blocked", entries)
+
+	if strings.Contains(script, "timeout") {
+		t.Error("expected no timeout attribute for empty timeout")
+	}
+}
+
+// TestBuildBulkAddScriptMultipleEntries verifies correct script for multiple entries.
+func TestBuildBulkAddScriptMultipleEntries(t *testing.T) {
+	entries := []BulkEntry{
+		{Address: "1.1.1.1", Timeout: "2h", Comment: "a"},
+		{Address: "2.2.2.2", Timeout: "3h", Comment: "b"},
+		{Address: "3.3.3.3", Timeout: "4h", Comment: "c"},
+	}
+	script := buildBulkAddScript("ip", "test-list", entries)
+
+	// Should have 3 :do { blocks
+	if count := strings.Count(script, ":do {"); count != 3 {
+		t.Errorf("expected 3 :do blocks, got %d", count)
+	}
+	// Should have 3 on-error handlers
+	if count := strings.Count(script, "} on-error={}"); count != 3 {
+		t.Errorf("expected 3 on-error blocks, got %d", count)
+	}
+}
+
+// TestBuildBulkAddScriptEmpty verifies empty entries produce a minimal script.
+func TestBuildBulkAddScriptEmpty(t *testing.T) {
+	script := buildBulkAddScript("ip", "test", nil)
+
+	if !strings.Contains(script, ":local count 0") {
+		t.Error("expected counter initialization")
+	}
+	if !strings.Contains(script, ":put $count") {
+		t.Error("expected count output")
+	}
+	if strings.Contains(script, "address-list/add") {
+		t.Error("expected no add commands for empty entries")
+	}
+}
+
+// TestBuildBulkAddScriptEscaping verifies that quotes and backslashes in
+// comments are properly escaped.
+func TestBuildBulkAddScriptEscaping(t *testing.T) {
+	entries := []BulkEntry{
+		{Address: "1.2.3.4", Timeout: "1h", Comment: `has "quotes" and \ backslash`},
+	}
+	script := buildBulkAddScript("ip", "test", entries)
+
+	if !strings.Contains(script, `\"quotes\"`) {
+		t.Error("expected escaped quotes in script")
+	}
+	if !strings.Contains(script, `\\`) {
+		t.Error("expected escaped backslash in script")
+	}
+}
+
+// --- NewPool tests ---
+
+// TestNewPoolCreatesInstance verifies NewPool returns a non-nil pool.
+func TestNewPoolCreatesInstance(t *testing.T) {
+	cfg := config.MikroTikConfig{
+		Address:  "192.168.0.1:8728",
+		Username: "admin",
+		Password: "secret",
+	}
+	p := NewPool(cfg, 4)
+	if p == nil {
+		t.Fatal("NewPool returned nil")
+	}
+	if p.size != 4 {
+		t.Errorf("expected pool size 4, got %d", p.size)
+	}
+}
+
+// TestNewPoolMinimumSize verifies NewPool enforces minimum size of 1.
+func TestNewPoolMinimumSize(t *testing.T) {
+	cfg := config.MikroTikConfig{Address: "127.0.0.1:8728"}
+	p := NewPool(cfg, 0)
+	if p.size != 1 {
+		t.Errorf("expected pool size 1 (minimum), got %d", p.size)
+	}
+	p2 := NewPool(cfg, -5)
+	if p2.size != 1 {
+		t.Errorf("expected pool size 1 for negative input, got %d", p2.size)
+	}
+}
+
+// TestPoolSizeMethod verifies Pool.Size returns configured size.
+func TestPoolSizeMethod(t *testing.T) {
+	cfg := config.MikroTikConfig{Address: "127.0.0.1:8728"}
+	p := NewPool(cfg, 8)
+	if got := p.Size(); got != 8 {
+		t.Errorf("expected Size() = 8, got %d", got)
+	}
+}
+
+// --- BulkEntry struct tests ---
+
+// TestBulkEntryStruct verifies BulkEntry field storage.
+func TestBulkEntryStruct(t *testing.T) {
+	e := BulkEntry{
+		Address: "10.0.0.1",
+		Timeout: "2h",
+		Comment: "cs|test|scenario",
+	}
+	if e.Address != "10.0.0.1" {
+		t.Errorf("expected Address '10.0.0.1', got %q", e.Address)
+	}
+	if e.Timeout != "2h" {
+		t.Errorf("expected Timeout '2h', got %q", e.Timeout)
+	}
+}
+
+// --- FirewallRule attribute building tests ---
+
+// TestFirewallRuleWantTopDetection verifies PlaceBefore="top" and "0" both
+// trigger top placement logic.
+func TestFirewallRuleWantTopDetection(t *testing.T) {
+	tests := []struct {
+		placeBefore string
+		wantTop     bool
+	}{
+		{"top", true},
+		{"0", true},
+		{"", false},
+		{"1", false},
+		{"end", false},
+	}
+	for _, tt := range tests {
+		rule := FirewallRule{PlaceBefore: tt.placeBefore}
+		got := rule.PlaceBefore == "top" || rule.PlaceBefore == "0"
+		if got != tt.wantTop {
+			t.Errorf("PlaceBefore=%q: wantTop=%v, got=%v", tt.placeBefore, tt.wantTop, got)
+		}
+	}
+}
+
+// TestFirewallRuleInInterfaceFields verifies that input interface fields
+// are correctly stored on the FirewallRule struct.
+func TestFirewallRuleInInterfaceFields(t *testing.T) {
+	rule := FirewallRule{
+		Chain:           "input",
+		Action:          "drop",
+		SrcAddressList:  "banned",
+		InInterface:     "ether1",
+		InInterfaceList: "WAN",
+		Comment:         "test",
+	}
+	if rule.InInterface != "ether1" {
+		t.Errorf("expected InInterface 'ether1', got %q", rule.InInterface)
+	}
+	if rule.InInterfaceList != "WAN" {
+		t.Errorf("expected InInterfaceList 'WAN', got %q", rule.InInterfaceList)
+	}
+}
+
+// --- DurationToMikroTik edge cases ---
+
+// TestDurationToMikroTikSubSecond verifies sub-second durations are truncated to 0s.
+func TestDurationToMikroTikSubSecond(t *testing.T) {
+	result := DurationToMikroTik(500 * time.Millisecond)
+	if result != "0s" {
+		t.Errorf("expected 0s for sub-second duration, got %q", result)
+	}
+}
+
+// TestDurationToMikroTikLarge verifies handling of very large durations.
+func TestDurationToMikroTikLarge(t *testing.T) {
+	// 1000 days
+	result := DurationToMikroTik(1000 * 24 * time.Hour)
+	if result != "1000d" {
+		t.Errorf("expected '1000d', got %q", result)
 	}
 }

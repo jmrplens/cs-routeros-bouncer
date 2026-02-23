@@ -17,7 +17,7 @@ A [CrowdSec](https://www.crowdsec.net/) remediation component (bouncer) for [Mik
 - **IPv4 + IPv6** — independently toggleable
 - **Input + Output blocking** — output blocking optional with configurable interface/interface-list
 - **Decision filtering** — sync only local decisions or include CrowdSec community blocklists (CAPI)
-- **Observable** — Prometheus metrics (`/metrics`), structured logging, health endpoint (`/health`)
+- **Observable** — Prometheus metrics (`/metrics`), structured logging, health endpoint (`/health`), LAPI usage metrics (active decisions, dropped traffic)
 - **Multiple deployment options** — Docker, systemd, or standalone binary
 
 ## Why Another Bouncer?
@@ -35,6 +35,7 @@ Existing MikroTik bouncers have significant limitations that this project addres
 | Output blocking | ❌ | ✅ | ✅ |
 | Origin filtering (local-only mode) | ❌ | ❌ | ✅ |
 | Prometheus metrics | ❌ | ✅ | ✅ |
+| LAPI usage metrics (dropped traffic) | ❌ | ❌ | ✅ |
 | Health endpoint | ❌ | ❌ | ✅ |
 | Go (compiled, low resource usage) | ❌ (Python) | ❌ (Python) | ✅ |
 
@@ -199,7 +200,7 @@ See [`config/cs-routeros-bouncer.yaml`](config/cs-routeros-bouncer.yaml) for the
 | `crowdsec.api_url` | `CROWDSEC_URL` | `http://localhost:8080/` | CrowdSec LAPI URL |
 | `crowdsec.api_key` | `CROWDSEC_BOUNCER_API_KEY` | *(required)* | Bouncer API key |
 | `crowdsec.update_frequency` | `CROWDSEC_UPDATE_FREQUENCY` | `10s` | Poll interval for decision updates |
-| `crowdsec.lapi_metrics_interval` | `CROWDSEC_LAPI_METRICS_INTERVAL` | `15m` | Usage metrics reporting interval (`0` = disabled) |
+| `crowdsec.lapi_metrics_interval` | `CROWDSEC_LAPI_METRICS_INTERVAL` | `15m` | LAPI usage metrics interval: active decisions, dropped traffic (`0` = disabled) |
 | `crowdsec.origins` | `CROWDSEC_ORIGINS` | `[]` (all) | Filter by origin (`["crowdsec","cscli"]` = local only) |
 | `crowdsec.scopes` | `CROWDSEC_SCOPES` | `["ip","range"]` | Decision scopes to process |
 | `crowdsec.supported_decisions_types` | `CROWDSEC_DECISIONS_TYPES` | `["ban"]` | Decision types to process (see note below) |
@@ -232,8 +233,8 @@ See [`config/cs-routeros-bouncer.yaml`](config/cs-routeros-bouncer.yaml) for the
 > # Check current max-sessions for the API service
 > /ip/service/print where name=api
 >
-> # Increase the limit (default is 20, maximum 100)
-> /ip/service/set api max-sessions=100
+> # Increase the limit (default is 20, maximum 1000)
+> /ip/service/set api max-sessions=1000
 > ```
 
 ### Firewall
@@ -253,6 +254,8 @@ See [`config/cs-routeros-bouncer.yaml`](config/cs-routeros-bouncer.yaml) for the
 | `firewall.comment_prefix` | `FIREWALL_COMMENT_PREFIX` | `crowdsec-bouncer` | Comment prefix for managed resources |
 | `firewall.log` | `FIREWALL_LOG` | `false` | Enable RouterOS logging on firewall rules |
 | `firewall.log_prefix` | `FIREWALL_LOG_PREFIX` | `crowdsec-bouncer` | Prefix for RouterOS log entries |
+| `firewall.block_input.interface` | `FIREWALL_INPUT_INTERFACE` | | Restrict input/raw rules to this interface (empty = all) |
+| `firewall.block_input.interface_list` | `FIREWALL_INPUT_INTERFACE_LIST` | | Restrict input/raw rules to this interface list (empty = all) |
 | `firewall.block_output.enabled` | `FIREWALL_BLOCK_OUTPUT` | `false` | Block outbound traffic to banned IPs |
 | `firewall.block_output.interface` | `FIREWALL_OUTPUT_INTERFACE` | | WAN interface for output rules |
 | `firewall.block_output.interface_list` | `FIREWALL_OUTPUT_INTERFACE_LIST` | | WAN interface list for output rules |
@@ -320,6 +323,8 @@ firewall:
     chains: ["prerouting"]
   deny_action: "drop"
   rule_placement: "top"
+  block_input:
+    interface_list: "WAN"
   block_output:
     enabled: true
     interface_list: "WAN"
@@ -383,7 +388,7 @@ chain=input action=drop src-address-list=crowdsec-banned
 chain=prerouting action=drop src-address-list=crowdsec-banned
 ```
 
-Rules are placed at the **top** of the chain by default (`rule_placement: top`) to ensure they are evaluated first. If a dynamic/builtin rule occupies position 0 (e.g., RouterOS fasttrack counters), the bouncer automatically places the rule at position 1.
+Rules are placed at the **top** of the chain by default (`rule_placement: top`) to ensure they are evaluated first. If dynamic/built-in rules occupy the top positions (e.g., RouterOS fasttrack counters), the bouncer iterates through subsequent positions until it finds one where the rule can be placed.
 
 ### Performance
 
@@ -442,7 +447,7 @@ The bouncer uses a **connection pool** (4 parallel API connections), **script-ba
 
 ```bash
 curl http://localhost:2112/health
-# {"status":"ok","routeros_connected":true,"version":"v0.1.0"}
+# {"status":"ok","routeros_connected":true,"version":"v1.1.0"}
 ```
 
 ### Prometheus Metrics
@@ -457,6 +462,16 @@ Enable with `metrics.enabled: true`. Available at `http://localhost:2112/metrics
 | `crowdsec_bouncer_operation_duration_seconds` | Histogram | Operation latency (add/remove/reconcile) |
 | `crowdsec_bouncer_routeros_connected` | Gauge | RouterOS connection status (1/0) |
 | `crowdsec_bouncer_info` | Gauge | Build info (version, RouterOS identity) |
+
+### CrowdSec LAPI Metrics
+
+The bouncer reports usage metrics directly to the CrowdSec LAPI (default: every 15 min). These metrics appear in the CrowdSec Console and include:
+
+- **Active decisions** — per-origin (`crowdsec`, `cscli`, `CAPI`) and per-IP-type (`ipv4`, `ipv6`)
+- **Dropped traffic** — bytes and packets blocked by MikroTik firewall rules (delta between pushes)
+- **Bouncer metadata** — type (`cs-routeros-bouncer`), version, OS info, startup timestamp
+
+Configure with `crowdsec.lapi_metrics_interval` (set to `0` to disable).
 
 ### Grafana Dashboard
 
@@ -509,7 +524,7 @@ The dashboard provides real-time visibility into the bouncer's operation:
 <details>
 <summary><b>Firewall rules not at the top of the chain</b></summary>
 
-- RouterOS dynamic/builtin rules (e.g., fasttrack counters) cannot be moved — the bouncer places rules at position 1 in this case
+- RouterOS dynamic/built-in rules (e.g., fasttrack counters) cannot be moved — the bouncer iterates through positions until it finds one where the rule can be placed
 - Verify with: `/ip/firewall/filter/print` on the router
 - Ensure `firewall.rule_placement: "top"` is set in your config
 

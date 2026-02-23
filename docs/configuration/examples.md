@@ -25,7 +25,7 @@ firewall:
 
 ## Full protection — IPv4 + IPv6, filter + raw, input + output
 
-Maximum protection with all features enabled.
+Maximum protection with all features enabled. Input rules are restricted to WAN traffic.
 
 ```yaml
 crowdsec:
@@ -51,6 +51,8 @@ firewall:
     chains: ["prerouting"]
   deny_action: "drop"
   rule_placement: "top"
+  block_input:
+    interface_list: "WAN"
   block_output:
     enabled: true
     interface_list: "WAN"

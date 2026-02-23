@@ -1,5 +1,6 @@
 // Tests for the metrics package covering Prometheus metric recording,
-// the HTTP health endpoint, and the metrics server lifecycle.
+// the HTTP health endpoint, the metrics server lifecycle, per-origin
+// active decision tracking, and dropped counter delta logic.
 package metrics
 
 import (
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,6 +19,19 @@ import (
 
 	"github.com/jmrplens/cs-routeros-bouncer/internal/config"
 )
+
+// resetOriginAndDropped clears the package-level per-origin and dropped
+// counter state so tests run in isolation.
+func resetOriginAndDropped() {
+	originDecisionsMu.Lock()
+	originDecisions = map[string]int64{}
+	originDecisionsMu.Unlock()
+
+	droppedCountersMu.Lock()
+	droppedCounters = DroppedCounters{}
+	lastSentCounters = DroppedCounters{}
+	droppedCountersMu.Unlock()
+}
 
 // TestRecordDecision verifies that RecordDecision increments the
 // crowdsec_bouncer_decisions_total counter with the correct labels.
@@ -342,4 +357,197 @@ func TestServerStartAndShutdown(t *testing.T) {
 	if err := srv.Shutdown(ctx); err != nil {
 		t.Errorf("Shutdown() error: %v", err)
 	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Per-origin active decision tracking
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TestSetActiveDecisionsByOrigin verifies storing and retrieving per-origin counts,
+// including the Prometheus gauge vec.
+func TestSetActiveDecisionsByOrigin(t *testing.T) {
+	resetOriginAndDropped()
+
+	SetActiveDecisionsByOrigin("crowdsec", 100)
+	SetActiveDecisionsByOrigin("cscli", 5)
+	SetActiveDecisionsByOrigin("CAPI", 2000)
+
+	got := GetActiveDecisionsByOrigin()
+	if got["crowdsec"] != 100 {
+		t.Errorf("crowdsec: want 100, got %d", got["crowdsec"])
+	}
+	if got["cscli"] != 5 {
+		t.Errorf("cscli: want 5, got %d", got["cscli"])
+	}
+	if got["CAPI"] != 2000 {
+		t.Errorf("CAPI: want 2000, got %d", got["CAPI"])
+	}
+
+	// Verify Prometheus gauge vec reflects the same values.
+	if v := testutil.ToFloat64(activeDecisionsByOrigin.WithLabelValues("crowdsec")); v != 100 {
+		t.Errorf("prometheus gauge crowdsec: want 100, got %v", v)
+	}
+	if v := testutil.ToFloat64(activeDecisionsByOrigin.WithLabelValues("cscli")); v != 5 {
+		t.Errorf("prometheus gauge cscli: want 5, got %v", v)
+	}
+	if v := testutil.ToFloat64(activeDecisionsByOrigin.WithLabelValues("CAPI")); v != 2000 {
+		t.Errorf("prometheus gauge CAPI: want 2000, got %v", v)
+	}
+}
+
+// TestSetActiveDecisionsByOriginZeroDeletes verifies that setting count to 0
+// removes the origin entry and sets the Prometheus gauge to 0.
+func TestSetActiveDecisionsByOriginZeroDeletes(t *testing.T) {
+	resetOriginAndDropped()
+
+	SetActiveDecisionsByOrigin("crowdsec", 50)
+	SetActiveDecisionsByOrigin("crowdsec", 0)
+
+	got := GetActiveDecisionsByOrigin()
+	if _, exists := got["crowdsec"]; exists {
+		t.Error("expected crowdsec to be deleted when count is 0")
+	}
+
+	if v := testutil.ToFloat64(activeDecisionsByOrigin.WithLabelValues("crowdsec")); v != 0 {
+		t.Errorf("prometheus gauge should be 0 after deletion, got %v", v)
+	}
+}
+
+// TestSetActiveDecisionsByOriginNegativeDeletes verifies that negative counts
+// also remove the entry.
+func TestSetActiveDecisionsByOriginNegativeDeletes(t *testing.T) {
+	resetOriginAndDropped()
+
+	SetActiveDecisionsByOrigin("test", 10)
+	SetActiveDecisionsByOrigin("test", -1)
+
+	got := GetActiveDecisionsByOrigin()
+	if _, exists := got["test"]; exists {
+		t.Error("expected entry to be deleted for negative count")
+	}
+}
+
+// TestGetActiveDecisionsByOriginReturnsSnapshot verifies that the returned map
+// is a copy that doesn't alias the internal state.
+func TestGetActiveDecisionsByOriginReturnsSnapshot(t *testing.T) {
+	resetOriginAndDropped()
+
+	SetActiveDecisionsByOrigin("crowdsec", 42)
+
+	snap := GetActiveDecisionsByOrigin()
+	snap["crowdsec"] = 999 // mutate the snapshot
+
+	got := GetActiveDecisionsByOrigin()
+	if got["crowdsec"] != 42 {
+		t.Errorf("internal state was mutated via snapshot: got %d", got["crowdsec"])
+	}
+}
+
+// TestOriginDecisionsConcurrency exercises concurrent read/write to check
+// for data races (run with -race).
+func TestOriginDecisionsConcurrency(t *testing.T) {
+	resetOriginAndDropped()
+
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(2)
+		go func(n int) {
+			defer wg.Done()
+			SetActiveDecisionsByOrigin(fmt.Sprintf("origin-%d", n%5), int64(n))
+		}(i)
+		go func() {
+			defer wg.Done()
+			_ = GetActiveDecisionsByOrigin()
+		}()
+	}
+	wg.Wait()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dropped counter delta tracking
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TestDroppedCountersDelta verifies the basic delta calculation and
+// Prometheus gauge values.
+func TestDroppedCountersDelta(t *testing.T) {
+	resetOriginAndDropped()
+
+	SetDroppedCounters(1000, 50)
+
+	// Verify Prometheus gauges are set.
+	if v := testutil.ToFloat64(droppedBytesTotal); v != 1000 {
+		t.Errorf("prometheus dropped bytes: want 1000, got %v", v)
+	}
+	if v := testutil.ToFloat64(droppedPacketsTotal); v != 50 {
+		t.Errorf("prometheus dropped packets: want 50, got %v", v)
+	}
+
+	b, p := GetAndResetDroppedDeltas()
+	if b != 1000 || p != 50 {
+		t.Errorf("first delta: want (1000,50), got (%d,%d)", b, p)
+	}
+
+	// Second call with higher values → returns only the increase.
+	SetDroppedCounters(1500, 80)
+
+	if v := testutil.ToFloat64(droppedBytesTotal); v != 1500 {
+		t.Errorf("prometheus dropped bytes after update: want 1500, got %v", v)
+	}
+	if v := testutil.ToFloat64(droppedPacketsTotal); v != 80 {
+		t.Errorf("prometheus dropped packets after update: want 80, got %v", v)
+	}
+
+	b, p = GetAndResetDroppedDeltas()
+	if b != 500 || p != 30 {
+		t.Errorf("second delta: want (500,30), got (%d,%d)", b, p)
+	}
+}
+
+// TestDroppedCountersNoDelta verifies that calling GetAndResetDroppedDeltas
+// twice without setting new counters returns zero.
+func TestDroppedCountersNoDelta(t *testing.T) {
+	resetOriginAndDropped()
+
+	SetDroppedCounters(100, 10)
+	_, _ = GetAndResetDroppedDeltas()
+
+	b, p := GetAndResetDroppedDeltas()
+	if b != 0 || p != 0 {
+		t.Errorf("want (0,0), got (%d,%d)", b, p)
+	}
+}
+
+// TestDroppedCountersWrapAround verifies that if counters decrease (rule
+// recreation), the full new value is reported instead of a negative delta.
+func TestDroppedCountersWrapAround(t *testing.T) {
+	resetOriginAndDropped()
+
+	SetDroppedCounters(5000, 200)
+	_, _ = GetAndResetDroppedDeltas()
+
+	// Counter resets to a smaller value (rule was recreated).
+	SetDroppedCounters(300, 10)
+	b, p := GetAndResetDroppedDeltas()
+	if b != 300 || p != 10 {
+		t.Errorf("after wrap: want (300,10), got (%d,%d)", b, p)
+	}
+}
+
+// TestDroppedCountersConcurrency exercises concurrent access (run with -race).
+func TestDroppedCountersConcurrency(t *testing.T) {
+	resetOriginAndDropped()
+
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(2)
+		go func(n uint64) {
+			defer wg.Done()
+			SetDroppedCounters(n*100, n*10)
+		}(uint64(i))
+		go func() {
+			defer wg.Done()
+			_, _ = GetAndResetDroppedDeltas()
+		}()
+	}
+	wg.Wait()
 }

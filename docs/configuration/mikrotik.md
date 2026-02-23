@@ -127,15 +127,15 @@ The RouterOS API service has a `max-sessions` setting that limits simultaneous c
 # Check current limit
 /ip/service/print where name=api
 
-# Increase it (maximum supported value is 100)
-/ip/service/set api max-sessions=100
+# Increase it (maximum supported value is 1000)
+/ip/service/set api max-sessions=1000
 ```
 
 !!! tip "Performance tuning"
     For small to medium deployments (≤ 5,000 IPs) the default `pool_size: 4` is optimal. For very large CAPI lists (20,000+ IPs) increasing to 6–8 can noticeably reduce reconciliation time. Always verify the router's `max-sessions` first:
 
     ```routeros
-    /ip/service/set api max-sessions=100
+    /ip/service/set api max-sessions=1000
     ```
 
 !!! note

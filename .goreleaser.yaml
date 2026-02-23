@@ -64,6 +64,7 @@ builds:
       - -X github.com/jmrplens/cs-routeros-bouncer/internal/config.Version={{.Version}}
       - -X github.com/jmrplens/cs-routeros-bouncer/internal/config.Commit={{.ShortCommit}}
       - -X github.com/jmrplens/cs-routeros-bouncer/internal/config.BuildDate={{.Date}}
+      - -X github.com/crowdsecurity/go-cs-lib/version.Version={{.Version}}
 
 archives:
   - id: default

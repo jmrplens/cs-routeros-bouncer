@@ -61,7 +61,7 @@ If position 0 is occupied by a dynamic/builtin rule (e.g., RouterOS fasttrack co
 
 1. Creates the rule (appended at the end)
 2. Attempts to move it to position 0
-3. If move fails (dynamic rule at 0), moves to position 1
+3. If move fails, tries position 1, then 2, and so on until it finds a valid position
 
 ## Rule identification
 
