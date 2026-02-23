@@ -25,9 +25,6 @@ const (
 	channelBuffer = 256
 )
 
-// poolSize is the number of parallel RouterOS connections for bulk operations.
-const poolSize = 4
-
 // Manager orchestrates the CrowdSec stream and MikroTik firewall operations.
 type Manager struct {
 	cfg     config.Config
@@ -52,7 +49,6 @@ func NewManager(cfg config.Config, version string) *Manager {
 	return &Manager{
 		cfg:          cfg,
 		ros:          rosClient.NewClient(cfg.MikroTik),
-		pool:         rosClient.NewPool(cfg.MikroTik, poolSize),
 		stream:       crowdsec.NewStream(cfg.CrowdSec, version),
 		logger:       log.With().Str("component", "manager").Logger(),
 		version:      version,
@@ -73,7 +69,26 @@ func (m *Manager) Start(ctx context.Context) error {
 	}
 	metrics.SetConnected(true)
 
-	// 1b. Connect the parallel pool for bulk operations
+	// 1b. Determine effective pool size (configured value capped by router limit)
+	poolSize := m.cfg.MikroTik.PoolSize
+	if maxSessions := m.ros.GetAPIMaxSessions(); maxSessions > 0 {
+		// Reserve 1 session for the main client + external tools
+		limit := maxSessions - 2
+		if limit < 1 {
+			limit = 1
+		}
+		if poolSize > limit {
+			m.logger.Info().
+				Int("configured", m.cfg.MikroTik.PoolSize).
+				Int("max_sessions", maxSessions).
+				Int("effective", limit).
+				Msg("pool size capped by router API max-sessions")
+			poolSize = limit
+		}
+	}
+
+	// 1c. Connect the parallel pool for bulk operations
+	m.pool = rosClient.NewPool(m.cfg.MikroTik, poolSize)
 	if err := m.pool.Connect(); err != nil {
 		m.logger.Warn().Err(err).Msg("could not create connection pool, falling back to single connection")
 		m.pool = nil

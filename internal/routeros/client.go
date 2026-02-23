@@ -254,6 +254,28 @@ func (c *Client) GetIdentity() (string, error) {
 	return result["name"], nil
 }
 
+// GetAPIMaxSessions queries the router for the API service max-sessions limit.
+// Returns 0 if the value cannot be determined (non-fatal).
+func (c *Client) GetAPIMaxSessions() int {
+	result, err := c.Find("/ip/service", []string{"?name=api"}, []string{"max-sessions"})
+	if err != nil {
+		c.logger.Warn().Err(err).Msg("could not query API max-sessions")
+		return 0
+	}
+	if result == nil {
+		return 0
+	}
+	val, ok := result["max-sessions"]
+	if !ok || val == "" {
+		return 0
+	}
+	var n int
+	if _, err := fmt.Sscanf(val, "%d", &n); err != nil {
+		return 0
+	}
+	return n
+}
+
 // DurationToMikroTik converts a Go duration to MikroTik timeout format.
 // MikroTik format: "1d2h3m4s" or "2h30m" etc.
 func DurationToMikroTik(d time.Duration) string {
