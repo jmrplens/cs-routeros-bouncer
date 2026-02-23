@@ -127,7 +127,7 @@ The RouterOS API service has a `max-sessions` setting that limits simultaneous c
 # Check current limit
 /ip/service/print where name=api
 
-# Increase it (maximum supported value is 100)
+# Increase it (maximum supported value is 1000)
 /ip/service/set api max-sessions=100
 ```
 

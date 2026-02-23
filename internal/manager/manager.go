@@ -427,6 +427,12 @@ func (m *Manager) createFirewallRules() error {
 					Log:            m.cfg.Firewall.Log,
 					LogPrefix:      m.cfg.Firewall.LogPrefix,
 				}
+				if m.cfg.Firewall.BlockInput.Interface != "" {
+					rule.InInterface = m.cfg.Firewall.BlockInput.Interface
+				}
+				if m.cfg.Firewall.BlockInput.InterfaceList != "" {
+					rule.InInterfaceList = m.cfg.Firewall.BlockInput.InterfaceList
+				}
 				if m.cfg.Firewall.RulePlacement == "top" {
 					rule.PlaceBefore = "0"
 				}
@@ -474,6 +480,12 @@ func (m *Manager) createFirewallRules() error {
 					Comment:        comment,
 					Log:            m.cfg.Firewall.Log,
 					LogPrefix:      m.cfg.Firewall.LogPrefix,
+				}
+				if m.cfg.Firewall.BlockInput.Interface != "" {
+					rule.InInterface = m.cfg.Firewall.BlockInput.Interface
+				}
+				if m.cfg.Firewall.BlockInput.InterfaceList != "" {
+					rule.InInterfaceList = m.cfg.Firewall.BlockInput.InterfaceList
 				}
 				if m.cfg.Firewall.RulePlacement == "top" {
 					rule.PlaceBefore = "0"

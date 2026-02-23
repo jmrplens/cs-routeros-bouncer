@@ -99,6 +99,12 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Firewall.BlockOutput.Enabled {
 		t.Error("expected block_output disabled by default")
 	}
+	if cfg.Firewall.BlockInput.Interface != "" {
+		t.Error("expected block_input.interface empty by default")
+	}
+	if cfg.Firewall.BlockInput.InterfaceList != "" {
+		t.Error("expected block_input.interface_list empty by default")
+	}
 
 	// Logging defaults
 	if cfg.Logging.Level != "info" {
@@ -578,4 +584,43 @@ func TestPoolSizeEnvOverride(t *testing.T) {
 	if cfg.MikroTik.PoolSize != 8 {
 		t.Errorf("expected pool_size=8, got %d", cfg.MikroTik.PoolSize)
 	}
+}
+
+// TestBlockInputInterfaceEnv verifies that FIREWALL_INPUT_INTERFACE and
+// FIREWALL_INPUT_INTERFACE_LIST environment variables are correctly bound
+// to the BlockInput configuration.
+func TestBlockInputInterfaceEnv(t *testing.T) {
+setMinimalEnv(t)
+t.Setenv("FIREWALL_INPUT_INTERFACE", "ether1")
+t.Setenv("FIREWALL_INPUT_INTERFACE_LIST", "WAN")
+
+cfg, err := Load("")
+if err != nil {
+t.Fatalf("unexpected error: %v", err)
+}
+
+if cfg.Firewall.BlockInput.Interface != "ether1" {
+t.Errorf("expected block_input.interface='ether1', got '%s'", cfg.Firewall.BlockInput.Interface)
+}
+if cfg.Firewall.BlockInput.InterfaceList != "WAN" {
+t.Errorf("expected block_input.interface_list='WAN', got '%s'", cfg.Firewall.BlockInput.InterfaceList)
+}
+}
+
+// TestBlockInputEmptyIsValid verifies that leaving block_input empty (the
+// default) passes validation — rules apply to all interfaces.
+func TestBlockInputEmptyIsValid(t *testing.T) {
+cfg := &Config{
+MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "u", Password: "p", PoolSize: 4},
+CrowdSec: CrowdSecConfig{APIURL: "http://localhost:8080/", APIKey: "k"},
+Firewall: FirewallConfig{
+IPv4:       ProtoConfig{Enabled: true},
+Filter:     RuleConfig{Enabled: true, Chains: []string{"input"}},
+DenyAction: "drop",
+BlockInput: BlockInputConfig{},
+},
+}
+if err := cfg.Validate(); err != nil {
+t.Errorf("empty block_input should be valid: %v", err)
+}
 }

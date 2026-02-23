@@ -232,7 +232,7 @@ See [`config/cs-routeros-bouncer.yaml`](config/cs-routeros-bouncer.yaml) for the
 > # Check current max-sessions for the API service
 > /ip/service/print where name=api
 >
-> # Increase the limit (default is 20, maximum 100)
+> # Increase the limit (default is 20, maximum 1000)
 > /ip/service/set api max-sessions=100
 > ```
 
@@ -253,6 +253,8 @@ See [`config/cs-routeros-bouncer.yaml`](config/cs-routeros-bouncer.yaml) for the
 | `firewall.comment_prefix` | `FIREWALL_COMMENT_PREFIX` | `crowdsec-bouncer` | Comment prefix for managed resources |
 | `firewall.log` | `FIREWALL_LOG` | `false` | Enable RouterOS logging on firewall rules |
 | `firewall.log_prefix` | `FIREWALL_LOG_PREFIX` | `crowdsec-bouncer` | Prefix for RouterOS log entries |
+| `firewall.block_input.interface` | `FIREWALL_INPUT_INTERFACE` | | Restrict input/raw rules to this interface (empty = all) |
+| `firewall.block_input.interface_list` | `FIREWALL_INPUT_INTERFACE_LIST` | | Restrict input/raw rules to this interface list (empty = all) |
 | `firewall.block_output.enabled` | `FIREWALL_BLOCK_OUTPUT` | `false` | Block outbound traffic to banned IPs |
 | `firewall.block_output.interface` | `FIREWALL_OUTPUT_INTERFACE` | | WAN interface for output rules |
 | `firewall.block_output.interface_list` | `FIREWALL_OUTPUT_INTERFACE_LIST` | | WAN interface list for output rules |

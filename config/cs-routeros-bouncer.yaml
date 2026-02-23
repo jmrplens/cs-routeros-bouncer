@@ -73,6 +73,14 @@ firewall:
     # interface: "ether1"
     # Or use an interface list instead
     # interface_list: "WAN"
+  block_input:
+    # Restrict input/prerouting rules to specific interface(s).
+    # When both are empty (default), rules apply to ALL interfaces.
+    # Use this to limit blocking to the WAN interface only, allowing
+    # LAN traffic from banned IPs to still reach the router (e.g. for
+    # management or internal services).
+    # interface: "ether1"
+    # interface_list: "WAN"
   # Where to place new rules: "top" (most secure) or "bottom"
   rule_placement: "top"
   # Comment prefix used to identify bouncer-managed resources in MikroTik
