@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **LAPI usage metrics** — reports active decisions (per-origin and per-IP-type) and dropped traffic (bytes/packets delta) to CrowdSec LAPI `/v1/usage-metrics` endpoint
+  - Per-origin decision counts (e.g., `crowdsec`, `cscli`, `CAPI`)
+  - Per-IP-type decision counts (`ipv4`, `ipv6`)
+  - Firewall dropped bytes and packets read from MikroTik rule counters (delta between pushes)
+  - Configurable interval via `crowdsec.lapi_metrics_interval` (default `15m`, `0` to disable)
+- **CrowdSec SDK version metadata** — bouncer now reports correct version to CrowdSec LAPI via `go-cs-lib/version.Version` ldflags
+- **Input interface filtering** — restrict firewall rules to a specific interface or interface-list via `firewall.block_input.interface` / `firewall.block_input.interface_list`
+- **Connection pool auto-capping** — automatically reduces `pool_size` if it would exceed RouterOS `max-sessions` limit
+- **Comprehensive unit test suite**:
+  - `internal/manager` — 90.3% coverage with mock-based CrowdSecStream and RouterOSClient interfaces
+  - `internal/routeros` — 93.0% coverage with MockConn and extracted RouterConn interface
+  - `internal/crowdsec` — 93.4% coverage with BouncerEngine interface and mock-based stream tests
+  - `internal/metrics/lapi` — 71.8% coverage (metricsUpdater 100%, SDK wiring excluded)
+
+### Fixed
+
+- **Firewall rule placement** — iterate all chain positions when dynamic/builtin rules occupy top slots
+- **Empty version in LAPI metadata** — added `go-cs-lib/version.Version` ldflags to Makefile, Dockerfile, and `.goreleaser.yaml`
+
+### Changed
+
+- **LAPI metrics format** — migrated from single `active_decisions` total to per-origin and per-IP-type breakdown with dropped traffic deltas
+- **metricsUpdater** — refactored from package-level function to `Provider` method for `CounterCollector` support
+
 ## [0.1.0] - 2025-07-22
 
 ### Added

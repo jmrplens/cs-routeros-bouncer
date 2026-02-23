@@ -63,7 +63,15 @@ How often to poll LAPI for new or expired decisions. Uses Go duration format (e.
 | **Env** | `CROWDSEC_LAPI_METRICS_INTERVAL` |
 | **Default** | `15m` |
 
-How often to report usage metrics (active decision counts) to the CrowdSec LAPI. This helps CrowdSec track bouncer activity. Set to `0` to disable.
+How often to report usage metrics to the CrowdSec LAPI `/v1/usage-metrics` endpoint. Set to `0` to disable.
+
+Each push includes:
+
+- **Active decisions** — per-origin (e.g., `crowdsec`, `cscli`, `CAPI`) and per-IP-type (`ipv4`, `ipv6`)
+- **Dropped traffic** — bytes and packets blocked by MikroTik firewall rules (delta since last push)
+- **Bouncer metadata** — type, version, OS info, uptime
+
+This data appears in the CrowdSec Console and helps track bouncer effectiveness.
 
 ```yaml
 crowdsec:

@@ -30,9 +30,10 @@ make build
 
 This produces `bin/cs-routeros-bouncer` with version metadata embedded via `-ldflags`:
 
-- `Version` — git tag or `dev`
-- `Commit` — short git SHA
-- `BuildDate` — UTC build timestamp
+- `internal/config.Version` — git tag or `dev` (used for CLI `--version` and User-Agent)
+- `internal/config.Commit` — short git SHA
+- `internal/config.BuildDate` — UTC build timestamp
+- `github.com/crowdsecurity/go-cs-lib/version.Version` — same git tag (used for CrowdSec LAPI metadata reporting)
 
 ### Manual Build
 
@@ -152,14 +153,16 @@ go tool cover -func=coverage.out
 | Package | Coverage | Tests |
 |---------|----------|-------|
 | `internal/config` | ~98% | Config loading, validation, env overrides |
-| `internal/crowdsec` | ~48% | Decision parsing, stream creation, duration parsing |
-| `internal/manager` | ~12% | Rule comment building/parsing, address comments, protos |
+| `internal/crowdsec` | ~93% | Decision parsing, stream creation, duration parsing, logrus adapter |
+| `internal/manager` | ~89% | Start/Shutdown, ban/unban, reconciliation, bulk ops, pool, cache |
 | `internal/metrics` | ~97% | All metric recording, health endpoint, server lifecycle |
-| `internal/routeros` | ~11% | Duration formatting, address normalization, path helpers |
+| `internal/metrics/lapi` | ~72% | metricsUpdater, metricItem, CounterCollector (SDK wiring excluded) |
+| `internal/routeros` | ~93% | Address/firewall ops, bulk scripts, connect/reconnect, identity |
 
 !!! note
-    Manager and RouterOS packages have lower coverage because their core methods
-    require a live RouterOS connection. Integration and functional tests cover those paths.
+    Manager and RouterOS packages use mock interfaces (`RouterOSClient`, `CrowdSecStream`,
+    `RouterConn`) for high coverage without live hardware. LAPI coverage excludes
+    `NewProvider` and `Run` which are direct SDK wiring.
 
 ### Integration Tests
 

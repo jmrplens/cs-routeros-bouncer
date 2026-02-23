@@ -17,7 +17,7 @@ A [CrowdSec](https://www.crowdsec.net/) remediation component (bouncer) for [Mik
 - **IPv4 + IPv6** — independently toggleable
 - **Input + Output blocking** — output blocking optional with configurable interface/interface-list
 - **Decision filtering** — sync only local decisions or include CrowdSec community blocklists (CAPI)
-- **Observable** — Prometheus metrics (`/metrics`), structured logging, health endpoint (`/health`)
+- **Observable** — Prometheus metrics (`/metrics`), structured logging, health endpoint (`/health`), LAPI usage metrics (active decisions, dropped traffic)
 - **Multiple deployment options** — Docker, systemd, or standalone binary
 
 ## Why Another Bouncer?
@@ -35,6 +35,7 @@ Existing MikroTik bouncers have significant limitations that this project addres
 | Output blocking | ❌ | ✅ | ✅ |
 | Origin filtering (local-only mode) | ❌ | ❌ | ✅ |
 | Prometheus metrics | ❌ | ✅ | ✅ |
+| LAPI usage metrics (dropped traffic) | ❌ | ❌ | ✅ |
 | Health endpoint | ❌ | ❌ | ✅ |
 | Go (compiled, low resource usage) | ❌ (Python) | ❌ (Python) | ✅ |
 
@@ -199,7 +200,7 @@ See [`config/cs-routeros-bouncer.yaml`](config/cs-routeros-bouncer.yaml) for the
 | `crowdsec.api_url` | `CROWDSEC_URL` | `http://localhost:8080/` | CrowdSec LAPI URL |
 | `crowdsec.api_key` | `CROWDSEC_BOUNCER_API_KEY` | *(required)* | Bouncer API key |
 | `crowdsec.update_frequency` | `CROWDSEC_UPDATE_FREQUENCY` | `10s` | Poll interval for decision updates |
-| `crowdsec.lapi_metrics_interval` | `CROWDSEC_LAPI_METRICS_INTERVAL` | `15m` | Usage metrics reporting interval (`0` = disabled) |
+| `crowdsec.lapi_metrics_interval` | `CROWDSEC_LAPI_METRICS_INTERVAL` | `15m` | LAPI usage metrics interval: active decisions, dropped traffic (`0` = disabled) |
 | `crowdsec.origins` | `CROWDSEC_ORIGINS` | `[]` (all) | Filter by origin (`["crowdsec","cscli"]` = local only) |
 | `crowdsec.scopes` | `CROWDSEC_SCOPES` | `["ip","range"]` | Decision scopes to process |
 | `crowdsec.supported_decisions_types` | `CROWDSEC_DECISIONS_TYPES` | `["ban"]` | Decision types to process (see note below) |
@@ -446,7 +447,7 @@ The bouncer uses a **connection pool** (4 parallel API connections), **script-ba
 
 ```bash
 curl http://localhost:2112/health
-# {"status":"ok","routeros_connected":true,"version":"v0.1.0"}
+# {"status":"ok","routeros_connected":true,"version":"v1.1.0"}
 ```
 
 ### Prometheus Metrics
@@ -461,6 +462,16 @@ Enable with `metrics.enabled: true`. Available at `http://localhost:2112/metrics
 | `crowdsec_bouncer_operation_duration_seconds` | Histogram | Operation latency (add/remove/reconcile) |
 | `crowdsec_bouncer_routeros_connected` | Gauge | RouterOS connection status (1/0) |
 | `crowdsec_bouncer_info` | Gauge | Build info (version, RouterOS identity) |
+
+### CrowdSec LAPI Metrics
+
+The bouncer reports usage metrics directly to the CrowdSec LAPI (default: every 15 min). These metrics appear in the CrowdSec Console and include:
+
+- **Active decisions** — per-origin (`crowdsec`, `cscli`, `CAPI`) and per-IP-type (`ipv4`, `ipv6`)
+- **Dropped traffic** — bytes and packets blocked by MikroTik firewall rules (delta between pushes)
+- **Bouncer metadata** — type (`cs-routeros-bouncer`), version, OS info, startup timestamp
+
+Configure with `crowdsec.lapi_metrics_interval` (set to `0` to disable).
 
 ### Grafana Dashboard
 

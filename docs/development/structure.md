@@ -14,7 +14,9 @@ cs-routeros-bouncer/
 │   ├── manager/
 │   │   └── manager.go          # Central orchestrator
 │   ├── metrics/
-│   │   └── metrics.go          # Prometheus metrics and health endpoint
+│   │   ├── metrics.go          # Prometheus metrics and health endpoint
+│   │   └── lapi/
+│   │       └── lapi.go         # CrowdSec LAPI usage metrics reporting
 │   └── routeros/
 │       ├── client.go           # RouterOS API connection
 │       ├── addresses.go        # Address list management
@@ -106,6 +108,16 @@ Observability:
 - Prometheus metric definitions and registration
 - HTTP server for `/metrics` and `/health` endpoints
 - 8 metrics (gauges, counters, histograms)
+
+### `internal/metrics/lapi`
+
+CrowdSec LAPI usage metrics reporting:
+
+- Wraps `go-cs-bouncer.MetricsProvider` for periodic reporting to `/v1/usage-metrics`
+- Reports active decisions per-origin and per-IP-type
+- Reports firewall dropped bytes/packets (delta between pushes)
+- `CounterCollector` callback to refresh MikroTik firewall counters before each push
+- Sends bouncer metadata (type, version, OS) via the CrowdSec SDK
 
 ### `internal/routeros`
 
