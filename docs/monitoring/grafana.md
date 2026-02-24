@@ -30,7 +30,7 @@ The dashboard JSON is located at [`grafana/dashboard.json`](https://github.com/j
 
 ## Panels
 
-The dashboard contains **31 panels** organized in **8 rows** with a modern design:
+The dashboard contains **32 panels** organized in **9 rows** with a modern design:
 
 - **Transparent backgrounds** on all panels for a clean, unified look
 - **Smooth line interpolation** and subtle area fills on time series
@@ -111,6 +111,12 @@ The dashboard contains **31 panels** organized in **8 rows** with a modern desig
 | **Memory Usage** | timeseries | Bouncer process memory consumption |
 | **CPU Usage** | timeseries | Bouncer process CPU usage |
 | **Goroutines & File Descriptors** | timeseries | Go runtime internals |
+
+### Configuration
+
+| Panel | Type | Description |
+|-------|------|-------------|
+| **Bouncer Configuration** | table | All non-sensitive configuration parameters as Parameter/Value rows (collapsed by default) |
 
 ## Requirements
 

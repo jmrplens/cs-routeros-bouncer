@@ -173,6 +173,25 @@ Cumulative bytes dropped by firewall rules managed by the bouncer. Read from Mik
 
 Cumulative packets dropped by firewall rules managed by the bouncer. Read from MikroTik firewall counters across all 4 paths (filter+raw × IPv4+IPv6).
 
+### `crowdsec_bouncer_config_info`
+
+| | |
+|---|---|
+| **Type** | Gauge (info pattern, value always 1) |
+| **Labels** | 31 non-sensitive configuration parameters |
+
+Exposes the current bouncer configuration as Prometheus labels. Useful for auditing running config from the dashboard. Sensitive fields (API key, password, TLS cert paths) are excluded.
+
+**Label groups:**
+
+| Prefix | Labels |
+|--------|--------|
+| `crowdsec_` | `api_url`, `update_frequency`, `origins`, `scopes`, `decision_types`, `retry_initial_connect`, `tls` |
+| `mikrotik_` | `address`, `tls`, `pool_size`, `connection_timeout`, `command_timeout` |
+| `firewall_` | `ipv4_enabled`, `ipv4_list`, `ipv6_enabled`, `ipv6_list`, `filter_enabled`, `filter_chains`, `raw_enabled`, `raw_chains`, `deny_action`, `block_output`, `rule_placement`, `comment_prefix`, `log` |
+| `logging_` | `level`, `format` |
+| `metrics_` | `enabled`, `listen_addr`, `listen_port`, `routeros_poll_interval` |
+
 ## CrowdSec LAPI Metrics
 
 In addition to Prometheus metrics, the bouncer reports usage metrics directly to the CrowdSec LAPI at a configurable interval (`crowdsec.lapi_metrics_interval`, default `15m`). These are **not** Prometheus metrics — they are sent to the CrowdSec LAPI `/v1/usage-metrics` endpoint and appear in the CrowdSec Console.
