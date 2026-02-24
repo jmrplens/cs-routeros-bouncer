@@ -291,11 +291,17 @@ type SystemResources struct {
 	CPULoad     int    // CPU load percentage (0-100)
 	FreeMemory  uint64 // Free memory in bytes
 	TotalMemory uint64 // Total memory in bytes
+	Uptime      string // Uptime string (e.g. "1w2d3h4m5s")
+	Version     string // RouterOS version (e.g. "7.16.2")
+	BoardName   string // Board name (e.g. "RB4011iGS+")
 }
 
-// GetSystemResources queries /system/resource for CPU and memory metrics.
+// GetSystemResources queries /system/resource for CPU, memory, uptime, and version info.
 func (c *Client) GetSystemResources() (*SystemResources, error) {
-	result, err := c.Find("/system/resource", nil, []string{"cpu-load", "free-memory", "total-memory"})
+	result, err := c.Find("/system/resource", nil, []string{
+		"cpu-load", "free-memory", "total-memory",
+		"uptime", "version", "board-name",
+	})
 	if err != nil {
 		return nil, fmt.Errorf("querying system resources: %w", err)
 	}
@@ -313,7 +319,45 @@ func (c *Client) GetSystemResources() (*SystemResources, error) {
 	if v, ok := result["total-memory"]; ok {
 		_, _ = fmt.Sscanf(v, "%d", &sr.TotalMemory)
 	}
+	sr.Uptime = result["uptime"]
+	sr.Version = result["version"]
+	sr.BoardName = result["board-name"]
 	return sr, nil
+}
+
+// ParseMikroTikUptime parses a RouterOS uptime string (e.g. "1w2d3h4m5s") to seconds.
+func ParseMikroTikUptime(uptime string) float64 {
+	if uptime == "" {
+		return 0
+	}
+	var total float64
+	var num string
+	for _, ch := range uptime {
+		switch {
+		case ch >= '0' && ch <= '9':
+			num += string(ch)
+		default:
+			if num == "" {
+				continue
+			}
+			var val float64
+			_, _ = fmt.Sscanf(num, "%f", &val)
+			num = ""
+			switch ch {
+			case 'w':
+				total += val * 7 * 24 * 3600
+			case 'd':
+				total += val * 24 * 3600
+			case 'h':
+				total += val * 3600
+			case 'm':
+				total += val * 60
+			case 's':
+				total += val
+			}
+		}
+	}
+	return total
 }
 
 // SystemHealth holds health information from RouterOS.

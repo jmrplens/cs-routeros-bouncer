@@ -342,6 +342,13 @@ func (m *Manager) pollSystemMetrics() {
 	} else {
 		used := sr.TotalMemory - sr.FreeMemory
 		metrics.SetRouterOSSystemMetrics(float64(sr.CPULoad), used, sr.TotalMemory)
+
+		if sr.Uptime != "" {
+			metrics.SetRouterOSUptime(rosClient.ParseMikroTikUptime(sr.Uptime))
+		}
+		if sr.Version != "" || sr.BoardName != "" {
+			metrics.SetRouterOSInfo(sr.Version, sr.BoardName)
+		}
 	}
 
 	sh, err := m.ros.GetSystemHealth()
@@ -349,6 +356,15 @@ func (m *Manager) pollSystemMetrics() {
 		m.logger.Debug().Err(err).Msg("failed to collect system health")
 	} else if sh.CPUTemperature >= 0 {
 		metrics.SetRouterOSCPUTemperature(sh.CPUTemperature)
+	}
+
+	// Collect firewall dropped counters for Prometheus (independent of LAPI).
+	fc, err := m.ros.GetFirewallCounters(m.commentPrefix() + ":")
+	if err != nil {
+		m.logger.Debug().Err(err).Msg("failed to collect firewall counters")
+	} else {
+		metrics.SetDroppedCounters(fc.TotalBytes, fc.TotalPkts)
+		metrics.SetDroppedCountersByProto(fc.IPv4Bytes, fc.IPv4Pkts, fc.IPv6Bytes, fc.IPv6Pkts)
 	}
 }
 

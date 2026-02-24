@@ -803,6 +803,58 @@ func TestSetRouterOSSystemMetricsConcurrency(t *testing.T) {
 	wg.Wait()
 }
 
+// --- RouterOS uptime, info, and per-proto dropped counter tests ---
+
+func TestSetRouterOSUptime(t *testing.T) {
+	SetRouterOSUptime(86400)
+	v := testutil.ToFloat64(routerosUptimeSeconds)
+	if v != 86400 {
+		t.Errorf("uptime = %v, want 86400", v)
+	}
+	SetRouterOSUptime(12345.5)
+	v = testutil.ToFloat64(routerosUptimeSeconds)
+	if v != 12345.5 {
+		t.Errorf("uptime = %v, want 12345.5", v)
+	}
+}
+
+func TestSetRouterOSInfo(t *testing.T) {
+	routerosInfo.Reset()
+	SetRouterOSInfo("7.21.3 (stable)", "RB5009UG+S+")
+	expected := `
+# HELP crowdsec_bouncer_routeros_info RouterOS system information.
+# TYPE crowdsec_bouncer_routeros_info gauge
+crowdsec_bouncer_routeros_info{board_name="RB5009UG+S+",version="7.21.3 (stable)"} 1
+`
+	if err := testutil.CollectAndCompare(routerosInfo, strings.NewReader(expected),
+		"crowdsec_bouncer_routeros_info"); err != nil {
+		t.Errorf("unexpected: %v", err)
+	}
+
+	// Second call replaces labels (Reset + Set).
+	SetRouterOSInfo("7.22", "hAP ax3")
+	v := testutil.ToFloat64(routerosInfo.WithLabelValues("7.22", "hAP ax3"))
+	if v != 1 {
+		t.Errorf("expected 1, got %v", v)
+	}
+}
+
+func TestSetDroppedCountersByProto(t *testing.T) {
+	SetDroppedCountersByProto(1000, 10, 500, 5)
+	if v := testutil.ToFloat64(droppedBytesProto.WithLabelValues("ipv4")); v != 1000 {
+		t.Errorf("ipv4 bytes = %v, want 1000", v)
+	}
+	if v := testutil.ToFloat64(droppedBytesProto.WithLabelValues("ipv6")); v != 500 {
+		t.Errorf("ipv6 bytes = %v, want 500", v)
+	}
+	if v := testutil.ToFloat64(droppedPacketsProto.WithLabelValues("ipv4")); v != 10 {
+		t.Errorf("ipv4 pkts = %v, want 10", v)
+	}
+	if v := testutil.ToFloat64(droppedPacketsProto.WithLabelValues("ipv6")); v != 5 {
+		t.Errorf("ipv6 pkts = %v, want 5", v)
+	}
+}
+
 // --- SetConfigInfo tests ---
 
 // testConfigParams returns a fully populated ConfigParams for testing.
