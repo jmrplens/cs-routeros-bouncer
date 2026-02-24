@@ -3,6 +3,8 @@ title: Firewall Rules
 description: How the bouncer creates and manages firewall rules on the MikroTik router.
 ---
 
+import { Badge, Steps, LinkCard } from '@astrojs/starlight/components';
+
 How the bouncer creates and manages firewall rules.
 
 ## Rule types
@@ -19,12 +21,27 @@ Each type has an IPv6 equivalent (e.g., `/ipv6/firewall/filter`).
 
 ## Rule creation flow
 
-On startup, the bouncer:
+On startup, the bouncer follows this sequence:
 
-1. Checks for existing bouncer-managed rules (by comment pattern)
-2. Removes any existing rules to ensure clean state
-3. Creates new rules according to configuration
-4. Places rules at the configured position (top or bottom)
+<Steps>
+
+1. **Check for existing rules**
+
+   Scans for bouncer-managed rules by matching the comment pattern.
+
+2. **Clean state**
+
+   Removes any existing rules to ensure a fresh start.
+
+3. **Create new rules**
+
+   Creates rules according to the current configuration.
+
+4. **Place at configured position**
+
+   Inserts rules at `top` (position 0) or `bottom` of each chain.
+
+</Steps>
 
 ## Rule structure
 
@@ -63,11 +80,9 @@ With `rule_placement: "top"`, the bouncer places rules at position 0 for maximum
 
 Rules are identified by a structured comment:
 
-```
+```text
 {prefix}:{type}-{chain}-{direction}-{protocol} @cs-routeros-bouncer
 ```
-
-Components:
 
 | Part | Values |
 |------|--------|
@@ -85,11 +100,22 @@ The `@cs-routeros-bouncer` suffix is always appended and is used to distinguish 
 
 When the bouncer receives a SIGTERM signal:
 
-1. All firewall rules with matching comments are removed
-2. Address list entries are **not** removed — they expire naturally via their timeout
+<Steps>
+
+1. **Remove rules**
+
+   All firewall rules with matching comments are removed.
+
+2. **Preserve address lists**
+
+   Address list entries are **not** removed — they expire naturally via their timeout.
+
+</Steps>
 
 This design means:
 
 - Protection continues briefly after bouncer stops (until entries expire)
 - No mass-delete operations are needed on shutdown
 - Quick restart doesn't leave the router unprotected during the gap
+
+<LinkCard title="Firewall Configuration" description="Configure rule types, placement, logging, and advanced customizations." href="/cs-routeros-bouncer/configuration/firewall/" />

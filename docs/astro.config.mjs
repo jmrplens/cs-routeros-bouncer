@@ -35,6 +35,8 @@ function routerosLanguage() {
 }
 
 export default defineConfig({
+  site: "https://jmrplens.github.io/cs-routeros-bouncer",
+  base: "/cs-routeros-bouncer",
   integrations: [
     routerosLanguage(),
     starlight({
@@ -57,12 +59,28 @@ export default defineConfig({
         baseUrl:
           "https://github.com/jmrplens/cs-routeros-bouncer/edit/main/docs/",
       },
+      lastUpdated: true,
+      pagination: true,
       customCss: ["./src/styles/custom.css"],
+      head: [
+        {
+          tag: "meta",
+          attrs: {
+            property: "og:image",
+            content:
+              "https://jmrplens.github.io/cs-routeros-bouncer/og-image.png",
+          },
+        },
+      ],
       sidebar: [
         {
           label: "Getting Started",
           items: [
-            { label: "Quick Start", slug: "getting-started/quickstart" },
+            {
+              label: "Quick Start",
+              slug: "getting-started/quickstart",
+              badge: { text: "Start here", variant: "tip" },
+            },
             { label: "Installation", slug: "getting-started/installation" },
             { label: "Router Setup", slug: "getting-started/router-setup" },
           ],
@@ -83,6 +101,7 @@ export default defineConfig({
         },
         {
           label: "Architecture",
+          badge: { text: "Deep dive", variant: "note" },
           items: [
             { label: "Overview", slug: "architecture" },
             { label: "Decision Processing", slug: "architecture/decisions" },
@@ -104,7 +123,11 @@ export default defineConfig({
             { label: "Building & Testing", slug: "development/building" },
             { label: "Project Structure", slug: "development/structure" },
             { label: "Contributing", slug: "development/contributing" },
-            { label: "Security", slug: "development/security" },
+            {
+              label: "Security",
+              slug: "development/security",
+              badge: { text: "Policy", variant: "caution" },
+            },
           ],
         },
         { label: "Troubleshooting", slug: "troubleshooting" },

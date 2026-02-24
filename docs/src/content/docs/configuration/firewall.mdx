@@ -3,25 +3,21 @@ title: Firewall
 description: IPv4/IPv6 blocking, firewall rule creation, and output blocking configuration.
 ---
 
+import { Badge } from '@astrojs/starlight/components';
+
 Settings for IPv4/IPv6 blocking, firewall rule creation, and output blocking.
 
 ## IPv4
 
 ### `firewall.ipv4.enabled`
 
-| | |
-|---|---|
-| **Env** | `FIREWALL_IPV4_ENABLED` |
-| **Default** | `true` |
+<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_IPV4_ENABLED` · **Default:** `true`
 
 Enable IPv4 address blocking. When enabled, the bouncer creates IPv4 firewall rules and manages the IPv4 address list.
 
 ### `firewall.ipv4.address_list`
 
-| | |
-|---|---|
-| **Env** | `FIREWALL_IPV4_ADDRESS_LIST` |
-| **Default** | `crowdsec-banned` |
+<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_IPV4_ADDRESS_LIST` · **Default:** `crowdsec-banned`
 
 Name of the IPv4 address list in MikroTik where banned IPs are stored.
 
@@ -29,19 +25,13 @@ Name of the IPv4 address list in MikroTik where banned IPs are stored.
 
 ### `firewall.ipv6.enabled`
 
-| | |
-|---|---|
-| **Env** | `FIREWALL_IPV6_ENABLED` |
-| **Default** | `true` |
+<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_IPV6_ENABLED` · **Default:** `true`
 
 Enable IPv6 address blocking. When enabled, the bouncer creates IPv6 firewall rules and manages the IPv6 address list.
 
 ### `firewall.ipv6.address_list`
 
-| | |
-|---|---|
-| **Env** | `FIREWALL_IPV6_ADDRESS_LIST` |
-| **Default** | `crowdsec6-banned` |
+<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_IPV6_ADDRESS_LIST` · **Default:** `crowdsec6-banned`
 
 Name of the IPv6 address list in MikroTik.
 
@@ -49,19 +39,13 @@ Name of the IPv6 address list in MikroTik.
 
 ### `firewall.filter.enabled`
 
-| | |
-|---|---|
-| **Env** | `FIREWALL_FILTER_ENABLED` |
-| **Default** | `true` |
+<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_FILTER_ENABLED` · **Default:** `true`
 
 Create rules in `/ip/firewall/filter` (and `/ipv6/firewall/filter` if IPv6 enabled). Filter rules are the standard RouterOS firewall rules processed after connection tracking.
 
 ### `firewall.filter.chains`
 
-| | |
-|---|---|
-| **Env** | `FIREWALL_FILTER_CHAINS` |
-| **Default** | `["input"]` |
+<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_FILTER_CHAINS` · **Default:** `["input"]`
 
 Which chains to create filter rules in. Common values:
 
@@ -78,10 +62,7 @@ firewall:
 
 ### `firewall.raw.enabled`
 
-| | |
-|---|---|
-| **Env** | `FIREWALL_RAW_ENABLED` |
-| **Default** | `true` |
+<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_RAW_ENABLED` · **Default:** `true`
 
 Create rules in `/ip/firewall/raw` (and `/ipv6/firewall/raw` if IPv6 enabled). Raw rules are processed before connection tracking, providing earlier packet filtering with less CPU usage.
 
@@ -91,10 +72,7 @@ Enable both filter and raw rules for defense-in-depth. Raw rules block traffic e
 
 ### `firewall.raw.chains`
 
-| | |
-|---|---|
-| **Env** | `FIREWALL_RAW_CHAINS` |
-| **Default** | `["prerouting"]` |
+<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_RAW_CHAINS` · **Default:** `["prerouting"]`
 
 Which chains to create raw rules in. Typically `prerouting`.
 
@@ -102,22 +80,16 @@ Which chains to create raw rules in. Typically `prerouting`.
 
 ### `firewall.deny_action`
 
-| | |
-|---|---|
-| **Env** | `FIREWALL_DENY_ACTION` |
-| **Default** | `drop` |
+<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_DENY_ACTION` · **Default:** `drop`
 
-Action for firewall rules. Options:
+Action for firewall rules:
 
 - `drop` — silently drops packets (recommended)
 - `reject` — sends a rejection response to the sender
 
 ### `firewall.rule_placement`
 
-| | |
-|---|---|
-| **Env** | `FIREWALL_RULE_PLACEMENT` |
-| **Default** | `top` |
+<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_RULE_PLACEMENT` · **Default:** `top`
 
 Where to place new firewall rules in the chain:
 
@@ -130,10 +102,7 @@ If a dynamic/built-in rule occupies position 0 (e.g., RouterOS fasttrack counter
 
 ### `firewall.comment_prefix`
 
-| | |
-|---|---|
-| **Env** | `FIREWALL_COMMENT_PREFIX` |
-| **Default** | `crowdsec-bouncer` |
+<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_COMMENT_PREFIX` · **Default:** `crowdsec-bouncer`
 
 Prefix for comments on all bouncer-managed resources in MikroTik. Used to identify and manage rules.
 
@@ -149,19 +118,13 @@ crowdsec-bouncer:filter-input-input-v6 @cs-routeros-bouncer
 
 ### `firewall.log`
 
-| | |
-|---|---|
-| **Env** | `FIREWALL_LOG` |
-| **Default** | `false` |
+<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_LOG` · **Default:** `false`
 
 Enable RouterOS logging on firewall rules. When enabled, matched packets are logged in the RouterOS system log.
 
 ### `firewall.log_prefix`
 
-| | |
-|---|---|
-| **Env** | `FIREWALL_LOG_PREFIX` |
-| **Default** | `crowdsec-bouncer` |
+<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_LOG_PREFIX` · **Default:** `crowdsec-bouncer`
 
 Prefix for RouterOS log entries when logging is enabled. Helps identify bouncer-related log entries in the router log.
 
@@ -183,10 +146,7 @@ Use this setting to limit blocking to the WAN interface only, so that banned IPs
 
 ### `firewall.block_input.interface`
 
-| | |
-|---|---|
-| **Env** | `FIREWALL_INPUT_INTERFACE` |
-| **Default** | — (all interfaces) |
+<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_INPUT_INTERFACE` · **Default:** — (all interfaces)
 
 Restrict input/raw rules to a single interface.
 
@@ -198,10 +158,7 @@ firewall:
 
 ### `firewall.block_input.interface_list`
 
-| | |
-|---|---|
-| **Env** | `FIREWALL_INPUT_INTERFACE_LIST` |
-| **Default** | — (all interfaces) |
+<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_INPUT_INTERFACE_LIST` · **Default:** — (all interfaces)
 
 Restrict input/raw rules to an interface list. Alternative to specifying a single interface.
 
@@ -221,19 +178,13 @@ Block outbound traffic to banned IPs. Disabled by default.
 
 ### `firewall.block_output.enabled`
 
-| | |
-|---|---|
-| **Env** | `FIREWALL_BLOCK_OUTPUT` |
-| **Default** | `false` |
+<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_BLOCK_OUTPUT` · **Default:** `false`
 
 Enable blocking of outgoing traffic to banned IPs. This prevents your network from establishing connections to known malicious IPs.
 
 ### `firewall.block_output.interface`
 
-| | |
-|---|---|
-| **Env** | `FIREWALL_OUTPUT_INTERFACE` |
-| **Default** | — |
+<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_OUTPUT_INTERFACE` · **Default:** —
 
 WAN interface for output rules. Required if `block_output.enabled` is true (unless `interface_list` is set).
 
@@ -246,10 +197,7 @@ firewall:
 
 ### `firewall.block_output.interface_list`
 
-| | |
-|---|---|
-| **Env** | `FIREWALL_OUTPUT_INTERFACE_LIST` |
-| **Default** | — |
+<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_OUTPUT_INTERFACE_LIST` · **Default:** —
 
 WAN interface list for output rules. Alternative to specifying a single interface.
 
@@ -274,14 +222,9 @@ Each option below shows the bouncer YAML configuration and the equivalent Router
 
 ### `firewall.reject_with`
 
-| | |
-|---|---|
-| **Env** | `FIREWALL_REJECT_WITH` |
-| **Default** | — |
+<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_REJECT_WITH` · **Default:** —
 
 Customize the ICMP response type when `deny_action` is `reject`. Only valid when `deny_action: "reject"`.
-
-Valid values:
 
 | Value | Description |
 |---|---|
@@ -323,14 +266,9 @@ Use `tcp-reset` if you mainly want to reject TCP connections (SSH brute-force, w
 
 ### `firewall.filter.connection_state`
 
-| | |
-|---|---|
-| **Env** | `FIREWALL_FILTER_CONNECTION_STATE` |
-| **Default** | — (matches all connection states) |
+<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_FILTER_CONNECTION_STATE` · **Default:** — (matches all)
 
 Add a `connection-state` matcher to filter rules. This restricts rule matching to specific connection states, allowing established/related connections to pass through even if the source IP is banned.
-
-Valid states (comma-separated for multiple):
 
 | State | Description |
 |---|---|
@@ -375,10 +313,7 @@ Setting `connection_state: "new"` is useful if you want to block new connections
 
 ### `firewall.filter.log_prefix` / `firewall.raw.log_prefix` / `firewall.block_output.log_prefix`
 
-| | |
-|---|---|
-| **Env** | `FIREWALL_FILTER_LOG_PREFIX` / `FIREWALL_RAW_LOG_PREFIX` / `FIREWALL_OUTPUT_LOG_PREFIX` |
-| **Default** | — (uses global `firewall.log_prefix`) |
+<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_FILTER_LOG_PREFIX` / `FIREWALL_RAW_LOG_PREFIX` / `FIREWALL_OUTPUT_LOG_PREFIX`
 
 Override the global `log_prefix` for specific rule types. This allows differentiating log entries from filter, raw, and output rules when parsing RouterOS logs.
 
@@ -417,13 +352,16 @@ firewall:
 /ip/firewall/filter add chain=output action=drop dst-address-list=crowdsec-banned out-interface=ether1 log=yes log-prefix="cs-output" comment="crowdsec-bouncer:filter-output-output-v4 @cs-routeros-bouncer"
 ```
 
-**RouterOS log output example** (with different prefixes per type):
+<details>
+<summary>RouterOS log output example</summary>
 
 ```text
 jan/15 14:30:01 firewall,info cs-filter input: in:ether1 out:(unknown 0), src-mac 00:11:22:33:44:55, proto TCP (SYN), 185.220.101.1:45678->192.168.1.1:22, len 60
 jan/15 14:30:01 firewall,info cs-raw prerouting: in:ether1 out:(unknown 0), src-mac 00:11:22:33:44:55, proto TCP (SYN), 185.220.101.1:45679->192.168.1.1:443, len 60
 jan/15 14:30:02 firewall,info cs-output output: in:(unknown 0) out:ether1, proto TCP, 192.168.1.100:54321->185.220.101.1:80, len 60
 ```
+
+</details>
 
 :::tip[Use case]
 Per-type log prefixes are essential for log parsing tools (e.g., syslog parsers, fail2ban, or SIEM systems) that need to distinguish between inbound blocked traffic (filter/raw) and outbound blocked traffic (output).
@@ -433,10 +371,7 @@ Per-type log prefixes are essential for log parsing tools (e.g., syslog parsers,
 
 ### `firewall.block_input.whitelist`
 
-| | |
-|---|---|
-| **Env** | `FIREWALL_INPUT_WHITELIST` |
-| **Default** | — |
+<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_INPUT_WHITELIST` · **Default:** —
 
 Name of a RouterOS address-list containing trusted IPs that should bypass CrowdSec blocking. When set, the bouncer creates an **accept** rule before the drop/reject rule for each chain, allowing traffic from the whitelisted sources to pass through even if they are in the CrowdSec ban list.
 
@@ -489,10 +424,7 @@ When [`connection_state`](#firewallfilterconnection_state) is configured, it als
 
 ### `firewall.block_output.passthrough_v4` / `passthrough_v6`
 
-| | |
-|---|---|
-| **Env** | `FIREWALL_OUTPUT_PASSTHROUGH_V4` / `FIREWALL_OUTPUT_PASSTHROUGH_V6` |
-| **Default** | — |
+<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_OUTPUT_PASSTHROUGH_V4` / `FIREWALL_OUTPUT_PASSTHROUGH_V6` · **Default:** —
 
 Allow a specific local client IP to bypass output blocking. Uses `src-address` negation (`!IP`) on the output drop/reject rule, so packets from this source address are not blocked even when going to a banned destination.
 
@@ -528,10 +460,7 @@ Use this when you have a security scanner or honeypot (e.g., `192.168.1.100`) th
 
 ### `firewall.block_output.passthrough_v4_list` / `passthrough_v6_list`
 
-| | |
-|---|---|
-| **Env** | `FIREWALL_OUTPUT_PASSTHROUGH_V4_LIST` / `FIREWALL_OUTPUT_PASSTHROUGH_V6_LIST` |
-| **Default** | — |
+<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_OUTPUT_PASSTHROUGH_V4_LIST` / `FIREWALL_OUTPUT_PASSTHROUGH_V6_LIST` · **Default:** —
 
 Same as passthrough but using an address-list instead of a single IP. Uses `src-address-list` negation (`!list`) on the output rule. This is more flexible when multiple clients need to bypass output blocking.
 
@@ -600,7 +529,8 @@ firewall:
     passthrough_v4_list: "trusted-clients-v4"
 ```
 
-**This configuration generates the following RouterOS rules** (for IPv4, similar rules are created for IPv6):
+<details>
+<summary>Full RouterOS rules generated (IPv4)</summary>
 
 ```routeros
 # Filter — input chain (whitelist + reject with connection-state):
@@ -618,3 +548,5 @@ firewall:
 # Filter — output chain (with passthrough list):
 /ip/firewall/filter add chain=output action=reject reject-with=tcp-reset dst-address-list=crowdsec-banned out-interface=ether1 src-address-list=!trusted-clients-v4 log=yes log-prefix="cs-output" comment="crowdsec-bouncer:filter-output-output-v4 @cs-routeros-bouncer" place-before=0
 ```
+
+</details>

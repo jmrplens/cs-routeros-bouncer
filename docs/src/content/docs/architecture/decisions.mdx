@@ -3,33 +3,40 @@ title: Decision Processing
 description: How the bouncer processes CrowdSec decisions — filtering, deduplication, and scope handling.
 ---
 
+import { Steps, LinkCard } from '@astrojs/starlight/components';
+
 How the bouncer processes incoming CrowdSec decisions.
 
 ## Processing flow
 
-```mermaid
-flowchart TD
-    D[Decision from LAPI] --> S{Scope?}
-    S -->|IP| IP[Direct IP processing]
-    S -->|Range| R[Range processing]
-    S -->|Other| SKIP[Skip with warning]
-    IP --> F{Filter by origin?}
-    R --> F
-    F -->|Allowed| SC{Filter by scenario?}
-    F -->|Blocked| DROP[Discard decision]
-    SC -->|Allowed| ACT{Action type?}
-    SC -->|Blocked| DROP
-    ACT -->|Ban| BAN[Add to address list]
-    ACT -->|Unban| UNBAN[Remove from address list]
-```
+<Steps>
 
-## Scope handling
+1. **Receive decision from LAPI**
 
-| Scope | Action | Example |
-|-------|--------|---------|
-| `Ip` | Added directly to address list | `192.168.1.1` |
-| `Range` | Added as CIDR to address list | `10.0.0.0/24` |
-| Other | Logged as warning, skipped | — |
+   The bouncer fetches new and expired decisions from the CrowdSec Local API.
+
+2. **Check scope**
+
+   | Scope | Action | Example |
+   |-------|--------|---------|
+   | `Ip` | Added directly to address list | `192.168.1.1` |
+   | `Range` | Added as CIDR to address list | `10.0.0.0/24` |
+   | Other | Logged as warning, skipped | — |
+
+3. **Filter by origin**
+
+   If `origins` is configured, only decisions from allowed origins pass through. Unmatched decisions are discarded.
+
+4. **Filter by scenario**
+
+   If `scenarios` is configured, only decisions matching the specified patterns pass through. Supports `*` and `?` wildcards.
+
+5. **Apply action**
+
+   - **Ban** → Add IP/range to the MikroTik address list
+   - **Unban** → Remove IP/range from the address list
+
+</Steps>
 
 ## Origin filtering
 
@@ -73,3 +80,5 @@ When the same IP appears in multiple decisions (e.g., different scenarios or ori
 :::note
 Duplicate handling is transparent — the address list only ever contains one entry per IP regardless of how many decisions reference it. The last decision's timeout value is used for the address list entry.
 :::
+
+<LinkCard title="CrowdSec Configuration" description="Configure origins, scenarios, and LAPI connection settings." href="/cs-routeros-bouncer/configuration/crowdsec/" />

@@ -3,9 +3,12 @@ title: Examples
 description: Complete configuration examples for common deployment scenarios.
 ---
 
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
 Complete configuration examples for common deployment scenarios.
 
-## Minimal — IPv4 only, filter rules
+<Tabs>
+  <TabItem label="Minimal">
 
 The simplest configuration: blocks IPv4 traffic using filter rules only.
 
@@ -26,7 +29,8 @@ firewall:
     enabled: false
 ```
 
-## Full protection — IPv4 + IPv6, filter + raw, input + output
+  </TabItem>
+  <TabItem label="Full Protection">
 
 Maximum protection with all features enabled. Input rules are restricted to WAN traffic.
 
@@ -68,7 +72,8 @@ logging:
   level: "info"
 ```
 
-## Full protection with firewall customization
+  </TabItem>
+  <TabItem label="Full + Customization">
 
 All features enabled with advanced firewall rule customization: reject action, connection-state filtering, log prefixes, input whitelist, and output passthrough.
 
@@ -91,14 +96,12 @@ firewall:
   filter:
     enabled: true
     chains: ["input"]
-    # Only block new connections (allow established/related responses)
     connection_state: ["new"]
     log_prefix: "CS-FILTER"
   raw:
     enabled: true
     chains: ["prerouting"]
     log_prefix: "CS-RAW"
-  # Use reject instead of drop so clients get an ICMP response
   deny_action: "reject"
   reject_with: "icmp-host-prohibited"
   rule_placement: "top"
@@ -106,16 +109,12 @@ firewall:
   log_prefix: "CS"
   block_input:
     interface_list: "WAN"
-    # Trust IPs in this address list — place accept rule before drop
     whitelist: "crowdsec-whitelist"
   block_output:
     enabled: true
     interface_list: "WAN"
     log_prefix: "CS-OUT"
-    # Allow this local IP to bypass output blocking
     passthrough_v4: "10.0.0.100"
-    # Or use a RouterOS address list (takes precedence over IP)
-    # passthrough_v4_list: "crowdsec-passthrough"
 
 metrics:
   enabled: true
@@ -126,10 +125,11 @@ logging:
 ```
 
 :::tip[Reject vs Drop]
-Using `deny_action: reject` with `reject_with: icmp-host-prohibited` sends an ICMP unreachable message to the banned IP, making the rejection explicit. Use `drop` (the default) for silent blocking. `reject_with` is only valid when `deny_action` is `reject`.
+Using `deny_action: reject` with `reject_with: icmp-host-prohibited` sends an ICMP unreachable message to the banned IP. Use `drop` (the default) for silent blocking.
 :::
 
-## Local decisions only — no community blocklists
+  </TabItem>
+  <TabItem label="Local-only">
 
 Syncs only locally-generated decisions (from your CrowdSec engine and manual `cscli` bans). No CAPI community blocklists.
 
@@ -149,7 +149,8 @@ mikrotik:
 Community blocklists (CAPI) can contain 20,000+ IPs. If your router has limited resources or you only want to block IPs detected on your network, local-only mode is recommended. Local-only (~1,500 IPs) reconciles in ~9 s with 14% CPU peak. Full CAPI (~25,000 IPs) takes ~2 min 50 s with 23% CPU peak.
 :::
 
-## Docker Compose with environment variables
+  </TabItem>
+  <TabItem label="Docker Compose" icon="seti:docker">
 
 All configuration via environment variables — no config file needed.
 
@@ -188,7 +189,8 @@ services:
       METRICS_PORT: "2112"
 ```
 
-## With TLS and logging
+  </TabItem>
+  <TabItem label="TLS + Logging">
 
 Secure connection with rule logging enabled.
 
@@ -219,3 +221,6 @@ logging:
 metrics:
   enabled: true
 ```
+
+  </TabItem>
+</Tabs>

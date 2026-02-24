@@ -3,6 +3,8 @@ title: Contributing
 description: Guidelines for contributing to cs-routeros-bouncer.
 ---
 
+import { Steps } from '@astrojs/starlight/components';
+
 Thank you for considering contributing to cs-routeros-bouncer!
 
 ## Getting started
@@ -15,24 +17,31 @@ Thank you for considering contributing to cs-routeros-bouncer!
 
 ### Setup
 
-```bash
-# Fork and clone the repository
-git clone https://github.com/YOUR-USERNAME/cs-routeros-bouncer.git
-cd cs-routeros-bouncer
+<Steps>
 
-# Install dependencies
-go mod download
+1. **Fork and clone the repository**
 
-# Verify everything builds
-go build ./...
+   ```bash
+   git clone https://github.com/YOUR-USERNAME/cs-routeros-bouncer.git
+   cd cs-routeros-bouncer
+   ```
 
-# Run tests
-go test ./...
-```
+2. **Install dependencies and verify the build**
+
+   ```bash
+   go mod download
+   go build ./...
+   go test ./...
+   ```
+
+</Steps>
 
 ## Development workflow
 
-1. **Create a branch** from `main`:
+<Steps>
+
+1. **Create a branch** from `main`
+
    ```bash
    git checkout -b feat/my-feature
    ```
@@ -41,26 +50,24 @@ go test ./...
 
 3. **Write tests** for new functionality
 
-4. **Run the test suite**:
+4. **Run the test suite and linter**
+
    ```bash
    go test ./...
-   ```
-
-5. **Run the linter**:
-   ```bash
    golangci-lint run
    ```
 
-6. **Commit** using conventional commit messages:
+5. **Commit** using conventional commit messages
+
    ```
    feat: add support for new feature
    fix: correct handling of edge case
    docs: update configuration reference
-   test: add tests for decision filtering
-   refactor: simplify reconciliation logic
    ```
 
-7. **Push** and create a Pull Request
+6. **Push** and create a Pull Request
+
+</Steps>
 
 ## Commit messages
 

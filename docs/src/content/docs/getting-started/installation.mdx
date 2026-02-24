@@ -3,9 +3,12 @@ title: Installation
 description: Deploy cs-routeros-bouncer using Docker, systemd, or build from source.
 ---
 
+import { Steps, Tabs, TabItem, LinkCard } from '@astrojs/starlight/components';
+
 cs-routeros-bouncer supports multiple deployment methods. Choose the one that best fits your infrastructure.
 
-## Docker Compose (recommended)
+<Tabs>
+  <TabItem label="Docker Compose" icon="seti:docker">
 
 The simplest deployment method, especially if you already run CrowdSec in Docker.
 
@@ -47,30 +50,41 @@ Start the service:
 docker compose up -d
 ```
 
-### Environment variables
+:::tip
+All configuration options can be set via environment variables. See the [Configuration](/cs-routeros-bouncer/configuration/) section for the full list.
+:::
 
-All configuration options can be set via environment variables. See the [Configuration](/configuration/) section for the full list.
-
-## Binary + systemd
+  </TabItem>
+  <TabItem label="Binary + systemd" icon="linux">
 
 ### Automatic setup (recommended)
 
-Download the latest release and use the built-in setup command:
+<Steps>
 
-```bash
-# Download (replace architecture as needed: amd64, arm64, armv7)
-wget https://github.com/jmrplens/cs-routeros-bouncer/releases/latest/download/cs-routeros-bouncer_linux_amd64.tar.gz
-tar xzf cs-routeros-bouncer_linux_amd64.tar.gz
+1. **Download the latest release**
 
-# Automated install: copies binary, creates config, installs and starts systemd service
-sudo ./cs-routeros-bouncer setup
+   ```bash
+   # Replace architecture as needed: amd64, arm64, armv7
+   wget https://github.com/jmrplens/cs-routeros-bouncer/releases/latest/download/cs-routeros-bouncer_linux_amd64.tar.gz
+   tar xzf cs-routeros-bouncer_linux_amd64.tar.gz
+   ```
 
-# Edit configuration with your CrowdSec API key and MikroTik credentials
-sudo nano /etc/cs-routeros-bouncer/cs-routeros-bouncer.yaml
+2. **Run automated install**
 
-# Restart after editing config
-sudo systemctl restart cs-routeros-bouncer
-```
+   ```bash
+   sudo ./cs-routeros-bouncer setup
+   ```
+
+   This copies the binary, creates the config directory, installs and starts the systemd service.
+
+3. **Configure**
+
+   ```bash
+   sudo nano /etc/cs-routeros-bouncer/cs-routeros-bouncer.yaml
+   sudo systemctl restart cs-routeros-bouncer
+   ```
+
+</Steps>
 
 The `setup` subcommand accepts optional flags:
 
@@ -81,7 +95,8 @@ The `setup` subcommand accepts optional flags:
 
 ### Manual setup
 
-If you prefer to set things up manually:
+<details>
+<summary>Manual installation steps (click to expand)</summary>
 
 ```bash
 # Download
@@ -119,6 +134,8 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now cs-routeros-bouncer
 ```
 
+</details>
+
 ### Uninstall
 
 ```bash
@@ -129,52 +146,80 @@ sudo cs-routeros-bouncer uninstall
 sudo cs-routeros-bouncer uninstall -purge
 ```
 
-## Build from source
+  </TabItem>
+  <TabItem label="Build from source" icon="seti:go">
 
 ### Prerequisites
 
 - **Go 1.25+** — [Download](https://go.dev/dl/)
 - **Make** — typically pre-installed on Linux
 
-### Build
+### Build and install
 
-```bash
-git clone https://github.com/jmrplens/cs-routeros-bouncer.git
-cd cs-routeros-bouncer
-make build
-```
+<Steps>
 
-The binary is created at `bin/cs-routeros-bouncer`.
+1. **Clone and build**
 
-### Install
+   ```bash
+   git clone https://github.com/jmrplens/cs-routeros-bouncer.git
+   cd cs-routeros-bouncer
+   make build
+   ```
 
-```bash
-# Option 1: Automated install
-sudo bin/cs-routeros-bouncer setup
+   The binary is created at `bin/cs-routeros-bouncer`.
 
-# Option 2: Manual install
-sudo install -m 755 bin/cs-routeros-bouncer /usr/local/bin/
-```
+2. **Install**
+
+   ```bash
+   # Option 1: Automated install
+   sudo bin/cs-routeros-bouncer setup
+
+   # Option 2: Manual install
+   sudo install -m 755 bin/cs-routeros-bouncer /usr/local/bin/
+   ```
+
+</Steps>
+
+  </TabItem>
+</Tabs>
 
 ## Verify installation
 
-After installing, verify the bouncer is running correctly:
+After installing with any method, verify the bouncer is running correctly:
 
-```bash
-# Check service status
-sudo systemctl status cs-routeros-bouncer
+<Steps>
 
-# Check health endpoint
-curl http://localhost:2112/health
+1. **Check service status**
 
-# Check logs
-sudo journalctl -u cs-routeros-bouncer -f
-```
+   ```bash
+   sudo systemctl status cs-routeros-bouncer
+   ```
 
-On the router, verify firewall rules were created:
+2. **Check health endpoint**
 
-```routeros
-/ip/firewall/filter/print where comment~"crowdsec"
-/ip/firewall/raw/print where comment~"crowdsec"
-/ip/firewall/address-list/print where list=crowdsec-banned
-```
+   ```bash
+   curl http://localhost:2112/health
+   # {"status":"ok","routeros_connected":true,"version":"vX.Y.Z"}
+   ```
+
+3. **Check logs**
+
+   ```bash
+   sudo journalctl -u cs-routeros-bouncer -f
+   ```
+
+4. **Verify router-side rules**
+
+   ```routeros
+   /ip/firewall/filter/print where comment~"crowdsec"
+   /ip/firewall/raw/print where comment~"crowdsec"
+   /ip/firewall/address-list/print where list=crowdsec-banned
+   ```
+
+</Steps>
+
+<LinkCard
+  title="Next: Configuration Reference"
+  description="Customize all bouncer settings including firewall rules, filtering, and metrics."
+  href="/cs-routeros-bouncer/configuration/"
+/>

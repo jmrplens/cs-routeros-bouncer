@@ -3,6 +3,8 @@ title: Grafana Dashboard
 description: Pre-built Grafana dashboard for monitoring the bouncer.
 ---
 
+import { Steps, LinkCard, CardGrid } from '@astrojs/starlight/components';
+
 A pre-built Grafana dashboard is included for monitoring the bouncer and router health.
 
 ## Screenshots
@@ -17,9 +19,21 @@ A pre-built Grafana dashboard is included for monitoring the bouncer and router 
 
 ## Installation
 
-1. Open Grafana → **Dashboards** → **New** → **Import**
-2. Upload `grafana/cs-routeros-bouncer.json` from the repository
-3. Select your Prometheus data source
+<Steps>
+
+1. **Open Grafana import**
+
+   Navigate to **Dashboards** → **New** → **Import**.
+
+2. **Upload the dashboard JSON**
+
+   Upload `grafana/cs-routeros-bouncer.json` from the repository.
+
+3. **Select Prometheus data source**
+
+   Choose the Prometheus data source where bouncer metrics are stored.
+
+</Steps>
 
 ## Requirements
 
@@ -28,8 +42,6 @@ A pre-built Grafana dashboard is included for monitoring the bouncer and router 
 - Prometheus scraping the bouncer's `/metrics` endpoint
 
 ## Dashboard panels
-
-The dashboard includes:
 
 | Panel | Description |
 |-------|-------------|
@@ -49,3 +61,10 @@ The dashboard includes:
 :::tip
 Use the time range selector to zoom into specific events. The "Decisions Processed" panel is useful for correlating ban spikes with specific incidents.
 :::
+
+## Related
+
+<CardGrid>
+  <LinkCard title="Prometheus Metrics" description="Full reference of all exported metrics" href="/cs-routeros-bouncer/monitoring/prometheus/" />
+  <LinkCard title="Health Endpoint" description="HTTP health check for uptime monitoring" href="/cs-routeros-bouncer/monitoring/health/" />
+</CardGrid>

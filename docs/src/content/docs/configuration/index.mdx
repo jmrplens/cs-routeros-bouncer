@@ -1,7 +1,10 @@
 ---
 title: Configuration Overview
 description: All cs-routeros-bouncer configuration options at a glance.
+slug: configuration
 ---
+
+import { LinkCard, CardGrid, Badge } from '@astrojs/starlight/components';
 
 cs-routeros-bouncer can be configured via **YAML file** and/or **environment variables**. Environment variables override values from the config file.
 
@@ -17,15 +20,13 @@ A full annotated reference is included in the repository at [`config/cs-routeros
 
 ## Configuration sections
 
-The configuration is divided into five sections:
-
-| Section | Description |
-|---------|-------------|
-| [CrowdSec](/configuration/crowdsec/) | LAPI connection, polling, decision filtering |
-| [MikroTik](/configuration/mikrotik/) | RouterOS API connection and timeouts |
-| [Firewall](/configuration/firewall/) | IPv4/IPv6, filter/raw rules, output blocking, logging |
-| [Logging & Metrics](/configuration/logging-metrics/) | Log level/format, Prometheus metrics |
-| [Examples](/configuration/examples/) | Complete configuration examples for common scenarios |
+<CardGrid>
+  <LinkCard title="CrowdSec" description="LAPI connection, polling, decision filtering." href="/cs-routeros-bouncer/configuration/crowdsec/" />
+  <LinkCard title="MikroTik" description="RouterOS API connection, TLS, and timeouts." href="/cs-routeros-bouncer/configuration/mikrotik/" />
+  <LinkCard title="Firewall" description="IPv4/IPv6, filter/raw rules, output blocking, logging." href="/cs-routeros-bouncer/configuration/firewall/" />
+  <LinkCard title="Logging & Metrics" description="Log level/format, Prometheus metrics endpoint." href="/cs-routeros-bouncer/configuration/logging-metrics/" />
+  <LinkCard title="Examples" description="Complete configuration examples for common scenarios." href="/cs-routeros-bouncer/configuration/examples/" />
+</CardGrid>
 
 ## Quick reference
 
@@ -53,7 +54,7 @@ The essential settings to get the bouncer running. Most deployments only need th
 
 Fine-tuning options for decision filtering, TLS, performance, firewall customization, and observability. The defaults work well for most setups.
 
-#### [CrowdSec](/configuration/crowdsec/) — polling, filtering & TLS
+#### [CrowdSec](/cs-routeros-bouncer/configuration/crowdsec/) — polling, filtering & TLS
 
 | Config Key | Env Variable | Default | Description |
 |---|---|---|---|
@@ -70,7 +71,7 @@ Fine-tuning options for decision filtering, TLS, performance, firewall customiza
 | `crowdsec.key_path` | `CROWDSEC_KEY_PATH` | | Client key path |
 | `crowdsec.ca_cert_path` | `CROWDSEC_CA_CERT_PATH` | | CA cert path |
 
-#### [MikroTik](/configuration/mikrotik/) — TLS & performance
+#### [MikroTik](/cs-routeros-bouncer/configuration/mikrotik/) — TLS & performance
 
 | Config Key | Env Variable | Default | Description |
 |---|---|---|---|
@@ -80,7 +81,7 @@ Fine-tuning options for decision filtering, TLS, performance, firewall customiza
 | `mikrotik.command_timeout` | `MIKROTIK_CMD_TIMEOUT` | `30s` | Command timeout |
 | `mikrotik.pool_size` | `MIKROTIK_POOL_SIZE` | `4` | Parallel API connections (1–20) |
 
-#### [Firewall](/configuration/firewall/) — rules, interfaces & logging
+#### [Firewall](/cs-routeros-bouncer/configuration/firewall/) — rules, interfaces & logging
 
 | Config Key | Env Variable | Default | Description |
 |---|---|---|---|
@@ -108,7 +109,7 @@ Fine-tuning options for decision filtering, TLS, performance, firewall customiza
 | `firewall.block_output.passthrough_v6` | `FIREWALL_OUTPUT_PASSTHROUGH_V6` | | IPv6 client to bypass output blocking |
 | `firewall.block_output.passthrough_v6_list` | `FIREWALL_OUTPUT_PASSTHROUGH_V6_LIST` | | IPv6 list to bypass output blocking |
 
-#### [Logging & Metrics](/configuration/logging-metrics/) — format, file output & Prometheus
+#### [Logging & Metrics](/cs-routeros-bouncer/configuration/logging-metrics/) — format, file output & Prometheus
 
 | Config Key | Env Variable | Default | Description |
 |---|---|---|---|

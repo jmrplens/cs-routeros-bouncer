@@ -3,62 +3,43 @@ title: cs-routeros-bouncer
 description: CrowdSec bouncer for MikroTik RouterOS — automatic firewall management via the RouterOS API
 template: splash
 hero:
-  tagline: A CrowdSec remediation component (bouncer) for MikroTik RouterOS that automatically manages firewall rules and address lists via the RouterOS API.
+  title: Protect your MikroTik router with CrowdSec
+  tagline: Automatically block malicious IPs on your MikroTik router using CrowdSec threat intelligence. Zero manual configuration, real-time updates, full observability.
   image:
     file: ../../assets/logo.svg
   actions:
-    - text: Quick Start
-      link: /getting-started/quickstart/
+    - text: Get Started
+      link: /cs-routeros-bouncer/getting-started/quickstart/
       icon: right-arrow
-    - text: GitHub
+      variant: primary
+    - text: View on GitHub
       link: https://github.com/jmrplens/cs-routeros-bouncer
       icon: external
       variant: minimal
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
+import { Card, CardGrid, LinkCard, Badge } from '@astrojs/starlight/components';
 
-## Features
+## Why cs-routeros-bouncer?
 
-<CardGrid>
+<CardGrid stagger>
   <Card title="Zero Manual Configuration" icon="approve-check">
     Auto-creates and auto-removes firewall filter/raw rules on start/stop — no manual router setup needed.
   </Card>
-  <Card title="Individual IP Management" icon="list-format">
-    Adds IPs on ban, removes on unban. No bulk re-upload, no duplicates. ~1–3 ms per operation.
+  <Card title="Real-time IP Management" icon="list-format">
+    Adds IPs on ban, removes on unban. No bulk re-upload, no duplicates. **~1–3 ms per operation**.
   </Card>
-  <Card title="State Reconciliation" icon="sync">
-    On start or restart, syncs CrowdSec decisions with MikroTik state — adds missing, removes stale entries.
+  <Card title="Self-Healing State" icon="sync">
+    On start or restart, syncs CrowdSec decisions with MikroTik state — adds missing, removes stale entries automatically.
   </Card>
-  <Card title="Observable" icon="line-chart">
+  <Card title="Full Observability" icon="line-chart">
     Prometheus metrics, structured logging, health endpoint, and a ready-to-use Grafana dashboard.
   </Card>
 </CardGrid>
 
-## What is cs-routeros-bouncer?
+## How it compares
 
-A [CrowdSec](https://www.crowdsec.net/) remediation component (bouncer) for [MikroTik RouterOS](https://mikrotik.com/software) that bridges CrowdSec's threat intelligence with MikroTik's firewall, automatically blocking malicious IPs detected by CrowdSec on your MikroTik router.
-
-## Key Features
-
-- **Zero manual router configuration** — auto-creates and auto-removes firewall filter/raw rules on start/stop
-- **Individual IP management** — adds on ban, removes on unban (no bulk re-upload, no duplicates)
-- **State reconciliation** — on start/restart, syncs CrowdSec decisions with MikroTik state
-- **Graceful shutdown** — removes firewall rules on stop (address list entries expire via timeout)
-- **IPv4 + IPv6** — independently toggleable
-- **Input + Output blocking** — output blocking optional with configurable interface/interface-list
-- **Firewall customization** — connection-state filter, whitelist, passthrough, log-prefix, reject-with
-- **Decision filtering** — sync only local decisions or include CrowdSec community blocklists
-- **Duplicate IP handling** — updates timeout if new ban duration is longer
-- **Connection pooling** — configurable pool (1–20 connections) for parallel API operations
-- **Observable** — Prometheus metrics (`/metrics`), structured logging, health endpoint (`/health`), Grafana dashboard
-- **Multiple deployment options** — Docker, systemd, or standalone binary
-
-## Why Another Bouncer?
-
-Existing MikroTik bouncers have significant limitations:
-
-| Feature | funkolab (archived) | nvtkaszpir-alt | **cs-routeros-bouncer** |
+| Feature | funkolab <Badge text="archived" variant="danger" /> | nvtkaszpir-alt | **cs-routeros-bouncer** |
 |---------|:---:|:---:|:---:|
 | Auto-create firewall rules | ❌ | ❌ | ✅ |
 | Individual IP add/remove | ✅ | ❌ | ✅ |
@@ -78,19 +59,27 @@ Existing MikroTik bouncers have significant limitations:
 - **MikroTik RouterOS** 7.x with API enabled (port 8728 or 8729 for TLS)
 - A dedicated RouterOS API user with appropriate permissions
 
-## Quick Links
+## Explore the docs
 
 <CardGrid>
-  <Card title="Quick Start" icon="rocket">
-    [Get up and running in 5 minutes →](/getting-started/quickstart/)
-  </Card>
-  <Card title="Configuration" icon="setting">
-    [All configuration options explained →](/configuration/)
-  </Card>
-  <Card title="Monitoring" icon="line-chart">
-    [Prometheus metrics & Grafana dashboard →](/monitoring/prometheus/)
-  </Card>
-  <Card title="Troubleshooting" icon="warning">
-    [Common issues and solutions →](/troubleshooting/)
-  </Card>
+  <LinkCard
+    title="Quick Start"
+    description="Get up and running in 5 minutes with Docker or systemd."
+    href="/cs-routeros-bouncer/getting-started/quickstart/"
+  />
+  <LinkCard
+    title="Configuration Reference"
+    description="All configuration options explained with examples."
+    href="/cs-routeros-bouncer/configuration/"
+  />
+  <LinkCard
+    title="Monitoring & Metrics"
+    description="Prometheus metrics, Grafana dashboard, and health checks."
+    href="/cs-routeros-bouncer/monitoring/prometheus/"
+  />
+  <LinkCard
+    title="Troubleshooting"
+    description="Common issues and their solutions."
+    href="/cs-routeros-bouncer/troubleshooting/"
+  />
 </CardGrid>

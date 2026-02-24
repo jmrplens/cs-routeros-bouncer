@@ -3,6 +3,8 @@ title: Reconciliation
 description: How the bouncer ensures MikroTik address lists are perfectly synchronized with CrowdSec decisions.
 ---
 
+import { Steps, LinkCard, CardGrid } from '@astrojs/starlight/components';
+
 How the bouncer ensures address lists are perfectly synchronized with CrowdSec decisions.
 
 ## The reconciliation problem
@@ -15,33 +17,25 @@ When the bouncer starts (or restarts), the MikroTik address list may be out of s
 
 ## Reconciliation process
 
-```mermaid
-sequenceDiagram
-    participant B as Bouncer
-    participant CS as CrowdSec LAPI
-    participant MT as MikroTik Router
+<Steps>
 
-    B->>CS: Fetch all active decisions
-    B->>MT: Fetch all address list entries
-    B->>B: Compute diff (adds / deletes)
+1. **Collect**
 
-    alt Has additions
-        B->>MT: Bulk add missing IPs (script-based, 100/batch)
-    end
+   Fetch all active decisions from CrowdSec and all address list entries from MikroTik.
 
-    alt Has deletions
-        B->>MT: Remove stale IPs (parallel API calls)
-    end
+2. **Diff**
 
-    Note over B: Address list now matches CrowdSec exactly
-```
+   Compare the two sets to determine which IPs need to be added and which removed.
 
-## Algorithm
+3. **Apply**
 
-1. **Collect** — Fetch all active decisions from CrowdSec and all address list entries from MikroTik
-2. **Diff** — Determine which IPs need to be added and which removed
-3. **Apply** — Execute additions (via bulk scripts) and deletions (via parallel API calls)
-4. **Verify** — Log final counts and comparison
+   Execute additions (via bulk scripts, 100 IPs/batch) and deletions (via parallel API calls with 4-connection pool).
+
+4. **Verify**
+
+   Log final counts and comparison to confirm address list matches CrowdSec exactly.
+
+</Steps>
 
 ## Performance
 
@@ -74,11 +68,11 @@ Deletions use a 4-connection pool with concurrent API calls, achieving ~168 IPs/
 
 During initial decision collection, if a ban and corresponding unban are received for the same IP, the unban pre-filters the ban out of the pending set. This avoids adding and immediately removing the same IP.
 
-## Related
-
-- [Prometheus Metrics](/monitoring/prometheus/) — reconciliation-related metrics
-- [Grafana Dashboard](/monitoring/grafana/) — visual reconciliation monitoring
-
 :::tip
 If reconciliation takes too long, consider using `origins` filtering to limit the number of synced decisions. Local-only (~1,500 IPs) reconciles ~19× faster than full CAPI (~25,000 IPs).
 :::
+
+<CardGrid>
+  <LinkCard title="Prometheus Metrics" description="Reconciliation-related metrics for monitoring." href="/cs-routeros-bouncer/monitoring/prometheus/" />
+  <LinkCard title="Grafana Dashboard" description="Visual reconciliation monitoring." href="/cs-routeros-bouncer/monitoring/grafana/" />
+</CardGrid>

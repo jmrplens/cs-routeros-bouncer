@@ -4,6 +4,8 @@ description: How cs-routeros-bouncer bridges CrowdSec threat intelligence and Mi
 slug: architecture
 ---
 
+import { LinkCard, CardGrid } from '@astrojs/starlight/components';
+
 cs-routeros-bouncer acts as a bridge between CrowdSec's threat intelligence and MikroTik's firewall.
 
 ## Overview
@@ -20,6 +22,14 @@ flowchart LR
         R --> AL[Address Lists]
     end
 ```
+
+## Deep-dive topics
+
+<CardGrid>
+  <LinkCard title="Firewall Rules" description="How rules are created, identified, placed, and cleaned up." href="/cs-routeros-bouncer/architecture/firewall-rules/" />
+  <LinkCard title="Decision Processing" description="How CrowdSec decisions are filtered and applied." href="/cs-routeros-bouncer/architecture/decisions/" />
+  <LinkCard title="Reconciliation" description="Startup sync and diff-based address-list management." href="/cs-routeros-bouncer/architecture/reconciliation/" />
+</CardGrid>
 
 ## Components
 

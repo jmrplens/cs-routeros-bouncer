@@ -3,6 +3,8 @@ title: Health Endpoint
 description: HTTP health check endpoint for monitoring bouncer status.
 ---
 
+import { Tabs, TabItem, Badge } from '@astrojs/starlight/components';
+
 The bouncer provides a health check endpoint when metrics are enabled.
 
 ## Endpoint
@@ -28,14 +30,15 @@ Default: `http://localhost:2112/health`
 
 ## HTTP status codes
 
-| Code | Meaning |
-|------|---------|
-| `200` | All systems operational |
-| `503` | One or more components unhealthy |
+| Code | Status | Meaning |
+|------|--------|---------|
+| `200` | <Badge text="OK" variant="success" /> | All systems operational |
+| `503` | <Badge text="Unhealthy" variant="danger" /> | One or more components unhealthy |
 
 ## Integration examples
 
-### Docker healthcheck
+<Tabs>
+  <TabItem label="Docker" icon="seti:docker">
 
 ```yaml
 services:
@@ -49,7 +52,8 @@ services:
       start_period: 15s
 ```
 
-### Kubernetes liveness probe
+  </TabItem>
+  <TabItem label="Kubernetes">
 
 ```yaml
 livenessProbe:
@@ -68,7 +72,8 @@ readinessProbe:
   periodSeconds: 10
 ```
 
-### Prometheus alerting
+  </TabItem>
+  <TabItem label="Prometheus Alert">
 
 ```yaml
 groups:
@@ -82,3 +87,6 @@ groups:
         annotations:
           summary: "CrowdSec RouterOS bouncer is down"
 ```
+
+  </TabItem>
+</Tabs>

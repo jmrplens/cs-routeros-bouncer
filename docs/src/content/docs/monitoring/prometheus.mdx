@@ -3,28 +3,24 @@ title: Prometheus Metrics
 description: Complete reference of all Prometheus metrics exported by the bouncer.
 ---
 
+import { Badge } from '@astrojs/starlight/components';
+
 The bouncer exports Prometheus metrics when `metrics.enabled` is `true`. Metrics are available at `http://<listen_addr>:<listen_port>/metrics`.
 
 ## Bouncer Metrics
 
 ### `crowdsec_routeros_active_decisions`
 
-| | |
-|---|---|
-| **Type** | Gauge |
-| **Labels** | `origin`, `action`, `scope`, `ip_type` |
-| **Description** | Number of currently active (banned) decisions |
+<Badge text="Gauge" variant="note" /> <Badge text="Labels: origin, action, scope, ip_type" variant="default" />
 
-This metric provides a real-time count of active decisions, broken down by their source, action, scope, and IP type:
+Number of currently active (banned) decisions, broken down by source, action, scope, and IP type.
 
 | Label | Values | Description |
 |-------|--------|-------------|
 | `origin` | `crowdsec`, `cscli`, `CAPI`, `lists:*` | Source of the decision |
-| `action` | `ban` | Action type (currently only `ban` is supported) |
-| `scope` | `Ip`, `Range` | Whether it's a single IP or CIDR range |
+| `action` | `ban` | Action type (currently only `ban`) |
+| `scope` | `Ip`, `Range` | Single IP or CIDR range |
 | `ip_type` | `ipv4`, `ipv6` | Protocol version |
-
-**Example PromQL queries:**
 
 ```txt
 # Total active decisions
@@ -40,15 +36,13 @@ sum(crowdsec_routeros_active_decisions{origin!="CAPI"})
 sum(crowdsec_routeros_active_decisions{ip_type="ipv6"})
 ```
 
+---
+
 ### `crowdsec_routeros_processed_total`
 
-| | |
-|---|---|
-| **Type** | Counter |
-| **Labels** | `action`, `origin`, `ip_type` |
-| **Description** | Total number of decisions processed since startup |
+<Badge text="Counter" variant="success" /> <Badge text="Labels: action, origin, ip_type" variant="default" />
 
-Counts both bans (`action="ban"`) and unbans (`action="unban"`).
+Total number of decisions processed since startup. Counts both bans (`action="ban"`) and unbans (`action="unban"`).
 
 ```txt
 # Ban rate per minute by origin
@@ -58,81 +52,74 @@ rate(crowdsec_routeros_processed_total{action="ban"}[5m]) * 60
 sum(crowdsec_routeros_processed_total{action="unban"})
 ```
 
+---
+
 ### `crowdsec_routeros_lapi_calls_total`
 
-| | |
-|---|---|
-| **Type** | Counter |
-| **Labels** | `status` |
-| **Description** | Total LAPI API calls |
+<Badge text="Counter" variant="success" /> <Badge text="Labels: status" variant="default" />
 
-Labels: `status="success"` or `status="error"`.
+Total LAPI API calls. Labels: `status="success"` or `status="error"`.
 
 ```txt
 # LAPI error rate
 rate(crowdsec_routeros_lapi_calls_total{status="error"}[5m])
 ```
 
+---
+
 ### `crowdsec_routeros_routeros_calls_total`
 
-| | |
-|---|---|
-| **Type** | Counter |
-| **Labels** | `status` |
-| **Description** | Total RouterOS API calls |
+<Badge text="Counter" variant="success" /> <Badge text="Labels: status" variant="default" />
 
-Labels: `status="success"` or `status="error"`.
+Total RouterOS API calls. Labels: `status="success"` or `status="error"`.
 
 ```txt
 # RouterOS error rate
 rate(crowdsec_routeros_routeros_calls_total{status="error"}[5m])
 ```
 
+---
+
 ### `crowdsec_routeros_stream_events_total`
 
-| | |
-|---|---|
-| **Type** | Counter |
-| **Labels** | `status` |
-| **Description** | Total stream events received from LAPI |
+<Badge text="Counter" variant="success" /> <Badge text="Labels: status" variant="default" />
 
-Counts polling events (each containing 0+ decisions). Labels: `status="success"` or `status="error"`.
+Total stream events received from LAPI. Each event contains 0+ decisions. Labels: `status="success"` or `status="error"`.
+
+---
 
 ### `crowdsec_routeros_lapi_stream_latency_seconds`
 
-| | |
-|---|---|
-| **Type** | Gauge |
-| **Description** | Last recorded LAPI polling latency in seconds |
+<Badge text="Gauge" variant="note" />
 
-Time taken for the last LAPI poll request. Useful for detecting LAPI connectivity issues.
+Last recorded LAPI polling latency in seconds. Useful for detecting LAPI connectivity issues.
+
+---
 
 ### `crowdsec_routeros_reconciliation_total`
 
-| | |
-|---|---|
-| **Type** | Counter |
-| **Labels** | `status` |
-| **Description** | Total reconciliation runs |
+<Badge text="Counter" variant="success" /> <Badge text="Labels: status" variant="default" />
 
-Labels: `status="success"` or `status="error"`.
+Total reconciliation runs. Labels: `status="success"` or `status="error"`.
+
+---
 
 ### `crowdsec_routeros_reconciliation_duration_seconds`
 
-| | |
-|---|---|
-| **Type** | Gauge |
-| **Description** | Duration of the last reconciliation run in seconds |
+<Badge text="Gauge" variant="note" />
+
+Duration of the last reconciliation run in seconds.
+
+---
 
 ### `crowdsec_routeros_config_info`
 
-| | |
-|---|---|
-| **Type** | Gauge (always 1) |
-| **Labels** | All configuration parameters |
-| **Description** | Exposes bouncer configuration as metric labels |
+<Badge text="Gauge" variant="note" /> <Badge text="Info metric (value always 1)" variant="caution" />
 
-This info-style metric has value `1` and carries all configuration parameters as labels:
+Exposes bouncer configuration as metric labels. Carries all configuration parameters as labels:
+
+<details>
+<summary>Full label list</summary>
 
 | Label | Example value |
 |-------|---------------|
@@ -168,8 +155,9 @@ This info-style metric has value `1` and carries all configuration parameters as
 | `firewall_raw_log_prefix` | — |
 | `metrics_routeros_poll_interval` | `30s` |
 
+</details>
+
 ```txt
-# Check current configuration
 crowdsec_routeros_config_info
 ```
 
@@ -179,33 +167,27 @@ When `metrics.routeros_poll_interval` is non-zero, the bouncer also collects Mik
 
 ### `crowdsec_routeros_system_cpu_load`
 
-| | |
-|---|---|
-| **Type** | Gauge |
-| **Labels** | `core` |
-| **Description** | CPU load percentage per core |
+<Badge text="Gauge" variant="note" /> <Badge text="Labels: core" variant="default" />
+
+CPU load percentage per core.
 
 ### `crowdsec_routeros_system_memory_total_bytes`
 
-| | |
-|---|---|
-| **Type** | Gauge |
-| **Description** | Total system memory in bytes |
+<Badge text="Gauge" variant="note" />
+
+Total system memory in bytes.
 
 ### `crowdsec_routeros_system_memory_used_bytes`
 
-| | |
-|---|---|
-| **Type** | Gauge |
-| **Description** | Used system memory in bytes |
+<Badge text="Gauge" variant="note" />
+
+Used system memory in bytes.
 
 ### `crowdsec_routeros_system_temperature_celsius`
 
-| | |
-|---|---|
-| **Type** | Gauge |
-| **Labels** | `component` |
-| **Description** | System temperature in Celsius |
+<Badge text="Gauge" variant="note" /> <Badge text="Labels: component" variant="default" />
+
+System temperature in Celsius.
 
 ```txt
 # Memory usage percentage
@@ -219,16 +201,14 @@ avg(crowdsec_routeros_system_cpu_load)
 
 The bouncer collects CrowdSec LAPI metrics via the `/metrics` endpoint. These are proxied as gauges:
 
-### `crowdsec_routeros_lapi_*`
-
 | Metric | Type | Description |
 |--------|------|-------------|
-| `crowdsec_routeros_lapi_active_decisions` | Gauge | Total active decisions in LAPI |
-| `crowdsec_routeros_lapi_bouncers` | Gauge | Number of registered bouncers |
-| `crowdsec_routeros_lapi_machines` | Gauge | Number of registered machines |
-| `crowdsec_routeros_lapi_alerts_total` | Gauge | Total alerts in LAPI |
-| `crowdsec_routeros_lapi_decisions_added_total` | Gauge | Decisions added counter from LAPI |
-| `crowdsec_routeros_lapi_decisions_deleted_total` | Gauge | Decisions deleted counter from LAPI |
+| `crowdsec_routeros_lapi_active_decisions` | <Badge text="Gauge" variant="note" /> | Total active decisions in LAPI |
+| `crowdsec_routeros_lapi_bouncers` | <Badge text="Gauge" variant="note" /> | Number of registered bouncers |
+| `crowdsec_routeros_lapi_machines` | <Badge text="Gauge" variant="note" /> | Number of registered machines |
+| `crowdsec_routeros_lapi_alerts_total` | <Badge text="Gauge" variant="note" /> | Total alerts in LAPI |
+| `crowdsec_routeros_lapi_decisions_added_total` | <Badge text="Gauge" variant="note" /> | Decisions added counter from LAPI |
+| `crowdsec_routeros_lapi_decisions_deleted_total` | <Badge text="Gauge" variant="note" /> | Decisions deleted counter from LAPI |
 
 :::note
 LAPI metrics require the CrowdSec LAPI to have its own Prometheus endpoint enabled and accessible.

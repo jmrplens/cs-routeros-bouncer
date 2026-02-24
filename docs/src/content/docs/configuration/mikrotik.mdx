@@ -3,17 +3,15 @@ title: MikroTik Configuration
 description: RouterOS API connection, TLS, timeouts, and connection pool settings.
 ---
 
+import { Badge } from '@astrojs/starlight/components';
+
 Settings for the RouterOS API connection.
 
 ## Connection
 
 ### `mikrotik.address`
 
-| | |
-|---|---|
-| **Env** | `MIKROTIK_HOST` |
-| **Default** | `192.168.0.1:8728` |
-| **Required** | Yes |
+<Badge text="Required" variant="danger" /> **Env:** `MIKROTIK_HOST` · **Default:** `192.168.0.1:8728`
 
 RouterOS API address in `host:port` format.
 
@@ -27,21 +25,13 @@ mikrotik:
 
 ### `mikrotik.username`
 
-| | |
-|---|---|
-| **Env** | `MIKROTIK_USER` |
-| **Default** | `crowdsec` |
-| **Required** | Yes |
+<Badge text="Required" variant="danger" /> **Env:** `MIKROTIK_USER` · **Default:** `crowdsec`
 
-The RouterOS API username. Use a dedicated user with minimal permissions. See [Router Setup](/getting-started/router-setup/) for creating the user.
+The RouterOS API username. Use a dedicated user with minimal permissions. See [Router Setup](/cs-routeros-bouncer/getting-started/router-setup/) for creating the user.
 
 ### `mikrotik.password`
 
-| | |
-|---|---|
-| **Env** | `MIKROTIK_PASS` |
-| **Default** | — |
-| **Required** | Yes |
+<Badge text="Required" variant="danger" /> **Env:** `MIKROTIK_PASS` · **Default:** —
 
 The RouterOS API password.
 
@@ -56,10 +46,7 @@ export MIKROTIK_PASS="your-secure-password"
 
 ### `mikrotik.tls`
 
-| | |
-|---|---|
-| **Env** | `MIKROTIK_TLS` |
-| **Default** | `false` |
+<Badge text="Optional" variant="note" /> **Env:** `MIKROTIK_TLS` · **Default:** `false`
 
 Enable TLS for the RouterOS API connection. Requires the `api-ssl` service on the router (port 8729).
 
@@ -71,10 +58,7 @@ mikrotik:
 
 ### `mikrotik.tls_insecure`
 
-| | |
-|---|---|
-| **Env** | `MIKROTIK_TLS_INSECURE` |
-| **Default** | `false` |
+<Badge text="Optional" variant="note" /> **Env:** `MIKROTIK_TLS_INSECURE` · **Default:** `false`
 
 Skip TLS certificate verification. Required for self-signed certificates.
 
@@ -86,19 +70,13 @@ If your router uses a self-signed certificate, you need to set `tls_insecure: tr
 
 ### `mikrotik.connection_timeout`
 
-| | |
-|---|---|
-| **Env** | `MIKROTIK_CONN_TIMEOUT` |
-| **Default** | `10s` |
+<Badge text="Optional" variant="note" /> **Env:** `MIKROTIK_CONN_TIMEOUT` · **Default:** `10s`
 
 Maximum time to wait for the initial API connection. Uses Go duration format.
 
 ### `mikrotik.command_timeout`
 
-| | |
-|---|---|
-| **Env** | `MIKROTIK_CMD_TIMEOUT` |
-| **Default** | `30s` |
+<Badge text="Optional" variant="note" /> **Env:** `MIKROTIK_CMD_TIMEOUT` · **Default:** `30s`
 
 Maximum time to wait for a single API command to complete. Increase if you have a slow router or large address lists.
 
@@ -110,10 +88,7 @@ If you see timeout errors during reconciliation with large IP lists (20,000+), i
 
 ### `mikrotik.pool_size`
 
-| | |
-|---|---|
-| **Env** | `MIKROTIK_POOL_SIZE` |
-| **Default** | `4` |
+<Badge text="Optional" variant="note" /> **Env:** `MIKROTIK_POOL_SIZE` · **Default:** `4`
 
 Number of parallel RouterOS API connections used for bulk operations (adding, removing, and reconciling address-list entries). A higher value increases throughput during startup reconciliation and mass ban/unban events.
 

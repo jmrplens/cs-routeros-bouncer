@@ -3,25 +3,34 @@ title: Security
 description: Security policy, supported versions, and vulnerability reporting.
 ---
 
+import { Steps, Badge } from '@astrojs/starlight/components';
+
 ## Supported versions
 
 | Version | Supported |
 |---------|-----------|
-| Latest release | ✅ |
-| Previous minor | ✅ |
-| Older versions | ❌ |
+| Latest release | <Badge text="✓" variant="success" /> |
+| Previous minor | <Badge text="✓" variant="success" /> |
+| Older versions | <Badge text="✗" variant="danger" /> |
 
 ## Reporting vulnerabilities
 
-If you discover a security vulnerability, please report it responsibly:
+<Steps>
 
 1. **Do not** open a public issue
-2. Email the maintainer directly or use GitHub's private vulnerability reporting feature
-3. Include:
+
+2. **Contact privately**
+
+   Email the maintainer directly or use [GitHub's private vulnerability reporting](https://docs.github.com/en/code-security/security-advisories/guidance-on-reporting-and-writing-information-about-vulnerabilities/privately-reporting-a-security-vulnerability) feature.
+
+3. **Include details**
+
    - Description of the vulnerability
    - Steps to reproduce
    - Potential impact
    - Suggested fix (if any)
+
+</Steps>
 
 We aim to respond within 48 hours and will work with you to understand and address the issue.
 
@@ -42,9 +51,9 @@ We aim to respond within 48 hours and will work with you to understand and addre
 
 ### Metrics endpoint
 
-- The `/metrics` and `/health` endpoints do not require authentication
-- Restrict access via network segmentation or firewall rules
-- Do not expose the metrics port to the internet
+:::caution
+The `/metrics` and `/health` endpoints do not require authentication. Restrict access via network segmentation or firewall rules. Do not expose the metrics port to the internet.
+:::
 
 ### Docker security
 
