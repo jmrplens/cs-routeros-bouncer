@@ -284,6 +284,164 @@ ssh_clean_list() {
     ssh_cmd "${path}/remove [find list=$list]" 2>/dev/null || true
 }
 
+# ─── SSH firewall rule helpers ───────────────────────────────────────────────
+# Functions that query firewall rules (not address-list entries) on the router
+# via SSH.  Used by advanced configuration tests (T9) to verify that the
+# bouncer creates rules with the expected properties (action, connection-state,
+# log-prefix, reject-with, src-address negation, etc.).
+#
+# RouterOS terse output for firewall rules looks like:
+#   0 chain=input action=drop src-address-list=crowdsec-banned comment=...
+# Each key=value pair is space-separated on a single line per rule.
+
+# ssh_list_filter_rules — list filter rules matching comment prefix.
+#
+# Args:
+#   $1 — proto path: "ip" or "ipv6"
+#   $2 — (optional) comment prefix to filter (default: TEST_COMMENT_PREFIX)
+#
+# Returns (stdout): terse rule output, one rule per line.
+ssh_list_filter_rules() {
+    local proto="${1:-ip}" prefix="${2:-${TEST_COMMENT_PREFIX}}"
+    ssh_cmd "/${proto}/firewall/filter/print terse where comment~\"${prefix}\""
+}
+
+# ssh_list_raw_rules — list raw rules matching comment prefix.
+#
+# Args:
+#   $1 — proto path: "ip" or "ipv6"
+#   $2 — (optional) comment prefix to filter (default: TEST_COMMENT_PREFIX)
+#
+# Returns (stdout): terse rule output, one rule per line.
+ssh_list_raw_rules() {
+    local proto="${1:-ip}" prefix="${2:-${TEST_COMMENT_PREFIX}}"
+    ssh_cmd "/${proto}/firewall/raw/print terse where comment~\"${prefix}\""
+}
+
+# ssh_get_rule_prop — extract a specific property from a terse rule line.
+#
+# Parses key=value pairs from RouterOS terse output.
+#
+# Args:
+#   $1 — the full terse line
+#   $2 — property name (e.g. "action", "connection-state", "log-prefix")
+#
+# Returns (stdout): the property value, or empty string if not found.
+ssh_get_rule_prop() {
+    local line="$1" prop="$2"
+    echo "$line" | tr ' ' '\n' | grep "^${prop}=" | head -1 | sed "s/^${prop}=//"
+}
+
+# ssh_count_filter_rules — count filter rules matching comment prefix.
+ssh_count_filter_rules() {
+    local proto="${1:-ip}" prefix="${2:-${TEST_COMMENT_PREFIX}}"
+    local count
+    count=$(ssh_cmd "/${proto}/firewall/filter/print count-only where comment~\"${prefix}\"" 2>/dev/null)
+    echo "${count:-0}"
+}
+
+# ssh_count_raw_rules — count raw rules matching comment prefix.
+ssh_count_raw_rules() {
+    local proto="${1:-ip}" prefix="${2:-${TEST_COMMENT_PREFIX}}"
+    local count
+    count=$(ssh_cmd "/${proto}/firewall/raw/print count-only where comment~\"${prefix}\"" 2>/dev/null)
+    echo "${count:-0}"
+}
+
+# ─── Bouncer config management ──────────────────────────────────────────────
+# Functions to backup, modify and restore the bouncer's YAML configuration
+# file.  Used by advanced tests that need to reconfigure the bouncer with
+# different firewall options and verify the resulting rules on the router.
+
+# Config file path — set from .env or fall back to default.
+_BOUNCER_CONFIG="${BOUNCER_CONFIG:-/etc/cs-routeros-bouncer/config.yaml}"
+_CONFIG_BACKUP=""
+
+# config_backup — save a copy of the current bouncer config.
+# Must be called before config_set / config_restore.
+config_backup() {
+    _CONFIG_BACKUP=$(mktemp /tmp/bouncer-config-backup.XXXXXX)
+    cp "$_BOUNCER_CONFIG" "$_CONFIG_BACKUP"
+}
+
+# config_restore — restore the previously backed-up config.
+# Also restarts the bouncer to apply the original config.
+config_restore() {
+    if [[ -n "$_CONFIG_BACKUP" && -f "$_CONFIG_BACKUP" ]]; then
+        cp "$_CONFIG_BACKUP" "$_BOUNCER_CONFIG"
+        rm -f "$_CONFIG_BACKUP"
+        _CONFIG_BACKUP=""
+        bouncer_restart
+        bouncer_wait_reconciliation 60 || true
+        sleep 3
+    fi
+}
+
+# config_set_kv — set a top-level or nested key in the bouncer YAML config.
+#
+# Uses Python (PyYAML) to safely modify YAML without mangling formatting.
+# Supports dotted key paths: "firewall.deny_action" → config[firewall][deny_action].
+#
+# Args:
+#   $1 — dotted key path (e.g. "firewall.deny_action")
+#   $2 — value (strings are quoted, booleans/numbers auto-detected)
+#
+# Example:
+#   config_set_kv "firewall.deny_action" "reject"
+#   config_set_kv "firewall.filter.connection_state" "new,invalid"
+#   config_set_kv "firewall.log" "true"
+config_set_kv() {
+    local key_path="$1" value="$2"
+    python3 -c "
+import yaml, sys
+with open('${_BOUNCER_CONFIG}', 'r') as f:
+    cfg = yaml.safe_load(f)
+keys = '${key_path}'.split('.')
+obj = cfg
+for k in keys[:-1]:
+    if k not in obj or obj[k] is None:
+        obj[k] = {}
+    obj = obj[k]
+# Auto-detect type
+val = '${value}'
+if val.lower() == 'true': val = True
+elif val.lower() == 'false': val = False
+elif val.isdigit(): val = int(val)
+else:
+    try: val = float(val)
+    except ValueError: pass
+obj[keys[-1]] = val
+with open('${_BOUNCER_CONFIG}', 'w') as f:
+    yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
+"
+}
+
+# config_write — write a complete bouncer config from a here-doc or string.
+#
+# Args:
+#   stdin — full YAML config content
+#
+# Example:
+#   config_write <<'EOF'
+#   crowdsec:
+#     api_url: ...
+#   EOF
+config_write() {
+    cat > "$_BOUNCER_CONFIG"
+}
+
+# config_restart_and_wait — restart bouncer and wait for reconciliation.
+# Convenience wrapper for test functions.  Includes a brief pause before
+# the restart so that the recorded _BOUNCER_START_TS is safely after any
+# log entries from a prior bounce (avoids false-matching stale messages).
+config_restart_and_wait() {
+    local timeout="${1:-60}"
+    sleep 1
+    bouncer_restart
+    bouncer_wait_reconciliation "$timeout"
+    sleep 3
+}
+
 # ─── CrowdSec LAPI helpers ──────────────────────────────────────────────────
 # Functions that interact with the local CrowdSec LAPI (Local API) through the
 # `cscli` CLI tool.  These let tests add/remove ban decisions and then query

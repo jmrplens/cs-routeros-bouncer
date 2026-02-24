@@ -25,7 +25,7 @@ func TestBuildRuleComment(t *testing.T) {
 		{"filter", "forward", "output", "ip", "crowdsec-bouncer:filter-forward-output-v4"},
 	}
 	for _, tt := range tests {
-		got := buildRuleComment(tt.mode, tt.chain, tt.direction, tt.proto)
+		got := buildRuleComment(defaultCommentPrefix, tt.mode, tt.chain, tt.direction, tt.proto)
 		if got != tt.want {
 			t.Errorf("buildRuleComment(%q,%q,%q,%q) = %q, want %q",
 				tt.mode, tt.chain, tt.direction, tt.proto, got, tt.want)
@@ -46,7 +46,7 @@ func TestParseRuleCommentValid(t *testing.T) {
 		{"crowdsec-bouncer:filter-forward-output-v4", "ip", "filter"},
 	}
 	for _, tt := range tests {
-		proto, mode := parseRuleComment(tt.comment)
+		proto, mode := parseRuleComment(defaultCommentPrefix, tt.comment)
 		if proto != tt.wantProto || mode != tt.wantMode {
 			t.Errorf("parseRuleComment(%q) = (%q, %q), want (%q, %q)",
 				tt.comment, proto, mode, tt.wantProto, tt.wantMode)
@@ -64,7 +64,7 @@ func TestParseRuleCommentInvalid(t *testing.T) {
 		"other-prefix:filter-input-input-v4",
 	}
 	for _, comment := range tests {
-		proto, mode := parseRuleComment(comment)
+		proto, mode := parseRuleComment(defaultCommentPrefix, comment)
 		if proto != "" || mode != "" {
 			t.Errorf("parseRuleComment(%q) should return empty, got (%q, %q)", comment, proto, mode)
 		}
@@ -78,10 +78,10 @@ func TestBuildAddressComment(t *testing.T) {
 		Origin:   "crowdsec",
 		Scenario: "ssh-bf",
 	}
-	comment := buildAddressComment(d)
+	comment := buildAddressComment(defaultCommentPrefix, d)
 
-	if !strings.HasPrefix(comment, commentPrefix) {
-		t.Errorf("comment should start with %q, got %q", commentPrefix, comment)
+	if !strings.HasPrefix(comment, defaultCommentPrefix) {
+		t.Errorf("comment should start with %q, got %q", defaultCommentPrefix, comment)
 	}
 	if !strings.Contains(comment, "crowdsec") {
 		t.Error("comment should contain origin")
@@ -101,10 +101,10 @@ func TestBuildAddressCommentEmptyFields(t *testing.T) {
 		Origin:   "",
 		Scenario: "",
 	}
-	comment := buildAddressComment(d)
+	comment := buildAddressComment(defaultCommentPrefix, d)
 
-	if !strings.HasPrefix(comment, commentPrefix) {
-		t.Errorf("comment should start with %q, got %q", commentPrefix, comment)
+	if !strings.HasPrefix(comment, defaultCommentPrefix) {
+		t.Errorf("comment should start with %q, got %q", defaultCommentPrefix, comment)
 	}
 }
 
@@ -115,7 +115,7 @@ func TestBuildAddressCommentPartialFields(t *testing.T) {
 		Origin:   "cscli",
 		Scenario: "",
 	}
-	comment := buildAddressComment(d)
+	comment := buildAddressComment(defaultCommentPrefix, d)
 	if !strings.Contains(comment, "cscli") {
 		t.Error("comment should contain origin 'cscli'")
 	}
@@ -270,8 +270,8 @@ func TestBuildRuleCommentRoundTrip(t *testing.T) {
 		{"raw", "prerouting", "input", "ipv6", "ipv6"},
 	}
 	for _, tt := range tests {
-		comment := buildRuleComment(tt.mode, tt.chain, tt.direction, tt.proto)
-		gotProto, gotMode := parseRuleComment(comment)
+		comment := buildRuleComment(defaultCommentPrefix, tt.mode, tt.chain, tt.direction, tt.proto)
+		gotProto, gotMode := parseRuleComment(defaultCommentPrefix, comment)
 		if gotProto != tt.wantProto {
 			t.Errorf("round-trip proto: got %q, want %q (comment: %q)", gotProto, tt.wantProto, comment)
 		}
@@ -286,7 +286,7 @@ func TestBuildRuleCommentRoundTrip(t *testing.T) {
 func TestBuildAddressCommentTimestamp(t *testing.T) {
 	d := &crowdsec.Decision{Origin: "test", Scenario: "test"}
 	before := time.Now().UTC()
-	comment := buildAddressComment(d)
+	comment := buildAddressComment(defaultCommentPrefix, d)
 	after := time.Now().UTC()
 
 	parts := strings.Split(comment, "|")
@@ -297,5 +297,41 @@ func TestBuildAddressCommentTimestamp(t *testing.T) {
 	}
 	if parsed.Before(before.Truncate(time.Second)) || parsed.After(after.Add(time.Second)) {
 		t.Errorf("timestamp %v not in expected range [%v, %v]", parsed, before, after)
+	}
+}
+
+// TestBuildRuleCommentCustomPrefix verifies that a custom prefix is correctly
+// used in place of the default.
+func TestBuildRuleCommentCustomPrefix(t *testing.T) {
+	got := buildRuleComment("my-custom", "filter", "input", "input", "ip")
+	want := "my-custom:filter-input-input-v4"
+	if got != want {
+		t.Errorf("buildRuleComment with custom prefix = %q, want %q", got, want)
+	}
+}
+
+// TestParseRuleCommentCustomPrefix verifies that parseRuleComment works with
+// a non-default prefix.
+func TestParseRuleCommentCustomPrefix(t *testing.T) {
+	proto, mode := parseRuleComment("my-custom", "my-custom:raw-prerouting-input-v6")
+	if proto != "ipv6" || mode != "raw" {
+		t.Errorf("parseRuleComment with custom prefix = (%q, %q), want (ipv6, raw)", proto, mode)
+	}
+}
+
+// TestCommentPrefixMethod verifies the Manager.commentPrefix() method
+// returns the configured value or falls back to default.
+func TestCommentPrefixMethod(t *testing.T) {
+	cfg := config.Config{}
+	m := NewManager(cfg, "test")
+
+	if got := m.commentPrefix(); got != defaultCommentPrefix {
+		t.Errorf("empty config: got %q, want %q", got, defaultCommentPrefix)
+	}
+
+	cfg.Firewall.CommentPrefix = "my-prefix"
+	m2 := NewManager(cfg, "test")
+	if got := m2.commentPrefix(); got != "my-prefix" {
+		t.Errorf("custom config: got %q, want %q", got, "my-prefix")
 	}
 }

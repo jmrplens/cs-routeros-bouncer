@@ -64,6 +64,9 @@ type mockROS struct {
 	findRuleEntry *ros.RuleEntry
 	findRuleErr   error
 
+	listFirewallRulesResult []ros.RuleEntry
+	listFirewallRulesErr    error
+
 	getCountersResult *ros.FirewallCounters
 	getCountersErr    error
 
@@ -209,6 +212,15 @@ func (m *mockROS) FindFirewallRuleByComment(proto, mode, comment string) (*ros.R
 	defer m.mu.Unlock()
 	m.findRuleCalls = append(m.findRuleCalls, findRuleCall{proto, mode, comment})
 	return m.findRuleEntry, m.findRuleErr
+}
+
+func (m *mockROS) ListFirewallRules(proto, mode, commentPrefix string) ([]ros.RuleEntry, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.listFirewallRulesResult != nil {
+		return m.listFirewallRulesResult, m.listFirewallRulesErr
+	}
+	return nil, m.listFirewallRulesErr
 }
 
 func (m *mockROS) GetFirewallCounters(commentPrefix string) (*ros.FirewallCounters, error) {
