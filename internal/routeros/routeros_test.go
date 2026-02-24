@@ -186,12 +186,15 @@ func TestRuleEntryStruct(t *testing.T) {
 		ID:               "*1",
 		Chain:            "input",
 		Action:           "drop",
+		SrcAddress:       "!10.0.0.5",
 		SrcAddressList:   "crowdsec-banned",
 		DstAddressList:   "crowdsec6-banned",
 		InInterface:      "ether1",
 		InInterfaceList:  "WAN",
 		OutInterface:     "ether2",
 		OutInterfaceList: "LAN",
+		ConnectionState:  "new,invalid",
+		RejectWith:       "tcp-reset",
 		Comment:          "crowdsec-bouncer:filter-input-v4",
 	}
 
@@ -207,6 +210,15 @@ func TestRuleEntryStruct(t *testing.T) {
 	if rule.OutInterfaceList != "LAN" {
 		t.Errorf("expected out_interface_list 'LAN', got '%s'", rule.OutInterfaceList)
 	}
+	if rule.SrcAddress != "!10.0.0.5" {
+		t.Errorf("expected src_address '!10.0.0.5', got '%s'", rule.SrcAddress)
+	}
+	if rule.ConnectionState != "new,invalid" {
+		t.Errorf("expected connection_state 'new,invalid', got '%s'", rule.ConnectionState)
+	}
+	if rule.RejectWith != "tcp-reset" {
+		t.Errorf("expected reject_with 'tcp-reset', got '%s'", rule.RejectWith)
+	}
 }
 
 // TestFirewallRuleStruct verifies that the FirewallRule struct correctly
@@ -215,12 +227,15 @@ func TestFirewallRuleStruct(t *testing.T) {
 	rule := FirewallRule{
 		Chain:           "forward",
 		Action:          "reject",
+		SrcAddress:      "!192.168.1.100",
 		SrcAddressList:  "test-list",
 		Comment:         "test-comment",
 		PlaceBefore:     "top",
 		Log:             true,
 		LogPrefix:       "CS-DROP",
 		InInterfaceList: "WAN",
+		ConnectionState: "new",
+		RejectWith:      "icmp-admin-prohibited",
 	}
 
 	if rule.Chain != "forward" || rule.Action != "reject" {
@@ -231,6 +246,15 @@ func TestFirewallRuleStruct(t *testing.T) {
 	}
 	if rule.LogPrefix != "CS-DROP" {
 		t.Errorf("expected LogPrefix 'CS-DROP', got '%s'", rule.LogPrefix)
+	}
+	if rule.SrcAddress != "!192.168.1.100" {
+		t.Errorf("expected SrcAddress '!192.168.1.100', got '%s'", rule.SrcAddress)
+	}
+	if rule.ConnectionState != "new" {
+		t.Errorf("expected ConnectionState 'new', got '%s'", rule.ConnectionState)
+	}
+	if rule.RejectWith != "icmp-admin-prohibited" {
+		t.Errorf("expected RejectWith 'icmp-admin-prohibited', got '%s'", rule.RejectWith)
 	}
 }
 
@@ -359,7 +383,8 @@ func TestAddressEntryEmptyFields(t *testing.T) {
 func TestFirewallRuleAllFields(t *testing.T) {
 	rule := FirewallRule{
 		Chain:            "forward",
-		Action:           "drop",
+		Action:           "reject",
+		SrcAddress:       "!10.0.0.5",
 		SrcAddressList:   "src-list",
 		DstAddressList:   "dst-list",
 		Comment:          "test",
@@ -368,12 +393,23 @@ func TestFirewallRuleAllFields(t *testing.T) {
 		LogPrefix:        "DROP",
 		InInterfaceList:  "WAN",
 		OutInterfaceList: "LAN",
+		ConnectionState:  "new,invalid",
+		RejectWith:       "tcp-reset",
 	}
 	if rule.DstAddressList != "dst-list" {
 		t.Errorf("expected DstAddressList 'dst-list', got %q", rule.DstAddressList)
 	}
 	if rule.OutInterfaceList != "LAN" {
 		t.Errorf("expected OutInterfaceList 'LAN', got %q", rule.OutInterfaceList)
+	}
+	if rule.SrcAddress != "!10.0.0.5" {
+		t.Errorf("expected SrcAddress '!10.0.0.5', got %q", rule.SrcAddress)
+	}
+	if rule.ConnectionState != "new,invalid" {
+		t.Errorf("expected ConnectionState 'new,invalid', got %q", rule.ConnectionState)
+	}
+	if rule.RejectWith != "tcp-reset" {
+		t.Errorf("expected RejectWith 'tcp-reset', got %q", rule.RejectWith)
 	}
 }
 

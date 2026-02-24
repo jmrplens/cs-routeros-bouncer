@@ -873,7 +873,8 @@ func TestAddFirewallRule_AllOptionalFields(t *testing.T) {
 
 	rule := FirewallRule{
 		Chain:            "input",
-		Action:           "drop",
+		Action:           "reject",
+		SrcAddress:       "!10.0.0.5",
 		SrcAddressList:   "src-list",
 		DstAddressList:   "dst-list",
 		InInterface:      "ether1",
@@ -883,9 +884,11 @@ func TestAddFirewallRule_AllOptionalFields(t *testing.T) {
 		Comment:          "full-rule",
 		Log:              true,
 		LogPrefix:        "CS-DROP",
+		ConnectionState:  "new,invalid",
+		RejectWith:       "tcp-reset",
 	}
 
-	_, err := c.AddFirewallRule("ip", "raw", rule)
+	_, err := c.AddFirewallRule("ip", "filter", rule)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -903,8 +906,11 @@ func TestAddFirewallRule_AllOptionalFields(t *testing.T) {
 		"=out-interface-list=LAN",
 		"=log=true",
 		"=log-prefix=CS-DROP",
+		"=src-address=!10.0.0.5",
 		"=src-address-list=src-list",
 		"=dst-address-list=dst-list",
+		"=connection-state=new,invalid",
+		"=reject-with=tcp-reset",
 	}
 	for _, e := range expected {
 		if !argSet[e] {
@@ -1061,10 +1067,13 @@ func TestListFirewallRules_ParsesAllFields(t *testing.T) {
 	c := newTestClient(mc)
 
 	mc.pushReply(reReply(map[string]string{
-		".id": "*1", "chain": "input", "action": "drop",
+		".id": "*1", "chain": "input", "action": "reject",
+		"src-address": "!10.0.0.5",
 		"src-address-list": "src", "dst-address-list": "dst",
 		"in-interface": "ether1", "in-interface-list": "WAN",
 		"out-interface": "ether2", "out-interface-list": "LAN",
+		"connection-state": "new,invalid",
+		"reject-with": "tcp-reset",
 		"comment": "full",
 	}))
 
@@ -1073,10 +1082,19 @@ func TestListFirewallRules_ParsesAllFields(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	e := entries[0]
-	if e.Chain != "input" || e.Action != "drop" || e.SrcAddressList != "src" ||
+	if e.Chain != "input" || e.Action != "reject" || e.SrcAddressList != "src" ||
 		e.DstAddressList != "dst" || e.InInterface != "ether1" || e.InInterfaceList != "WAN" ||
 		e.OutInterface != "ether2" || e.OutInterfaceList != "LAN" || e.Comment != "full" {
 		t.Fatalf("field mismatch: %+v", e)
+	}
+	if e.SrcAddress != "!10.0.0.5" {
+		t.Errorf("expected SrcAddress '!10.0.0.5', got %q", e.SrcAddress)
+	}
+	if e.ConnectionState != "new,invalid" {
+		t.Errorf("expected ConnectionState 'new,invalid', got %q", e.ConnectionState)
+	}
+	if e.RejectWith != "tcp-reset" {
+		t.Errorf("expected RejectWith 'tcp-reset', got %q", e.RejectWith)
 	}
 }
 
