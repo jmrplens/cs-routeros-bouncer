@@ -803,7 +803,7 @@
       },
       "gridPos": {
         "h": 6,
-        "w": 8,
+        "w": 6,
         "x": 0,
         "y": 8
       },
@@ -928,8 +928,8 @@
       },
       "gridPos": {
         "h": 6,
-        "w": 8,
-        "x": 8,
+        "w": 6,
+        "x": 6,
         "y": 8
       },
       "id": 85,
@@ -968,11 +968,12 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Memory usage and CPU temperature trends with dual-axis display.",
+      "description": "Historical memory usage of the router over time with threshold lines.",
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "palette-classic"
+            "fixedColor": "#73BF69",
+            "mode": "fixed"
           },
           "custom": {
             "axisBorderShow": false,
@@ -983,7 +984,7 @@
             "barAlignment": 0,
             "barWidthFactor": 0.6,
             "drawStyle": "line",
-            "fillOpacity": 10,
+            "fillOpacity": 15,
             "gradientMode": "none",
             "hideFrom": {
               "legend": false,
@@ -1005,62 +1006,37 @@
               "mode": "none"
             },
             "thresholdsStyle": {
-              "mode": "off"
+              "mode": "dashed"
             }
           },
           "mappings": [],
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
-                "value": 0
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 70
               },
               {
                 "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Used Memory"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "decbytes"
-              },
-              {
-                "id": "custom.axisPlacement",
-                "value": "left"
-              },
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "blue",
-                  "mode": "fixed"
-                }
+                "value": 90
               }
             ]
           },
+          "unit": "percent"
+        },
+        "overrides": [
           {
             "matcher": {
               "id": "byName",
               "options": "Total Memory"
             },
             "properties": [
-              {
-                "id": "unit",
-                "value": "decbytes"
-              },
-              {
-                "id": "custom.axisPlacement",
-                "value": "left"
-              },
               {
                 "id": "custom.lineStyle",
                 "value": {
@@ -1074,7 +1050,7 @@
               {
                 "id": "color",
                 "value": {
-                  "fixedColor": "light-blue",
+                  "fixedColor": "light-green",
                   "mode": "fixed"
                 }
               },
@@ -1083,73 +1059,20 @@
                 "value": 0
               }
             ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "CPU Temp"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "celsius"
-              },
-              {
-                "id": "custom.axisPlacement",
-                "value": "right"
-              },
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "orange",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".*[Mm]emory.*"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "#73BF69",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".*[Tt]emp.*"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "#F2495C",
-                  "mode": "fixed"
-                }
-              }
-            ]
           }
         ]
       },
       "gridPos": {
         "h": 6,
-        "w": 8,
-        "x": 16,
+        "w": 6,
+        "x": 12,
         "y": 8
       },
       "id": 86,
       "options": {
         "legend": {
           "calcs": [
-            "lastNotNull",
+            "mean",
             "max"
           ],
           "displayMode": "table",
@@ -1161,26 +1084,113 @@
           "sort": "desc"
         }
       },
-      "pluginVersion": "12.3.3",
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "crowdsec_bouncer_routeros_memory_used_bytes{job=\"$job\"}",
-          "legendFormat": "Used Memory",
+          "expr": "crowdsec_bouncer_routeros_memory_used_bytes{job=\"$job\"} / crowdsec_bouncer_routeros_memory_total_bytes{job=\"$job\"} * 100",
+          "legendFormat": "Memory Used %",
           "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+        }
+      ],
+      "title": "Memory Usage Over Time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "Historical CPU temperature of the router over time with threshold lines.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "#F2495C",
+            "mode": "fixed"
           },
-          "expr": "crowdsec_bouncer_routeros_memory_total_bytes{job=\"$job\"}",
-          "legendFormat": "Total Memory",
-          "refId": "B"
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "mappings": [],
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 65
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "celsius"
         },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 18,
+        "y": 8
+      },
+      "id": 91,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
         {
           "datasource": {
             "type": "prometheus",
@@ -1188,10 +1198,10 @@
           },
           "expr": "crowdsec_bouncer_routeros_cpu_temperature_celsius{job=\"$job\"}",
           "legendFormat": "CPU Temp",
-          "refId": "C"
+          "refId": "A"
         }
       ],
-      "title": "Memory & Temperature Over Time",
+      "title": "CPU Temperature Over Time",
       "type": "timeseries"
     },
     {

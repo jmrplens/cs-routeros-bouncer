@@ -30,7 +30,7 @@ The dashboard JSON is located at [`grafana/dashboard.json`](https://github.com/j
 
 ## Panels
 
-The dashboard contains **30 panels** organized in **8 rows** with a modern design:
+The dashboard contains **31 panels** organized in **8 rows** with a modern design:
 
 - **Transparent backgrounds** on all panels for a clean, unified look
 - **Smooth line interpolation** and subtle area fills on time series
@@ -59,7 +59,8 @@ The dashboard contains **30 panels** organized in **8 rows** with a modern desig
 |-------|------|-------------|
 | **RouterOS System** | gauge | Combined CPU load (%), CPU temperature (°C), and memory usage (%) with per-metric thresholds |
 | **CPU Load Over Time** | timeseries | CPU load history with threshold lines at 60% and 85% |
-| **Memory & Temperature Over Time** | timeseries | Memory usage and CPU temperature history (dual axis) |
+| **Memory Usage Over Time** | timeseries | Memory usage percentage with threshold lines at 70% and 90% |
+| **CPU Temperature Over Time** | timeseries | CPU temperature history with threshold lines at 65°C and 80°C |
 
 ### Decisions
 
