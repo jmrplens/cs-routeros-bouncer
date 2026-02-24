@@ -342,6 +342,13 @@ func (m *Manager) pollSystemMetrics() {
 	} else {
 		used := sr.TotalMemory - sr.FreeMemory
 		metrics.SetRouterOSSystemMetrics(float64(sr.CPULoad), used, sr.TotalMemory)
+
+		if sr.Uptime != "" {
+			metrics.SetRouterOSUptime(rosClient.ParseMikroTikUptime(sr.Uptime))
+		}
+		if sr.Version != "" || sr.BoardName != "" {
+			metrics.SetRouterOSInfo(sr.Version, sr.BoardName)
+		}
 	}
 
 	sh, err := m.ros.GetSystemHealth()
@@ -349,6 +356,15 @@ func (m *Manager) pollSystemMetrics() {
 		m.logger.Debug().Err(err).Msg("failed to collect system health")
 	} else if sh.CPUTemperature >= 0 {
 		metrics.SetRouterOSCPUTemperature(sh.CPUTemperature)
+	}
+
+	// Collect firewall dropped counters for Prometheus (independent of LAPI).
+	fc, err := m.ros.GetFirewallCounters(m.commentPrefix() + ":")
+	if err != nil {
+		m.logger.Debug().Err(err).Msg("failed to collect firewall counters")
+	} else {
+		metrics.SetDroppedCounters(fc.TotalBytes, fc.TotalPkts)
+		metrics.SetDroppedCountersByProto(fc.IPv4Bytes, fc.IPv4Pkts, fc.IPv6Bytes, fc.IPv6Pkts)
 	}
 }
 
@@ -421,6 +437,8 @@ func (m *Manager) handleBan(d *crowdsec.Decision) {
 	m.cacheMu.Unlock()
 
 	metrics.RecordDecision("ban", metricsProto, d.Origin)
+	metrics.IncrActiveDecisions(metricsProto)
+	metrics.IncrActiveDecisionsByOrigin(d.Origin)
 	metrics.ObserveOperationDuration("add", time.Since(start))
 
 	m.logger.Info().
@@ -507,6 +525,8 @@ func (m *Manager) handleUnban(d *crowdsec.Decision) {
 	m.cacheMu.Unlock()
 
 	metrics.RecordDecision("unban", metricsProto, d.Origin)
+	metrics.DecrActiveDecisions(metricsProto)
+	metrics.DecrActiveDecisionsByOrigin(d.Origin)
 	metrics.ObserveOperationDuration("remove", time.Since(start))
 
 	m.logger.Info().
@@ -814,6 +834,9 @@ func (m *Manager) reconcileAddresses(decisions []*crowdsec.Decision) {
 
 	start := time.Now()
 
+	// Accumulate per-origin counts across all protocols.
+	globalOriginCounts := map[string]int64{}
+
 	for _, proto := range m.enabledProtos() {
 		listName := m.getAddressListName(proto)
 
@@ -971,17 +994,13 @@ func (m *Manager) reconcileAddresses(decisions []*crowdsec.Decision) {
 		metrics.RecordReconciliation("unchanged", unchanged)
 		metrics.SetActiveDecisions(metricsProto, len(shouldExist))
 
-		// Track per-origin active decision counts for LAPI metrics.
-		originCounts := map[string]int64{}
+		// Accumulate per-origin counts (set metrics after all protos).
 		for _, d := range shouldExist {
 			origin := d.Origin
 			if origin == "" {
 				origin = "unknown"
 			}
-			originCounts[origin]++
-		}
-		for origin, count := range originCounts {
-			metrics.SetActiveDecisionsByOrigin(origin, count)
+			globalOriginCounts[origin]++
 		}
 
 		m.logger.Info().
@@ -995,6 +1014,11 @@ func (m *Manager) reconcileAddresses(decisions []*crowdsec.Decision) {
 	}
 
 	metrics.ObserveOperationDuration("reconcile", time.Since(start))
+
+	// Set per-origin metrics after all protos are processed.
+	for origin, count := range globalOriginCounts {
+		metrics.SetActiveDecisionsByOrigin(origin, count)
+	}
 }
 
 // enabledProtos returns the list of enabled protocol strings ("ip" and/or "ipv6").
