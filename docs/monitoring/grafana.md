@@ -30,16 +30,74 @@ The dashboard JSON is located at [`grafana/dashboard.json`](https://github.com/j
 
 ## Panels
 
-| Panel | Description |
-|-------|-------------|
-| **Bouncer Info** | Version, RouterOS identity, and uptime |
-| **Active Decisions** | Current banned IPs by protocol (IPv4/IPv6) |
-| **RouterOS Connection** | Connection status over time |
-| **Decisions Processed** | Rate of ban/unban operations |
-| **Cumulative Decisions** | Total decisions processed since startup |
-| **Errors** | Error rate by type (api, routeros, reconcile) |
-| **Operation Latency** | p50/p95/p99 latency for add/remove/reconcile |
-| **Reconciliation Events** | Full sync events timeline |
+The dashboard contains **27 panels** organized in **8 rows**:
+
+### Overview (top row)
+
+| Panel | Type | Description |
+|-------|------|-------------|
+| **RouterOS Connected** | stat | Connection status indicator |
+| **Active Decisions (IPv4)** | stat | Current IPv4 banned IPs |
+| **Active Decisions (IPv6)** | stat | Current IPv6 banned IPs |
+| **Total Active Decisions** | stat | Combined IPv4 + IPv6 count |
+| **Uptime** | stat | Time since bouncer started |
+| **Bouncer Info** | stat | Version and RouterOS identity |
+
+### Active Decisions
+
+| Panel | Type | Description |
+|-------|------|-------------|
+| **Active Decisions Over Time** | timeseries | IPv4/IPv6 decisions over time |
+| **IPv4 / IPv6 Ratio** | piechart | Proportion of IPv4 vs IPv6 bans |
+
+### Decision Processing
+
+| Panel | Type | Description |
+|-------|------|-------------|
+| **Decisions Processed (Rate)** | timeseries | Ban/unban rate per second |
+| **Cumulative Decisions** | timeseries | Total decisions since startup |
+
+### Performance & Operations
+
+| Panel | Type | Description |
+|-------|------|-------------|
+| **Operation Latency (p50/p95/p99)** | timeseries | Add/remove/reconcile latency percentiles |
+| **Operation Rate** | timeseries | Operations per second |
+
+### Errors & Reconciliation
+
+| Panel | Type | Description |
+|-------|------|-------------|
+| **Error Rate** | timeseries | Errors per second by category |
+| **Total Errors** | stat | Cumulative error count |
+| **RouterOS Connection** | state-timeline | Connection status history |
+| **Last Reconciliation** | stat | Time since last reconciliation |
+| **Reconciliation Duration** | stat | Duration of last reconciliation |
+
+### Dropped Traffic
+
+| Panel | Type | Description |
+|-------|------|-------------|
+| **Dropped Bytes** | stat | Total bytes dropped by bouncer rules |
+| **Dropped Packets** | stat | Total packets dropped by bouncer rules |
+| **Dropped Traffic Rate** | timeseries | Bytes/packets dropped per second |
+| **Dropped Traffic (Cumulative)** | timeseries | Running total of dropped traffic |
+
+### Decisions by Origin
+
+| Panel | Type | Description |
+|-------|------|-------------|
+| **Active Decisions by Origin** | bargauge | Per-origin decision count (crowdsec, cscli, CAPI) |
+| **Decisions by Origin (Rate)** | timeseries | Decision rate per origin |
+| **Cumulative Decisions by Origin** | timeseries | Running total per origin |
+
+### Process Resources
+
+| Panel | Type | Description |
+|-------|------|-------------|
+| **Memory Usage** | timeseries | Bouncer process memory consumption |
+| **CPU Usage** | timeseries | Bouncer process CPU usage |
+| **Goroutines & File Descriptors** | timeseries | Go runtime internals |
 
 ## Requirements
 

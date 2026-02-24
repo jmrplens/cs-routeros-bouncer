@@ -65,6 +65,66 @@ logging:
   level: "info"
 ```
 
+## Full protection with firewall customization
+
+All features enabled with advanced firewall rule customization: reject action, connection-state filtering, log prefixes, input whitelist, and output passthrough.
+
+```yaml
+crowdsec:
+  api_url: "http://localhost:8080/"
+  api_key: "your-key"
+
+mikrotik:
+  address: "192.168.0.1:8729"
+  username: "crowdsec"
+  password: "your-password"
+  tls: true
+
+firewall:
+  ipv4:
+    enabled: true
+  ipv6:
+    enabled: true
+  filter:
+    enabled: true
+    chains: ["input"]
+    # Only block new connections (allow established/related responses)
+    connection_state: ["new"]
+    log_prefix: "CS-FILTER"
+  raw:
+    enabled: true
+    chains: ["prerouting"]
+    log_prefix: "CS-RAW"
+  # Use reject instead of drop so clients get an ICMP response
+  deny_action: "reject"
+  reject_with: "icmp-host-prohibited"
+  rule_placement: "top"
+  log: true
+  log_prefix: "CS"
+  block_input:
+    interface_list: "WAN"
+    # Trust IPs in this address list — place accept rule before drop
+    whitelist: "crowdsec-whitelist"
+  block_output:
+    enabled: true
+    interface_list: "WAN"
+    log_prefix: "CS-OUT"
+    # Allow this local IP to bypass output blocking
+    passthrough_v4: "10.0.0.100"
+    # Or use a RouterOS address list (takes precedence over IP)
+    # passthrough_v4_list: "crowdsec-passthrough"
+
+metrics:
+  enabled: true
+  listen_port: 2112
+
+logging:
+  level: "info"
+```
+
+!!! tip "Reject vs Drop"
+    Using `deny_action: reject` with `reject_with: icmp-host-prohibited` sends an ICMP unreachable message to the banned IP, making the rejection explicit. Use `drop` (the default) for silent blocking. `reject_with` is only valid when `deny_action` is `reject`.
+
 ## Local decisions only — no community blocklists
 
 Syncs only locally-generated decisions (from your CrowdSec engine and manual `cscli` bans). No CAPI community blocklists.

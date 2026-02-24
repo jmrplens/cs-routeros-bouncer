@@ -54,7 +54,7 @@ For more details, see [Router Setup](router-setup.md).
 === "Binary + systemd"
 
     ```bash
-    # Download (replace with your architecture: amd64, arm64)
+    # Download (replace with your architecture: amd64, arm64, armv7)
     wget https://github.com/jmrplens/cs-routeros-bouncer/releases/latest/download/cs-routeros-bouncer_linux_amd64.tar.gz
     tar xzf cs-routeros-bouncer_linux_amd64.tar.gz
 
@@ -73,7 +73,7 @@ For more details, see [Router Setup](router-setup.md).
 ```bash
 # Check the health endpoint
 curl http://localhost:2112/health
-# {"status":"ok","routeros_connected":true,"version":"v0.1.0"}
+# {"status":"ok","routeros_connected":true,"version":"vX.Y.Z"}
 
 # Check logs
 sudo journalctl -u cs-routeros-bouncer -f

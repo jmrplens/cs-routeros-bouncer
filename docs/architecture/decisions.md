@@ -31,13 +31,32 @@ flowchart TD
     D[New ban decision] --> Check{IPv4 or IPv6?}
     Check -->|IPv4| V4{IPv4 enabled?}
     Check -->|IPv6| V6{IPv6 enabled?}
-    V4 -->|Yes| Add4[Add to crowdsec-banned]
+    V4 -->|Yes| Dup4{Already banned?}
     V4 -->|No| Skip[Skip]
-    V6 -->|Yes| Add6[Add to crowdsec6-banned]
+    V6 -->|Yes| Dup6{Already banned?}
     V6 -->|No| Skip
+    Dup4 -->|No| Add4[Add to crowdsec-banned]
+    Dup4 -->|Yes| Cmp4{New duration longer?}
+    Cmp4 -->|Yes| Upd4[Remove old, add with new timeout]
+    Cmp4 -->|No| Skip
+    Dup6 -->|No| Add6[Add to crowdsec6-banned]
+    Dup6 -->|Yes| Cmp6{New duration longer?}
+    Cmp6 -->|Yes| Upd6[Remove old, add with new timeout]
+    Cmp6 -->|No| Skip
     Add4 --> Done[Done]
     Add6 --> Done
+    Upd4 --> Done
+    Upd6 --> Done
 ```
+
+### Duplicate IP handling
+
+When a ban decision arrives for an IP that is already in the address list, the bouncer compares durations:
+
+- **New duration is longer**: The existing entry is removed and a new one is created with the longer timeout. For example, if an IP was banned for 24 hours and a new 7-day ban arrives, the entry is replaced with the 7-day timeout.
+- **New duration is shorter or equal**: The new decision is silently discarded — the existing, longer ban remains in effect.
+
+This ensures that the most severe ban always takes precedence.
 
 ### Unban (deleted decision)
 

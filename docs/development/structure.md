@@ -17,6 +17,8 @@ cs-routeros-bouncer/
 │   │   ├── bouncer_iface.go    # BouncerEngine interface (for testing)
 │   │   ├── stream.go           # CrowdSec LAPI streaming client
 │   │   ├── stream_test.go      # Stream unit tests
+│   │   ├── crowdsec_test.go    # CrowdSec package tests
+│   │   ├── mock_bouncer_test.go # Mock bouncer for tests
 │   │   ├── logrus_adapter.go   # Logrus-to-zerolog adapter
 │   │   ├── logrus_adapter_test.go
 │   │   └── doc.go              # Package documentation
@@ -24,6 +26,7 @@ cs-routeros-bouncer/
 │   │   ├── manager.go          # Central orchestrator
 │   │   ├── manager_test.go     # Manager unit tests
 │   │   ├── start_test.go       # Start/Shutdown lifecycle tests
+│   │   ├── mock_test.go        # Mock implementations for tests
 │   │   ├── routeros_iface.go   # RouterOSClient interface (for testing)
 │   │   ├── crowdsec_iface.go   # CrowdSecStream interface (for testing)
 │   │   └── doc.go              # Package documentation
@@ -43,6 +46,8 @@ cs-routeros-bouncer/
 │       ├── firewall.go         # Firewall rule management and counters
 │       ├── conn_iface.go       # RouterConn interface (for testing)
 │       ├── routeros_test.go    # RouterOS unit tests
+│       ├── client_mock_test.go # Client mock tests
+│       ├── mock_conn_test.go   # Mock connection for tests
 │       └── doc.go              # Package documentation
 ├── config/
 │   ├── cs-routeros-bouncer.yaml  # Annotated config reference
@@ -110,7 +115,7 @@ The CLI entrypoint. Handles:
 Configuration loading and validation:
 
 - YAML file parsing
-- Environment variable binding (22 env vars)
+- Environment variable binding (48 env vars)
 - Default values
 - Validation (required fields, value ranges)
 

@@ -538,18 +538,18 @@ The dashboard provides real-time visibility into the bouncer's operation:
   </picture>
 </p>
 
-**Dashboard panels:**
+**Dashboard panels (27 panels in 8 rows):**
 
-| Panel | Description |
-|-------|-------------|
-| Bouncer Info | Version, RouterOS identity, uptime |
-| Active Decisions | Current banned IPs by protocol (IPv4/IPv6) |
-| RouterOS Connection | Connection status over time |
-| Decisions Processed | Rate of ban/unban operations |
-| Cumulative Decisions | Total decisions processed |
-| Errors | Error rate by type (api, routeros, reconcile) |
-| Operation Latency | p50/p95/p99 latency for add/remove/reconcile |
-| Reconciliation Events | Full sync events timeline |
+| Row | Panels |
+|-----|--------|
+| **Overview** | RouterOS Connected, Active Decisions (IPv4/IPv6/Total), Uptime, Bouncer Info |
+| **Active Decisions** | Active Decisions Over Time, IPv4/IPv6 Ratio |
+| **Decision Processing** | Decisions Processed (Rate), Cumulative Decisions |
+| **Performance & Operations** | Operation Latency (p50/p95/p99), Operation Rate |
+| **Errors & Reconciliation** | Error Rate, Total Errors, RouterOS Connection, Last Reconciliation, Reconciliation Duration |
+| **Dropped Traffic** | Dropped Bytes, Dropped Packets, Dropped Traffic Rate, Dropped Traffic (Cumulative) |
+| **Decisions by Origin** | Active Decisions by Origin, Decisions by Origin (Rate), Cumulative Decisions by Origin |
+| **Process Resources** | Memory Usage, CPU Usage, Goroutines & File Descriptors |
 
 ---
 

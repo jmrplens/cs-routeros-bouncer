@@ -47,8 +47,11 @@ It bridges CrowdSec's threat intelligence with MikroTik's firewall, automaticall
 - **Graceful shutdown** — removes firewall rules on stop (address list entries expire via timeout)
 - **IPv4 + IPv6** — independently toggleable
 - **Input + Output blocking** — output blocking optional with configurable interface/interface-list
+- **Firewall customization** — connection-state filter, whitelist, passthrough, log-prefix, reject-with
 - **Decision filtering** — sync only local decisions or include CrowdSec community blocklists
-- **Observable** — Prometheus metrics (`/metrics`), structured logging, health endpoint (`/health`)
+- **Duplicate IP handling** — updates timeout if new ban duration is longer
+- **Connection pooling** — configurable pool (1–20 connections) for parallel API operations
+- **Observable** — Prometheus metrics (`/metrics`), structured logging, health endpoint (`/health`), Grafana dashboard
 - **Multiple deployment options** — Docker, systemd, or standalone binary
 
 ## Why Another Bouncer?
