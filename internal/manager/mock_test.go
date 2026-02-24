@@ -61,8 +61,9 @@ type mockROS struct {
 
 	addRuleID     string
 	addRuleErr    error
-	removeRuleErr error
-	findRuleEntry *ros.RuleEntry
+	removeRuleErr     error
+	removeRuleErrFunc func(proto, mode, id string) error // per-call error (takes priority)
+	findRuleEntry     *ros.RuleEntry
 	findRuleErr   error
 
 	listFirewallRulesResult []ros.RuleEntry
@@ -205,6 +206,9 @@ func (m *mockROS) RemoveFirewallRule(proto, mode, id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.removeRuleCalls = append(m.removeRuleCalls, removeRuleCall{proto, mode, id})
+	if m.removeRuleErrFunc != nil {
+		return m.removeRuleErrFunc(proto, mode, id)
+	}
 	return m.removeRuleErr
 }
 

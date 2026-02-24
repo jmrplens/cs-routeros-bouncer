@@ -333,3 +333,77 @@ func TestBouncerTypeConstant(t *testing.T) {
 		t.Errorf("expected bouncerType='cs-routeros-bouncer', got %q", bouncerType)
 	}
 }
+
+// ===========================================================================
+// SetCounterCollector and metricsUpdater with collector tests
+// ===========================================================================
+
+// TestSetCounterCollector verifies the collector callback is stored.
+func TestSetCounterCollector(t *testing.T) {
+	p := testProvider()
+	if p.collector != nil {
+		t.Error("collector should be nil initially")
+	}
+
+	called := false
+	p.SetCounterCollector(func() { called = true })
+
+	if p.collector == nil {
+		t.Fatal("collector should be set after SetCounterCollector")
+	}
+
+	// Invoke the updater — the collector should be called.
+	resetMetrics()
+	payload := &models.RemediationComponentsMetrics{}
+	p.metricsUpdater(payload, time.Minute)
+
+	if !called {
+		t.Error("expected collector to be called during metricsUpdater")
+	}
+}
+
+// TestMetricsUpdaterWithCollector verifies that the collector is invoked
+// before metrics are gathered, allowing it to refresh counters.
+func TestMetricsUpdaterWithCollector(t *testing.T) {
+	p := testProvider()
+	resetMetrics()
+
+	// Collector sets dropped counters.
+	p.SetCounterCollector(func() {
+		metrics.SetDroppedCounters(1000, 50)
+	})
+
+	// First call to get baseline deltas.
+	_ = callUpdater(p, time.Minute)
+
+	// Set new counters.
+	p.SetCounterCollector(func() {
+		metrics.SetDroppedCounters(2000, 100)
+	})
+	payload := callUpdater(p, time.Minute)
+
+	// Should have dropped metrics from the delta.
+	foundDropped := false
+	for _, item := range payload.Metrics {
+		for _, m := range item.Items {
+			if m.Name != nil && *m.Name == "dropped" {
+				foundDropped = true
+			}
+		}
+	}
+	if !foundDropped {
+		t.Error("expected dropped metrics in payload when deltas are non-zero")
+	}
+}
+
+// TestMetricsUpdaterNilCollector verifies the updater works without a
+// registered collector.
+func TestMetricsUpdaterNilCollector(t *testing.T) {
+	p := testProvider()
+	p.collector = nil
+	resetMetrics()
+
+	// Should not panic.
+	payload := &models.RemediationComponentsMetrics{}
+	p.metricsUpdater(payload, time.Minute)
+}

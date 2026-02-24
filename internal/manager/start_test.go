@@ -1064,3 +1064,531 @@ func TestRemoveFirewallRules_InvalidComment(t *testing.T) {
 		t.Error("ruleIDs should be cleared after removeFirewallRules")
 	}
 }
+
+// ===========================================================================
+// cleanupStaleRules tests
+// ===========================================================================
+
+// TestCleanupStaleRules_NoRulesFound verifies that when no rules with the
+// bouncer signature exist, cleanupStaleRules completes without errors.
+func TestCleanupStaleRules_NoRulesFound(t *testing.T) {
+	mock := &mockROS{}
+	cfg := baseConfig()
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"input"}
+	mgr := newTestManager(mock, cfg)
+
+	mgr.cleanupStaleRules()
+
+	// No remove calls should be made.
+	if len(mock.removeRuleCalls) != 0 {
+		t.Errorf("expected 0 RemoveFirewallRule calls, got %d", len(mock.removeRuleCalls))
+	}
+}
+
+// TestCleanupStaleRules_RulesFoundAndRemoved verifies that stale rules with
+// the ruleSignature are found and removed.
+func TestCleanupStaleRules_RulesFoundAndRemoved(t *testing.T) {
+	mock := &mockROS{
+		listFirewallRulesResult: []ros.RuleEntry{
+			{ID: "*1", Comment: "cs-bouncer:filter-input-v4 @cs-routeros-bouncer"},
+			{ID: "*2", Comment: "cs-bouncer:raw-prerouting-v4 @cs-routeros-bouncer"},
+			{ID: "*3", Comment: "user-rule-no-signature"},
+		},
+	}
+	cfg := baseConfig()
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"input"}
+	mgr := newTestManager(mock, cfg)
+
+	mgr.cleanupStaleRules()
+
+	// Should have called RemoveFirewallRule for *1 and *2 across filter+raw
+	// for both ip and ipv6.  The mock filters by signature, so only items with
+	// "@cs-routeros-bouncer" are returned by ListFirewallRulesBySignature.
+	// With 2 protos × 2 modes = 4 calls to List, each returning *1 and *2,
+	// that's 8 Remove calls total.
+	expectedRemoves := 8
+	if len(mock.removeRuleCalls) != expectedRemoves {
+		t.Errorf("expected %d RemoveFirewallRule calls, got %d", expectedRemoves, len(mock.removeRuleCalls))
+	}
+}
+
+// TestCleanupStaleRules_ListError verifies that an error listing rules for
+// one mode doesn't prevent cleanup of other modes.
+func TestCleanupStaleRules_ListError(t *testing.T) {
+	mock := &mockROS{
+		listFirewallRulesErr: errors.New("api timeout"),
+	}
+	cfg := baseConfig()
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"input"}
+	mgr := newTestManager(mock, cfg)
+
+	// Should not panic; errors are logged and skipped.
+	mgr.cleanupStaleRules()
+
+	// No removes attempted since listing failed.
+	if len(mock.removeRuleCalls) != 0 {
+		t.Errorf("expected 0 RemoveFirewallRule calls on list error, got %d", len(mock.removeRuleCalls))
+	}
+}
+
+// TestCleanupStaleRules_RemoveError verifies that an error removing one rule
+// doesn't prevent removal of other rules.
+func TestCleanupStaleRules_RemoveError(t *testing.T) {
+	mock := &mockROS{
+		listFirewallRulesResult: []ros.RuleEntry{
+			{ID: "*A", Comment: "old-prefix:filter-input-v4 @cs-routeros-bouncer"},
+			{ID: "*B", Comment: "old-prefix:filter-input-v6 @cs-routeros-bouncer"},
+		},
+		removeRuleErrFunc: func(proto, mode, id string) error {
+			if id == "*A" {
+				return errors.New("rule locked")
+			}
+			return nil
+		},
+	}
+	cfg := baseConfig()
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"input"}
+	mgr := newTestManager(mock, cfg)
+
+	mgr.cleanupStaleRules()
+
+	// Both rules should be attempted for removal even though *A fails.
+	// With 2 protos × 2 modes = 4 list calls, each returning 2 rules = 8 remove calls.
+	if len(mock.removeRuleCalls) < 4 {
+		t.Errorf("expected at least 4 RemoveFirewallRule attempts, got %d", len(mock.removeRuleCalls))
+	}
+}
+
+// TestCleanupStaleRules_IPv4Only verifies cleanup only targets IPv4 when
+// IPv6 is disabled.
+func TestCleanupStaleRules_IPv4Only(t *testing.T) {
+	mock := &mockROS{
+		listFirewallRulesResult: []ros.RuleEntry{
+			{ID: "*1", Comment: "prefix:filter-input-v4 @cs-routeros-bouncer"},
+		},
+	}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"input"}
+	mgr := newTestManager(mock, cfg)
+
+	mgr.cleanupStaleRules()
+
+	// Only 1 proto × 2 modes = 2 list calls, each returning 1 rule = 2 removes.
+	if len(mock.removeRuleCalls) != 2 {
+		t.Errorf("expected 2 RemoveFirewallRule calls for IPv4-only, got %d", len(mock.removeRuleCalls))
+	}
+	for _, c := range mock.removeRuleCalls {
+		if c.Proto != "ip" {
+			t.Errorf("expected proto 'ip', got %q", c.Proto)
+		}
+	}
+}
+
+// ===========================================================================
+// Shutdown additional coverage
+// ===========================================================================
+
+// TestShutdown_NilPool verifies Shutdown works when pool was never created
+// (e.g. pool Connect failed during Start).
+func TestShutdown_NilPool(t *testing.T) {
+	mock := &mockROS{}
+	cfg := baseConfig()
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"input"}
+	mgr := newTestManager(mock, cfg)
+	mgr.pool = nil
+
+	// Should not panic.
+	mgr.Shutdown()
+
+	if len(mock.removeRuleCalls) != 0 {
+		t.Errorf("expected 0 remove calls with no ruleIDs, got %d", len(mock.removeRuleCalls))
+	}
+}
+
+// ===========================================================================
+// createFirewallRules additional coverage
+// ===========================================================================
+
+// TestCreateFirewallRules_RejectWithAction verifies that reject-with is only
+// set when deny_action is "reject".
+func TestCreateFirewallRules_RejectWithAction(t *testing.T) {
+	mock := &mockROS{addRuleID: "*1"}
+	cfg := baseConfig()
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"input"}
+	cfg.Firewall.DenyAction = "reject"
+	cfg.Firewall.RejectWith = "tcp-reset"
+	cfg.Firewall.IPv6.Enabled = false
+	mgr := newTestManager(mock, cfg)
+
+	if err := mgr.createFirewallRules(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify at least one rule was created with RejectWith set.
+	found := false
+	for _, c := range mock.addRuleCalls {
+		if c.Rule.RejectWith == "tcp-reset" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected at least one rule with RejectWith='tcp-reset'")
+	}
+}
+
+// TestCreateFirewallRules_DropActionNoRejectWith verifies reject-with is not
+// set when deny_action is "drop".
+func TestCreateFirewallRules_DropActionNoRejectWith(t *testing.T) {
+	mock := &mockROS{addRuleID: "*1"}
+	cfg := baseConfig()
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"input"}
+	cfg.Firewall.DenyAction = "drop"
+	cfg.Firewall.RejectWith = "tcp-reset" // Should be ignored for "drop"
+	cfg.Firewall.IPv6.Enabled = false
+	mgr := newTestManager(mock, cfg)
+
+	if err := mgr.createFirewallRules(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, c := range mock.addRuleCalls {
+		if c.Rule.RejectWith != "" {
+			t.Errorf("expected no RejectWith for drop action, got %q", c.Rule.RejectWith)
+		}
+	}
+}
+
+// TestCreateFirewallRules_WhitelistWithConnectionState verifies the whitelist
+// accept rule inherits connection_state filter.
+func TestCreateFirewallRules_WhitelistWithConnectionState(t *testing.T) {
+	mock := &mockROS{addRuleID: "*1"}
+	cfg := baseConfig()
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"input"}
+	cfg.Firewall.Filter.ConnectionState = "new,established"
+	cfg.Firewall.BlockInput.Whitelist = "trusted-hosts"
+	cfg.Firewall.IPv6.Enabled = false
+	mgr := newTestManager(mock, cfg)
+
+	if err := mgr.createFirewallRules(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// First rule should be the whitelist accept rule with connection_state.
+	if len(mock.addRuleCalls) < 1 {
+		t.Fatal("expected at least 1 AddFirewallRule call")
+	}
+	wl := mock.addRuleCalls[0]
+	if wl.Rule.Action != "accept" {
+		t.Errorf("expected whitelist action 'accept', got %q", wl.Rule.Action)
+	}
+	if wl.Rule.ConnectionState != "new,established" {
+		t.Errorf("expected ConnectionState 'new,established', got %q", wl.Rule.ConnectionState)
+	}
+	if wl.Rule.SrcAddressList != "trusted-hosts" {
+		t.Errorf("expected SrcAddressList 'trusted-hosts', got %q", wl.Rule.SrcAddressList)
+	}
+}
+
+// TestCreateFirewallRules_OutputPassthroughV4ListPrecedence verifies that
+// passthrough_v4_list takes precedence over passthrough_v4.
+func TestCreateFirewallRules_OutputPassthroughV4ListPrecedence(t *testing.T) {
+	mock := &mockROS{addRuleID: "*1"}
+	cfg := baseConfig()
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"input"}
+	cfg.Firewall.BlockOutput.Enabled = true
+	cfg.Firewall.BlockOutput.PassthroughV4List = "my-servers"
+	cfg.Firewall.BlockOutput.PassthroughV4 = "1.2.3.4" // Should be ignored when list is set.
+	cfg.Firewall.IPv6.Enabled = false
+	mgr := newTestManager(mock, cfg)
+
+	if err := mgr.createFirewallRules(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Find the output rule.
+	var outRule *addRuleCall
+	for i, c := range mock.addRuleCalls {
+		if c.Rule.Chain == "output" {
+			outRule = &mock.addRuleCalls[i]
+			break
+		}
+	}
+	if outRule == nil {
+		t.Fatal("expected an output rule")
+	}
+	if outRule.Rule.SrcAddressList != "!my-servers" {
+		t.Errorf("expected SrcAddressList '!my-servers', got %q", outRule.Rule.SrcAddressList)
+	}
+	// SrcAddress should be empty since list takes precedence.
+	if outRule.Rule.SrcAddress != "" {
+		t.Errorf("expected empty SrcAddress when list is set, got %q", outRule.Rule.SrcAddress)
+	}
+}
+
+// TestCreateFirewallRules_OutputPassthroughV6Address verifies IPv6
+// output passthrough uses the correct fields.
+func TestCreateFirewallRules_OutputPassthroughV6Address(t *testing.T) {
+	mock := &mockROS{addRuleID: "*1"}
+	cfg := baseConfig()
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"input"}
+	cfg.Firewall.BlockOutput.Enabled = true
+	cfg.Firewall.BlockOutput.PassthroughV6 = "2001:db8::1"
+	cfg.Firewall.IPv4.Enabled = false
+	mgr := newTestManager(mock, cfg)
+
+	if err := mgr.createFirewallRules(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var outRule *addRuleCall
+	for i, c := range mock.addRuleCalls {
+		if c.Rule.Chain == "output" {
+			outRule = &mock.addRuleCalls[i]
+			break
+		}
+	}
+	if outRule == nil {
+		t.Fatal("expected an output rule")
+	}
+	if outRule.Rule.SrcAddress != "!2001:db8::1" {
+		t.Errorf("expected SrcAddress '!2001:db8::1', got %q", outRule.Rule.SrcAddress)
+	}
+}
+
+// TestCreateFirewallRules_OutputPassthroughV6List verifies IPv6 output uses
+// list negation when passthrough_v6_list is set.
+func TestCreateFirewallRules_OutputPassthroughV6List(t *testing.T) {
+	mock := &mockROS{addRuleID: "*1"}
+	cfg := baseConfig()
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"input"}
+	cfg.Firewall.BlockOutput.Enabled = true
+	cfg.Firewall.BlockOutput.PassthroughV6List = "v6-servers"
+	cfg.Firewall.BlockOutput.PassthroughV6 = "2001:db8::1" // Ignored when list is set.
+	cfg.Firewall.IPv4.Enabled = false
+	mgr := newTestManager(mock, cfg)
+
+	if err := mgr.createFirewallRules(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var outRule *addRuleCall
+	for i, c := range mock.addRuleCalls {
+		if c.Rule.Chain == "output" {
+			outRule = &mock.addRuleCalls[i]
+			break
+		}
+	}
+	if outRule == nil {
+		t.Fatal("expected an output rule")
+	}
+	if outRule.Rule.SrcAddressList != "!v6-servers" {
+		t.Errorf("expected SrcAddressList '!v6-servers', got %q", outRule.Rule.SrcAddressList)
+	}
+}
+
+// TestCreateFirewallRules_OutputInterfaceOptions verifies output rules use
+// interface and interface_list settings.
+func TestCreateFirewallRules_OutputInterfaceOptions(t *testing.T) {
+	mock := &mockROS{addRuleID: "*1"}
+	cfg := baseConfig()
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"input"}
+	cfg.Firewall.BlockOutput.Enabled = true
+	cfg.Firewall.BlockOutput.Interface = "ether1"
+	cfg.Firewall.BlockOutput.InterfaceList = "WAN"
+	cfg.Firewall.IPv6.Enabled = false
+	mgr := newTestManager(mock, cfg)
+
+	if err := mgr.createFirewallRules(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var outRule *addRuleCall
+	for i, c := range mock.addRuleCalls {
+		if c.Rule.Chain == "output" {
+			outRule = &mock.addRuleCalls[i]
+			break
+		}
+	}
+	if outRule == nil {
+		t.Fatal("expected an output rule")
+	}
+	if outRule.Rule.OutInterface != "ether1" {
+		t.Errorf("expected OutInterface 'ether1', got %q", outRule.Rule.OutInterface)
+	}
+	if outRule.Rule.OutInterfaceList != "WAN" {
+		t.Errorf("expected OutInterfaceList 'WAN', got %q", outRule.Rule.OutInterfaceList)
+	}
+}
+
+// ===========================================================================
+// reconcileAddresses additional coverage
+// ===========================================================================
+
+// TestReconcileAddresses_OriginTracking verifies that per-origin decision
+// counts are tracked during reconciliation.
+func TestReconcileAddresses_OriginTracking(t *testing.T) {
+	mock := &mockROS{
+		bulkAddCount: 2,
+	}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	mgr := newTestManager(mock, cfg)
+
+	decisions := []*crowdsec.Decision{
+		{Value: "1.1.1.1", Proto: "ip", Duration: time.Hour, Origin: "crowdsec", Scenario: "ssh-bf"},
+		{Value: "2.2.2.2", Proto: "ip", Duration: time.Hour, Origin: "CAPI", Scenario: "http-scan"},
+	}
+
+	mgr.reconcileAddresses(decisions)
+
+	// Verify that bulk add was called with both entries.
+	if len(mock.bulkAddCalls) != 1 {
+		t.Fatalf("expected 1 BulkAddAddresses call, got %d", len(mock.bulkAddCalls))
+	}
+	if len(mock.bulkAddCalls[0].Entries) != 2 {
+		t.Errorf("expected 2 entries in bulk add, got %d", len(mock.bulkAddCalls[0].Entries))
+	}
+}
+
+// TestReconcileAddresses_ExistingAddressesUnchanged verifies that addresses
+// already on the router are not re-added.
+func TestReconcileAddresses_ExistingAddressesUnchanged(t *testing.T) {
+	mock := &mockROS{
+		listAddresses: []ros.AddressEntry{
+			{ID: "*1", Address: "1.1.1.1", List: "crowdsec-banned", Comment: "cs|crowdsec|ssh-bf @cs-routeros-bouncer"},
+		},
+	}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	mgr := newTestManager(mock, cfg)
+
+	decisions := []*crowdsec.Decision{
+		{Value: "1.1.1.1", Proto: "ip", Duration: time.Hour, Origin: "crowdsec", Scenario: "ssh-bf"},
+	}
+
+	mgr.reconcileAddresses(decisions)
+
+	// No bulk add should occur — address already exists.
+	if len(mock.bulkAddCalls) != 0 {
+		t.Errorf("expected 0 BulkAddAddresses calls for existing address, got %d", len(mock.bulkAddCalls))
+	}
+}
+
+// TestReconcileAddresses_RemoveStaleAddress verifies that addresses on the
+// router not in the decisions list are removed.
+func TestReconcileAddresses_RemoveStaleAddress(t *testing.T) {
+	mock := &mockROS{
+		listAddresses: []ros.AddressEntry{
+			{ID: "*1", Address: "1.1.1.1", List: "crowdsec-banned", Comment: "cs|x|y @cs-routeros-bouncer"},
+			{ID: "*2", Address: "2.2.2.2", List: "crowdsec-banned", Comment: "cs|x|y @cs-routeros-bouncer"},
+		},
+	}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	mgr := newTestManager(mock, cfg)
+
+	// Only 1.1.1.1 should remain.
+	decisions := []*crowdsec.Decision{
+		{Value: "1.1.1.1", Proto: "ip", Duration: time.Hour, Origin: "crowdsec", Scenario: "ssh-bf"},
+	}
+
+	mgr.reconcileAddresses(decisions)
+
+	// 2.2.2.2 should be removed.
+	if len(mock.removeAddressCalls) != 1 {
+		t.Errorf("expected 1 RemoveAddress call, got %d", len(mock.removeAddressCalls))
+	}
+	if len(mock.removeAddressCalls) > 0 && mock.removeAddressCalls[0].ID != "*2" {
+		t.Errorf("expected removal of *2, got %q", mock.removeAddressCalls[0].ID)
+	}
+}
+
+// TestReconcileAddresses_ZeroDurationNoTimeout verifies decisions with zero
+// duration produce entries with no timeout.
+func TestReconcileAddresses_ZeroDurationNoTimeout(t *testing.T) {
+	mock := &mockROS{bulkAddCount: 1}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	mgr := newTestManager(mock, cfg)
+
+	decisions := []*crowdsec.Decision{
+		{Value: "1.1.1.1", Proto: "ip", Duration: 0, Origin: "manual", Scenario: "manual"},
+	}
+
+	mgr.reconcileAddresses(decisions)
+
+	if len(mock.bulkAddCalls) != 1 {
+		t.Fatalf("expected 1 BulkAddAddresses call, got %d", len(mock.bulkAddCalls))
+	}
+	if mock.bulkAddCalls[0].Entries[0].Timeout != "" {
+		t.Errorf("expected empty timeout for zero duration, got %q", mock.bulkAddCalls[0].Entries[0].Timeout)
+	}
+}
+
+// ===========================================================================
+// handleUnban additional coverage
+// ===========================================================================
+
+// TestHandleUnban_SuccessfulRemove verifies the full happy-path unban:
+// found in cache, found on router, successfully removed.
+func TestHandleUnban_SuccessfulRemove(t *testing.T) {
+	mock := &mockROS{
+		findAddressEntry: &ros.AddressEntry{ID: "*99", Address: "5.5.5.5"},
+	}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	mgr := newTestManager(mock, cfg)
+
+	// Pre-populate cache.
+	mgr.cacheMu.Lock()
+	mgr.addressCache["5.5.5.5"] = struct{}{}
+	mgr.cacheMu.Unlock()
+
+	d := &crowdsec.Decision{Value: "5.5.5.5", Proto: "ip"}
+	mgr.handleUnban(d)
+
+	if len(mock.removeAddressCalls) != 1 {
+		t.Fatalf("expected 1 RemoveAddress call, got %d", len(mock.removeAddressCalls))
+	}
+	if mock.removeAddressCalls[0].ID != "*99" {
+		t.Errorf("expected removal of *99, got %q", mock.removeAddressCalls[0].ID)
+	}
+
+	// Address should be removed from cache.
+	mgr.cacheMu.RLock()
+	_, inCache := mgr.addressCache["5.5.5.5"]
+	mgr.cacheMu.RUnlock()
+	if inCache {
+		t.Error("expected address removed from cache after unban")
+	}
+}
+
+// TestHandleUnban_IPv6Disabled verifies unban for IPv6 is skipped when disabled.
+func TestHandleUnban_IPv6Disabled(t *testing.T) {
+	mock := &mockROS{}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	mgr := newTestManager(mock, cfg)
+
+	d := &crowdsec.Decision{Value: "2001:db8::1", Proto: "ipv6"}
+	mgr.handleUnban(d)
+
+	if len(mock.findAddressCalls) != 0 {
+		t.Error("expected no FindAddress calls for disabled IPv6")
+	}
+}
