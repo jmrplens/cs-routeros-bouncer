@@ -230,6 +230,44 @@ func (c *Client) ListFirewallRules(proto, mode, commentPrefix string) ([]RuleEnt
 	return entries, nil
 }
 
+// ListFirewallRulesBySignature lists all firewall rules whose comment
+// contains the given signature substring. This is used for crash-recovery
+// cleanup: the signature is a fixed, non-configurable identifier embedded
+// in every comment, so it finds all bouncer rules regardless of prefix.
+func (c *Client) ListFirewallRulesBySignature(proto, mode, signature string) ([]RuleEntry, error) {
+	path := firewallPath(proto, mode)
+
+	results, err := c.Print(path, nil, ruleProplist)
+	if err != nil {
+		return nil, fmt.Errorf("list %s/%s rules by signature: %w", proto, mode, err)
+	}
+
+	var entries []RuleEntry
+	for _, r := range results {
+		comment := r["comment"]
+		if !strings.Contains(comment, signature) {
+			continue
+		}
+		entries = append(entries, RuleEntry{
+			ID:               r[".id"],
+			Chain:            r["chain"],
+			Action:           r["action"],
+			SrcAddress:       r["src-address"],
+			SrcAddressList:   r["src-address-list"],
+			DstAddressList:   r["dst-address-list"],
+			InInterface:      r["in-interface"],
+			InInterfaceList:  r["in-interface-list"],
+			OutInterface:     r["out-interface"],
+			OutInterfaceList: r["out-interface-list"],
+			ConnectionState:  r["connection-state"],
+			RejectWith:       r["reject-with"],
+			Comment:          r["comment"],
+		})
+	}
+
+	return entries, nil
+}
+
 // FindFirewallRuleByComment finds a firewall rule by its exact comment.
 // Returns nil if not found.
 func (c *Client) FindFirewallRuleByComment(proto, mode, comment string) (*RuleEntry, error) {

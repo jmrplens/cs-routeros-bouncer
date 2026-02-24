@@ -22,6 +22,13 @@ const (
 	// no custom comment_prefix is set in the configuration.
 	defaultCommentPrefix = "crowdsec-bouncer"
 
+	// ruleSignature is a fixed, non-configurable identifier embedded in every
+	// comment created by the bouncer (firewall rules and address list entries).
+	// It allows reliable cleanup after a crash regardless of the configured
+	// comment_prefix, since searching for this signature always finds all
+	// bouncer-created resources.
+	ruleSignature = "@cs-routeros-bouncer"
+
 	// channelBuffer is the buffer size for decision channels.
 	channelBuffer = 256
 )
@@ -449,82 +456,45 @@ func (m *Manager) resolveLogPrefix(ruleType string) string {
 	return m.cfg.Firewall.LogPrefix
 }
 
-// cleanupStaleRules removes firewall rules left from a previous run.
-// This handles the case where comment_prefix was changed between restarts:
-// rules created with the old prefix would otherwise be orphaned.
-// It also removes stale rules if the bouncer previously crashed without
-// a clean shutdown.
+// cleanupStaleRules removes firewall rules and address list entries left
+// from a previous run. It searches for the fixed ruleSignature embedded in
+// every bouncer-created comment, which reliably identifies all bouncer
+// resources regardless of the configured comment_prefix. This handles:
+//   - Crash recovery (Shutdown was not called)
+//   - comment_prefix changes between restarts
+//   - Any other orphaned bouncer resources
 func (m *Manager) cleanupStaleRules() {
-	// Collect all prefixes to clean: always include the default, plus the
-	// configured one (which may differ).
-	prefixes := []string{defaultCommentPrefix}
-	if cp := m.commentPrefix(); cp != defaultCommentPrefix {
-		prefixes = append(prefixes, cp)
-	}
-
 	modes := []string{"filter", "raw"}
 	protos := m.enabledProtos()
 
 	removed := 0
-	for _, prefix := range prefixes {
-		for _, proto := range protos {
-			for _, mode := range modes {
-				rules, err := m.ros.ListFirewallRules(proto, mode, prefix)
-				if err != nil {
-					m.logger.Debug().Err(err).
-						Str("proto", proto).Str("mode", mode).Str("prefix", prefix).
-						Msg("could not list firewall rules for cleanup")
-					continue
-				}
-				for _, r := range rules {
-					if err := m.ros.RemoveFirewallRule(proto, mode, r.ID); err != nil {
-						m.logger.Warn().Err(err).
-							Str("comment", r.Comment).Str("id", r.ID).
-							Msg("failed to remove stale firewall rule")
-					} else {
-						m.logger.Info().
-							Str("comment", r.Comment).
-							Msg("removed stale firewall rule from previous run")
-						removed++
-					}
+	for _, proto := range protos {
+		for _, mode := range modes {
+			rules, err := m.ros.ListFirewallRulesBySignature(proto, mode, ruleSignature)
+			if err != nil {
+				m.logger.Debug().Err(err).
+					Str("proto", proto).Str("mode", mode).
+					Msg("could not list firewall rules for cleanup")
+				continue
+			}
+			for _, r := range rules {
+				if err := m.ros.RemoveFirewallRule(proto, mode, r.ID); err != nil {
+					m.logger.Warn().Err(err).
+						Str("comment", r.Comment).Str("id", r.ID).
+						Msg("failed to remove stale firewall rule")
+				} else {
+					m.logger.Info().
+						Str("comment", r.Comment).
+						Msg("removed stale firewall rule from previous run")
+					removed++
 				}
 			}
 		}
+
 	}
 
 	if removed > 0 {
-		m.logger.Info().Int("count", removed).Msg("stale firewall rules cleanup complete")
-	}
-
-	// Also clean up address list entries whose comment uses the old prefix.
-	// When comment_prefix changes, reconcileAddresses won't find these entries
-	// because it filters by the new prefix, leaving them orphaned.
-	currentPrefix := m.commentPrefix()
-	if currentPrefix != defaultCommentPrefix {
-		addrRemoved := 0
-		for _, proto := range protos {
-			listName := m.getAddressListName(proto)
-			entries, err := m.ros.ListAddresses(proto, listName, defaultCommentPrefix)
-			if err != nil {
-				m.logger.Debug().Err(err).
-					Str("proto", proto).Str("list", listName).
-					Msg("could not list addresses for stale prefix cleanup")
-				continue
-			}
-			for _, e := range entries {
-				if err := m.ros.RemoveAddress(proto, e.ID); err != nil {
-					m.logger.Warn().Err(err).
-						Str("address", e.Address).Str("id", e.ID).
-						Msg("failed to remove stale address from previous prefix")
-				} else {
-					addrRemoved++
-				}
-			}
-		}
-		if addrRemoved > 0 {
-			m.logger.Info().Int("count", addrRemoved).
-				Msg("stale address entries cleanup complete (old prefix)")
-		}
+		m.logger.Info().Int("count", removed).Msg("stale bouncer resources cleanup complete")
 	}
 }
 
@@ -964,17 +934,22 @@ func (m *Manager) getAddressListName(proto string) string {
 }
 
 // buildRuleComment creates a deterministic comment for a firewall rule.
-// Format: <prefix>:<mode>-<chain>-<direction>-<proto>
+// Format: <prefix>:<mode>-<chain>-<direction>-<proto> @cs-routeros-bouncer
+// The fixed ruleSignature suffix allows reliable identification of all
+// bouncer-created rules regardless of the configured prefix.
 func buildRuleComment(prefix, mode, chain, direction, proto string) string {
 	protoSuffix := "v4"
 	if proto == "ipv6" {
 		protoSuffix = "v6"
 	}
-	return fmt.Sprintf("%s:%s-%s-%s-%s", prefix, mode, chain, direction, protoSuffix)
+	return fmt.Sprintf("%s:%s-%s-%s-%s %s", prefix, mode, chain, direction, protoSuffix, ruleSignature)
 }
 
 // parseRuleComment extracts proto and mode from a rule comment.
 func parseRuleComment(prefix, comment string) (proto, mode string) {
+	// Strip the signature suffix before parsing
+	comment = strings.TrimSuffix(comment, " "+ruleSignature)
+
 	// Format: <prefix>:<mode>-<chain>-<direction>-<proto>
 	if !strings.HasPrefix(comment, prefix+":") {
 		return "", ""
@@ -994,7 +969,14 @@ func parseRuleComment(prefix, comment string) (proto, mode string) {
 	return proto, mode
 }
 
+// hasRuleSignature checks whether a comment contains the bouncer's fixed
+// signature, identifying it as a bouncer-created resource.
+func hasRuleSignature(comment string) bool {
+	return strings.Contains(comment, ruleSignature)
+}
+
 // buildAddressComment creates a comment for an address list entry.
+// Format: <prefix>|origin|scenario|timestamp @cs-routeros-bouncer
 func buildAddressComment(prefix string, d *crowdsec.Decision) string {
 	parts := []string{prefix}
 	if d.Origin != "" {
@@ -1004,5 +986,5 @@ func buildAddressComment(prefix string, d *crowdsec.Decision) string {
 		parts = append(parts, d.Scenario)
 	}
 	parts = append(parts, time.Now().UTC().Format("2006-01-02T15:04:05Z"))
-	return strings.Join(parts, "|")
+	return strings.Join(parts, "|") + " " + ruleSignature
 }

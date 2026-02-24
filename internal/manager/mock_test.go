@@ -21,6 +21,7 @@ package manager
 
 import (
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -221,6 +222,19 @@ func (m *mockROS) ListFirewallRules(proto, mode, commentPrefix string) ([]ros.Ru
 		return m.listFirewallRulesResult, m.listFirewallRulesErr
 	}
 	return nil, m.listFirewallRulesErr
+}
+
+func (m *mockROS) ListFirewallRulesBySignature(proto, mode, signature string) ([]ros.RuleEntry, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	// Reuse the same result set, filtering by signature for test accuracy
+	var filtered []ros.RuleEntry
+	for _, r := range m.listFirewallRulesResult {
+		if strings.Contains(r.Comment, signature) {
+			filtered = append(filtered, r)
+		}
+	}
+	return filtered, m.listFirewallRulesErr
 }
 
 func (m *mockROS) GetFirewallCounters(commentPrefix string) (*ros.FirewallCounters, error) {
