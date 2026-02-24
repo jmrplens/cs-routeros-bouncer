@@ -22,6 +22,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `internal/routeros` — 93.0% coverage with MockConn and extracted RouterConn interface
   - `internal/crowdsec` — 93.4% coverage with BouncerEngine interface and mock-based stream tests
   - `internal/metrics/lapi` — 71.8% coverage (metricsUpdater 100%, SDK wiring excluded)
+- **Rule signature** (`@cs-routeros-bouncer`) — fixed, non-configurable identifier appended to every firewall rule comment for crash-safe cleanup
+- **Stale rule cleanup** — `cleanupStaleRules()` on startup removes orphaned firewall rules from previous runs (e.g., after config change or crash)
+- **Firewall customization features**:
+  - **Output passthrough** — exclude local IPs from output blocking via `passthrough_v4`/`passthrough_v6` or address lists (`passthrough_v4_list`/`passthrough_v6_list`)
+  - **Connection-state filter** — restrict filter rules to specific connection states (e.g., `new`) via `firewall.filter.connection_state`
+  - **Hierarchical log-prefix** — configurable log prefix at global, per-table, and per-direction levels
+  - **Input whitelist** — accept rule for whitelisted address list before drop rule via `firewall.block_input.whitelist`
+  - **Reject-with** — configurable ICMP reject type when `deny_action: reject` via `firewall.reject_with`
+- **Functional test suite** — 60 black-box tests in 9 groups (t1–t9) validating the compiled binary against real MikroTik hardware via SSH, SNMP, cscli, and Prometheus
+- **Prometheus metrics expanded** — 3 new metrics: `crowdsec_bouncer_dropped_bytes_total`, `crowdsec_bouncer_dropped_packets_total`, `crowdsec_bouncer_active_decisions_by_origin` (total now 11)
 
 ### Fixed
 

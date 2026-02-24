@@ -633,13 +633,14 @@ tests/functional/run_tests.sh --list
 | Group | Tests | Description |
 |-------|-------|-------------|
 | `t1`  | 7     | Data integrity — IP completeness, format, comments |
-| `t2`  | 6     | Cache consistency — live ban/unban, expiry |
+| `t2`  | 7     | Cache consistency — live ban/unban, expiry, fast-path |
 | `t3`  | 6     | Bulk operations — reconciliation, partial sync, orphans |
 | `t4`  | 3     | Connection pool — establishment, shutdown |
 | `t5`  | 6     | Edge cases — duplicates, rapid cycle, restart idempotency |
 | `t6`  | 3     | CPU monitoring — steady-state, peak, recovery |
 | `t7`  | 5     | Timing — reconciliation time, ban/unban latency |
-| `t8`  | 8     | CAPI stress ~25k IPs (requires `--capi`) |
+| `t8`  | 10    | CAPI stress ~25k IPs (requires `--capi`) |
+| `t9`  | 13    | Advanced firewall config — reject-with, connection-state, log-prefix, whitelist, passthrough |
 
 ## Security
 

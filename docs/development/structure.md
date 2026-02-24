@@ -74,6 +74,7 @@ cs-routeros-bouncer/
 │       ├── t6_cpu.sh           # T6: CPU monitoring via SNMP
 │       ├── t7_timing.sh        # T7: Timing & latency measurements
 │       ├── t8_capi.sh          # T8: CAPI stress test (~25k IPs)
+│       ├── t9_advanced.sh      # T9: Advanced firewall config (reject-with, whitelist, etc.)
 │       ├── .env.example        # Configuration template
 │       └── .env                # Local config (git-ignored)
 ├── docs/                       # Documentation site (mkdocs-material)
