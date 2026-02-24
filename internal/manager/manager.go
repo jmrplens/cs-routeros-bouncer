@@ -421,6 +421,8 @@ func (m *Manager) handleBan(d *crowdsec.Decision) {
 	m.cacheMu.Unlock()
 
 	metrics.RecordDecision("ban", metricsProto, d.Origin)
+	metrics.IncrActiveDecisions(metricsProto)
+	metrics.IncrActiveDecisionsByOrigin(d.Origin)
 	metrics.ObserveOperationDuration("add", time.Since(start))
 
 	m.logger.Info().
@@ -507,6 +509,8 @@ func (m *Manager) handleUnban(d *crowdsec.Decision) {
 	m.cacheMu.Unlock()
 
 	metrics.RecordDecision("unban", metricsProto, d.Origin)
+	metrics.DecrActiveDecisions(metricsProto)
+	metrics.DecrActiveDecisionsByOrigin(d.Origin)
 	metrics.ObserveOperationDuration("remove", time.Since(start))
 
 	m.logger.Info().

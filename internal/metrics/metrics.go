@@ -121,6 +121,26 @@ func SetActiveDecisions(proto string, count int) {
 	}
 }
 
+// IncrActiveDecisions increments the active decisions gauge and atomic counter.
+func IncrActiveDecisions(proto string) {
+	activeDecisions.WithLabelValues(proto).Inc()
+	if proto == "ipv4" {
+		activeDecisionCounts.ipv4.Add(1)
+	} else {
+		activeDecisionCounts.ipv6.Add(1)
+	}
+}
+
+// DecrActiveDecisions decrements the active decisions gauge and atomic counter.
+func DecrActiveDecisions(proto string) {
+	activeDecisions.WithLabelValues(proto).Dec()
+	if proto == "ipv4" {
+		activeDecisionCounts.ipv4.Add(-1)
+	} else {
+		activeDecisionCounts.ipv6.Add(-1)
+	}
+}
+
 // GetTotalActiveDecisions returns the total active decisions across all protocols.
 func GetTotalActiveDecisions() int64 {
 	return activeDecisionCounts.ipv4.Load() + activeDecisionCounts.ipv6.Load()
@@ -161,6 +181,33 @@ func GetActiveDecisionsByOrigin() map[string]int64 {
 		result[k] = v
 	}
 	return result
+}
+
+// IncrActiveDecisionsByOrigin increments the active count for a given origin.
+func IncrActiveDecisionsByOrigin(origin string) {
+	if origin == "" {
+		origin = "unknown"
+	}
+	originDecisionsMu.Lock()
+	defer originDecisionsMu.Unlock()
+	originDecisions[origin]++
+	activeDecisionsByOrigin.WithLabelValues(origin).Set(float64(originDecisions[origin]))
+}
+
+// DecrActiveDecisionsByOrigin decrements the active count for a given origin.
+func DecrActiveDecisionsByOrigin(origin string) {
+	if origin == "" {
+		origin = "unknown"
+	}
+	originDecisionsMu.Lock()
+	defer originDecisionsMu.Unlock()
+	originDecisions[origin]--
+	if originDecisions[origin] <= 0 {
+		delete(originDecisions, origin)
+		activeDecisionsByOrigin.WithLabelValues(origin).Set(0)
+	} else {
+		activeDecisionsByOrigin.WithLabelValues(origin).Set(float64(originDecisions[origin]))
+	}
 }
 
 // --- Firewall dropped counters for LAPI ---

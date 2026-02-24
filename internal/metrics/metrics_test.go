@@ -463,9 +463,216 @@ func TestOriginDecisionsConcurrency(t *testing.T) {
 	wg.Wait()
 }
 
+// TestOriginOverwriteRegression reproduces the bug where iterating over
+// protocols (ipv4 then ipv6) would overwrite origin counts because
+// SetActiveDecisionsByOrigin uses .Set(), not .Add(). The correct pattern
+// is to accumulate counts across protocols before calling Set.
+func TestOriginOverwriteRegression(t *testing.T) {
+	resetOriginAndDropped()
+
+	// Simulate reconciliation: accumulate counts across both protocols
+	// before calling SetActiveDecisionsByOrigin (as the fix does).
+	globalOriginCounts := map[string]int64{}
+
+	// IPv4 decisions
+	ipv4Origins := map[string]int64{"CAPI": 22000, "crowdsec": 1400}
+	for origin, count := range ipv4Origins {
+		globalOriginCounts[origin] += count
+	}
+
+	// IPv6 decisions — CAPI present in both, crowdsec only in ipv4
+	ipv6Origins := map[string]int64{"CAPI": 570}
+	for origin, count := range ipv6Origins {
+		globalOriginCounts[origin] += count
+	}
+
+	// Set final accumulated counts
+	for origin, count := range globalOriginCounts {
+		SetActiveDecisionsByOrigin(origin, count)
+	}
+
+	// Verify combined totals
+	got := GetActiveDecisionsByOrigin()
+	if got["CAPI"] != 22570 {
+		t.Errorf("CAPI: want 22570, got %d", got["CAPI"])
+	}
+	if got["crowdsec"] != 1400 {
+		t.Errorf("crowdsec: want 1400, got %d", got["crowdsec"])
+	}
+
+	// Verify Prometheus gauges
+	if v := testutil.ToFloat64(activeDecisionsByOrigin.WithLabelValues("CAPI")); v != 22570 {
+		t.Errorf("prometheus CAPI gauge: want 22570, got %v", v)
+	}
+	if v := testutil.ToFloat64(activeDecisionsByOrigin.WithLabelValues("crowdsec")); v != 1400 {
+		t.Errorf("prometheus crowdsec gauge: want 1400, got %v", v)
+	}
+}
+
+// TestOriginOverwriteBrokenPattern demonstrates what the OLD buggy code
+// did: calling SetActiveDecisionsByOrigin per-proto overwrites earlier
+// values because Set replaces rather than adds.
+func TestOriginOverwriteBrokenPattern(t *testing.T) {
+	resetOriginAndDropped()
+
+	// Simulate the OLD buggy pattern: set per-proto separately.
+	// IPv4 pass
+	SetActiveDecisionsByOrigin("CAPI", 22000)
+	SetActiveDecisionsByOrigin("crowdsec", 1400)
+	// IPv6 pass — this OVERWRITES the IPv4 CAPI value
+	SetActiveDecisionsByOrigin("CAPI", 570)
+	// crowdsec not present in ipv6 — no call means it keeps 1400
+
+	got := GetActiveDecisionsByOrigin()
+	// This shows the overwrite: CAPI lost 22000 and only has 570
+	if got["CAPI"] != 570 {
+		t.Errorf("CAPI (broken pattern): want 570 (overwritten), got %d", got["CAPI"])
+	}
+	// crowdsec was not overwritten because ipv6 didn't have it
+	if got["crowdsec"] != 1400 {
+		t.Errorf("crowdsec (broken pattern): want 1400, got %d", got["crowdsec"])
+	}
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// Dropped counter delta tracking
+// Incremental active decision updates (streaming ban/unban)
 // ─────────────────────────────────────────────────────────────────────────────
+
+// TestIncrDecrActiveDecisions verifies that IncrActiveDecisions and
+// DecrActiveDecisions correctly update both the gauge and atomic counters.
+func TestIncrDecrActiveDecisions(t *testing.T) {
+	// Start from a known baseline
+	SetActiveDecisions("ipv4", 100)
+	SetActiveDecisions("ipv6", 20)
+
+	// Simulate streaming bans
+	IncrActiveDecisions("ipv4")
+	IncrActiveDecisions("ipv4")
+	IncrActiveDecisions("ipv6")
+
+	ipv4, ipv6 := GetActiveDecisionsByIPType()
+	if ipv4 != 102 {
+		t.Errorf("ipv4 after incr: want 102, got %d", ipv4)
+	}
+	if ipv6 != 21 {
+		t.Errorf("ipv6 after incr: want 21, got %d", ipv6)
+	}
+	if v := testutil.ToFloat64(activeDecisions.WithLabelValues("ipv4")); v != 102 {
+		t.Errorf("prometheus ipv4 gauge: want 102, got %v", v)
+	}
+	if v := testutil.ToFloat64(activeDecisions.WithLabelValues("ipv6")); v != 21 {
+		t.Errorf("prometheus ipv6 gauge: want 21, got %v", v)
+	}
+
+	// Simulate streaming unbans
+	DecrActiveDecisions("ipv4")
+	DecrActiveDecisions("ipv6")
+
+	ipv4, ipv6 = GetActiveDecisionsByIPType()
+	if ipv4 != 101 {
+		t.Errorf("ipv4 after decr: want 101, got %d", ipv4)
+	}
+	if ipv6 != 20 {
+		t.Errorf("ipv6 after decr: want 20, got %d", ipv6)
+	}
+}
+
+// TestIncrDecrActiveDecisionsByOrigin verifies streaming updates to
+// per-origin tracking.
+func TestIncrDecrActiveDecisionsByOrigin(t *testing.T) {
+	resetOriginAndDropped()
+
+	// Simulate reconciliation baseline
+	SetActiveDecisionsByOrigin("CAPI", 1000)
+	SetActiveDecisionsByOrigin("crowdsec", 50)
+
+	// Streaming bans
+	IncrActiveDecisionsByOrigin("CAPI")
+	IncrActiveDecisionsByOrigin("CAPI")
+	IncrActiveDecisionsByOrigin("crowdsec")
+	IncrActiveDecisionsByOrigin("cscli") // new origin during streaming
+
+	got := GetActiveDecisionsByOrigin()
+	if got["CAPI"] != 1002 {
+		t.Errorf("CAPI: want 1002, got %d", got["CAPI"])
+	}
+	if got["crowdsec"] != 51 {
+		t.Errorf("crowdsec: want 51, got %d", got["crowdsec"])
+	}
+	if got["cscli"] != 1 {
+		t.Errorf("cscli: want 1, got %d", got["cscli"])
+	}
+
+	// Streaming unbans
+	DecrActiveDecisionsByOrigin("CAPI")
+	DecrActiveDecisionsByOrigin("cscli") // drops to 0 → removed
+
+	got = GetActiveDecisionsByOrigin()
+	if got["CAPI"] != 1001 {
+		t.Errorf("CAPI after decr: want 1001, got %d", got["CAPI"])
+	}
+	if _, exists := got["cscli"]; exists {
+		t.Error("cscli should be removed when count reaches 0")
+	}
+	if v := testutil.ToFloat64(activeDecisionsByOrigin.WithLabelValues("cscli")); v != 0 {
+		t.Errorf("prometheus cscli gauge should be 0, got %v", v)
+	}
+}
+
+// TestIncrActiveDecisionsByOriginEmptyOrigin verifies that an empty origin
+// string is normalized to "unknown".
+func TestIncrActiveDecisionsByOriginEmptyOrigin(t *testing.T) {
+	resetOriginAndDropped()
+
+	IncrActiveDecisionsByOrigin("")
+	IncrActiveDecisionsByOrigin("")
+
+	got := GetActiveDecisionsByOrigin()
+	if got["unknown"] != 2 {
+		t.Errorf("unknown: want 2, got %d", got["unknown"])
+	}
+}
+
+// TestDecrActiveDecisionsByOriginBelowZero verifies that decrementing below
+// zero cleans up the entry rather than going negative.
+func TestDecrActiveDecisionsByOriginBelowZero(t *testing.T) {
+	resetOriginAndDropped()
+
+	IncrActiveDecisionsByOrigin("test")
+	DecrActiveDecisionsByOrigin("test")
+	DecrActiveDecisionsByOrigin("test") // would go to -1
+
+	got := GetActiveDecisionsByOrigin()
+	if _, exists := got["test"]; exists {
+		t.Error("entry should be deleted, not negative")
+	}
+	if v := testutil.ToFloat64(activeDecisionsByOrigin.WithLabelValues("test")); v != 0 {
+		t.Errorf("prometheus gauge should be 0, got %v", v)
+	}
+}
+
+// TestIncrDecrConcurrency exercises concurrent incr/decr to check for races.
+func TestIncrDecrConcurrency(t *testing.T) {
+	resetOriginAndDropped()
+	SetActiveDecisions("ipv4", 0)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			IncrActiveDecisions("ipv4")
+			IncrActiveDecisionsByOrigin("CAPI")
+		}()
+		go func() {
+			defer wg.Done()
+			DecrActiveDecisions("ipv4")
+			DecrActiveDecisionsByOrigin("CAPI")
+		}()
+	}
+	wg.Wait()
+	// Just checking no race / panic — final values are nondeterministic
+}
 
 // TestDroppedCountersDelta verifies the basic delta calculation and
 // Prometheus gauge values.
