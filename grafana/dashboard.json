@@ -145,7 +145,7 @@
       },
       "id": 2,
       "options": {
-        "colorMode": "background_solid",
+        "colorMode": "background_gradient",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
@@ -174,7 +174,6 @@
         }
       ],
       "title": "RouterOS Connected",
-      "transparent": true,
       "type": "stat"
     },
     {
@@ -218,7 +217,7 @@
       },
       "id": 3,
       "options": {
-        "colorMode": "value",
+        "colorMode": "background_gradient",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
@@ -247,7 +246,6 @@
         }
       ],
       "title": "Active Decisions (IPv4)",
-      "transparent": true,
       "type": "stat"
     },
     {
@@ -291,7 +289,7 @@
       },
       "id": 4,
       "options": {
-        "colorMode": "value",
+        "colorMode": "background_gradient",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
@@ -320,7 +318,6 @@
         }
       ],
       "title": "Active Decisions (IPv6)",
-      "transparent": true,
       "type": "stat"
     },
     {
@@ -364,7 +361,7 @@
       },
       "id": 5,
       "options": {
-        "colorMode": "background",
+        "colorMode": "background_gradient",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
@@ -393,7 +390,6 @@
         }
       ],
       "title": "Total Active Decisions",
-      "transparent": true,
       "type": "stat"
     },
     {
@@ -504,7 +500,6 @@
         }
       ],
       "title": "IPv4 / IPv6 Ratio",
-      "transparent": true,
       "type": "piechart"
     },
     {
@@ -545,7 +540,7 @@
       },
       "id": 6,
       "options": {
-        "colorMode": "value",
+        "colorMode": "background_gradient",
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
@@ -574,7 +569,6 @@
         }
       ],
       "title": "Uptime",
-      "transparent": true,
       "type": "stat"
     },
     {
@@ -614,7 +608,7 @@
       },
       "id": 7,
       "options": {
-        "colorMode": "value",
+        "colorMode": "background_gradient",
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
@@ -647,7 +641,6 @@
         }
       ],
       "title": "Bouncer Info",
-      "transparent": true,
       "type": "stat"
     },
     {
@@ -861,7 +854,6 @@
         }
       ],
       "title": "RouterOS System",
-      "transparent": true,
       "type": "gauge"
     },
     {
@@ -969,7 +961,6 @@
         }
       ],
       "title": "CPU Load Over Time",
-      "transparent": true,
       "type": "timeseries"
     },
     {
@@ -1201,7 +1192,6 @@
         }
       ],
       "title": "Memory & Temperature Over Time",
-      "transparent": true,
       "type": "timeseries"
     },
     {
@@ -1356,7 +1346,6 @@
         }
       ],
       "title": "Active Decisions Over Time",
-      "transparent": true,
       "type": "timeseries"
     },
     {
@@ -1465,7 +1454,6 @@
         }
       ],
       "title": "Cumulative Decisions",
-      "transparent": true,
       "type": "timeseries"
     },
     {
@@ -1606,7 +1594,6 @@
         }
       ],
       "title": "Decisions Processed (Rate)",
-      "transparent": true,
       "type": "timeseries"
     },
     {
@@ -1698,7 +1685,6 @@
         }
       ],
       "title": "Active Decisions by Origin",
-      "transparent": true,
       "type": "bargauge"
     },
     {
@@ -1799,7 +1785,6 @@
         }
       ],
       "title": "Decisions by Origin (Rate)",
-      "transparent": true,
       "type": "timeseries"
     },
     {
@@ -1899,7 +1884,6 @@
         }
       ],
       "title": "Cumulative Decisions by Origin",
-      "transparent": true,
       "type": "timeseries"
     },
     {
@@ -1957,7 +1941,7 @@
       },
       "id": 51,
       "options": {
-        "colorMode": "value",
+        "colorMode": "background_gradient",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
@@ -1986,7 +1970,6 @@
         }
       ],
       "title": "Dropped Bytes",
-      "transparent": true,
       "type": "stat"
     },
     {
@@ -2031,7 +2014,7 @@
       },
       "id": 52,
       "options": {
-        "colorMode": "value",
+        "colorMode": "background_gradient",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
@@ -2060,7 +2043,6 @@
         }
       ],
       "title": "Dropped Packets",
-      "transparent": true,
       "type": "stat"
     },
     {
@@ -2201,7 +2183,6 @@
         }
       ],
       "title": "Dropped Traffic Rate",
-      "transparent": true,
       "type": "timeseries"
     },
     {
@@ -2341,7 +2322,6 @@
         }
       ],
       "title": "Dropped Traffic (Cumulative)",
-      "transparent": true,
       "type": "timeseries"
     },
     {
@@ -2457,7 +2437,6 @@
         }
       ],
       "title": "Error Rate",
-      "transparent": true,
       "type": "timeseries"
     },
     {
@@ -2498,7 +2477,7 @@
       },
       "id": 42,
       "options": {
-        "colorMode": "background_solid",
+        "colorMode": "background_gradient",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
@@ -2527,7 +2506,6 @@
         }
       ],
       "title": "Total Errors",
-      "transparent": true,
       "type": "stat"
     },
     {
@@ -2613,7 +2591,7 @@
       },
       "id": 44,
       "options": {
-        "colorMode": "value",
+        "colorMode": "background_gradient",
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "vertical",
@@ -2660,7 +2638,6 @@
         }
       ],
       "title": "Last Reconciliation",
-      "transparent": true,
       "type": "stat"
     },
     {
@@ -2753,7 +2730,6 @@
         }
       ],
       "title": "RouterOS Connection",
-      "transparent": true,
       "type": "state-timeline"
     },
     {
@@ -2797,7 +2773,7 @@
       },
       "id": 45,
       "options": {
-        "colorMode": "value",
+        "colorMode": "background_gradient",
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
@@ -2826,7 +2802,6 @@
         }
       ],
       "title": "Reconciliation Duration",
-      "transparent": true,
       "type": "stat"
     },
     {
@@ -2959,7 +2934,6 @@
         }
       ],
       "title": "Operation Latency (p50 / p95 / p99)",
-      "transparent": true,
       "type": "timeseries"
     },
     {
@@ -3060,7 +3034,6 @@
         }
       ],
       "title": "Operation Rate",
-      "transparent": true,
       "type": "timeseries"
     },
     {
@@ -3194,7 +3167,6 @@
         }
       ],
       "title": "Memory Usage",
-      "transparent": true,
       "type": "timeseries"
     },
     {
@@ -3297,7 +3269,6 @@
         }
       ],
       "title": "CPU Usage",
-      "transparent": true,
       "type": "timeseries"
     },
     {
@@ -3421,7 +3392,6 @@
         }
       ],
       "title": "Goroutines & File Descriptors",
-      "transparent": true,
       "type": "timeseries"
     }
   ],
