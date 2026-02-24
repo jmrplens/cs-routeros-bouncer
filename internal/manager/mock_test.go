@@ -1088,3 +1088,414 @@ func TestGetAddressListName(t *testing.T) {
 		t.Errorf("expected crowdsec6-banned for ipv6, got %s", got)
 	}
 }
+
+// ===========================================================================
+// Feature 1: Output passthrough tests
+// ===========================================================================
+
+func TestCreateFirewallRules_OutputPassthroughV4IP(t *testing.T) {
+	mock := &mockROS{addRuleID: "*R1"}
+	cfg := baseConfig()
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"input"}
+	cfg.Firewall.BlockOutput.Enabled = true
+	cfg.Firewall.BlockOutput.PassthroughV4 = "10.0.0.5"
+	mgr := newTestManager(mock, cfg)
+
+	if err := mgr.createFirewallRules(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Find the IPv4 output rule
+	for _, c := range mock.addRuleCalls {
+		if c.Proto == "ip" && c.Rule.DstAddressList != "" {
+			if c.Rule.SrcAddress != "!10.0.0.5" {
+				t.Errorf("expected SrcAddress=!10.0.0.5 on IPv4 output rule, got %q", c.Rule.SrcAddress)
+			}
+			return
+		}
+	}
+	t.Error("IPv4 output rule not found")
+}
+
+func TestCreateFirewallRules_OutputPassthroughV4List(t *testing.T) {
+	mock := &mockROS{addRuleID: "*R1"}
+	cfg := baseConfig()
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"input"}
+	cfg.Firewall.BlockOutput.Enabled = true
+	cfg.Firewall.BlockOutput.PassthroughV4 = "10.0.0.5"     // should be ignored
+	cfg.Firewall.BlockOutput.PassthroughV4List = "whitelist4" // takes precedence
+	mgr := newTestManager(mock, cfg)
+
+	if err := mgr.createFirewallRules(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, c := range mock.addRuleCalls {
+		if c.Proto == "ip" && c.Rule.DstAddressList != "" {
+			if c.Rule.SrcAddressList != "!whitelist4" {
+				t.Errorf("expected SrcAddressList=!whitelist4 (list takes precedence), got %q", c.Rule.SrcAddressList)
+			}
+			if c.Rule.SrcAddress != "" {
+				t.Errorf("expected empty SrcAddress when list is set, got %q", c.Rule.SrcAddress)
+			}
+			return
+		}
+	}
+	t.Error("IPv4 output rule not found")
+}
+
+func TestCreateFirewallRules_OutputPassthroughV6(t *testing.T) {
+	mock := &mockROS{addRuleID: "*R1"}
+	cfg := baseConfig()
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"input"}
+	cfg.Firewall.BlockOutput.Enabled = true
+	cfg.Firewall.BlockOutput.PassthroughV6List = "whitelist6"
+	mgr := newTestManager(mock, cfg)
+
+	if err := mgr.createFirewallRules(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, c := range mock.addRuleCalls {
+		if c.Proto == "ipv6" && c.Rule.DstAddressList != "" {
+			if c.Rule.SrcAddressList != "!whitelist6" {
+				t.Errorf("expected SrcAddressList=!whitelist6 on IPv6 output, got %q", c.Rule.SrcAddressList)
+			}
+			return
+		}
+	}
+	t.Error("IPv6 output rule not found")
+}
+
+// ===========================================================================
+// Feature 2: Connection-state tests
+// ===========================================================================
+
+func TestCreateFirewallRules_ConnectionState(t *testing.T) {
+	mock := &mockROS{addRuleID: "*R1"}
+	cfg := baseConfig()
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"input"}
+	cfg.Firewall.Filter.ConnectionState = "new,invalid"
+	mgr := newTestManager(mock, cfg)
+
+	if err := mgr.createFirewallRules(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, c := range mock.addRuleCalls {
+		if c.Rule.ConnectionState != "new,invalid" {
+			t.Errorf("expected connection-state=new,invalid, got %q", c.Rule.ConnectionState)
+		}
+	}
+}
+
+func TestCreateFirewallRules_ConnectionStateNotOnRaw(t *testing.T) {
+	mock := &mockROS{addRuleID: "*R1"}
+	cfg := baseConfig()
+	cfg.Firewall.Raw.Enabled = true
+	cfg.Firewall.Raw.Chains = []string{"prerouting"}
+	cfg.Firewall.Filter.ConnectionState = "new" // should NOT appear on raw rules
+	mgr := newTestManager(mock, cfg)
+
+	if err := mgr.createFirewallRules(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, c := range mock.addRuleCalls {
+		if c.Rule.ConnectionState != "" {
+			t.Errorf("raw rules must not have connection-state, got %q", c.Rule.ConnectionState)
+		}
+	}
+}
+
+// ===========================================================================
+// Feature 3: Hierarchical log-prefix tests
+// ===========================================================================
+
+func TestCreateFirewallRules_LogPrefixGlobal(t *testing.T) {
+	mock := &mockROS{addRuleID: "*R1"}
+	cfg := baseConfig()
+	cfg.Firewall.LogPrefix = "global-prefix"
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"input"}
+	mgr := newTestManager(mock, cfg)
+
+	if err := mgr.createFirewallRules(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, c := range mock.addRuleCalls {
+		if c.Rule.LogPrefix != "global-prefix" {
+			t.Errorf("expected global log-prefix, got %q", c.Rule.LogPrefix)
+		}
+	}
+}
+
+func TestCreateFirewallRules_LogPrefixPerType(t *testing.T) {
+	mock := &mockROS{addRuleID: "*R1"}
+	cfg := baseConfig()
+	cfg.Firewall.LogPrefix = "global"
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"input"}
+	cfg.Firewall.Filter.LogPrefix = "filter-prefix"
+	cfg.Firewall.Raw.Enabled = true
+	cfg.Firewall.Raw.Chains = []string{"prerouting"}
+	cfg.Firewall.Raw.LogPrefix = "raw-prefix"
+	cfg.Firewall.BlockOutput.Enabled = true
+	cfg.Firewall.BlockOutput.LogPrefix = "output-prefix"
+	mgr := newTestManager(mock, cfg)
+
+	if err := mgr.createFirewallRules(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, c := range mock.addRuleCalls {
+		switch c.Mode {
+		case "filter":
+			if c.Rule.DstAddressList != "" {
+				// output rule
+				if c.Rule.LogPrefix != "output-prefix" {
+					t.Errorf("output rule: expected output-prefix, got %q", c.Rule.LogPrefix)
+				}
+			} else {
+				// input rule
+				if c.Rule.LogPrefix != "filter-prefix" {
+					t.Errorf("filter input rule: expected filter-prefix, got %q", c.Rule.LogPrefix)
+				}
+			}
+		case "raw":
+			if c.Rule.LogPrefix != "raw-prefix" {
+				t.Errorf("raw rule: expected raw-prefix, got %q", c.Rule.LogPrefix)
+			}
+		}
+	}
+}
+
+// ===========================================================================
+// Feature 4: Input whitelist tests
+// ===========================================================================
+
+func TestCreateFirewallRules_InputWhitelist(t *testing.T) {
+	mock := &mockROS{addRuleID: "*R1"}
+	cfg := baseConfig()
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"input"}
+	cfg.Firewall.BlockInput.Whitelist = "trusted-hosts"
+	mgr := newTestManager(mock, cfg)
+
+	if err := mgr.createFirewallRules(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should create: whitelist-accept-v4, drop-v4, whitelist-accept-v6, drop-v6 = 4 rules
+	if len(mock.addRuleCalls) != 4 {
+		t.Fatalf("expected 4 rules (2 whitelist + 2 drop), got %d", len(mock.addRuleCalls))
+	}
+
+	// First rule should be the whitelist accept
+	first := mock.addRuleCalls[0]
+	if first.Rule.Action != "accept" {
+		t.Errorf("first rule should be accept (whitelist), got %q", first.Rule.Action)
+	}
+	if first.Rule.SrcAddressList != "trusted-hosts" {
+		t.Errorf("whitelist rule should have src-address-list=trusted-hosts, got %q", first.Rule.SrcAddressList)
+	}
+
+	// Second rule should be the drop/reject
+	second := mock.addRuleCalls[1]
+	if second.Rule.Action != "drop" {
+		t.Errorf("second rule should be drop, got %q", second.Rule.Action)
+	}
+}
+
+func TestCreateFirewallRules_InputWhitelistWithRaw(t *testing.T) {
+	mock := &mockROS{addRuleID: "*R1"}
+	cfg := baseConfig()
+	cfg.Firewall.Raw.Enabled = true
+	cfg.Firewall.Raw.Chains = []string{"prerouting"}
+	cfg.Firewall.BlockInput.Whitelist = "trusted-hosts"
+	mgr := newTestManager(mock, cfg)
+
+	if err := mgr.createFirewallRules(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Whitelist also applies to raw rules: 4 rules total
+	if len(mock.addRuleCalls) != 4 {
+		t.Fatalf("expected 4 rules (2 whitelist + 2 raw drop), got %d", len(mock.addRuleCalls))
+	}
+
+	// First raw whitelist should NOT have connection-state
+	first := mock.addRuleCalls[0]
+	if first.Rule.ConnectionState != "" {
+		t.Errorf("raw whitelist rule should not have connection-state, got %q", first.Rule.ConnectionState)
+	}
+}
+
+// ===========================================================================
+// Feature 5: reject-with tests
+// ===========================================================================
+
+func TestCreateFirewallRules_RejectWith(t *testing.T) {
+	mock := &mockROS{addRuleID: "*R1"}
+	cfg := baseConfig()
+	cfg.Firewall.DenyAction = "reject"
+	cfg.Firewall.RejectWith = "tcp-reset"
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"input"}
+	mgr := newTestManager(mock, cfg)
+
+	if err := mgr.createFirewallRules(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, c := range mock.addRuleCalls {
+		if c.Rule.Action == "reject" && c.Rule.RejectWith != "tcp-reset" {
+			t.Errorf("expected reject-with=tcp-reset on reject rules, got %q", c.Rule.RejectWith)
+		}
+	}
+}
+
+func TestCreateFirewallRules_RejectWithNotOnAccept(t *testing.T) {
+	mock := &mockROS{addRuleID: "*R1"}
+	cfg := baseConfig()
+	cfg.Firewall.DenyAction = "reject"
+	cfg.Firewall.RejectWith = "tcp-reset"
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"input"}
+	cfg.Firewall.BlockInput.Whitelist = "trusted"
+	mgr := newTestManager(mock, cfg)
+
+	if err := mgr.createFirewallRules(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, c := range mock.addRuleCalls {
+		if c.Rule.Action == "accept" && c.Rule.RejectWith != "" {
+			t.Errorf("accept rules must not have reject-with, got %q", c.Rule.RejectWith)
+		}
+	}
+}
+
+// ===========================================================================
+// resolveLogPrefix unit tests
+// ===========================================================================
+
+func TestResolveLogPrefix_Fallback(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Firewall.LogPrefix = "global"
+	mgr := newTestManager(&mockROS{}, cfg)
+
+	if got := mgr.resolveLogPrefix("filter"); got != "global" {
+		t.Errorf("expected global fallback, got %q", got)
+	}
+	if got := mgr.resolveLogPrefix("raw"); got != "global" {
+		t.Errorf("expected global fallback, got %q", got)
+	}
+	if got := mgr.resolveLogPrefix("output"); got != "global" {
+		t.Errorf("expected global fallback, got %q", got)
+	}
+	if got := mgr.resolveLogPrefix("unknown"); got != "global" {
+		t.Errorf("expected global fallback for unknown type, got %q", got)
+	}
+}
+
+func TestResolveLogPrefix_Overrides(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Firewall.LogPrefix = "global"
+	cfg.Firewall.Filter.LogPrefix = "filter-only"
+	cfg.Firewall.Raw.LogPrefix = "raw-only"
+	cfg.Firewall.BlockOutput.LogPrefix = "output-only"
+	mgr := newTestManager(&mockROS{}, cfg)
+
+	if got := mgr.resolveLogPrefix("filter"); got != "filter-only" {
+		t.Errorf("expected filter override, got %q", got)
+	}
+	if got := mgr.resolveLogPrefix("raw"); got != "raw-only" {
+		t.Errorf("expected raw override, got %q", got)
+	}
+	if got := mgr.resolveLogPrefix("output"); got != "output-only" {
+		t.Errorf("expected output override, got %q", got)
+	}
+}
+
+// ===========================================================================
+// Combined features test
+// ===========================================================================
+
+func TestCreateFirewallRules_AllFeaturesCombined(t *testing.T) {
+	mock := &mockROS{addRuleID: "*R1"}
+	cfg := baseConfig()
+	cfg.Firewall.DenyAction = "reject"
+	cfg.Firewall.RejectWith = "icmp-admin-prohibited"
+	cfg.Firewall.LogPrefix = "cs"
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"input"}
+	cfg.Firewall.Filter.LogPrefix = "cs-filter"
+	cfg.Firewall.Filter.ConnectionState = "new"
+	cfg.Firewall.BlockInput.Whitelist = "trusted"
+	cfg.Firewall.BlockOutput.Enabled = true
+	cfg.Firewall.BlockOutput.LogPrefix = "cs-output"
+	cfg.Firewall.BlockOutput.PassthroughV4 = "192.168.1.100"
+	cfg.Firewall.BlockOutput.PassthroughV6List = "v6-bypass"
+	mgr := newTestManager(mock, cfg)
+
+	if err := mgr.createFirewallRules(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Expected: per proto: whitelist-accept + reject-input + reject-output = 3
+	// For 2 protos: 6 rules total
+	if len(mock.addRuleCalls) != 6 {
+		t.Fatalf("expected 6 rules, got %d", len(mock.addRuleCalls))
+	}
+
+	// Verify connection-state on whitelist accept rule (filter)
+	wl := mock.addRuleCalls[0]
+	if wl.Rule.ConnectionState != "new" {
+		t.Errorf("whitelist rule should inherit connection-state, got %q", wl.Rule.ConnectionState)
+	}
+
+	// Verify reject-with on input reject rule
+	inputRule := mock.addRuleCalls[1]
+	if inputRule.Rule.RejectWith != "icmp-admin-prohibited" {
+		t.Errorf("input reject rule should have reject-with, got %q", inputRule.Rule.RejectWith)
+	}
+
+	// Verify IPv4 output passthrough
+	var v4out *addRuleCall
+	for i := range mock.addRuleCalls {
+		if mock.addRuleCalls[i].Proto == "ip" && mock.addRuleCalls[i].Rule.DstAddressList != "" {
+			v4out = &mock.addRuleCalls[i]
+			break
+		}
+	}
+	if v4out == nil {
+		t.Fatal("IPv4 output rule not found")
+	}
+	if v4out.Rule.SrcAddress != "!192.168.1.100" {
+		t.Errorf("expected SrcAddress=!192.168.1.100 on v4 output, got %q", v4out.Rule.SrcAddress)
+	}
+	if v4out.Rule.LogPrefix != "cs-output" {
+		t.Errorf("expected output log prefix, got %q", v4out.Rule.LogPrefix)
+	}
+
+	// Verify IPv6 output passthrough (list)
+	var v6out *addRuleCall
+	for i := range mock.addRuleCalls {
+		if mock.addRuleCalls[i].Proto == "ipv6" && mock.addRuleCalls[i].Rule.DstAddressList != "" {
+			v6out = &mock.addRuleCalls[i]
+			break
+		}
+	}
+	if v6out == nil {
+		t.Fatal("IPv6 output rule not found")
+	}
+	if v6out.Rule.SrcAddressList != "!v6-bypass" {
+		t.Errorf("expected SrcAddressList=!v6-bypass on v6 output, got %q", v6out.Rule.SrcAddressList)
+	}
+}

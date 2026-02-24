@@ -80,6 +80,24 @@ firewall:
   # ────────────────────────────────────────────────────────────────────────────
   # Advanced Firewall parameters (defaults work for most setups)
   # ────────────────────────────────────────────────────────────────────────────
+  # When deny_action is "reject", customize the reject response type.
+  # Valid values: icmp-network-unreachable, icmp-host-unreachable,
+  # icmp-port-unreachable, icmp-protocol-unreachable, icmp-network-prohibited,
+  # icmp-host-prohibited, icmp-admin-prohibited, tcp-reset.
+  # Empty = RouterOS default behavior.
+  # reject_with: ""
+  filter:
+    # Override the global log_prefix for filter rules only (empty = use global)
+    # log_prefix: ""
+    # Add connection-state matcher to filter rules (not available for raw).
+    # Restricts rule matching to specific connection states.
+    # Examples: "new" (only new connections), "new,invalid" (new + invalid).
+    # Valid states: established, related, new, invalid, untracked.
+    # Empty = no connection-state filter (matches all traffic).
+    # connection_state: ""
+  raw:
+    # Override the global log_prefix for raw rules only (empty = use global)
+    # log_prefix: ""
   block_output:
     # Block outgoing traffic to banned IPs (disabled by default)
     enabled: false
@@ -87,6 +105,16 @@ firewall:
     # interface: "ether1"
     # Or use an interface list instead
     # interface_list: "WAN"
+    # Override the global log_prefix for output rules only (empty = use global)
+    # log_prefix: ""
+    # Allow a specific local client IP to bypass output blocking (per protocol).
+    # Uses src-address negation (!IP) on the output rule.
+    # passthrough_v4: ""
+    # passthrough_v6: ""
+    # Or use an address-list instead (takes precedence over single IP).
+    # Uses src-address-list negation (!list) on the output rule.
+    # passthrough_v4_list: ""
+    # passthrough_v6_list: ""
   block_input:
     # Restrict input/prerouting rules to specific interface(s).
     # When both are empty (default), rules apply to ALL interfaces.
@@ -95,6 +123,10 @@ firewall:
     # management or internal services).
     # interface: "ether1"
     # interface_list: "WAN"
+    # Whitelist address-list: create an accept rule before the drop/reject rule
+    # for traffic coming from IPs in this list. Useful for allowing trusted
+    # sources even when their IPs appear in CrowdSec ban lists.
+    # whitelist: ""
   # Where to place new rules: "top" (most secure) or "bottom"
   rule_placement: "top"
   # Comment prefix used to identify bouncer-managed resources in MikroTik

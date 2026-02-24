@@ -88,12 +88,22 @@ Fine-tuning options for decision filtering, TLS, performance, firewall customiza
 | `firewall.rule_placement` | `FIREWALL_RULE_PLACEMENT` | `top` | Placement: `top` or `bottom` |
 | `firewall.comment_prefix` | `FIREWALL_COMMENT_PREFIX` | `crowdsec-bouncer` | Comment prefix |
 | `firewall.log` | `FIREWALL_LOG` | `false` | Enable rule logging |
-| `firewall.log_prefix` | `FIREWALL_LOG_PREFIX` | `crowdsec-bouncer` | Log prefix |
+| `firewall.log_prefix` | `FIREWALL_LOG_PREFIX` | `crowdsec-bouncer` | Global log prefix |
+| `firewall.reject_with` | `FIREWALL_REJECT_WITH` | | Reject type when `deny_action=reject` |
+| `firewall.filter.log_prefix` | `FIREWALL_FILTER_LOG_PREFIX` | | Override log prefix for filter rules |
+| `firewall.filter.connection_state` | `FIREWALL_FILTER_CONNECTION_STATE` | | Connection-state matcher for filter rules |
+| `firewall.raw.log_prefix` | `FIREWALL_RAW_LOG_PREFIX` | | Override log prefix for raw rules |
 | `firewall.block_input.interface` | `FIREWALL_INPUT_INTERFACE` | | Restrict input/raw rules to interface (empty = all) |
 | `firewall.block_input.interface_list` | `FIREWALL_INPUT_INTERFACE_LIST` | | Restrict input/raw rules to interface list (empty = all) |
+| `firewall.block_input.whitelist` | `FIREWALL_INPUT_WHITELIST` | | Address-list for input whitelist (accept before drop) |
 | `firewall.block_output.enabled` | `FIREWALL_BLOCK_OUTPUT` | `false` | Block outbound |
 | `firewall.block_output.interface` | `FIREWALL_OUTPUT_INTERFACE` | | WAN interface |
 | `firewall.block_output.interface_list` | `FIREWALL_OUTPUT_INTERFACE_LIST` | | WAN interface list |
+| `firewall.block_output.log_prefix` | `FIREWALL_OUTPUT_LOG_PREFIX` | | Override log prefix for output rules |
+| `firewall.block_output.passthrough_v4` | `FIREWALL_OUTPUT_PASSTHROUGH_V4` | | IPv4 client to bypass output blocking |
+| `firewall.block_output.passthrough_v4_list` | `FIREWALL_OUTPUT_PASSTHROUGH_V4_LIST` | | IPv4 list to bypass output blocking |
+| `firewall.block_output.passthrough_v6` | `FIREWALL_OUTPUT_PASSTHROUGH_V6` | | IPv6 client to bypass output blocking |
+| `firewall.block_output.passthrough_v6_list` | `FIREWALL_OUTPUT_PASSTHROUGH_V6_LIST` | | IPv6 list to bypass output blocking |
 
 #### [Logging & Metrics](logging-metrics.md) — format, file output & Prometheus
 

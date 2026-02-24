@@ -59,9 +59,10 @@ type MikroTikConfig struct {
 type FirewallConfig struct {
 	IPv4          ProtoConfig       `yaml:"ipv4" mapstructure:"ipv4"`
 	IPv6          ProtoConfig       `yaml:"ipv6" mapstructure:"ipv6"`
-	Filter        RuleConfig        `yaml:"filter" mapstructure:"filter"`
-	Raw           RuleConfig        `yaml:"raw" mapstructure:"raw"`
+	Filter        FilterConfig      `yaml:"filter" mapstructure:"filter"`
+	Raw           RawConfig         `yaml:"raw" mapstructure:"raw"`
 	DenyAction    string            `yaml:"deny_action" mapstructure:"deny_action"`
+	RejectWith    string            `yaml:"reject_with" mapstructure:"reject_with"`
 	BlockInput    BlockInputConfig  `yaml:"block_input" mapstructure:"block_input"`
 	BlockOutput   BlockOutputConfig `yaml:"block_output" mapstructure:"block_output"`
 	RulePlacement string            `yaml:"rule_placement" mapstructure:"rule_placement"`
@@ -76,10 +77,19 @@ type ProtoConfig struct {
 	AddressList string `yaml:"address_list" mapstructure:"address_list"`
 }
 
-// RuleConfig holds per-rule-type (filter/raw) settings.
-type RuleConfig struct {
-	Enabled bool     `yaml:"enabled" mapstructure:"enabled"`
-	Chains  []string `yaml:"chains" mapstructure:"chains"`
+// FilterConfig holds filter-specific rule settings.
+type FilterConfig struct {
+	Enabled         bool     `yaml:"enabled" mapstructure:"enabled"`
+	Chains          []string `yaml:"chains" mapstructure:"chains"`
+	LogPrefix       string   `yaml:"log_prefix" mapstructure:"log_prefix"`
+	ConnectionState string   `yaml:"connection_state" mapstructure:"connection_state"`
+}
+
+// RawConfig holds raw-specific rule settings.
+type RawConfig struct {
+	Enabled   bool     `yaml:"enabled" mapstructure:"enabled"`
+	Chains    []string `yaml:"chains" mapstructure:"chains"`
+	LogPrefix string   `yaml:"log_prefix" mapstructure:"log_prefix"`
 }
 
 // BlockInputConfig holds input blocking interface settings.
@@ -87,13 +97,19 @@ type RuleConfig struct {
 type BlockInputConfig struct {
 	Interface     string `yaml:"interface" mapstructure:"interface"`
 	InterfaceList string `yaml:"interface_list" mapstructure:"interface_list"`
+	Whitelist     string `yaml:"whitelist" mapstructure:"whitelist"`
 }
 
 // BlockOutputConfig holds output blocking settings.
 type BlockOutputConfig struct {
-	Enabled       bool   `yaml:"enabled" mapstructure:"enabled"`
-	Interface     string `yaml:"interface" mapstructure:"interface"`
-	InterfaceList string `yaml:"interface_list" mapstructure:"interface_list"`
+	Enabled          bool   `yaml:"enabled" mapstructure:"enabled"`
+	Interface        string `yaml:"interface" mapstructure:"interface"`
+	InterfaceList    string `yaml:"interface_list" mapstructure:"interface_list"`
+	LogPrefix        string `yaml:"log_prefix" mapstructure:"log_prefix"`
+	PassthroughV4     string `yaml:"passthrough_v4" mapstructure:"passthrough_v4"`
+	PassthroughV4List string `yaml:"passthrough_v4_list" mapstructure:"passthrough_v4_list"`
+	PassthroughV6     string `yaml:"passthrough_v6" mapstructure:"passthrough_v6"`
+	PassthroughV6List string `yaml:"passthrough_v6_list" mapstructure:"passthrough_v6_list"`
 }
 
 // LoggingConfig holds logging settings.
@@ -137,6 +153,7 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("firewall.raw.enabled", true)
 	v.SetDefault("firewall.raw.chains", []string{"prerouting"})
 	v.SetDefault("firewall.deny_action", "drop")
+	v.SetDefault("firewall.reject_with", "")
 	v.SetDefault("firewall.block_output.enabled", false)
 	v.SetDefault("firewall.rule_placement", "top")
 	v.SetDefault("firewall.comment_prefix", "crowdsec-bouncer")
@@ -186,15 +203,25 @@ func Load(configPath string) (*Config, error) {
 		"firewall.raw.enabled":                 "FIREWALL_RAW_ENABLED",
 		"firewall.raw.chains":                  "FIREWALL_RAW_CHAINS",
 		"firewall.deny_action":                 "FIREWALL_DENY_ACTION",
+		"firewall.reject_with":                 "FIREWALL_REJECT_WITH",
 		"firewall.rule_placement":              "FIREWALL_RULE_PLACEMENT",
 		"firewall.comment_prefix":              "FIREWALL_COMMENT_PREFIX",
 		"firewall.log":                         "FIREWALL_LOG",
 		"firewall.log_prefix":                  "FIREWALL_LOG_PREFIX",
+		"firewall.filter.log_prefix":           "FIREWALL_FILTER_LOG_PREFIX",
+		"firewall.filter.connection_state":     "FIREWALL_FILTER_CONNECTION_STATE",
+		"firewall.raw.log_prefix":              "FIREWALL_RAW_LOG_PREFIX",
 		"firewall.block_input.interface":       "FIREWALL_INPUT_INTERFACE",
 		"firewall.block_input.interface_list":  "FIREWALL_INPUT_INTERFACE_LIST",
+		"firewall.block_input.whitelist":       "FIREWALL_INPUT_WHITELIST",
 		"firewall.block_output.enabled":        "FIREWALL_BLOCK_OUTPUT",
 		"firewall.block_output.interface":      "FIREWALL_OUTPUT_INTERFACE",
 		"firewall.block_output.interface_list": "FIREWALL_OUTPUT_INTERFACE_LIST",
+		"firewall.block_output.log_prefix":     "FIREWALL_OUTPUT_LOG_PREFIX",
+		"firewall.block_output.passthrough_v4":      "FIREWALL_OUTPUT_PASSTHROUGH_V4",
+		"firewall.block_output.passthrough_v4_list": "FIREWALL_OUTPUT_PASSTHROUGH_V4_LIST",
+		"firewall.block_output.passthrough_v6":      "FIREWALL_OUTPUT_PASSTHROUGH_V6",
+		"firewall.block_output.passthrough_v6_list": "FIREWALL_OUTPUT_PASSTHROUGH_V6_LIST",
 		// Logging
 		"logging.level":  "LOG_LEVEL",
 		"logging.format": "LOG_FORMAT",
@@ -262,6 +289,35 @@ func (c *Config) Validate() error {
 	}
 	if c.Firewall.DenyAction != "drop" && c.Firewall.DenyAction != "reject" {
 		return fmt.Errorf("firewall.deny_action must be 'drop' or 'reject', got '%s'", c.Firewall.DenyAction)
+	}
+	if c.Firewall.RejectWith != "" && c.Firewall.DenyAction != "reject" {
+		return fmt.Errorf("firewall.reject_with requires deny_action='reject'")
+	}
+	if c.Firewall.RejectWith != "" {
+		valid := map[string]bool{
+			"icmp-network-unreachable":  true,
+			"icmp-host-unreachable":     true,
+			"icmp-port-unreachable":     true,
+			"icmp-protocol-unreachable": true,
+			"icmp-network-prohibited":   true,
+			"icmp-host-prohibited":      true,
+			"icmp-admin-prohibited":     true,
+			"tcp-reset":                 true,
+		}
+		if !valid[c.Firewall.RejectWith] {
+			return fmt.Errorf("firewall.reject_with invalid value '%s'", c.Firewall.RejectWith)
+		}
+	}
+	if c.Firewall.Filter.ConnectionState != "" {
+		valid := map[string]bool{
+			"established": true, "related": true, "new": true,
+			"invalid": true, "untracked": true,
+		}
+		for _, s := range strings.Split(c.Firewall.Filter.ConnectionState, ",") {
+			if !valid[strings.TrimSpace(s)] {
+				return fmt.Errorf("firewall.filter.connection_state invalid value '%s'", s)
+			}
+		}
 	}
 	if c.Firewall.BlockOutput.Enabled {
 		if c.Firewall.BlockOutput.Interface == "" && c.Firewall.BlockOutput.InterfaceList == "" {

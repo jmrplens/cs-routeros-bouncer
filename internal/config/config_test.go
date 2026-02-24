@@ -148,7 +148,7 @@ func TestValidateMissingAPIURL(t *testing.T) {
 		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass", PoolSize: 4},
 		Firewall: FirewallConfig{
 			IPv4: ProtoConfig{Enabled: true}, IPv6: ProtoConfig{Enabled: true},
-			Filter: RuleConfig{Enabled: true}, Raw: RuleConfig{Enabled: true},
+			Filter: FilterConfig{Enabled: true}, Raw: RawConfig{Enabled: true},
 			DenyAction: "drop",
 		},
 	}
@@ -167,7 +167,7 @@ func TestValidateMissingMikroTikAddress(t *testing.T) {
 		MikroTik: MikroTikConfig{Address: "", Username: "admin", Password: "pass", PoolSize: 4},
 		Firewall: FirewallConfig{
 			IPv4: ProtoConfig{Enabled: true}, IPv6: ProtoConfig{Enabled: true},
-			Filter: RuleConfig{Enabled: true}, Raw: RuleConfig{Enabled: true},
+			Filter: FilterConfig{Enabled: true}, Raw: RawConfig{Enabled: true},
 			DenyAction: "drop",
 		},
 	}
@@ -186,7 +186,7 @@ func TestValidateMissingMikroTikCredentials(t *testing.T) {
 		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "", Password: "pass", PoolSize: 4},
 		Firewall: FirewallConfig{
 			IPv4: ProtoConfig{Enabled: true}, IPv6: ProtoConfig{Enabled: true},
-			Filter: RuleConfig{Enabled: true}, Raw: RuleConfig{Enabled: true},
+			Filter: FilterConfig{Enabled: true}, Raw: RawConfig{Enabled: true},
 			DenyAction: "drop",
 		},
 	}
@@ -221,7 +221,7 @@ func TestValidateDenyActionReject(t *testing.T) {
 		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass", PoolSize: 4},
 		Firewall: FirewallConfig{
 			IPv4: ProtoConfig{Enabled: true}, IPv6: ProtoConfig{Enabled: true},
-			Filter: RuleConfig{Enabled: true}, Raw: RuleConfig{Enabled: true},
+			Filter: FilterConfig{Enabled: true}, Raw: RawConfig{Enabled: true},
 			DenyAction: "reject",
 		},
 	}
@@ -238,7 +238,7 @@ func TestValidateBothIPDisabled(t *testing.T) {
 		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass", PoolSize: 4},
 		Firewall: FirewallConfig{
 			IPv4: ProtoConfig{Enabled: false}, IPv6: ProtoConfig{Enabled: false},
-			Filter: RuleConfig{Enabled: true}, Raw: RuleConfig{Enabled: true},
+			Filter: FilterConfig{Enabled: true}, Raw: RawConfig{Enabled: true},
 			DenyAction: "drop",
 		},
 	}
@@ -257,7 +257,7 @@ func TestValidateBothRuleTypesDisabled(t *testing.T) {
 		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass", PoolSize: 4},
 		Firewall: FirewallConfig{
 			IPv4: ProtoConfig{Enabled: true}, IPv6: ProtoConfig{Enabled: true},
-			Filter: RuleConfig{Enabled: false}, Raw: RuleConfig{Enabled: false},
+			Filter: FilterConfig{Enabled: false}, Raw: RawConfig{Enabled: false},
 			DenyAction: "drop",
 		},
 	}
@@ -276,7 +276,7 @@ func TestValidateBlockOutputRequiresInterface(t *testing.T) {
 		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass", PoolSize: 4},
 		Firewall: FirewallConfig{
 			IPv4: ProtoConfig{Enabled: true}, IPv6: ProtoConfig{Enabled: true},
-			Filter: RuleConfig{Enabled: true}, Raw: RuleConfig{Enabled: true},
+			Filter: FilterConfig{Enabled: true}, Raw: RawConfig{Enabled: true},
 			DenyAction:  "drop",
 			BlockOutput: BlockOutputConfig{Enabled: true, Interface: "", InterfaceList: ""},
 		},
@@ -296,7 +296,7 @@ func TestValidateBlockOutputWithInterface(t *testing.T) {
 		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass", PoolSize: 4},
 		Firewall: FirewallConfig{
 			IPv4: ProtoConfig{Enabled: true}, IPv6: ProtoConfig{Enabled: true},
-			Filter: RuleConfig{Enabled: true}, Raw: RuleConfig{Enabled: true},
+			Filter: FilterConfig{Enabled: true}, Raw: RawConfig{Enabled: true},
 			DenyAction:  "drop",
 			BlockOutput: BlockOutputConfig{Enabled: true, Interface: "ether1"},
 		},
@@ -314,7 +314,7 @@ func TestValidateBlockOutputWithInterfaceList(t *testing.T) {
 		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass", PoolSize: 4},
 		Firewall: FirewallConfig{
 			IPv4: ProtoConfig{Enabled: true}, IPv6: ProtoConfig{Enabled: true},
-			Filter: RuleConfig{Enabled: true}, Raw: RuleConfig{Enabled: true},
+			Filter: FilterConfig{Enabled: true}, Raw: RawConfig{Enabled: true},
 			DenyAction:  "drop",
 			BlockOutput: BlockOutputConfig{Enabled: true, InterfaceList: "WAN"},
 		},
@@ -333,8 +333,8 @@ func TestValidateCompleteConfig(t *testing.T) {
 		Firewall: FirewallConfig{
 			IPv4:          ProtoConfig{Enabled: true, AddressList: "crowdsec-banned"},
 			IPv6:          ProtoConfig{Enabled: true, AddressList: "crowdsec6-banned"},
-			Filter:        RuleConfig{Enabled: true, Chains: []string{"input"}},
-			Raw:           RuleConfig{Enabled: true, Chains: []string{"prerouting"}},
+			Filter:        FilterConfig{Enabled: true, Chains: []string{"input"}},
+			Raw:           RawConfig{Enabled: true, Chains: []string{"prerouting"}},
 			DenyAction:    "drop",
 			RulePlacement: "top",
 			CommentPrefix: "crowdsec-bouncer",
@@ -423,7 +423,7 @@ func TestValidateLogPrefixRequiresLog(t *testing.T) {
 		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass", PoolSize: 4},
 		Firewall: FirewallConfig{
 			IPv4: ProtoConfig{Enabled: true}, IPv6: ProtoConfig{Enabled: true},
-			Filter: RuleConfig{Enabled: true}, Raw: RuleConfig{Enabled: true},
+			Filter: FilterConfig{Enabled: true}, Raw: RawConfig{Enabled: true},
 			DenyAction: "drop",
 			Log:        true,
 			LogPrefix:  "CS-DROP",
@@ -442,8 +442,8 @@ func TestValidateFilterOnlyEnabled(t *testing.T) {
 		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass", PoolSize: 4},
 		Firewall: FirewallConfig{
 			IPv4: ProtoConfig{Enabled: true}, IPv6: ProtoConfig{Enabled: true},
-			Filter:     RuleConfig{Enabled: true},
-			Raw:        RuleConfig{Enabled: false},
+			Filter:     FilterConfig{Enabled: true},
+			Raw:        RawConfig{Enabled: false},
 			DenyAction: "drop",
 		},
 	}
@@ -460,8 +460,8 @@ func TestValidateIPv4OnlyEnabled(t *testing.T) {
 		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass", PoolSize: 4},
 		Firewall: FirewallConfig{
 			IPv4: ProtoConfig{Enabled: true}, IPv6: ProtoConfig{Enabled: false},
-			Filter:     RuleConfig{Enabled: true},
-			Raw:        RuleConfig{Enabled: true},
+			Filter:     FilterConfig{Enabled: true},
+			Raw:        RawConfig{Enabled: true},
 			DenyAction: "drop",
 		},
 	}
@@ -513,7 +513,7 @@ func TestValidatePoolSizeBounds(t *testing.T) {
 		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass"},
 		Firewall: FirewallConfig{
 			IPv4: ProtoConfig{Enabled: true}, IPv6: ProtoConfig{Enabled: true},
-			Filter: RuleConfig{Enabled: true}, Raw: RuleConfig{Enabled: true},
+			Filter: FilterConfig{Enabled: true}, Raw: RawConfig{Enabled: true},
 			DenyAction: "drop",
 		},
 	}
@@ -615,12 +615,89 @@ func TestBlockInputEmptyIsValid(t *testing.T) {
 		CrowdSec: CrowdSecConfig{APIURL: "http://localhost:8080/", APIKey: "k"},
 		Firewall: FirewallConfig{
 			IPv4:       ProtoConfig{Enabled: true},
-			Filter:     RuleConfig{Enabled: true, Chains: []string{"input"}},
+			Filter:     FilterConfig{Enabled: true, Chains: []string{"input"}},
 			DenyAction: "drop",
 			BlockInput: BlockInputConfig{},
 		},
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("empty block_input should be valid: %v", err)
+	}
+}
+
+// ---------- New firewall feature validation tests ----------
+
+func TestRejectWithRequiresRejectAction(t *testing.T) {
+	cfg := validCfg()
+	cfg.Firewall.DenyAction = "drop"
+	cfg.Firewall.RejectWith = "tcp-reset"
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error: reject_with requires deny_action=reject")
+	}
+}
+
+func TestRejectWithValidValues(t *testing.T) {
+	valid := []string{
+		"icmp-network-unreachable", "icmp-host-unreachable", "icmp-port-unreachable",
+		"icmp-protocol-unreachable", "icmp-network-prohibited", "icmp-host-prohibited",
+		"icmp-admin-prohibited", "tcp-reset",
+	}
+	for _, v := range valid {
+		cfg := validCfg()
+		cfg.Firewall.DenyAction = "reject"
+		cfg.Firewall.RejectWith = v
+		if err := cfg.Validate(); err != nil {
+			t.Errorf("reject_with=%q should be valid: %v", v, err)
+		}
+	}
+}
+
+func TestRejectWithInvalidValue(t *testing.T) {
+	cfg := validCfg()
+	cfg.Firewall.DenyAction = "reject"
+	cfg.Firewall.RejectWith = "invalid-value"
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error for invalid reject_with value")
+	}
+}
+
+func TestConnectionStateValid(t *testing.T) {
+	tests := []string{"new", "new,invalid", "established,related,new"}
+	for _, v := range tests {
+		cfg := validCfg()
+		cfg.Firewall.Filter.ConnectionState = v
+		if err := cfg.Validate(); err != nil {
+			t.Errorf("connection_state=%q should be valid: %v", v, err)
+		}
+	}
+}
+
+func TestConnectionStateInvalid(t *testing.T) {
+	cfg := validCfg()
+	cfg.Firewall.Filter.ConnectionState = "new,bogus"
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error for invalid connection_state value")
+	}
+}
+
+func TestRejectWithEmptyIsValid(t *testing.T) {
+	cfg := validCfg()
+	cfg.Firewall.DenyAction = "reject"
+	cfg.Firewall.RejectWith = ""
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("empty reject_with should be valid: %v", err)
+	}
+}
+
+// validCfg returns a minimal valid Config for testing new features.
+func validCfg() *Config {
+	return &Config{
+		MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "u", Password: "p", PoolSize: 4},
+		CrowdSec: CrowdSecConfig{APIURL: "http://localhost:8080/", APIKey: "k"},
+		Firewall: FirewallConfig{
+			IPv4:       ProtoConfig{Enabled: true},
+			Filter:     FilterConfig{Enabled: true, Chains: []string{"input"}},
+			DenyAction: "drop",
+		},
 	}
 }

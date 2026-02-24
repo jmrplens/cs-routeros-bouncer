@@ -255,3 +255,145 @@ firewall:
 
 !!! note
     If both `interface` and `interface_list` are set, `interface` takes precedence.
+
+---
+
+## Rule Customization
+
+Advanced options for customizing how firewall rules are created and what traffic they match.
+
+### `firewall.reject_with`
+
+| | |
+|---|---|
+| **Env** | `FIREWALL_REJECT_WITH` |
+| **Default** | — |
+
+Customize the ICMP response type when `deny_action` is `reject`. Only valid when `deny_action: "reject"`.
+
+Valid values: `icmp-network-unreachable`, `icmp-host-unreachable`, `icmp-port-unreachable`, `icmp-protocol-unreachable`, `icmp-network-prohibited`, `icmp-host-prohibited`, `icmp-admin-prohibited`, `tcp-reset`.
+
+```yaml
+firewall:
+  deny_action: "reject"
+  reject_with: "icmp-admin-prohibited"
+```
+
+### `firewall.filter.connection_state`
+
+| | |
+|---|---|
+| **Env** | `FIREWALL_FILTER_CONNECTION_STATE` |
+| **Default** | — |
+
+Add a `connection-state` matcher to filter rules. This restricts rule matching to specific connection states, allowing established/related connections to pass through even if the source IP is banned.
+
+Valid states: `established`, `related`, `new`, `invalid`, `untracked` (comma-separated for multiple).
+
+!!! warning
+    This option only applies to **filter** rules. RAW rules do not support connection-state matching because raw operates before connection tracking.
+
+```yaml
+firewall:
+  filter:
+    enabled: true
+    chains: ["input"]
+    # Only block new connections from banned IPs; allow existing ones to finish
+    connection_state: "new"
+```
+
+```yaml
+firewall:
+  filter:
+    enabled: true
+    chains: ["input"]
+    # Block new and invalid connections from banned IPs
+    connection_state: "new,invalid"
+```
+
+### `firewall.filter.log_prefix` / `firewall.raw.log_prefix` / `firewall.block_output.log_prefix`
+
+| | |
+|---|---|
+| **Env** | `FIREWALL_FILTER_LOG_PREFIX` / `FIREWALL_RAW_LOG_PREFIX` / `FIREWALL_OUTPUT_LOG_PREFIX` |
+| **Default** | — (uses global `firewall.log_prefix`) |
+
+Override the global `log_prefix` for specific rule types. This allows differentiating log entries from filter, raw, and output rules when parsing RouterOS logs.
+
+Resolution order: per-type prefix → global `firewall.log_prefix`.
+
+```yaml
+firewall:
+  log: true
+  log_prefix: "crowdsec"  # global default
+  filter:
+    log_prefix: "cs-filter"  # overrides global for filter rules
+  raw:
+    log_prefix: "cs-raw"     # overrides global for raw rules
+  block_output:
+    log_prefix: "cs-output"  # overrides global for output rules
+```
+
+### `firewall.block_input.whitelist`
+
+| | |
+|---|---|
+| **Env** | `FIREWALL_INPUT_WHITELIST` |
+| **Default** | — |
+
+Name of a RouterOS address-list containing trusted IPs that should bypass CrowdSec blocking. When set, the bouncer creates an **accept** rule before the drop/reject rule for each chain, allowing traffic from the whitelist to pass through.
+
+This works with both filter and raw rules. The address-list must be created and managed separately on the router.
+
+```yaml
+firewall:
+  block_input:
+    whitelist: "crowdsec-whitelist"
+```
+
+This generates rules like:
+
+```
+/ip/firewall/filter add chain=input src-address-list=crowdsec-whitelist action=accept
+/ip/firewall/filter add chain=input src-address-list=crowdsec-banned action=drop
+```
+
+### `firewall.block_output.passthrough_v4` / `passthrough_v6`
+
+| | |
+|---|---|
+| **Env** | `FIREWALL_OUTPUT_PASSTHROUGH_V4` / `FIREWALL_OUTPUT_PASSTHROUGH_V6` |
+| **Default** | — |
+
+Allow a specific local client IP to bypass output blocking. Uses `src-address` negation (`!IP`) on the output drop/reject rule, so packets from this source address are not blocked even when going to a banned destination.
+
+```yaml
+firewall:
+  block_output:
+    enabled: true
+    interface: "ether1"
+    passthrough_v4: "192.168.1.100"
+    passthrough_v6: "fd00::100"
+```
+
+### `firewall.block_output.passthrough_v4_list` / `passthrough_v6_list`
+
+| | |
+|---|---|
+| **Env** | `FIREWALL_OUTPUT_PASSTHROUGH_V4_LIST` / `FIREWALL_OUTPUT_PASSTHROUGH_V6_LIST` |
+| **Default** | — |
+
+Same as passthrough but using an address-list instead of a single IP. Uses `src-address-list` negation (`!list`) on the output rule.
+
+!!! note
+    When both a single IP and an address-list are configured for the same protocol, the **address-list takes precedence** and the single IP is ignored.
+
+```yaml
+firewall:
+  block_output:
+    enabled: true
+    interface: "ether1"
+    # These address-lists must exist on the router
+    passthrough_v4_list: "trusted-clients-v4"
+    passthrough_v6_list: "trusted-clients-v6"
+```

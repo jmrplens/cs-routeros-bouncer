@@ -416,6 +416,26 @@ func (m *Manager) handleUnban(d *crowdsec.Decision) {
 		Msg("unbanned address")
 }
 
+// resolveLogPrefix returns the effective log-prefix for a rule type.
+// Per-type prefix takes precedence; falls back to global firewall.log_prefix.
+func (m *Manager) resolveLogPrefix(ruleType string) string {
+	switch ruleType {
+	case "filter":
+		if m.cfg.Firewall.Filter.LogPrefix != "" {
+			return m.cfg.Firewall.Filter.LogPrefix
+		}
+	case "raw":
+		if m.cfg.Firewall.Raw.LogPrefix != "" {
+			return m.cfg.Firewall.Raw.LogPrefix
+		}
+	case "output":
+		if m.cfg.Firewall.BlockOutput.LogPrefix != "" {
+			return m.cfg.Firewall.BlockOutput.LogPrefix
+		}
+	}
+	return m.cfg.Firewall.LogPrefix
+}
+
 // createFirewallRules creates all necessary firewall rules in MikroTik.
 func (m *Manager) createFirewallRules() error {
 	m.logger.Info().Msg("creating firewall rules")
@@ -428,7 +448,27 @@ func (m *Manager) createFirewallRules() error {
 		// Filter rules
 		if m.cfg.Firewall.Filter.Enabled {
 			for _, chain := range m.cfg.Firewall.Filter.Chains {
-				// Input rule (src-address-list)
+				// Whitelist accept rule (before drop/reject rule)
+				if m.cfg.Firewall.BlockInput.Whitelist != "" {
+					wlComment := buildRuleComment("filter", chain, "whitelist", proto)
+					wlRule := rosClient.FirewallRule{
+						Chain:          chain,
+						Action:         "accept",
+						SrcAddressList: m.cfg.Firewall.BlockInput.Whitelist,
+						Comment:        wlComment,
+						Log:            m.cfg.Firewall.Log,
+						LogPrefix:      m.resolveLogPrefix("filter"),
+					}
+					m.applyInputRuleOptions(&wlRule)
+					if m.cfg.Firewall.Filter.ConnectionState != "" {
+						wlRule.ConnectionState = m.cfg.Firewall.Filter.ConnectionState
+					}
+					if err := m.ensureFirewallRule(proto, "filter", wlRule); err != nil {
+						return err
+					}
+				}
+
+				// Input rule (src-address-list = drop/reject)
 				comment := buildRuleComment("filter", chain, "input", proto)
 				rule := rosClient.FirewallRule{
 					Chain:          chain,
@@ -436,7 +476,13 @@ func (m *Manager) createFirewallRules() error {
 					SrcAddressList: listName,
 					Comment:        comment,
 					Log:            m.cfg.Firewall.Log,
-					LogPrefix:      m.cfg.Firewall.LogPrefix,
+					LogPrefix:      m.resolveLogPrefix("filter"),
+				}
+				if m.cfg.Firewall.Filter.ConnectionState != "" {
+					rule.ConnectionState = m.cfg.Firewall.Filter.ConnectionState
+				}
+				if m.cfg.Firewall.DenyAction == "reject" && m.cfg.Firewall.RejectWith != "" {
+					rule.RejectWith = m.cfg.Firewall.RejectWith
 				}
 				m.applyInputRuleOptions(&rule)
 
@@ -453,7 +499,24 @@ func (m *Manager) createFirewallRules() error {
 						DstAddressList: listName,
 						Comment:        outComment,
 						Log:            m.cfg.Firewall.Log,
-						LogPrefix:      m.cfg.Firewall.LogPrefix,
+						LogPrefix:      m.resolveLogPrefix("output"),
+					}
+					if m.cfg.Firewall.DenyAction == "reject" && m.cfg.Firewall.RejectWith != "" {
+						outRule.RejectWith = m.cfg.Firewall.RejectWith
+					}
+					// Passthrough: list negation takes precedence over single IP
+					if proto == "ip" {
+						if m.cfg.Firewall.BlockOutput.PassthroughV4List != "" {
+							outRule.SrcAddressList = "!" + m.cfg.Firewall.BlockOutput.PassthroughV4List
+						} else if m.cfg.Firewall.BlockOutput.PassthroughV4 != "" {
+							outRule.SrcAddress = "!" + m.cfg.Firewall.BlockOutput.PassthroughV4
+						}
+					} else {
+						if m.cfg.Firewall.BlockOutput.PassthroughV6List != "" {
+							outRule.SrcAddressList = "!" + m.cfg.Firewall.BlockOutput.PassthroughV6List
+						} else if m.cfg.Firewall.BlockOutput.PassthroughV6 != "" {
+							outRule.SrcAddress = "!" + m.cfg.Firewall.BlockOutput.PassthroughV6
+						}
 					}
 					if m.cfg.Firewall.BlockOutput.Interface != "" {
 						outRule.OutInterface = m.cfg.Firewall.BlockOutput.Interface
@@ -475,6 +538,23 @@ func (m *Manager) createFirewallRules() error {
 		// Raw rules
 		if m.cfg.Firewall.Raw.Enabled {
 			for _, chain := range m.cfg.Firewall.Raw.Chains {
+				// Whitelist accept rule (before drop rule)
+				if m.cfg.Firewall.BlockInput.Whitelist != "" {
+					wlComment := buildRuleComment("raw", chain, "whitelist", proto)
+					wlRule := rosClient.FirewallRule{
+						Chain:          chain,
+						Action:         "accept",
+						SrcAddressList: m.cfg.Firewall.BlockInput.Whitelist,
+						Comment:        wlComment,
+						Log:            m.cfg.Firewall.Log,
+						LogPrefix:      m.resolveLogPrefix("raw"),
+					}
+					m.applyInputRuleOptions(&wlRule)
+					if err := m.ensureFirewallRule(proto, "raw", wlRule); err != nil {
+						return err
+					}
+				}
+
 				comment := buildRuleComment("raw", chain, "input", proto)
 				rule := rosClient.FirewallRule{
 					Chain:          chain,
@@ -482,7 +562,11 @@ func (m *Manager) createFirewallRules() error {
 					SrcAddressList: listName,
 					Comment:        comment,
 					Log:            m.cfg.Firewall.Log,
-					LogPrefix:      m.cfg.Firewall.LogPrefix,
+					LogPrefix:      m.resolveLogPrefix("raw"),
+				}
+				// Raw does NOT support connection-state
+				if m.cfg.Firewall.DenyAction == "reject" && m.cfg.Firewall.RejectWith != "" {
+					rule.RejectWith = m.cfg.Firewall.RejectWith
 				}
 				m.applyInputRuleOptions(&rule)
 
