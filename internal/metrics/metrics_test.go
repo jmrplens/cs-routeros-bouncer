@@ -635,59 +635,42 @@ func testConfigParams() ConfigParams {
 	}
 }
 
-// TestSetConfigInfoRegistersMetric verifies the config info metric is emitted
-// with all expected labels and value 1.
+// TestSetConfigInfoRegistersMetric verifies the config info metric emits
+// one series per parameter (31 total), each with group/param/value labels.
 func TestSetConfigInfoRegistersMetric(t *testing.T) {
+	configInfo.Reset()
+
 	p := testConfigParams()
 	SetConfigInfo(p)
 
-	// The metric should have exactly 1 series with value 1
 	count := testutil.CollectAndCount(configInfo)
-	if count < 1 {
-		t.Fatalf("expected at least 1 config_info series, got %d", count)
+	if count != 31 {
+		t.Fatalf("expected 31 config_info series, got %d", count)
 	}
 
-	// Scrape the /metrics output and verify key labels
-	out := testutil.ToFloat64(configInfo.WithLabelValues(
-		p.CrowdSecAPIURL,
-		p.CrowdSecUpdateFrequency,
-		"crowdsec,cscli,CAPI",
-		"ip,range",
-		"ban",
-		"true",  // retry_initial_connect
-		"false", // tls
-		p.MikroTikAddress,
-		"false", // mikrotik tls
-		"10",    // pool_size
-		p.MikroTikConnTimeout,
-		p.MikroTikCmdTimeout,
-		"true",            // ipv4 enabled
-		p.FWIPv4List,      // ipv4 list
-		"true",            // ipv6 enabled
-		p.FWIPv6List,      // ipv6 list
-		"true",            // filter enabled
-		"input",           // filter chains
-		"true",            // raw enabled
-		"prerouting",      // raw chains
-		p.FWDenyAction,    // deny_action
-		"false",           // block_output
-		p.FWRulePlacement, // rule_placement
-		p.FWCommentPrefix, // comment_prefix
-		"false",           // log
-		p.LogLevel,
-		p.LogFormat,
-		"true",                // metrics enabled
-		p.MetricsListenAddr,   // listen_addr
-		"2112",                // listen_port
-		p.MetricsPollInterval, // poll_interval
-	))
-	if out != 1 {
-		t.Errorf("config_info value = %v, want 1", out)
+	// Spot-check specific parameters
+	checks := []struct {
+		group, param, value string
+	}{
+		{"CrowdSec", "API URL", "http://localhost:8080/"},
+		{"CrowdSec", "Origins", "crowdsec, cscli, CAPI"},
+		{"MikroTik", "Connection Pool Size", "10"},
+		{"Firewall", "Deny Action", "drop"},
+		{"Logging", "Level", "info"},
+		{"Metrics", "Listen Port", "2112"},
+	}
+	for _, c := range checks {
+		v := testutil.ToFloat64(configInfo.WithLabelValues(c.group, c.param, c.value))
+		if v != 1 {
+			t.Errorf("config_info{group=%q,param=%q,value=%q} = %v, want 1", c.group, c.param, c.value, v)
+		}
 	}
 }
 
 // TestSetConfigInfoEmptySlices verifies behavior when slice fields are empty.
 func TestSetConfigInfoEmptySlices(t *testing.T) {
+	configInfo.Reset()
+
 	p := testConfigParams()
 	p.CrowdSecOrigins = nil
 	p.CrowdSecScopes = []string{}
@@ -697,15 +680,22 @@ func TestSetConfigInfoEmptySlices(t *testing.T) {
 	// Should not panic
 	SetConfigInfo(p)
 
-	count := testutil.CollectAndCount(configInfo)
-	if count < 1 {
-		t.Fatalf("expected at least 1 config_info series, got %d", count)
+	// Empty slices produce empty string values
+	v := testutil.ToFloat64(configInfo.WithLabelValues("CrowdSec", "Origins", ""))
+	if v != 1 {
+		t.Errorf("empty origins = %v, want 1", v)
+	}
+	v = testutil.ToFloat64(configInfo.WithLabelValues("Firewall", "Filter Chains", ""))
+	if v != 1 {
+		t.Errorf("empty filter chains = %v, want 1", v)
 	}
 }
 
 // TestSetConfigInfoBoolConversion verifies that all boolean fields are
 // correctly represented as "true" or "false" strings.
 func TestSetConfigInfoBoolConversion(t *testing.T) {
+	configInfo.Reset()
+
 	// All booleans true
 	p := testConfigParams()
 	p.CrowdSecRetryInitConnect = true
@@ -721,30 +711,54 @@ func TestSetConfigInfoBoolConversion(t *testing.T) {
 
 	SetConfigInfo(p)
 
-	// All booleans false
-	p2 := testConfigParams()
-	p2.CrowdSecRetryInitConnect = false
-	p2.CrowdSecTLS = false
-	p2.MikroTikTLS = false
-	p2.FWIPv4Enabled = false
-	p2.FWIPv6Enabled = false
-	p2.FWFilterEnabled = false
-	p2.FWRawEnabled = false
-	p2.FWBlockOutput = false
-	p2.FWLog = false
-	p2.MetricsEnabled = false
+	boolParams := []struct {
+		group, param string
+	}{
+		{"CrowdSec", "Retry Initial Connect"},
+		{"CrowdSec", "TLS Enabled"},
+		{"MikroTik", "TLS Enabled"},
+		{"Firewall", "IPv4 Enabled"},
+		{"Firewall", "IPv6 Enabled"},
+		{"Firewall", "Filter Enabled"},
+		{"Firewall", "Raw Enabled"},
+		{"Firewall", "Block Output"},
+		{"Firewall", "Logging Enabled"},
+		{"Metrics", "Enabled"},
+	}
+	for _, bp := range boolParams {
+		v := testutil.ToFloat64(configInfo.WithLabelValues(bp.group, bp.param, "true"))
+		if v != 1 {
+			t.Errorf("config_info{group=%q,param=%q,value=\"true\"} = %v, want 1", bp.group, bp.param, v)
+		}
+	}
 
-	SetConfigInfo(p2)
+	// Reset and test all false
+	configInfo.Reset()
+	p.CrowdSecRetryInitConnect = false
+	p.CrowdSecTLS = false
+	p.MikroTikTLS = false
+	p.FWIPv4Enabled = false
+	p.FWIPv6Enabled = false
+	p.FWFilterEnabled = false
+	p.FWRawEnabled = false
+	p.FWBlockOutput = false
+	p.FWLog = false
+	p.MetricsEnabled = false
 
-	// Both should be emitted without panics; count covers both
-	count := testutil.CollectAndCount(configInfo)
-	if count < 1 {
-		t.Fatalf("expected config_info series after bool toggle, got %d", count)
+	SetConfigInfo(p)
+
+	for _, bp := range boolParams {
+		v := testutil.ToFloat64(configInfo.WithLabelValues(bp.group, bp.param, "false"))
+		if v != 1 {
+			t.Errorf("config_info{group=%q,param=%q,value=\"false\"} = %v, want 1", bp.group, bp.param, v)
+		}
 	}
 }
 
 // TestSetConfigInfoMultipleChains verifies comma-joined slice labels.
 func TestSetConfigInfoMultipleChains(t *testing.T) {
+	configInfo.Reset()
+
 	p := testConfigParams()
 	p.FWFilterChains = []string{"input", "forward"}
 	p.FWRawChains = []string{"prerouting", "output"}
@@ -752,9 +766,18 @@ func TestSetConfigInfoMultipleChains(t *testing.T) {
 
 	SetConfigInfo(p)
 
-	count := testutil.CollectAndCount(configInfo)
-	if count < 1 {
-		t.Fatalf("expected config_info series, got %d", count)
+	checks := []struct {
+		group, param, value string
+	}{
+		{"Firewall", "Filter Chains", "input, forward"},
+		{"Firewall", "Raw Chains", "prerouting, output"},
+		{"CrowdSec", "Origins", "crowdsec, cscli, CAPI, lists"},
+	}
+	for _, c := range checks {
+		v := testutil.ToFloat64(configInfo.WithLabelValues(c.group, c.param, c.value))
+		if v != 1 {
+			t.Errorf("config_info{param=%q} value=%q not found", c.param, c.value)
+		}
 	}
 }
 

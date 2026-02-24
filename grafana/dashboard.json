@@ -3365,57 +3365,121 @@
                 "mode": "fixed"
               },
               "custom": {
-                "align": "auto",
+                "align": "left",
                 "cellOptions": {
-                  "type": "auto"
+                  "type": "color-text"
                 },
                 "filterable": false,
                 "inspect": false
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
               }
             },
             "overrides": [
               {
                 "matcher": {
-                  "id": "byRegexp",
-                  "options": "/Field|Parameter/"
+                  "id": "byName",
+                  "options": "Group"
                 },
                 "properties": [
                   {
                     "id": "custom.width",
-                    "value": 280
+                    "value": 110
                   },
                   {
                     "id": "custom.cellOptions",
                     "value": {
-                      "type": "color-text"
+                      "mode": "gradient",
+                      "type": "color-background"
                     }
                   },
                   {
-                    "id": "color",
-                    "value": {
-                      "fixedColor": "text",
-                      "mode": "fixed"
-                    }
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "options": {
+                          "CrowdSec": {
+                            "color": "semi-dark-blue",
+                            "index": 0,
+                            "text": "CrowdSec"
+                          }
+                        },
+                        "type": "value"
+                      },
+                      {
+                        "options": {
+                          "MikroTik": {
+                            "color": "semi-dark-green",
+                            "index": 1,
+                            "text": "MikroTik"
+                          }
+                        },
+                        "type": "value"
+                      },
+                      {
+                        "options": {
+                          "Firewall": {
+                            "color": "semi-dark-orange",
+                            "index": 2,
+                            "text": "Firewall"
+                          }
+                        },
+                        "type": "value"
+                      },
+                      {
+                        "options": {
+                          "Logging": {
+                            "color": "semi-dark-purple",
+                            "index": 3,
+                            "text": "Logging"
+                          }
+                        },
+                        "type": "value"
+                      },
+                      {
+                        "options": {
+                          "Metrics": {
+                            "color": "dark-yellow",
+                            "index": 4,
+                            "text": "Metrics"
+                          }
+                        },
+                        "type": "value"
+                      }
+                    ]
                   }
                 ]
               },
               {
                 "matcher": {
-                  "id": "byRegexp",
-                  "options": "/^(?!Field|Parameter)/"
+                  "id": "byName",
+                  "options": "Parameter"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 220
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Value"
                 },
                 "properties": [
                   {
                     "id": "custom.cellOptions",
                     "value": {
-                      "type": "color-text"
-                    }
-                  },
-                  {
-                    "id": "color",
-                    "value": {
-                      "fixedColor": "super-light-blue",
-                      "mode": "fixed"
+                      "type": "auto"
                     }
                   }
                 ]
@@ -3423,7 +3487,7 @@
             ]
           },
           "gridPos": {
-            "h": 6,
+            "h": 16,
             "w": 24,
             "x": 0,
             "y": 82
@@ -3432,13 +3496,18 @@
           "options": {
             "cellHeight": "sm",
             "footer": {
+              "countRows": false,
+              "fields": "",
+              "reducer": [
+                "sum"
+              ],
               "show": false
             },
             "showHeader": true,
             "sortBy": [
               {
                 "desc": false,
-                "displayName": "Parameter"
+                "displayName": "Group"
               }
             ]
           },
@@ -3448,24 +3517,18 @@
                 "type": "prometheus",
                 "uid": "${DS_PROMETHEUS}"
               },
+              "editorMode": "code",
+              "exemplar": false,
               "expr": "crowdsec_bouncer_config_info{job=\"$job\"}",
               "format": "table",
               "instant": true,
+              "legendFormat": "__auto",
+              "range": false,
               "refId": "A"
             }
           ],
           "title": "",
           "transformations": [
-            {
-              "id": "reduce",
-              "options": {
-                "includeTimeField": false,
-                "mode": "reduceFields",
-                "reducers": [
-                  "lastNotNull"
-                ]
-              }
-            },
             {
               "id": "organize",
               "options": {
@@ -3473,774 +3536,26 @@
                   "Time": true,
                   "Value": true,
                   "__name__": true,
-                  "firewall_block_output": true,
-                  "firewall_comment_prefix": true,
-                  "firewall_deny_action": true,
-                  "firewall_filter_chains": true,
-                  "firewall_filter_enabled": true,
-                  "firewall_ipv4_enabled": true,
-                  "firewall_ipv4_list": true,
-                  "firewall_ipv6_enabled": true,
-                  "firewall_ipv6_list": true,
-                  "firewall_log": true,
-                  "firewall_raw_chains": true,
-                  "firewall_raw_enabled": true,
-                  "firewall_rule_placement": true,
                   "instance": true,
-                  "job": true,
-                  "logging_format": true,
-                  "logging_level": true,
-                  "metrics_enabled": true,
-                  "metrics_listen_addr": true,
-                  "metrics_listen_port": true,
-                  "metrics_routeros_poll_interval": true,
-                  "mikrotik_address": true,
-                  "mikrotik_command_timeout": true,
-                  "mikrotik_connection_timeout": true,
-                  "mikrotik_pool_size": true,
-                  "mikrotik_tls": true
+                  "job": true
                 },
-                "indexByName": {},
+                "indexByName": {
+                  "group": 0,
+                  "param": 1,
+                  "value": 2
+                },
                 "renameByName": {
-                  "crowdsec_api_url": "API URL",
-                  "crowdsec_decision_types": "Decision Types",
-                  "crowdsec_origins": "Origins",
-                  "crowdsec_retry_initial_connect": "Retry Initial Connect",
-                  "crowdsec_scopes": "Scopes",
-                  "crowdsec_tls": "TLS Enabled",
-                  "crowdsec_update_frequency": "Update Frequency"
+                  "group": "Group",
+                  "param": "Parameter",
+                  "value": "Value"
                 }
               }
-            },
-            {
-              "id": "transpose",
-              "options": {}
             }
           ],
           "type": "table"
         }
       ],
-      "title": "Config: CrowdSec",
-      "type": "row"
-    },
-    {
-      "collapsed": true,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 82
-      },
-      "id": 94,
-      "panels": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "fixedColor": "text",
-                "mode": "fixed"
-              },
-              "custom": {
-                "align": "auto",
-                "cellOptions": {
-                  "type": "auto"
-                },
-                "filterable": false,
-                "inspect": false
-              }
-            },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byRegexp",
-                  "options": "/Field|Parameter/"
-                },
-                "properties": [
-                  {
-                    "id": "custom.width",
-                    "value": 280
-                  },
-                  {
-                    "id": "custom.cellOptions",
-                    "value": {
-                      "type": "color-text"
-                    }
-                  },
-                  {
-                    "id": "color",
-                    "value": {
-                      "fixedColor": "text",
-                      "mode": "fixed"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byRegexp",
-                  "options": "/^(?!Field|Parameter)/"
-                },
-                "properties": [
-                  {
-                    "id": "custom.cellOptions",
-                    "value": {
-                      "type": "color-text"
-                    }
-                  },
-                  {
-                    "id": "color",
-                    "value": {
-                      "fixedColor": "super-light-blue",
-                      "mode": "fixed"
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          "gridPos": {
-            "h": 5,
-            "w": 24,
-            "x": 0,
-            "y": 83
-          },
-          "id": 95,
-          "options": {
-            "cellHeight": "sm",
-            "footer": {
-              "show": false
-            },
-            "showHeader": true,
-            "sortBy": [
-              {
-                "desc": false,
-                "displayName": "Parameter"
-              }
-            ]
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "expr": "crowdsec_bouncer_config_info{job=\"$job\"}",
-              "format": "table",
-              "instant": true,
-              "refId": "A"
-            }
-          ],
-          "title": "",
-          "transformations": [
-            {
-              "id": "reduce",
-              "options": {
-                "includeTimeField": false,
-                "mode": "reduceFields",
-                "reducers": [
-                  "lastNotNull"
-                ]
-              }
-            },
-            {
-              "id": "organize",
-              "options": {
-                "excludeByName": {
-                  "Time": true,
-                  "Value": true,
-                  "__name__": true,
-                  "crowdsec_api_url": true,
-                  "crowdsec_decision_types": true,
-                  "crowdsec_origins": true,
-                  "crowdsec_retry_initial_connect": true,
-                  "crowdsec_scopes": true,
-                  "crowdsec_tls": true,
-                  "crowdsec_update_frequency": true,
-                  "firewall_block_output": true,
-                  "firewall_comment_prefix": true,
-                  "firewall_deny_action": true,
-                  "firewall_filter_chains": true,
-                  "firewall_filter_enabled": true,
-                  "firewall_ipv4_enabled": true,
-                  "firewall_ipv4_list": true,
-                  "firewall_ipv6_enabled": true,
-                  "firewall_ipv6_list": true,
-                  "firewall_log": true,
-                  "firewall_raw_chains": true,
-                  "firewall_raw_enabled": true,
-                  "firewall_rule_placement": true,
-                  "instance": true,
-                  "job": true,
-                  "logging_format": true,
-                  "logging_level": true,
-                  "metrics_enabled": true,
-                  "metrics_listen_addr": true,
-                  "metrics_listen_port": true,
-                  "metrics_routeros_poll_interval": true
-                },
-                "indexByName": {},
-                "renameByName": {
-                  "mikrotik_address": "Address",
-                  "mikrotik_command_timeout": "Command Timeout",
-                  "mikrotik_connection_timeout": "Connection Timeout",
-                  "mikrotik_pool_size": "Connection Pool Size",
-                  "mikrotik_tls": "TLS Enabled"
-                }
-              }
-            },
-            {
-              "id": "transpose",
-              "options": {}
-            }
-          ],
-          "type": "table"
-        }
-      ],
-      "title": "Config: MikroTik",
-      "type": "row"
-    },
-    {
-      "collapsed": true,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 83
-      },
-      "id": 96,
-      "panels": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "fixedColor": "text",
-                "mode": "fixed"
-              },
-              "custom": {
-                "align": "auto",
-                "cellOptions": {
-                  "type": "auto"
-                },
-                "filterable": false,
-                "inspect": false
-              }
-            },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byRegexp",
-                  "options": "/Field|Parameter/"
-                },
-                "properties": [
-                  {
-                    "id": "custom.width",
-                    "value": 280
-                  },
-                  {
-                    "id": "custom.cellOptions",
-                    "value": {
-                      "type": "color-text"
-                    }
-                  },
-                  {
-                    "id": "color",
-                    "value": {
-                      "fixedColor": "text",
-                      "mode": "fixed"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byRegexp",
-                  "options": "/^(?!Field|Parameter)/"
-                },
-                "properties": [
-                  {
-                    "id": "custom.cellOptions",
-                    "value": {
-                      "type": "color-text"
-                    }
-                  },
-                  {
-                    "id": "color",
-                    "value": {
-                      "fixedColor": "super-light-blue",
-                      "mode": "fixed"
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          "gridPos": {
-            "h": 9,
-            "w": 24,
-            "x": 0,
-            "y": 84
-          },
-          "id": 97,
-          "options": {
-            "cellHeight": "sm",
-            "footer": {
-              "show": false
-            },
-            "showHeader": true,
-            "sortBy": [
-              {
-                "desc": false,
-                "displayName": "Parameter"
-              }
-            ]
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "expr": "crowdsec_bouncer_config_info{job=\"$job\"}",
-              "format": "table",
-              "instant": true,
-              "refId": "A"
-            }
-          ],
-          "title": "",
-          "transformations": [
-            {
-              "id": "reduce",
-              "options": {
-                "includeTimeField": false,
-                "mode": "reduceFields",
-                "reducers": [
-                  "lastNotNull"
-                ]
-              }
-            },
-            {
-              "id": "organize",
-              "options": {
-                "excludeByName": {
-                  "Time": true,
-                  "Value": true,
-                  "__name__": true,
-                  "crowdsec_api_url": true,
-                  "crowdsec_decision_types": true,
-                  "crowdsec_origins": true,
-                  "crowdsec_retry_initial_connect": true,
-                  "crowdsec_scopes": true,
-                  "crowdsec_tls": true,
-                  "crowdsec_update_frequency": true,
-                  "instance": true,
-                  "job": true,
-                  "logging_format": true,
-                  "logging_level": true,
-                  "metrics_enabled": true,
-                  "metrics_listen_addr": true,
-                  "metrics_listen_port": true,
-                  "metrics_routeros_poll_interval": true,
-                  "mikrotik_address": true,
-                  "mikrotik_command_timeout": true,
-                  "mikrotik_connection_timeout": true,
-                  "mikrotik_pool_size": true,
-                  "mikrotik_tls": true
-                },
-                "indexByName": {},
-                "renameByName": {
-                  "firewall_block_output": "Block Output",
-                  "firewall_comment_prefix": "Comment Prefix",
-                  "firewall_deny_action": "Deny Action",
-                  "firewall_filter_chains": "Filter Chains",
-                  "firewall_filter_enabled": "Filter Enabled",
-                  "firewall_ipv4_enabled": "IPv4 Enabled",
-                  "firewall_ipv4_list": "IPv4 Address List",
-                  "firewall_ipv6_enabled": "IPv6 Enabled",
-                  "firewall_ipv6_list": "IPv6 Address List",
-                  "firewall_log": "Logging Enabled",
-                  "firewall_raw_chains": "Raw Chains",
-                  "firewall_raw_enabled": "Raw Enabled",
-                  "firewall_rule_placement": "Rule Placement"
-                }
-              }
-            },
-            {
-              "id": "transpose",
-              "options": {}
-            }
-          ],
-          "type": "table"
-        }
-      ],
-      "title": "Config: Firewall",
-      "type": "row"
-    },
-    {
-      "collapsed": true,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 84
-      },
-      "id": 98,
-      "panels": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "fixedColor": "text",
-                "mode": "fixed"
-              },
-              "custom": {
-                "align": "auto",
-                "cellOptions": {
-                  "type": "auto"
-                },
-                "filterable": false,
-                "inspect": false
-              }
-            },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byRegexp",
-                  "options": "/Field|Parameter/"
-                },
-                "properties": [
-                  {
-                    "id": "custom.width",
-                    "value": 280
-                  },
-                  {
-                    "id": "custom.cellOptions",
-                    "value": {
-                      "type": "color-text"
-                    }
-                  },
-                  {
-                    "id": "color",
-                    "value": {
-                      "fixedColor": "text",
-                      "mode": "fixed"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byRegexp",
-                  "options": "/^(?!Field|Parameter)/"
-                },
-                "properties": [
-                  {
-                    "id": "custom.cellOptions",
-                    "value": {
-                      "type": "color-text"
-                    }
-                  },
-                  {
-                    "id": "color",
-                    "value": {
-                      "fixedColor": "super-light-blue",
-                      "mode": "fixed"
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          "gridPos": {
-            "h": 4,
-            "w": 24,
-            "x": 0,
-            "y": 85
-          },
-          "id": 99,
-          "options": {
-            "cellHeight": "sm",
-            "footer": {
-              "show": false
-            },
-            "showHeader": true,
-            "sortBy": [
-              {
-                "desc": false,
-                "displayName": "Parameter"
-              }
-            ]
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "expr": "crowdsec_bouncer_config_info{job=\"$job\"}",
-              "format": "table",
-              "instant": true,
-              "refId": "A"
-            }
-          ],
-          "title": "",
-          "transformations": [
-            {
-              "id": "reduce",
-              "options": {
-                "includeTimeField": false,
-                "mode": "reduceFields",
-                "reducers": [
-                  "lastNotNull"
-                ]
-              }
-            },
-            {
-              "id": "organize",
-              "options": {
-                "excludeByName": {
-                  "Time": true,
-                  "Value": true,
-                  "__name__": true,
-                  "crowdsec_api_url": true,
-                  "crowdsec_decision_types": true,
-                  "crowdsec_origins": true,
-                  "crowdsec_retry_initial_connect": true,
-                  "crowdsec_scopes": true,
-                  "crowdsec_tls": true,
-                  "crowdsec_update_frequency": true,
-                  "firewall_block_output": true,
-                  "firewall_comment_prefix": true,
-                  "firewall_deny_action": true,
-                  "firewall_filter_chains": true,
-                  "firewall_filter_enabled": true,
-                  "firewall_ipv4_enabled": true,
-                  "firewall_ipv4_list": true,
-                  "firewall_ipv6_enabled": true,
-                  "firewall_ipv6_list": true,
-                  "firewall_log": true,
-                  "firewall_raw_chains": true,
-                  "firewall_raw_enabled": true,
-                  "firewall_rule_placement": true,
-                  "instance": true,
-                  "job": true,
-                  "metrics_enabled": true,
-                  "metrics_listen_addr": true,
-                  "metrics_listen_port": true,
-                  "metrics_routeros_poll_interval": true,
-                  "mikrotik_address": true,
-                  "mikrotik_command_timeout": true,
-                  "mikrotik_connection_timeout": true,
-                  "mikrotik_pool_size": true,
-                  "mikrotik_tls": true
-                },
-                "indexByName": {},
-                "renameByName": {
-                  "logging_format": "Format",
-                  "logging_level": "Level"
-                }
-              }
-            },
-            {
-              "id": "transpose",
-              "options": {}
-            }
-          ],
-          "type": "table"
-        }
-      ],
-      "title": "Config: Logging",
-      "type": "row"
-    },
-    {
-      "collapsed": true,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 85
-      },
-      "id": 100,
-      "panels": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "fixedColor": "text",
-                "mode": "fixed"
-              },
-              "custom": {
-                "align": "auto",
-                "cellOptions": {
-                  "type": "auto"
-                },
-                "filterable": false,
-                "inspect": false
-              }
-            },
-            "overrides": [
-              {
-                "matcher": {
-                  "id": "byRegexp",
-                  "options": "/Field|Parameter/"
-                },
-                "properties": [
-                  {
-                    "id": "custom.width",
-                    "value": 280
-                  },
-                  {
-                    "id": "custom.cellOptions",
-                    "value": {
-                      "type": "color-text"
-                    }
-                  },
-                  {
-                    "id": "color",
-                    "value": {
-                      "fixedColor": "text",
-                      "mode": "fixed"
-                    }
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byRegexp",
-                  "options": "/^(?!Field|Parameter)/"
-                },
-                "properties": [
-                  {
-                    "id": "custom.cellOptions",
-                    "value": {
-                      "type": "color-text"
-                    }
-                  },
-                  {
-                    "id": "color",
-                    "value": {
-                      "fixedColor": "super-light-blue",
-                      "mode": "fixed"
-                    }
-                  }
-                ]
-              }
-            ]
-          },
-          "gridPos": {
-            "h": 5,
-            "w": 24,
-            "x": 0,
-            "y": 86
-          },
-          "id": 101,
-          "options": {
-            "cellHeight": "sm",
-            "footer": {
-              "show": false
-            },
-            "showHeader": true,
-            "sortBy": [
-              {
-                "desc": false,
-                "displayName": "Parameter"
-              }
-            ]
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "expr": "crowdsec_bouncer_config_info{job=\"$job\"}",
-              "format": "table",
-              "instant": true,
-              "refId": "A"
-            }
-          ],
-          "title": "",
-          "transformations": [
-            {
-              "id": "reduce",
-              "options": {
-                "includeTimeField": false,
-                "mode": "reduceFields",
-                "reducers": [
-                  "lastNotNull"
-                ]
-              }
-            },
-            {
-              "id": "organize",
-              "options": {
-                "excludeByName": {
-                  "Time": true,
-                  "Value": true,
-                  "__name__": true,
-                  "crowdsec_api_url": true,
-                  "crowdsec_decision_types": true,
-                  "crowdsec_origins": true,
-                  "crowdsec_retry_initial_connect": true,
-                  "crowdsec_scopes": true,
-                  "crowdsec_tls": true,
-                  "crowdsec_update_frequency": true,
-                  "firewall_block_output": true,
-                  "firewall_comment_prefix": true,
-                  "firewall_deny_action": true,
-                  "firewall_filter_chains": true,
-                  "firewall_filter_enabled": true,
-                  "firewall_ipv4_enabled": true,
-                  "firewall_ipv4_list": true,
-                  "firewall_ipv6_enabled": true,
-                  "firewall_ipv6_list": true,
-                  "firewall_log": true,
-                  "firewall_raw_chains": true,
-                  "firewall_raw_enabled": true,
-                  "firewall_rule_placement": true,
-                  "instance": true,
-                  "job": true,
-                  "logging_format": true,
-                  "logging_level": true,
-                  "mikrotik_address": true,
-                  "mikrotik_command_timeout": true,
-                  "mikrotik_connection_timeout": true,
-                  "mikrotik_pool_size": true,
-                  "mikrotik_tls": true
-                },
-                "indexByName": {},
-                "renameByName": {
-                  "metrics_enabled": "Enabled",
-                  "metrics_listen_addr": "Listen Address",
-                  "metrics_listen_port": "Listen Port",
-                  "metrics_routeros_poll_interval": "RouterOS Poll Interval"
-                }
-              }
-            },
-            {
-              "id": "transpose",
-              "options": {}
-            }
-          ],
-          "type": "table"
-        }
-      ],
-      "title": "Config: Metrics",
+      "title": "Configuration",
       "type": "row"
     }
   ],
@@ -4280,6 +3595,7 @@
   "timepicker": {},
   "timezone": "browser",
   "title": "CrowdSec RouterOS Bouncer",
+  "uid": "cs-routeros-bouncer",
   "weekStart": "",
   "__inputs": [
     {
@@ -4296,7 +3612,7 @@
       "type": "grafana",
       "id": "grafana",
       "name": "Grafana",
-      "version": "11.0.0"
+      "version": "11.4.0"
     },
     {
       "type": "datasource",
@@ -4306,32 +3622,14 @@
     },
     {
       "type": "panel",
-      "id": "barchart",
-      "name": "Bar chart",
-      "version": ""
-    },
-    {
-      "type": "panel",
       "id": "gauge",
       "name": "Gauge",
       "version": ""
     },
     {
       "type": "panel",
-      "id": "piechart",
-      "name": "Pie chart",
-      "version": ""
-    },
-    {
-      "type": "panel",
       "id": "stat",
       "name": "Stat",
-      "version": ""
-    },
-    {
-      "type": "panel",
-      "id": "state-timeline",
-      "name": "State timeline",
       "version": ""
     },
     {

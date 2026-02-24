@@ -30,7 +30,7 @@ The dashboard JSON is located at [`grafana/dashboard.json`](https://github.com/j
 
 ## Panels
 
-The dashboard contains **36 panels** organized in **13 rows** with a modern design:
+The dashboard contains **32 panels** organized in **9 rows** with a modern design:
 
 - **Transparent backgrounds** on all panels for a clean, unified look
 - **Smooth line interpolation** and subtle area fills on time series
@@ -114,15 +114,15 @@ The dashboard contains **36 panels** organized in **13 rows** with a modern desi
 
 ### Configuration
 
-The bouncer configuration is exposed through five collapsible row groups, each containing a Parameter/Value table with human-readable names. All rows are collapsed by default.
+A single collapsible **Configuration** row contains a table showing all 31 non-sensitive bouncer parameters. The table has three columns — **Group**, **Parameter**, and **Value** — sorted by group. The Group column uses color-coded background cells for quick visual identification:
 
-| Row | Parameters | Description |
-|-----|-----------|-------------|
-| **Config: CrowdSec** | 7 | API URL, origins, scopes, decision types, update frequency, TLS, retry |
-| **Config: MikroTik** | 5 | Router address, connection pool, timeouts, TLS |
-| **Config: Firewall** | 13 | IPv4/IPv6 lists, filter/raw chains, deny action, rule placement, logging |
-| **Config: Logging** | 2 | Log level and format |
-| **Config: Metrics** | 4 | Metrics endpoint, listen address/port, RouterOS poll interval |
+| Group | Color | Parameters |
+|-------|-------|-----------|
+| **CrowdSec** | Blue | 7 — API URL, origins, scopes, decision types, update frequency, TLS, retry |
+| **MikroTik** | Green | 5 — Router address, connection pool, timeouts, TLS |
+| **Firewall** | Orange | 13 — IPv4/IPv6 lists, filter/raw chains, deny action, rule placement, logging |
+| **Logging** | Purple | 2 — Log level and format |
+| **Metrics** | Yellow | 4 — Metrics endpoint, listen address/port, RouterOS poll interval |
 
 ## Requirements
 

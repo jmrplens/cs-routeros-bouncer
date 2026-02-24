@@ -178,19 +178,28 @@ Cumulative packets dropped by firewall rules managed by the bouncer. Read from M
 | | |
 |---|---|
 | **Type** | Gauge (info pattern, value always 1) |
-| **Labels** | 31 non-sensitive configuration parameters |
+| **Labels** | `group`, `param`, `value` |
+| **Series** | 31 (one per configuration parameter) |
 
-Exposes the current bouncer configuration as Prometheus labels. Useful for auditing running config from the dashboard. Sensitive fields (API key, password, TLS cert paths) are excluded.
+Exposes the current bouncer configuration as one time series per parameter. Each series carries three labels: `group` (category), `param` (human-readable name), and `value` (current setting). Sensitive fields (API key, password, TLS cert paths) are excluded.
 
-**Label groups:**
+**Groups and parameters (31 total):**
 
-| Prefix | Labels |
-|--------|--------|
-| `crowdsec_` | `api_url`, `update_frequency`, `origins`, `scopes`, `decision_types`, `retry_initial_connect`, `tls` |
-| `mikrotik_` | `address`, `tls`, `pool_size`, `connection_timeout`, `command_timeout` |
-| `firewall_` | `ipv4_enabled`, `ipv4_list`, `ipv6_enabled`, `ipv6_list`, `filter_enabled`, `filter_chains`, `raw_enabled`, `raw_chains`, `deny_action`, `block_output`, `rule_placement`, `comment_prefix`, `log` |
-| `logging_` | `level`, `format` |
-| `metrics_` | `enabled`, `listen_addr`, `listen_port`, `routeros_poll_interval` |
+| Group | Parameters |
+|-------|-----------|
+| `CrowdSec` | API URL, Update Frequency, Origins, Scopes, Decision Types, TLS Enabled, Retry Initial Connect |
+| `MikroTik` | Address, TLS Enabled, Connection Pool Size, Connection Timeout, Command Timeout |
+| `Firewall` | IPv4 Enabled, IPv4 Address List, IPv6 Enabled, IPv6 Address List, Filter Enabled, Filter Chains, Raw Enabled, Raw Chains, Deny Action, Block Output, Rule Placement, Comment Prefix, Logging Enabled |
+| `Logging` | Level, Format |
+| `Metrics` | Enabled, Listen Address, Listen Port, RouterOS Poll Interval |
+
+**Example output:**
+
+```
+crowdsec_bouncer_config_info{group="CrowdSec",param="API URL",value="http://localhost:8080/"} 1
+crowdsec_bouncer_config_info{group="Firewall",param="Deny Action",value="drop"} 1
+crowdsec_bouncer_config_info{group="MikroTik",param="Connection Pool Size",value="10"} 1
+```
 
 ## CrowdSec LAPI Metrics
 

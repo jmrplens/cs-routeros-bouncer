@@ -97,40 +97,8 @@ var (
 
 	configInfo = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "crowdsec_bouncer_config_info",
-		Help: "Bouncer configuration parameters (value is always 1).",
-	}, []string{
-		"crowdsec_api_url",
-		"crowdsec_update_frequency",
-		"crowdsec_origins",
-		"crowdsec_scopes",
-		"crowdsec_decision_types",
-		"crowdsec_retry_initial_connect",
-		"crowdsec_tls",
-		"mikrotik_address",
-		"mikrotik_tls",
-		"mikrotik_pool_size",
-		"mikrotik_connection_timeout",
-		"mikrotik_command_timeout",
-		"firewall_ipv4_enabled",
-		"firewall_ipv4_list",
-		"firewall_ipv6_enabled",
-		"firewall_ipv6_list",
-		"firewall_filter_enabled",
-		"firewall_filter_chains",
-		"firewall_raw_enabled",
-		"firewall_raw_chains",
-		"firewall_deny_action",
-		"firewall_block_output",
-		"firewall_rule_placement",
-		"firewall_comment_prefix",
-		"firewall_log",
-		"logging_level",
-		"logging_format",
-		"metrics_enabled",
-		"metrics_listen_addr",
-		"metrics_listen_port",
-		"metrics_routeros_poll_interval",
-	})
+		Help: "Bouncer configuration parameters (one series per parameter, value is always 1).",
+	}, []string{"group", "param", "value"})
 )
 
 // RecordDecision increments the decisions counter.
@@ -316,7 +284,8 @@ type ConfigParams struct {
 	MetricsPollInterval      string
 }
 
-// SetConfigInfo exposes non-sensitive configuration as a Prometheus info metric.
+// SetConfigInfo exposes non-sensitive configuration as Prometheus info metrics.
+// Each parameter is emitted as a separate series with group/param/value labels.
 func SetConfigInfo(p ConfigParams) {
 	b := func(v bool) string {
 		if v {
@@ -324,37 +293,46 @@ func SetConfigInfo(p ConfigParams) {
 		}
 		return "false"
 	}
-	configInfo.WithLabelValues(
-		p.CrowdSecAPIURL,
-		p.CrowdSecUpdateFrequency,
-		strings.Join(p.CrowdSecOrigins, ","),
-		strings.Join(p.CrowdSecScopes, ","),
-		strings.Join(p.CrowdSecDecisionTypes, ","),
-		b(p.CrowdSecRetryInitConnect),
-		b(p.CrowdSecTLS),
-		p.MikroTikAddress,
-		b(p.MikroTikTLS),
-		fmt.Sprintf("%d", p.MikroTikPoolSize),
-		p.MikroTikConnTimeout,
-		p.MikroTikCmdTimeout,
-		b(p.FWIPv4Enabled),
-		p.FWIPv4List,
-		b(p.FWIPv6Enabled),
-		p.FWIPv6List,
-		b(p.FWFilterEnabled),
-		strings.Join(p.FWFilterChains, ","),
-		b(p.FWRawEnabled),
-		strings.Join(p.FWRawChains, ","),
-		p.FWDenyAction,
-		b(p.FWBlockOutput),
-		p.FWRulePlacement,
-		p.FWCommentPrefix,
-		b(p.FWLog),
-		p.LogLevel,
-		p.LogFormat,
-		b(p.MetricsEnabled),
-		p.MetricsListenAddr,
-		fmt.Sprintf("%d", p.MetricsListenPort),
-		p.MetricsPollInterval,
-	).Set(1)
+
+	configInfo.Reset()
+
+	params := []struct {
+		group, param, value string
+	}{
+		{"CrowdSec", "API URL", p.CrowdSecAPIURL},
+		{"CrowdSec", "Update Frequency", p.CrowdSecUpdateFrequency},
+		{"CrowdSec", "Origins", strings.Join(p.CrowdSecOrigins, ", ")},
+		{"CrowdSec", "Scopes", strings.Join(p.CrowdSecScopes, ", ")},
+		{"CrowdSec", "Decision Types", strings.Join(p.CrowdSecDecisionTypes, ", ")},
+		{"CrowdSec", "Retry Initial Connect", b(p.CrowdSecRetryInitConnect)},
+		{"CrowdSec", "TLS Enabled", b(p.CrowdSecTLS)},
+		{"MikroTik", "Address", p.MikroTikAddress},
+		{"MikroTik", "TLS Enabled", b(p.MikroTikTLS)},
+		{"MikroTik", "Connection Pool Size", fmt.Sprintf("%d", p.MikroTikPoolSize)},
+		{"MikroTik", "Connection Timeout", p.MikroTikConnTimeout},
+		{"MikroTik", "Command Timeout", p.MikroTikCmdTimeout},
+		{"Firewall", "IPv4 Enabled", b(p.FWIPv4Enabled)},
+		{"Firewall", "IPv4 Address List", p.FWIPv4List},
+		{"Firewall", "IPv6 Enabled", b(p.FWIPv6Enabled)},
+		{"Firewall", "IPv6 Address List", p.FWIPv6List},
+		{"Firewall", "Filter Enabled", b(p.FWFilterEnabled)},
+		{"Firewall", "Filter Chains", strings.Join(p.FWFilterChains, ", ")},
+		{"Firewall", "Raw Enabled", b(p.FWRawEnabled)},
+		{"Firewall", "Raw Chains", strings.Join(p.FWRawChains, ", ")},
+		{"Firewall", "Deny Action", p.FWDenyAction},
+		{"Firewall", "Block Output", b(p.FWBlockOutput)},
+		{"Firewall", "Rule Placement", p.FWRulePlacement},
+		{"Firewall", "Comment Prefix", p.FWCommentPrefix},
+		{"Firewall", "Logging Enabled", b(p.FWLog)},
+		{"Logging", "Level", p.LogLevel},
+		{"Logging", "Format", p.LogFormat},
+		{"Metrics", "Enabled", b(p.MetricsEnabled)},
+		{"Metrics", "Listen Address", p.MetricsListenAddr},
+		{"Metrics", "Listen Port", fmt.Sprintf("%d", p.MetricsListenPort)},
+		{"Metrics", "RouterOS Poll Interval", p.MetricsPollInterval},
+	}
+
+	for _, e := range params {
+		configInfo.WithLabelValues(e.group, e.param, e.value).Set(1)
+	}
 }
