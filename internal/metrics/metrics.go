@@ -1,6 +1,8 @@
 package metrics
 
 import (
+	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -91,6 +93,43 @@ var (
 	routerosCPUTemperature = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "crowdsec_bouncer_routeros_cpu_temperature_celsius",
 		Help: "RouterOS CPU temperature in degrees Celsius.",
+	})
+
+	configInfo = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "crowdsec_bouncer_config_info",
+		Help: "Bouncer configuration parameters (value is always 1).",
+	}, []string{
+		"crowdsec_api_url",
+		"crowdsec_update_frequency",
+		"crowdsec_origins",
+		"crowdsec_scopes",
+		"crowdsec_decision_types",
+		"crowdsec_retry_initial_connect",
+		"crowdsec_tls",
+		"mikrotik_address",
+		"mikrotik_tls",
+		"mikrotik_pool_size",
+		"mikrotik_connection_timeout",
+		"mikrotik_command_timeout",
+		"firewall_ipv4_enabled",
+		"firewall_ipv4_list",
+		"firewall_ipv6_enabled",
+		"firewall_ipv6_list",
+		"firewall_filter_enabled",
+		"firewall_filter_chains",
+		"firewall_raw_enabled",
+		"firewall_raw_chains",
+		"firewall_deny_action",
+		"firewall_block_output",
+		"firewall_rule_placement",
+		"firewall_comment_prefix",
+		"firewall_log",
+		"logging_level",
+		"logging_format",
+		"metrics_enabled",
+		"metrics_listen_addr",
+		"metrics_listen_port",
+		"metrics_routeros_poll_interval",
 	})
 )
 
@@ -240,4 +279,82 @@ func SetRouterOSSystemMetrics(cpuLoad float64, memUsed, memTotal uint64) {
 // SetRouterOSCPUTemperature updates the RouterOS CPU temperature gauge.
 func SetRouterOSCPUTemperature(celsius float64) {
 	routerosCPUTemperature.Set(celsius)
+}
+
+// ConfigParams holds non-sensitive configuration values for the info metric.
+type ConfigParams struct {
+	CrowdSecAPIURL           string
+	CrowdSecUpdateFrequency  string
+	CrowdSecOrigins          []string
+	CrowdSecScopes           []string
+	CrowdSecDecisionTypes    []string
+	CrowdSecRetryInitConnect bool
+	CrowdSecTLS              bool
+	MikroTikAddress          string
+	MikroTikTLS              bool
+	MikroTikPoolSize         int
+	MikroTikConnTimeout      string
+	MikroTikCmdTimeout       string
+	FWIPv4Enabled            bool
+	FWIPv4List               string
+	FWIPv6Enabled            bool
+	FWIPv6List               string
+	FWFilterEnabled          bool
+	FWFilterChains           []string
+	FWRawEnabled             bool
+	FWRawChains              []string
+	FWDenyAction             string
+	FWBlockOutput            bool
+	FWRulePlacement          string
+	FWCommentPrefix          string
+	FWLog                    bool
+	LogLevel                 string
+	LogFormat                string
+	MetricsEnabled           bool
+	MetricsListenAddr        string
+	MetricsListenPort        int
+	MetricsPollInterval      string
+}
+
+// SetConfigInfo exposes non-sensitive configuration as a Prometheus info metric.
+func SetConfigInfo(p ConfigParams) {
+	b := func(v bool) string {
+		if v {
+			return "true"
+		}
+		return "false"
+	}
+	configInfo.WithLabelValues(
+		p.CrowdSecAPIURL,
+		p.CrowdSecUpdateFrequency,
+		strings.Join(p.CrowdSecOrigins, ","),
+		strings.Join(p.CrowdSecScopes, ","),
+		strings.Join(p.CrowdSecDecisionTypes, ","),
+		b(p.CrowdSecRetryInitConnect),
+		b(p.CrowdSecTLS),
+		p.MikroTikAddress,
+		b(p.MikroTikTLS),
+		fmt.Sprintf("%d", p.MikroTikPoolSize),
+		p.MikroTikConnTimeout,
+		p.MikroTikCmdTimeout,
+		b(p.FWIPv4Enabled),
+		p.FWIPv4List,
+		b(p.FWIPv6Enabled),
+		p.FWIPv6List,
+		b(p.FWFilterEnabled),
+		strings.Join(p.FWFilterChains, ","),
+		b(p.FWRawEnabled),
+		strings.Join(p.FWRawChains, ","),
+		p.FWDenyAction,
+		b(p.FWBlockOutput),
+		p.FWRulePlacement,
+		p.FWCommentPrefix,
+		b(p.FWLog),
+		p.LogLevel,
+		p.LogFormat,
+		b(p.MetricsEnabled),
+		p.MetricsListenAddr,
+		fmt.Sprintf("%d", p.MetricsListenPort),
+		p.MetricsPollInterval,
+	).Set(1)
 }

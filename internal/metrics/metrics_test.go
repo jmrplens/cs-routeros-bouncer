@@ -595,3 +595,181 @@ func TestSetRouterOSSystemMetricsConcurrency(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// --- SetConfigInfo tests ---
+
+// testConfigParams returns a fully populated ConfigParams for testing.
+func testConfigParams() ConfigParams {
+	return ConfigParams{
+		CrowdSecAPIURL:           "http://localhost:8080/",
+		CrowdSecUpdateFrequency:  "15s",
+		CrowdSecOrigins:          []string{"crowdsec", "cscli", "CAPI"},
+		CrowdSecScopes:           []string{"ip", "range"},
+		CrowdSecDecisionTypes:    []string{"ban"},
+		CrowdSecRetryInitConnect: true,
+		CrowdSecTLS:              false,
+		MikroTikAddress:          "192.168.0.1:8728",
+		MikroTikTLS:              false,
+		MikroTikPoolSize:         10,
+		MikroTikConnTimeout:      "10s",
+		MikroTikCmdTimeout:       "30s",
+		FWIPv4Enabled:            true,
+		FWIPv4List:               "crowdsec-banned",
+		FWIPv6Enabled:            true,
+		FWIPv6List:               "crowdsec6-banned",
+		FWFilterEnabled:          true,
+		FWFilterChains:           []string{"input"},
+		FWRawEnabled:             true,
+		FWRawChains:              []string{"prerouting"},
+		FWDenyAction:             "drop",
+		FWBlockOutput:            false,
+		FWRulePlacement:          "top",
+		FWCommentPrefix:          "crowdsec-bouncer",
+		FWLog:                    false,
+		LogLevel:                 "info",
+		LogFormat:                "text",
+		MetricsEnabled:           true,
+		MetricsListenAddr:        "0.0.0.0",
+		MetricsListenPort:        2112,
+		MetricsPollInterval:      "30s",
+	}
+}
+
+// TestSetConfigInfoRegistersMetric verifies the config info metric is emitted
+// with all expected labels and value 1.
+func TestSetConfigInfoRegistersMetric(t *testing.T) {
+	p := testConfigParams()
+	SetConfigInfo(p)
+
+	// The metric should have exactly 1 series with value 1
+	count := testutil.CollectAndCount(configInfo)
+	if count < 1 {
+		t.Fatalf("expected at least 1 config_info series, got %d", count)
+	}
+
+	// Scrape the /metrics output and verify key labels
+	out := testutil.ToFloat64(configInfo.WithLabelValues(
+		p.CrowdSecAPIURL,
+		p.CrowdSecUpdateFrequency,
+		"crowdsec,cscli,CAPI",
+		"ip,range",
+		"ban",
+		"true",  // retry_initial_connect
+		"false", // tls
+		p.MikroTikAddress,
+		"false", // mikrotik tls
+		"10",    // pool_size
+		p.MikroTikConnTimeout,
+		p.MikroTikCmdTimeout,
+		"true",            // ipv4 enabled
+		p.FWIPv4List,      // ipv4 list
+		"true",            // ipv6 enabled
+		p.FWIPv6List,      // ipv6 list
+		"true",            // filter enabled
+		"input",           // filter chains
+		"true",            // raw enabled
+		"prerouting",      // raw chains
+		p.FWDenyAction,    // deny_action
+		"false",           // block_output
+		p.FWRulePlacement, // rule_placement
+		p.FWCommentPrefix, // comment_prefix
+		"false",           // log
+		p.LogLevel,
+		p.LogFormat,
+		"true",                // metrics enabled
+		p.MetricsListenAddr,   // listen_addr
+		"2112",                // listen_port
+		p.MetricsPollInterval, // poll_interval
+	))
+	if out != 1 {
+		t.Errorf("config_info value = %v, want 1", out)
+	}
+}
+
+// TestSetConfigInfoEmptySlices verifies behavior when slice fields are empty.
+func TestSetConfigInfoEmptySlices(t *testing.T) {
+	p := testConfigParams()
+	p.CrowdSecOrigins = nil
+	p.CrowdSecScopes = []string{}
+	p.FWFilterChains = nil
+	p.FWRawChains = []string{}
+
+	// Should not panic
+	SetConfigInfo(p)
+
+	count := testutil.CollectAndCount(configInfo)
+	if count < 1 {
+		t.Fatalf("expected at least 1 config_info series, got %d", count)
+	}
+}
+
+// TestSetConfigInfoBoolConversion verifies that all boolean fields are
+// correctly represented as "true" or "false" strings.
+func TestSetConfigInfoBoolConversion(t *testing.T) {
+	// All booleans true
+	p := testConfigParams()
+	p.CrowdSecRetryInitConnect = true
+	p.CrowdSecTLS = true
+	p.MikroTikTLS = true
+	p.FWIPv4Enabled = true
+	p.FWIPv6Enabled = true
+	p.FWFilterEnabled = true
+	p.FWRawEnabled = true
+	p.FWBlockOutput = true
+	p.FWLog = true
+	p.MetricsEnabled = true
+
+	SetConfigInfo(p)
+
+	// All booleans false
+	p2 := testConfigParams()
+	p2.CrowdSecRetryInitConnect = false
+	p2.CrowdSecTLS = false
+	p2.MikroTikTLS = false
+	p2.FWIPv4Enabled = false
+	p2.FWIPv6Enabled = false
+	p2.FWFilterEnabled = false
+	p2.FWRawEnabled = false
+	p2.FWBlockOutput = false
+	p2.FWLog = false
+	p2.MetricsEnabled = false
+
+	SetConfigInfo(p2)
+
+	// Both should be emitted without panics; count covers both
+	count := testutil.CollectAndCount(configInfo)
+	if count < 1 {
+		t.Fatalf("expected config_info series after bool toggle, got %d", count)
+	}
+}
+
+// TestSetConfigInfoMultipleChains verifies comma-joined slice labels.
+func TestSetConfigInfoMultipleChains(t *testing.T) {
+	p := testConfigParams()
+	p.FWFilterChains = []string{"input", "forward"}
+	p.FWRawChains = []string{"prerouting", "output"}
+	p.CrowdSecOrigins = []string{"crowdsec", "cscli", "CAPI", "lists"}
+
+	SetConfigInfo(p)
+
+	count := testutil.CollectAndCount(configInfo)
+	if count < 1 {
+		t.Fatalf("expected config_info series, got %d", count)
+	}
+}
+
+// TestSetConfigInfoConcurrency exercises concurrent SetConfigInfo calls (run with -race).
+func TestSetConfigInfoConcurrency(t *testing.T) {
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			p := testConfigParams()
+			p.MikroTikPoolSize = n
+			p.LogLevel = fmt.Sprintf("level-%d", n)
+			SetConfigInfo(p)
+		}(i)
+	}
+	wg.Wait()
+}

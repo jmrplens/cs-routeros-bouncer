@@ -3403,6 +3403,154 @@
       ],
       "title": "Goroutines & File Descriptors",
       "type": "timeseries"
+    },
+    {
+      "type": "row",
+      "id": 92,
+      "title": "Configuration",
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 81
+      },
+      "panels": [
+        {
+          "id": 93,
+          "title": "Bouncer Configuration",
+          "description": "Current non-sensitive configuration parameters of the bouncer instance.",
+          "type": "table",
+          "gridPos": {
+            "h": 16,
+            "w": 24,
+            "x": 0,
+            "y": 82
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "left",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": true,
+                "inspect": false
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Parameter"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 320
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Value"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "super-light-blue"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            },
+            "sortBy": [
+              {
+                "displayName": "Parameter",
+                "desc": false
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "expr": "crowdsec_bouncer_config_info{job=\"$job\"}",
+              "instant": true,
+              "format": "table",
+              "legendFormat": "__auto"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "reduce",
+              "options": {
+                "reducers": [
+                  "lastNotNull"
+                ],
+                "mode": "reduceFields",
+                "includeTimeField": false
+              }
+            },
+            {
+              "id": "transpose",
+              "options": {}
+            },
+            {
+              "id": "filterByValue",
+              "options": {
+                "type": "include",
+                "filters": [
+                  {
+                    "fieldName": "Field",
+                    "config": {
+                      "id": "regex",
+                      "options": {
+                        "value": "^(crowdsec_|mikrotik_|firewall_|logging_|metrics_)"
+                      }
+                    }
+                  }
+                ],
+                "match": "any"
+              }
+            },
+            {
+              "id": "organize",
+              "options": {
+                "renameByName": {
+                  "Field": "Parameter",
+                  "Last *": "Value"
+                },
+                "excludeByName": {},
+                "indexByName": {}
+              }
+            }
+          ]
+        }
+      ]
     }
   ],
   "preload": false,

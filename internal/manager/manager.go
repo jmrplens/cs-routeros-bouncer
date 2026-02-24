@@ -120,15 +120,50 @@ func (m *Manager) Start(ctx context.Context) error {
 		metrics.SetInfo(m.version, identity)
 	}
 
-	// 2. Clean up stale firewall rules from a previous run or prefix change
+	// 2. Expose non-sensitive configuration as Prometheus info metric
+	metrics.SetConfigInfo(metrics.ConfigParams{
+		CrowdSecAPIURL:           m.cfg.CrowdSec.APIURL,
+		CrowdSecUpdateFrequency:  m.cfg.CrowdSec.UpdateFrequency.String(),
+		CrowdSecOrigins:          m.cfg.CrowdSec.Origins,
+		CrowdSecScopes:           m.cfg.CrowdSec.Scopes,
+		CrowdSecDecisionTypes:    m.cfg.CrowdSec.SupportedDecisionTypes,
+		CrowdSecRetryInitConnect: m.cfg.CrowdSec.RetryInitialConnect,
+		CrowdSecTLS:              m.cfg.CrowdSec.CertPath != "",
+		MikroTikAddress:          m.cfg.MikroTik.Address,
+		MikroTikTLS:              m.cfg.MikroTik.TLS,
+		MikroTikPoolSize:         m.cfg.MikroTik.PoolSize,
+		MikroTikConnTimeout:      m.cfg.MikroTik.ConnectionTimeout.String(),
+		MikroTikCmdTimeout:       m.cfg.MikroTik.CommandTimeout.String(),
+		FWIPv4Enabled:            m.cfg.Firewall.IPv4.Enabled,
+		FWIPv4List:               m.cfg.Firewall.IPv4.AddressList,
+		FWIPv6Enabled:            m.cfg.Firewall.IPv6.Enabled,
+		FWIPv6List:               m.cfg.Firewall.IPv6.AddressList,
+		FWFilterEnabled:          m.cfg.Firewall.Filter.Enabled,
+		FWFilterChains:           m.cfg.Firewall.Filter.Chains,
+		FWRawEnabled:             m.cfg.Firewall.Raw.Enabled,
+		FWRawChains:              m.cfg.Firewall.Raw.Chains,
+		FWDenyAction:             m.cfg.Firewall.DenyAction,
+		FWBlockOutput:            m.cfg.Firewall.BlockOutput.Enabled,
+		FWRulePlacement:          m.cfg.Firewall.RulePlacement,
+		FWCommentPrefix:          m.cfg.Firewall.CommentPrefix,
+		FWLog:                    m.cfg.Firewall.Log,
+		LogLevel:                 m.cfg.Logging.Level,
+		LogFormat:                m.cfg.Logging.Format,
+		MetricsEnabled:           m.cfg.Metrics.Enabled,
+		MetricsListenAddr:        m.cfg.Metrics.ListenAddr,
+		MetricsListenPort:        m.cfg.Metrics.ListenPort,
+		MetricsPollInterval:      m.cfg.Metrics.RouterOSPollInterval.String(),
+	})
+
+	// 4. Clean up stale firewall rules from a previous run or prefix change
 	m.cleanupStaleRules()
 
-	// 3. Create firewall rules
+	// 5. Create firewall rules
 	if err := m.createFirewallRules(); err != nil {
 		return fmt.Errorf("creating firewall rules: %w", err)
 	}
 
-	// 4. Initialize CrowdSec stream
+	// 6. Initialize CrowdSec stream
 	if err := m.stream.Init(); err != nil {
 		return fmt.Errorf("initializing CrowdSec stream: %w", err)
 	}
