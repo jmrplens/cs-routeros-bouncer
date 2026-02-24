@@ -551,3 +551,47 @@ func TestDroppedCountersConcurrency(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// TestSetRouterOSSystemMetrics verifies CPU load and memory gauges.
+func TestSetRouterOSSystemMetrics(t *testing.T) {
+	SetRouterOSSystemMetrics(42, 500_000_000, 1_000_000_000)
+
+	v := testutil.ToFloat64(routerosCPULoad)
+	if v != 42 {
+		t.Errorf("cpu_load = %v, want 42", v)
+	}
+	v = testutil.ToFloat64(routerosMemoryUsed)
+	if v != 500_000_000 {
+		t.Errorf("memory_used = %v, want 500000000", v)
+	}
+	v = testutil.ToFloat64(routerosMemoryTotal)
+	if v != 1_000_000_000 {
+		t.Errorf("memory_total = %v, want 1000000000", v)
+	}
+}
+
+// TestSetRouterOSCPUTemperature verifies the temperature gauge.
+func TestSetRouterOSCPUTemperature(t *testing.T) {
+	SetRouterOSCPUTemperature(55.5)
+	v := testutil.ToFloat64(routerosCPUTemperature)
+	if v != 55.5 {
+		t.Errorf("cpu_temp = %v, want 55.5", v)
+	}
+}
+
+// TestSetRouterOSSystemMetricsConcurrency exercises concurrent access (run with -race).
+func TestSetRouterOSSystemMetricsConcurrency(t *testing.T) {
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(2)
+		go func(n float64) {
+			defer wg.Done()
+			SetRouterOSSystemMetrics(n, uint64(n*1000), uint64(n*2000))
+		}(float64(i))
+		go func(n float64) {
+			defer wg.Done()
+			SetRouterOSCPUTemperature(n)
+		}(float64(i))
+	}
+	wg.Wait()
+}

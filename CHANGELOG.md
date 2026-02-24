@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **RouterOS system metrics** — Prometheus gauges for CPU load (`routeros_cpu_load`), used/total memory (`routeros_memory_used_bytes`, `routeros_memory_total_bytes`), and CPU temperature (`routeros_cpu_temperature_celsius`). Polled via RouterOS API at configurable `metrics.routeros_poll_interval` (default `30s`, `0` to disable)
 - **LAPI usage metrics** — reports active decisions (per-origin and per-IP-type) and dropped traffic (bytes/packets delta) to CrowdSec LAPI `/v1/usage-metrics` endpoint
   - Per-origin decision counts (e.g., `crowdsec`, `cscli`, `CAPI`)
   - Per-IP-type decision counts (`ipv4`, `ipv6`)

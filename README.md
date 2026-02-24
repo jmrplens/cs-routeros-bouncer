@@ -299,6 +299,7 @@ Fine-tuning options for decision filtering, TLS, performance, firewall customiza
 | `metrics.enabled` | `METRICS_ENABLED` | `false` | Enable Prometheus `/metrics` endpoint |
 | `metrics.listen_addr` | `METRICS_ADDR` | `0.0.0.0` | Metrics server listen address |
 | `metrics.listen_port` | `METRICS_PORT` | `2112` | Metrics server listen port |
+| `metrics.routeros_poll_interval` | `METRICS_ROUTEROS_POLL_INTERVAL` | `30s` | RouterOS system metrics poll interval (0 to disable) |
 
 </details>
 
@@ -503,6 +504,10 @@ Enable with `metrics.enabled: true`. Available at `http://localhost:2112/metrics
 | `crowdsec_bouncer_errors_total` | Counter | Total errors by type (`api`/`routeros`/`reconcile`) |
 | `crowdsec_bouncer_operation_duration_seconds` | Histogram | Operation latency (`add`/`remove`/`reconcile`) |
 | `crowdsec_bouncer_routeros_connected` | Gauge | RouterOS connection status (1/0) |
+| `crowdsec_bouncer_routeros_cpu_load` | Gauge | RouterOS CPU load percentage (0–100) |
+| `crowdsec_bouncer_routeros_memory_used_bytes` | Gauge | RouterOS used memory in bytes |
+| `crowdsec_bouncer_routeros_memory_total_bytes` | Gauge | RouterOS total memory in bytes |
+| `crowdsec_bouncer_routeros_cpu_temperature_celsius` | Gauge | RouterOS CPU temperature (°C) |
 | `crowdsec_bouncer_reconciliation_total` | Counter | Total reconciliation actions (`added`/`removed`) |
 | `crowdsec_bouncer_dropped_bytes_total` | Gauge | Cumulative bytes dropped by firewall rules |
 | `crowdsec_bouncer_dropped_packets_total` | Gauge | Cumulative packets dropped by firewall rules |

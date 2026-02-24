@@ -114,3 +114,4 @@ Fine-tuning options for decision filtering, TLS, performance, firewall customiza
 | `metrics.enabled` | `METRICS_ENABLED` | `false` | Enable Prometheus `/metrics` endpoint |
 | `metrics.listen_addr` | `METRICS_ADDR` | `0.0.0.0` | Listen address |
 | `metrics.listen_port` | `METRICS_PORT` | `2112` | Listen port |
+| `metrics.routeros_poll_interval` | `METRICS_ROUTEROS_POLL_INTERVAL` | `30s` | RouterOS system metrics poll interval (0 to disable) |

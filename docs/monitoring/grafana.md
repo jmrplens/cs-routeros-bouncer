@@ -30,7 +30,7 @@ The dashboard JSON is located at [`grafana/dashboard.json`](https://github.com/j
 
 ## Panels
 
-The dashboard contains **27 panels** organized in **8 rows**:
+The dashboard contains **30 panels** organized in **7 rows**. All panels use transparent backgrounds for a clean look. Time series use individual line colors (no gradient schemes).
 
 ### Overview (top row)
 
@@ -42,20 +42,18 @@ The dashboard contains **27 panels** organized in **8 rows**:
 | **Total Active Decisions** | stat | Combined IPv4 + IPv6 count |
 | **Uptime** | stat | Time since bouncer started |
 | **Bouncer Info** | stat | Version and RouterOS identity |
-
-### Active Decisions
-
-| Panel | Type | Description |
-|-------|------|-------------|
-| **Active Decisions Over Time** | timeseries | IPv4/IPv6 decisions over time |
+| **RouterOS System** | gauge | Combined CPU load (%), CPU temperature (°C), and memory usage (%) with per-metric thresholds |
+| **CPU Load Over Time** | timeseries | CPU load history |
 | **IPv4 / IPv6 Ratio** | piechart | Proportion of IPv4 vs IPv6 bans |
+| **Memory & Temperature Over Time** | timeseries | Memory usage and CPU temperature history (dual axis) |
 
 ### Decision Processing
 
 | Panel | Type | Description |
 |-------|------|-------------|
-| **Decisions Processed (Rate)** | timeseries | Ban/unban rate per second |
+| **Active Decisions Over Time** | timeseries | IPv4/IPv6 decisions over time |
 | **Cumulative Decisions** | timeseries | Total decisions since startup |
+| **Decisions Processed (Rate)** | timeseries | Ban/unban rate per second (full width) |
 
 ### Performance & Operations
 

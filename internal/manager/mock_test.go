@@ -72,6 +72,11 @@ type mockROS struct {
 	getCountersResult *ros.FirewallCounters
 	getCountersErr    error
 
+	systemResources    *ros.SystemResources
+	systemResourcesErr error
+	systemHealth       *ros.SystemHealth
+	systemHealthErr    error
+
 	// Call tracking — inspected in assertions after calling the method under test.
 	connectCalls       int
 	closeCalls         int
@@ -249,6 +254,24 @@ func (m *mockROS) GetFirewallCounters(commentPrefix string) (*ros.FirewallCounte
 		return m.getCountersResult, m.getCountersErr
 	}
 	return &ros.FirewallCounters{}, m.getCountersErr
+}
+
+func (m *mockROS) GetSystemResources() (*ros.SystemResources, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.systemResources != nil {
+		return m.systemResources, m.systemResourcesErr
+	}
+	return &ros.SystemResources{CPULoad: 5, FreeMemory: 800000000, TotalMemory: 1073741824}, m.systemResourcesErr
+}
+
+func (m *mockROS) GetSystemHealth() (*ros.SystemHealth, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.systemHealth != nil {
+		return m.systemHealth, m.systemHealthErr
+	}
+	return &ros.SystemHealth{CPUTemperature: 38}, m.systemHealthErr
 }
 
 // ---------------------------------------------------------------------------

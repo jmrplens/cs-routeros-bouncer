@@ -3,13 +3,17 @@
 package manager
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/jmrplens/cs-routeros-bouncer/internal/config"
 	"github.com/jmrplens/cs-routeros-bouncer/internal/crowdsec"
+	ros "github.com/jmrplens/cs-routeros-bouncer/internal/routeros"
 )
+
+var errMock = errors.New("mock error")
 
 // TestBuildRuleComment verifies that buildRuleComment produces the expected
 // deterministic comment format with the fixed ruleSignature suffix.
@@ -380,4 +384,51 @@ func TestBuildAddressCommentContainsSignature(t *testing.T) {
 	if !hasRuleSignature(comment) {
 		t.Errorf("buildAddressComment output should contain signature, got %q", comment)
 	}
+}
+
+// TestPollSystemMetricsSuccess verifies that pollSystemMetrics calls
+// the RouterOS client methods and doesn't panic on success.
+func TestPollSystemMetricsSuccess(t *testing.T) {
+	mock := &mockROS{}
+	cfg := config.Config{
+		Metrics: config.MetricsConfig{Enabled: true, RouterOSPollInterval: 30 * time.Second},
+	}
+	m := newTestManager(mock, cfg)
+	// Should not panic or error.
+	m.pollSystemMetrics()
+}
+
+// TestPollSystemMetricsResourcesError verifies that pollSystemMetrics
+// handles errors from GetSystemResources gracefully.
+func TestPollSystemMetricsResourcesError(t *testing.T) {
+	mock := &mockROS{systemResourcesErr: errMock}
+	cfg := config.Config{
+		Metrics: config.MetricsConfig{Enabled: true, RouterOSPollInterval: 30 * time.Second},
+	}
+	m := newTestManager(mock, cfg)
+	m.pollSystemMetrics() // should not panic
+}
+
+// TestPollSystemMetricsHealthError verifies that pollSystemMetrics
+// handles errors from GetSystemHealth gracefully.
+func TestPollSystemMetricsHealthError(t *testing.T) {
+	mock := &mockROS{systemHealthErr: errMock}
+	cfg := config.Config{
+		Metrics: config.MetricsConfig{Enabled: true, RouterOSPollInterval: 30 * time.Second},
+	}
+	m := newTestManager(mock, cfg)
+	m.pollSystemMetrics() // should not panic
+}
+
+// TestPollSystemMetricsTemperatureUnavailable verifies that a negative
+// temperature value (-1) does not update the gauge.
+func TestPollSystemMetricsTemperatureUnavailable(t *testing.T) {
+	mock := &mockROS{
+		systemHealth: &ros.SystemHealth{CPUTemperature: -1},
+	}
+	cfg := config.Config{
+		Metrics: config.MetricsConfig{Enabled: true, RouterOSPollInterval: 30 * time.Second},
+	}
+	m := newTestManager(mock, cfg)
+	m.pollSystemMetrics() // should not update temperature gauge
 }

@@ -121,9 +121,10 @@ type LoggingConfig struct {
 
 // MetricsConfig holds Prometheus metrics settings.
 type MetricsConfig struct {
-	Enabled    bool   `yaml:"enabled" mapstructure:"enabled"`
-	ListenAddr string `yaml:"listen_addr" mapstructure:"listen_addr"`
-	ListenPort int    `yaml:"listen_port" mapstructure:"listen_port"`
+	Enabled              bool          `yaml:"enabled" mapstructure:"enabled"`
+	ListenAddr           string        `yaml:"listen_addr" mapstructure:"listen_addr"`
+	ListenPort           int           `yaml:"listen_port" mapstructure:"listen_port"`
+	RouterOSPollInterval time.Duration `yaml:"routeros_poll_interval" mapstructure:"routeros_poll_interval"`
 }
 
 // Load reads configuration from a YAML file and environment variables.
@@ -166,6 +167,7 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("metrics.enabled", false)
 	v.SetDefault("metrics.listen_addr", "0.0.0.0")
 	v.SetDefault("metrics.listen_port", 2112)
+	v.SetDefault("metrics.routeros_poll_interval", "30s")
 
 	// Environment variable bindings (flat names for Docker compatibility)
 	envBindings := map[string]string{ //nolint:gosec // G101: environment variable names, not credentials
@@ -227,9 +229,10 @@ func Load(configPath string) (*Config, error) {
 		"logging.format": "LOG_FORMAT",
 		"logging.file":   "LOG_FILE",
 		// Metrics
-		"metrics.enabled":     "METRICS_ENABLED",
-		"metrics.listen_addr": "METRICS_ADDR",
-		"metrics.listen_port": "METRICS_PORT",
+		"metrics.enabled":                "METRICS_ENABLED",
+		"metrics.listen_addr":            "METRICS_ADDR",
+		"metrics.listen_port":            "METRICS_PORT",
+		"metrics.routeros_poll_interval": "METRICS_ROUTEROS_POLL_INTERVAL",
 	}
 
 	for key, env := range envBindings {
@@ -324,5 +327,10 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("firewall.block_output requires interface or interface_list when enabled")
 		}
 	}
+
+	if c.Metrics.RouterOSPollInterval < 0 {
+		return fmt.Errorf("metrics.routeros_poll_interval must be >= 0 (0 disables)")
+	}
+
 	return nil
 }

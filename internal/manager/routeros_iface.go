@@ -31,4 +31,8 @@ type RouterOSClient interface {
 	ListFirewallRules(proto, mode, commentPrefix string) ([]ros.RuleEntry, error)
 	ListFirewallRulesBySignature(proto, mode, signature string) ([]ros.RuleEntry, error)
 	GetFirewallCounters(commentPrefix string) (*ros.FirewallCounters, error)
+
+	// System metrics
+	GetSystemResources() (*ros.SystemResources, error)
+	GetSystemHealth() (*ros.SystemHealth, error)
 }

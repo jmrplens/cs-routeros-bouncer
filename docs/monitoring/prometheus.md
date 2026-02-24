@@ -116,6 +116,38 @@ Latency of operations:
 
 RouterOS connection status: `1` = connected, `0` = disconnected.
 
+### `crowdsec_bouncer_routeros_cpu_load`
+
+| | |
+|---|---|
+| **Type** | Gauge |
+
+RouterOS CPU load percentage (0–100). Polled from `/system/resource/print`.
+
+### `crowdsec_bouncer_routeros_memory_used_bytes`
+
+| | |
+|---|---|
+| **Type** | Gauge |
+
+RouterOS used memory in bytes (total − free). Polled from `/system/resource/print`.
+
+### `crowdsec_bouncer_routeros_memory_total_bytes`
+
+| | |
+|---|---|
+| **Type** | Gauge |
+
+RouterOS total memory in bytes. Polled from `/system/resource/print`.
+
+### `crowdsec_bouncer_routeros_cpu_temperature_celsius`
+
+| | |
+|---|---|
+| **Type** | Gauge |
+
+RouterOS CPU temperature in degrees Celsius. Polled from `/system/health/print`. Not updated if the device does not have a temperature sensor.
+
 ### `crowdsec_bouncer_reconciliation_total`
 
 | | |

@@ -286,6 +286,59 @@ func (c *Client) GetAPIMaxSessions() int {
 	return n
 }
 
+// SystemResources holds CPU and memory information from RouterOS.
+type SystemResources struct {
+	CPULoad     int    // CPU load percentage (0-100)
+	FreeMemory  uint64 // Free memory in bytes
+	TotalMemory uint64 // Total memory in bytes
+}
+
+// GetSystemResources queries /system/resource for CPU and memory metrics.
+func (c *Client) GetSystemResources() (*SystemResources, error) {
+	result, err := c.Find("/system/resource", nil, []string{"cpu-load", "free-memory", "total-memory"})
+	if err != nil {
+		return nil, fmt.Errorf("querying system resources: %w", err)
+	}
+	if result == nil {
+		return nil, fmt.Errorf("empty response from /system/resource/print")
+	}
+
+	sr := &SystemResources{}
+	if v, ok := result["cpu-load"]; ok {
+		fmt.Sscanf(v, "%d", &sr.CPULoad)
+	}
+	if v, ok := result["free-memory"]; ok {
+		fmt.Sscanf(v, "%d", &sr.FreeMemory)
+	}
+	if v, ok := result["total-memory"]; ok {
+		fmt.Sscanf(v, "%d", &sr.TotalMemory)
+	}
+	return sr, nil
+}
+
+// SystemHealth holds health information from RouterOS.
+type SystemHealth struct {
+	CPUTemperature float64 // CPU temperature in Celsius
+}
+
+// GetSystemHealth queries /system/health for temperature metrics.
+func (c *Client) GetSystemHealth() (*SystemHealth, error) {
+	results, err := c.Print("/system/health", nil, nil)
+	if err != nil {
+		return nil, fmt.Errorf("querying system health: %w", err)
+	}
+
+	sh := &SystemHealth{CPUTemperature: -1} // -1 = not available
+	for _, r := range results {
+		name := r["name"]
+		value := r["value"]
+		if name == "cpu-temperature" {
+			fmt.Sscanf(value, "%f", &sh.CPUTemperature)
+		}
+	}
+	return sh, nil
+}
+
 // DurationToMikroTik converts a Go duration to MikroTik timeout format.
 // MikroTik format: "1d2h3m4s" or "2h30m" etc.
 func DurationToMikroTik(d time.Duration) string {

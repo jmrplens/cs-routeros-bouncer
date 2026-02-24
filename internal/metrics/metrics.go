@@ -72,6 +72,26 @@ var (
 		Name: "crowdsec_bouncer_active_decisions_by_origin",
 		Help: "Number of active decisions by CrowdSec origin.",
 	}, []string{"origin"})
+
+	routerosCPULoad = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "crowdsec_bouncer_routeros_cpu_load",
+		Help: "RouterOS CPU load percentage (0-100).",
+	})
+
+	routerosMemoryUsed = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "crowdsec_bouncer_routeros_memory_used_bytes",
+		Help: "RouterOS used memory in bytes.",
+	})
+
+	routerosMemoryTotal = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "crowdsec_bouncer_routeros_memory_total_bytes",
+		Help: "RouterOS total memory in bytes.",
+	})
+
+	routerosCPUTemperature = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "crowdsec_bouncer_routeros_cpu_temperature_celsius",
+		Help: "RouterOS CPU temperature in degrees Celsius.",
+	})
 )
 
 // RecordDecision increments the decisions counter.
@@ -208,4 +228,16 @@ func SetInfo(version, identity string) {
 // SetStartTime records the startup timestamp.
 func SetStartTime() {
 	startTimeSeconds.SetToCurrentTime()
+}
+
+// SetRouterOSSystemMetrics updates the RouterOS system resource gauges.
+func SetRouterOSSystemMetrics(cpuLoad float64, memUsed, memTotal uint64) {
+	routerosCPULoad.Set(cpuLoad)
+	routerosMemoryUsed.Set(float64(memUsed))
+	routerosMemoryTotal.Set(float64(memTotal))
+}
+
+// SetRouterOSCPUTemperature updates the RouterOS CPU temperature gauge.
+func SetRouterOSCPUTemperature(celsius float64) {
+	routerosCPUTemperature.Set(celsius)
 }

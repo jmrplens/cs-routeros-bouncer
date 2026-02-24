@@ -5,6 +5,7 @@ package config
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 // setMinimalEnv sets the minimum required environment variables for a valid
@@ -705,5 +706,35 @@ func validCfg() *Config {
 			Filter:     FilterConfig{Enabled: true, Chains: []string{"input"}},
 			DenyAction: "drop",
 		},
+	}
+}
+
+// TestRouterOSPollIntervalDefault verifies the default poll interval from Viper.
+func TestRouterOSPollIntervalDefault(t *testing.T) {
+	setMinimalEnv(t)
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Metrics.RouterOSPollInterval != 30*time.Second {
+		t.Errorf("got %v, want 30s", cfg.Metrics.RouterOSPollInterval)
+	}
+}
+
+// TestRouterOSPollIntervalZeroDisables verifies that 0 disables polling.
+func TestRouterOSPollIntervalZeroDisables(t *testing.T) {
+	cfg := validCfg()
+	cfg.Metrics.RouterOSPollInterval = 0
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("zero should be valid (disables polling): %v", err)
+	}
+}
+
+// TestRouterOSPollIntervalNegative verifies that negative values are rejected.
+func TestRouterOSPollIntervalNegative(t *testing.T) {
+	cfg := validCfg()
+	cfg.Metrics.RouterOSPollInterval = -1 * time.Second
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error for negative poll interval")
 	}
 }

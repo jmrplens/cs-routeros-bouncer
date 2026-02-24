@@ -165,6 +165,13 @@ func (m *Manager) Start(ctx context.Context) error {
 		m.logger.Info().Msg("LAPI usage metrics reporting disabled")
 	}
 
+	// 3c. Start RouterOS system metrics collector (if enabled)
+	if m.cfg.Metrics.Enabled && m.cfg.Metrics.RouterOSPollInterval > 0 {
+		interval := m.cfg.Metrics.RouterOSPollInterval
+		m.logger.Info().Dur("interval", interval).Msg("RouterOS system metrics polling enabled")
+		go m.collectSystemMetrics(ctx, interval)
+	}
+
 	// 5. Start CrowdSec stream and collect initial batch for reconciliation
 	banCh := make(chan *crowdsec.Decision, channelBuffer)
 	deleteCh := make(chan *crowdsec.Decision, channelBuffer)
@@ -271,6 +278,43 @@ func (m *Manager) Shutdown() {
 	m.ros.Close()
 	metrics.SetConnected(false)
 	m.logger.Info().Msg("shutdown complete")
+}
+
+// collectSystemMetrics periodically polls RouterOS for CPU, memory, and
+// temperature metrics and updates the Prometheus gauges.
+func (m *Manager) collectSystemMetrics(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	// Collect once immediately at startup.
+	m.pollSystemMetrics()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			m.pollSystemMetrics()
+		}
+	}
+}
+
+// pollSystemMetrics executes the RouterOS system resource and health queries.
+func (m *Manager) pollSystemMetrics() {
+	sr, err := m.ros.GetSystemResources()
+	if err != nil {
+		m.logger.Debug().Err(err).Msg("failed to collect system resources")
+	} else {
+		used := sr.TotalMemory - sr.FreeMemory
+		metrics.SetRouterOSSystemMetrics(float64(sr.CPULoad), used, sr.TotalMemory)
+	}
+
+	sh, err := m.ros.GetSystemHealth()
+	if err != nil {
+		m.logger.Debug().Err(err).Msg("failed to collect system health")
+	} else if sh.CPUTemperature >= 0 {
+		metrics.SetRouterOSCPUTemperature(sh.CPUTemperature)
+	}
 }
 
 // handleBan processes a new ban decision.

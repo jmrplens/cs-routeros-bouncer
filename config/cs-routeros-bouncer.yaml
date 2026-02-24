@@ -161,3 +161,6 @@ metrics:
   listen_addr: "0.0.0.0"
   # Listen port for metrics server
   listen_port: 2112
+  # Interval for polling RouterOS system metrics (CPU, memory, temperature)
+  # Set to 0 to disable system metrics collection
+  routeros_poll_interval: "30s"
