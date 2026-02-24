@@ -305,13 +305,13 @@ func (c *Client) GetSystemResources() (*SystemResources, error) {
 
 	sr := &SystemResources{}
 	if v, ok := result["cpu-load"]; ok {
-		fmt.Sscanf(v, "%d", &sr.CPULoad)
+		_, _ = fmt.Sscanf(v, "%d", &sr.CPULoad)
 	}
 	if v, ok := result["free-memory"]; ok {
-		fmt.Sscanf(v, "%d", &sr.FreeMemory)
+		_, _ = fmt.Sscanf(v, "%d", &sr.FreeMemory)
 	}
 	if v, ok := result["total-memory"]; ok {
-		fmt.Sscanf(v, "%d", &sr.TotalMemory)
+		_, _ = fmt.Sscanf(v, "%d", &sr.TotalMemory)
 	}
 	return sr, nil
 }
@@ -333,7 +333,7 @@ func (c *Client) GetSystemHealth() (*SystemHealth, error) {
 		name := r["name"]
 		value := r["value"]
 		if name == "cpu-temperature" {
-			fmt.Sscanf(value, "%f", &sh.CPUTemperature)
+			_, _ = fmt.Sscanf(value, "%f", &sh.CPUTemperature)
 		}
 	}
 	return sh, nil
