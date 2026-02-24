@@ -30,7 +30,7 @@ The dashboard JSON is located at [`grafana/dashboard.json`](https://github.com/j
 
 ## Panels
 
-The dashboard contains **30 panels** organized in **7 rows** with a modern design:
+The dashboard contains **30 panels** organized in **8 rows** with a modern design:
 
 - **Transparent backgrounds** on all panels for a clean, unified look
 - **Smooth line interpolation** and subtle area fills on time series
@@ -41,7 +41,7 @@ The dashboard contains **30 panels** organized in **7 rows** with a modern desig
 - **Threshold visualization** on CPU load (dashed lines at 60% / 85%)
 - **Hover descriptions** on every panel explaining the metric and normal ranges
 
-### Overview (top row)
+### Overview
 
 | Panel | Type | Description |
 |-------|------|-------------|
@@ -51,35 +51,31 @@ The dashboard contains **30 panels** organized in **7 rows** with a modern desig
 | **Total Active Decisions** | stat | Combined IPv4 + IPv6 count |
 | **Uptime** | stat | Time since bouncer started |
 | **Bouncer Info** | stat | Version and RouterOS identity |
-| **RouterOS System** | gauge | Combined CPU load (%), CPU temperature (°C), and memory usage (%) with per-metric thresholds |
-| **CPU Load Over Time** | timeseries | CPU load history |
 | **IPv4 / IPv6 Ratio** | piechart | Proportion of IPv4 vs IPv6 bans |
+
+### RouterOS System
+
+| Panel | Type | Description |
+|-------|------|-------------|
+| **RouterOS System** | gauge | Combined CPU load (%), CPU temperature (°C), and memory usage (%) with per-metric thresholds |
+| **CPU Load Over Time** | timeseries | CPU load history with threshold lines at 60% and 85% |
 | **Memory & Temperature Over Time** | timeseries | Memory usage and CPU temperature history (dual axis) |
 
-### Decision Processing
+### Decisions
 
 | Panel | Type | Description |
 |-------|------|-------------|
-| **Active Decisions Over Time** | timeseries | IPv4/IPv6 decisions over time |
+| **Active Decisions Over Time** | timeseries | IPv4 (blue) / IPv6 (purple) decisions over time |
 | **Cumulative Decisions** | timeseries | Total decisions since startup |
-| **Decisions Processed (Rate)** | timeseries | Ban/unban rate per second (full width) |
+| **Decisions Processed (Rate)** | timeseries | Ban (red) / unban (green) rate per second (full width) |
 
-### Performance & Operations
-
-| Panel | Type | Description |
-|-------|------|-------------|
-| **Operation Latency (p50/p95/p99)** | timeseries | Add/remove/reconcile latency percentiles |
-| **Operation Rate** | timeseries | Operations per second |
-
-### Errors & Reconciliation
+### Decisions by Origin
 
 | Panel | Type | Description |
 |-------|------|-------------|
-| **Error Rate** | timeseries | Errors per second by category |
-| **Total Errors** | stat | Cumulative error count |
-| **RouterOS Connection** | state-timeline | Connection status history |
-| **Last Reconciliation** | stat | Time since last reconciliation |
-| **Reconciliation Duration** | stat | Duration of last reconciliation |
+| **Active Decisions by Origin** | bargauge | Per-origin decision count (crowdsec, cscli, CAPI) |
+| **Decisions by Origin (Rate)** | timeseries | Decision rate per origin |
+| **Cumulative Decisions by Origin** | timeseries | Running total per origin |
 
 ### Dropped Traffic
 
@@ -90,13 +86,22 @@ The dashboard contains **30 panels** organized in **7 rows** with a modern desig
 | **Dropped Traffic Rate** | timeseries | Bytes/packets dropped per second |
 | **Dropped Traffic (Cumulative)** | timeseries | Running total of dropped traffic |
 
-### Decisions by Origin
+### Errors & Reconciliation
 
 | Panel | Type | Description |
 |-------|------|-------------|
-| **Active Decisions by Origin** | bargauge | Per-origin decision count (crowdsec, cscli, CAPI) |
-| **Decisions by Origin (Rate)** | timeseries | Decision rate per origin |
-| **Cumulative Decisions by Origin** | timeseries | Running total per origin |
+| **Error Rate** | timeseries | Errors per second by category |
+| **Total Errors** | stat | Cumulative error count (red background when > 0) |
+| **RouterOS Connection** | state-timeline | Connection status history |
+| **Last Reconciliation** | stat | Time since last reconciliation |
+| **Reconciliation Duration** | stat | Duration of last reconciliation |
+
+### Performance & Operations
+
+| Panel | Type | Description |
+|-------|------|-------------|
+| **Operation Latency (p50/p95/p99)** | timeseries | Add/remove/reconcile latency percentiles |
+| **Operation Rate** | timeseries | Operations per second |
 
 ### Process Resources
 
