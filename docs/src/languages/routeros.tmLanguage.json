@@ -1,0 +1,281 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "RouterOS",
+  "aliases": [
+    "routeros",
+    "mikrotik",
+    "rsc"
+  ],
+  "scopeName": "source.routeros",
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#path-commands"
+    },
+    {
+      "include": "#assignments"
+    },
+    {
+      "include": "#builtin-functions"
+    },
+    {
+      "include": "#control-flow"
+    },
+    {
+      "include": "#variables"
+    },
+    {
+      "include": "#booleans"
+    },
+    {
+      "include": "#ip-address"
+    },
+    {
+      "include": "#mac-address"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#operators"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.number-sign.routeros",
+          "match": "#.*$"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.routeros",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.routeros",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "path-commands": {
+      "patterns": [
+        {
+          "name": "entity.name.tag.routeros",
+          "match": "/(?:caps-man|certificate|container|file|interface|iot|ipv6|ip|log|mpls|partitions|port|ppp|queue|radius|routing|snmp|system|tool|user)\\b(?:/[\\w-]+)*"
+        }
+      ]
+    },
+    "assignments": {
+      "patterns": [
+        {
+          "comment": "action=<action-value>",
+          "match": "(action)(=)(accept|drop|reject|jump|return|passthrough|fasttrack-connection|add-dst-to-address-list|add-src-to-address-list|redirect|masquerade|src-nat|dst-nat|netmap|tarpit|mark-connection|mark-packet|mark-routing)",
+          "captures": {
+            "1": {
+              "name": "variable.parameter.routeros"
+            },
+            "2": {
+              "name": "keyword.operator.assignment.routeros"
+            },
+            "3": {
+              "name": "support.function.routeros"
+            }
+          }
+        },
+        {
+          "comment": "chain=<chain-value>",
+          "match": "(chain)(=)(input|output|forward|prerouting|postrouting|srcnat|dstnat)",
+          "captures": {
+            "1": {
+              "name": "variable.parameter.routeros"
+            },
+            "2": {
+              "name": "keyword.operator.assignment.routeros"
+            },
+            "3": {
+              "name": "constant.language.routeros"
+            }
+          }
+        },
+        {
+          "comment": "protocol=<protocol-value>",
+          "match": "(protocol)(=)(tcp|udp|icmp|icmpv6|gre|ipip|ipsec-ah|ipsec-esp|ospf|bgp|rip|pim|vrrp|igmp|sctp|l2tp|pptp)",
+          "captures": {
+            "1": {
+              "name": "variable.parameter.routeros"
+            },
+            "2": {
+              "name": "keyword.operator.assignment.routeros"
+            },
+            "3": {
+              "name": "constant.language.routeros"
+            }
+          }
+        },
+        {
+          "comment": "connection-state=<state,state,...>",
+          "match": "(connection-state)(=)((?:new|established|related|invalid|untracked)(?:,(?:new|established|related|invalid|untracked))*)",
+          "captures": {
+            "1": {
+              "name": "variable.parameter.routeros"
+            },
+            "2": {
+              "name": "keyword.operator.assignment.routeros"
+            },
+            "3": {
+              "name": "constant.language.routeros"
+            }
+          }
+        },
+        {
+          "comment": "log|disabled|etc.=yes|no",
+          "match": "(log|disabled|enabled)(=)(yes|no|true|false)",
+          "captures": {
+            "1": {
+              "name": "variable.parameter.routeros"
+            },
+            "2": {
+              "name": "keyword.operator.assignment.routeros"
+            },
+            "3": {
+              "name": "constant.language.boolean.routeros"
+            }
+          }
+        },
+        {
+          "comment": "*-timeout=<time>",
+          "match": "([a-z][a-z0-9-]*-timeout)(=)(\\d+[wdhms][\\dwdhms]*)",
+          "captures": {
+            "1": {
+              "name": "variable.parameter.routeros"
+            },
+            "2": {
+              "name": "keyword.operator.assignment.routeros"
+            },
+            "3": {
+              "name": "constant.numeric.routeros"
+            }
+          }
+        },
+        {
+          "comment": "dst-port|src-port|port=<ports>",
+          "match": "(dst-port|src-port|port)(=)(\\d+(?:-\\d+)?(?:,\\d+(?:-\\d+)?)*)",
+          "captures": {
+            "1": {
+              "name": "variable.parameter.routeros"
+            },
+            "2": {
+              "name": "keyword.operator.assignment.routeros"
+            },
+            "3": {
+              "name": "constant.numeric.routeros"
+            }
+          }
+        },
+        {
+          "comment": "Generic param=value (must be last)",
+          "match": "([a-z][a-z0-9-]*)(=)(!?[^\\s\\\\\"]+)",
+          "captures": {
+            "1": {
+              "name": "variable.parameter.routeros"
+            },
+            "2": {
+              "name": "keyword.operator.assignment.routeros"
+            },
+            "3": {
+              "name": "string.unquoted.routeros"
+            }
+          }
+        }
+      ]
+    },
+    "builtin-functions": {
+      "patterns": [
+        {
+          "name": "storage.type.routeros",
+          "match": "\\b(add|set|remove|enable|disable|print|export|import|find|get|monitor|move|reset|upgrade|ping|traceroute|fetch|put|pick|len|typeof|toarray|tobool|toid|toip|toip6|tonum|tostr|totime|parse|resolve|environment|terminal|beep|delay|execute|serialize|deserialize|rndnum|rndstr|time|date|filter|firewall|raw|nat|mangle|address-list)\\b"
+        }
+      ]
+    },
+    "control-flow": {
+      "patterns": [
+        {
+          "name": "keyword.control.routeros",
+          "match": "\\b(if|else|for|foreach|do|while|from|to|step|in|on-error|break|return)\\b"
+        },
+        {
+          "name": "storage.type.routeros",
+          "match": ":(global|local|set|put|log|error|warning|info|debug|nothing|parse|resolve|environment|terminal|execute|typeof|pick|len|find|any|all|rndnum|rndstr|time|delay|toarray|tobool|toid|toip|toip6|tonum|tostr|totime)\\b"
+        }
+      ]
+    },
+    "variables": {
+      "patterns": [
+        {
+          "name": "variable.other.routeros",
+          "match": "\\$[a-zA-Z_][a-zA-Z0-9_-]*"
+        }
+      ]
+    },
+    "booleans": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.routeros",
+          "match": "\\b(yes|no|true|false)\\b"
+        }
+      ]
+    },
+    "ip-address": {
+      "patterns": [
+        {
+          "name": "constant.numeric.routeros",
+          "match": "\\b\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}(?:/\\d{1,2})?\\b"
+        }
+      ]
+    },
+    "mac-address": {
+      "patterns": [
+        {
+          "name": "constant.numeric.routeros",
+          "match": "\\b(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}\\b"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.routeros",
+          "match": "\\b\\d+(?:\\.\\d+)?(?:[GMK])?\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.comparison.routeros",
+          "match": "<=|>=|==|!=|<|>|~"
+        },
+        {
+          "name": "keyword.operator.logical.routeros",
+          "match": "\\b(and|or|not|in)\\b|&&|\\|\\||!"
+        },
+        {
+          "name": "keyword.operator.arithmetic.routeros",
+          "match": "[+\\-*/%]"
+        }
+      ]
+    }
+  }
+}

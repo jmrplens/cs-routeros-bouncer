@@ -1,0 +1,111 @@
+---
+title: Project Structure
+description: Directory layout and package responsibilities.
+---
+
+## Directory layout
+
+```
+cs-routeros-bouncer/
+├── cmd/
+│   └── cs-routeros-bouncer/
+│       └── main.go                 # CLI entrypoint
+├── internal/
+│   ├── config/
+│   │   ├── config.go               # Configuration struct and loading
+│   │   ├── config_test.go          # Configuration tests
+│   │   └── defaults.go             # Default values
+│   ├── crowdsec/
+│   │   ├── client.go               # CrowdSec LAPI client
+│   │   ├── client_test.go          # Client tests
+│   │   ├── decisions.go            # Decision processing
+│   │   └── stream.go               # Streaming mode implementation
+│   ├── manager/
+│   │   ├── manager.go              # Central orchestrator
+│   │   ├── manager_test.go         # Manager tests
+│   │   └── reconcile.go            # Reconciliation logic
+│   ├── metrics/
+│   │   ├── metrics.go              # Prometheus metric definitions
+│   │   ├── metrics_test.go         # Metrics tests
+│   │   ├── health.go               # Health endpoint handler
+│   │   ├── routeros_collector.go   # RouterOS system metrics collector
+│   │   └── server.go               # HTTP server for metrics/health
+│   └── routeros/
+│       ├── client.go               # RouterOS API client
+│       ├── client_test.go          # Client tests
+│       ├── addresses.go            # Address list operations
+│       ├── firewall.go             # Firewall rule operations
+│       ├── firewall_test.go        # Firewall tests
+│       ├── pool.go                 # Connection pool implementation
+│       └── system.go               # System info queries (CPU, memory, temp)
+├── docs/                           # Documentation (Starlight)
+├── docs-legacy/                    # Original MkDocs documentation (archive)
+├── grafana/
+│   └── cs-routeros-bouncer.json    # Grafana dashboard
+├── .github/
+│   └── workflows/                  # CI/CD workflows
+├── .golangci.yml                   # Linter configuration
+├── config.example.yml              # Example configuration file
+├── Dockerfile                      # Docker build file
+├── go.mod                          # Go module definition
+├── go.sum                          # Go dependency checksums
+├── LICENSE                         # MIT License
+└── README.md                       # Project readme
+```
+
+## Package responsibilities
+
+### `cmd/cs-routeros-bouncer`
+
+CLI entrypoint. Handles:
+
+- Subcommand routing (`run`, `version`, etc.)
+- Signal handling (SIGTERM, SIGINT)
+- Graceful shutdown coordination
+
+### `internal/config`
+
+Configuration management:
+
+- Loads configuration from YAML file and/or environment variables
+- Validates all parameters
+- Provides sensible defaults
+- Maps environment variable names to config struct fields
+
+### `internal/crowdsec`
+
+CrowdSec LAPI integration:
+
+- HTTP client for CrowdSec Local API
+- Streaming mode: polls for new/deleted decisions
+- Decision filtering by origin, scenario, and scope
+- TLS certificate support
+
+### `internal/manager`
+
+Central orchestrator that connects all components:
+
+- Startup: connects to CrowdSec and MikroTik, creates firewall rules, runs reconciliation
+- Runtime: processes streaming decisions (bans/unbans)
+- Shutdown: removes firewall rules, closes connections
+- Error handling and retry logic
+
+### `internal/metrics`
+
+Observability:
+
+- Prometheus metric definitions and registration
+- Health check endpoint (`/health`)
+- RouterOS system metrics collector (CPU, memory, temperature)
+- HTTP server for `/metrics` and `/health` endpoints
+
+### `internal/routeros`
+
+MikroTik RouterOS API client:
+
+- Connection pool with configurable size
+- Address list operations (add, remove, list)
+- Firewall rule operations (create, delete, list)
+- System information queries
+- Bulk script execution for reconciliation
+- Parallel execution helper (`ParallelExec`)

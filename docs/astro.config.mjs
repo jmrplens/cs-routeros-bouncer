@@ -1,0 +1,114 @@
+// @ts-check
+import { defineConfig } from "astro/config";
+import starlight from "@astrojs/starlight";
+import fs from "node:fs";
+
+// Load RouterOS TextMate grammar for syntax highlighting
+const routerosGrammar = JSON.parse(
+  fs.readFileSync(
+    new URL("./src/languages/routeros.tmLanguage.json", import.meta.url),
+    "utf-8",
+  ),
+);
+
+/** @returns {import('astro').AstroIntegration} */
+function routerosLanguage() {
+  return {
+    name: "routeros-language",
+    hooks: {
+      "astro:config:setup": ({ updateConfig }) => {
+        updateConfig({
+          markdown: {
+            shikiConfig: {
+              langs: [
+                {
+                  ...routerosGrammar,
+                  aliases: ["routeros", "mikrotik", "rsc"],
+                },
+              ],
+            },
+          },
+        });
+      },
+    },
+  };
+}
+
+export default defineConfig({
+  integrations: [
+    routerosLanguage(),
+    starlight({
+      title: "cs-routeros-bouncer",
+      description:
+        "CrowdSec bouncer for MikroTik RouterOS — automatic firewall management via the RouterOS API",
+      logo: {
+        src: "./src/assets/logo.svg",
+        alt: "cs-routeros-bouncer",
+      },
+      favicon: "/favicon.svg",
+      social: [
+        {
+          icon: "github",
+          label: "GitHub",
+          href: "https://github.com/jmrplens/cs-routeros-bouncer",
+        },
+      ],
+      editLink: {
+        baseUrl:
+          "https://github.com/jmrplens/cs-routeros-bouncer/edit/main/docs/",
+      },
+      customCss: ["./src/styles/custom.css"],
+      sidebar: [
+        {
+          label: "Getting Started",
+          items: [
+            { label: "Quick Start", slug: "getting-started/quickstart" },
+            { label: "Installation", slug: "getting-started/installation" },
+            { label: "Router Setup", slug: "getting-started/router-setup" },
+          ],
+        },
+        {
+          label: "Configuration",
+          items: [
+            { label: "Overview", slug: "configuration" },
+            { label: "MikroTik", slug: "configuration/mikrotik" },
+            { label: "CrowdSec", slug: "configuration/crowdsec" },
+            { label: "Firewall", slug: "configuration/firewall" },
+            {
+              label: "Logging & Metrics",
+              slug: "configuration/logging-metrics",
+            },
+            { label: "Examples", slug: "configuration/examples" },
+          ],
+        },
+        {
+          label: "Architecture",
+          items: [
+            { label: "Overview", slug: "architecture" },
+            { label: "Decision Processing", slug: "architecture/decisions" },
+            { label: "Firewall Rules", slug: "architecture/firewall-rules" },
+            { label: "Reconciliation", slug: "architecture/reconciliation" },
+          ],
+        },
+        {
+          label: "Monitoring",
+          items: [
+            { label: "Prometheus Metrics", slug: "monitoring/prometheus" },
+            { label: "Grafana Dashboard", slug: "monitoring/grafana" },
+            { label: "Health Endpoint", slug: "monitoring/health" },
+          ],
+        },
+        {
+          label: "Development",
+          items: [
+            { label: "Building & Testing", slug: "development/building" },
+            { label: "Project Structure", slug: "development/structure" },
+            { label: "Contributing", slug: "development/contributing" },
+            { label: "Security", slug: "development/security" },
+          ],
+        },
+        { label: "Troubleshooting", slug: "troubleshooting" },
+      ],
+    }),
+  ],
+});
