@@ -8,6 +8,13 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// ruleProplist is the standard set of properties requested when querying firewall rules.
+var ruleProplist = []string{
+	".id", "chain", "action", "src-address", "src-address-list", "dst-address-list",
+	"in-interface", "in-interface-list", "out-interface", "out-interface-list",
+	"connection-state", "reject-with", "comment",
+}
+
 // RuleEntry represents a MikroTik firewall rule.
 type RuleEntry struct {
 	ID               string
@@ -192,11 +199,7 @@ func (c *Client) RemoveFirewallRule(proto, mode, id string) error {
 func (c *Client) ListFirewallRules(proto, mode, commentPrefix string) ([]RuleEntry, error) {
 	path := firewallPath(proto, mode)
 
-	proplist := []string{".id", "chain", "action", "src-address", "src-address-list", "dst-address-list",
-		"in-interface", "in-interface-list", "out-interface", "out-interface-list",
-		"connection-state", "reject-with", "comment"}
-
-	results, err := c.Print(path, nil, proplist)
+	results, err := c.Print(path, nil, ruleProplist)
 	if err != nil {
 		return nil, fmt.Errorf("list %s/%s rules: %w", proto, mode, err)
 	}
@@ -233,11 +236,8 @@ func (c *Client) FindFirewallRuleByComment(proto, mode, comment string) (*RuleEn
 	path := firewallPath(proto, mode)
 
 	query := []string{"?comment=" + comment}
-	proplist := []string{".id", "chain", "action", "src-address", "src-address-list", "dst-address-list",
-		"in-interface", "in-interface-list", "out-interface", "out-interface-list",
-		"connection-state", "reject-with", "comment"}
 
-	result, err := c.Find(path, query, proplist)
+	result, err := c.Find(path, query, ruleProplist)
 	if err != nil {
 		return nil, fmt.Errorf("find %s/%s rule by comment %q: %w", proto, mode, comment, err)
 	}

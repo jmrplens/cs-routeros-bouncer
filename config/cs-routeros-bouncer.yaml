@@ -70,11 +70,27 @@ firewall:
     enabled: true
     # Chains where filter rules are created
     chains: ["input"]
+    # ──────────────────────────────────────────────────────────────────────────
+    # Advanced filter parameters (defaults work for most setups)
+    # ──────────────────────────────────────────────────────────────────────────
+    # Override the global log_prefix for filter rules only (empty = use global)
+    # log_prefix: ""
+    # Add connection-state matcher to filter rules (not available for raw).
+    # Restricts rule matching to specific connection states.
+    # Examples: "new" (only new connections), "new,invalid" (new + invalid).
+    # Valid states: established, related, new, invalid, untracked.
+    # Empty = no connection-state filter (matches all traffic).
+    # connection_state: ""
   raw:
     # Create raw firewall rules (prerouting — blocks before connection tracking)
     enabled: true
     # Chains where raw rules are created
     chains: ["prerouting"]
+    # ──────────────────────────────────────────────────────────────────────────
+    # Advanced raw parameters (defaults work for most setups)
+    # ──────────────────────────────────────────────────────────────────────────
+    # Override the global log_prefix for raw rules only (empty = use global)
+    # log_prefix: ""
   # Action for firewall rules: "drop" or "reject"
   deny_action: "drop"
   # ────────────────────────────────────────────────────────────────────────────
@@ -86,18 +102,6 @@ firewall:
   # icmp-host-prohibited, icmp-admin-prohibited, tcp-reset.
   # Empty = RouterOS default behavior.
   # reject_with: ""
-  filter:
-    # Override the global log_prefix for filter rules only (empty = use global)
-    # log_prefix: ""
-    # Add connection-state matcher to filter rules (not available for raw).
-    # Restricts rule matching to specific connection states.
-    # Examples: "new" (only new connections), "new,invalid" (new + invalid).
-    # Valid states: established, related, new, invalid, untracked.
-    # Empty = no connection-state filter (matches all traffic).
-    # connection_state: ""
-  raw:
-    # Override the global log_prefix for raw rules only (empty = use global)
-    # log_prefix: ""
   block_output:
     # Block outgoing traffic to banned IPs (disabled by default)
     enabled: false

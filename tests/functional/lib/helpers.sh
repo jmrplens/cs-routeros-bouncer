@@ -25,7 +25,7 @@
 #   - snmpget (net-snmp / snmp package) — only for SNMP helpers
 #   - A .env file (next to the calling script) containing at minimum:
 #       MIKROTIK_SSH_HOST, MIKROTIK_SSH_PORT, MIKROTIK_SSH_USER,
-#       MIKROTIK_SSH_KEY, and optionally SNMP_COMMUNITY, MIKROTIK_CPU_CORES.
+#       and optionally MIKROTIK_SSH_KEY, SNMP_COMMUNITY, MIKROTIK_CPU_CORES.
 #
 # RouterOS quirks handled here:
 #   • SSH output from RouterOS appends \r to every line; all ssh_cmd output
@@ -186,11 +186,13 @@ require_var() {
 # shellcheck disable=SC2153
 ssh_cmd() {
     local ssh_key_opt=()
+    local batch_opt=()
     if [[ -n "${MIKROTIK_SSH_KEY:-}" && -f "${MIKROTIK_SSH_KEY}" ]]; then
         ssh_key_opt=(-i "${MIKROTIK_SSH_KEY}")
+        batch_opt=(-o BatchMode=yes)
     fi
-    ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes \
-        "${ssh_key_opt[@]}" -p "${MIKROTIK_SSH_PORT}" \
+    ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no \
+        "${batch_opt[@]}" "${ssh_key_opt[@]}" -p "${MIKROTIK_SSH_PORT}" \
         "${MIKROTIK_SSH_USER}@${MIKROTIK_SSH_HOST}" "$1" 2>/dev/null | tr -d '\r'
 }
 

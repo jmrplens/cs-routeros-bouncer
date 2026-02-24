@@ -662,7 +662,13 @@ func TestRejectWithInvalidValue(t *testing.T) {
 }
 
 func TestConnectionStateValid(t *testing.T) {
-	tests := []string{"new", "new,invalid", "established,related,new"}
+	tests := []string{
+		"new",
+		"new,invalid",
+		"established,related,new",
+		"new, invalid",
+		"  established , related , new  ",
+	}
 	for _, v := range tests {
 		cfg := validCfg()
 		cfg.Firewall.Filter.ConnectionState = v

@@ -1170,9 +1170,60 @@ func TestCreateFirewallRules_OutputPassthroughV6(t *testing.T) {
 	t.Error("IPv6 output rule not found")
 }
 
-// ===========================================================================
-// Feature 2: Connection-state tests
-// ===========================================================================
+func TestCreateFirewallRules_OutputPassthroughV6IP(t *testing.T) {
+	mock := &mockROS{addRuleID: "*R1"}
+	cfg := baseConfig()
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"input"}
+	cfg.Firewall.BlockOutput.Enabled = true
+	cfg.Firewall.BlockOutput.PassthroughV6 = "2001:db8::1"
+	mgr := newTestManager(mock, cfg)
+
+	if err := mgr.createFirewallRules(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, c := range mock.addRuleCalls {
+		if c.Proto == "ipv6" && c.Rule.DstAddressList != "" {
+			if c.Rule.SrcAddress != "!2001:db8::1" {
+				t.Errorf("expected SrcAddress=!2001:db8::1 on IPv6 output, got %q", c.Rule.SrcAddress)
+			}
+			if c.Rule.SrcAddressList != "" {
+				t.Errorf("expected empty SrcAddressList when PassthroughV6 (single IP) is set, got %q", c.Rule.SrcAddressList)
+			}
+			return
+		}
+	}
+	t.Error("IPv6 output rule not found")
+}
+
+func TestCreateFirewallRules_OutputPassthroughV6ListPrecedence(t *testing.T) {
+	mock := &mockROS{addRuleID: "*R1"}
+	cfg := baseConfig()
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"input"}
+	cfg.Firewall.BlockOutput.Enabled = true
+	cfg.Firewall.BlockOutput.PassthroughV6 = "2001:db8::1"
+	cfg.Firewall.BlockOutput.PassthroughV6List = "whitelist6"
+	mgr := newTestManager(mock, cfg)
+
+	if err := mgr.createFirewallRules(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, c := range mock.addRuleCalls {
+		if c.Proto == "ipv6" && c.Rule.DstAddressList != "" {
+			if c.Rule.SrcAddressList != "!whitelist6" {
+				t.Errorf("expected SrcAddressList=!whitelist6, got %q", c.Rule.SrcAddressList)
+			}
+			if c.Rule.SrcAddress != "" {
+				t.Errorf("expected empty SrcAddress when list precedence applies, got %q", c.Rule.SrcAddress)
+			}
+			return
+		}
+	}
+	t.Error("IPv6 output rule not found")
+}
 
 func TestCreateFirewallRules_ConnectionState(t *testing.T) {
 	mock := &mockROS{addRuleID: "*R1"}
