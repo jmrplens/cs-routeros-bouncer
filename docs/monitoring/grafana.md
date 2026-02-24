@@ -30,7 +30,16 @@ The dashboard JSON is located at [`grafana/dashboard.json`](https://github.com/j
 
 ## Panels
 
-The dashboard contains **30 panels** organized in **7 rows**. All panels use transparent backgrounds for a clean look. Time series use individual line colors (no gradient schemes).
+The dashboard contains **30 panels** organized in **7 rows** with a modern design:
+
+- **Transparent backgrounds** on all panels for a clean, unified look
+- **Smooth line interpolation** and subtle area fills on time series
+- **Multi-tooltip** mode with sorted values for quick multi-series comparison
+- **Table legends** with calculated stats (last, mean, max) on key panels
+- **Sparkline mini-graphs** on stat panels showing recent trends
+- **Semantic colors** — red for errors/bans, green for unbans/healthy, orange for warnings
+- **Threshold visualization** on CPU load (dashed lines at 60% / 85%)
+- **Hover descriptions** on every panel explaining the metric and normal ranges
 
 ### Overview (top row)
 

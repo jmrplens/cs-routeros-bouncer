@@ -1,4 +1,65 @@
 {
+  "__inputs": [
+    {
+      "name": "DS_PROMETHEUS",
+      "label": "Prometheus",
+      "description": "Prometheus datasource for CrowdSec bouncer metrics",
+      "type": "datasource",
+      "pluginId": "prometheus",
+      "pluginName": "Prometheus"
+    }
+  ],
+  "__elements": {},
+  "__requires": [
+    {
+      "type": "grafana",
+      "id": "grafana",
+      "name": "Grafana",
+      "version": "11.0.0"
+    },
+    {
+      "type": "datasource",
+      "id": "prometheus",
+      "name": "Prometheus",
+      "version": "1.0.0"
+    },
+    {
+      "type": "panel",
+      "id": "barchart",
+      "name": "Bar chart",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "gauge",
+      "name": "Gauge",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "piechart",
+      "name": "Pie chart",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "stat",
+      "name": "Stat",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "state-timeline",
+      "name": "State timeline",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "timeseries",
+      "name": "Time series",
+      "version": ""
+    }
+  ],
   "annotations": {
     "list": [
       {
@@ -38,6 +99,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "Real-time RouterOS API connection status. Green=connected, Red=disconnected.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -75,15 +137,15 @@
         "overrides": []
       },
       "gridPos": {
-        "x": 0,
-        "y": 1,
+        "h": 3,
         "w": 4,
-        "h": 3
+        "x": 0,
+        "y": 1
       },
       "id": 2,
       "options": {
-        "colorMode": "background",
-        "graphMode": "none",
+        "colorMode": "background_solid",
+        "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
         "percentChangeColorMode": "standard",
@@ -119,6 +181,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "Number of currently active IPv4 ban decisions enforced on the router.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -147,10 +210,10 @@
         "overrides": []
       },
       "gridPos": {
-        "x": 4,
-        "y": 1,
+        "h": 3,
         "w": 4,
-        "h": 3
+        "x": 4,
+        "y": 1
       },
       "id": 3,
       "options": {
@@ -183,14 +246,15 @@
         }
       ],
       "title": "Active Decisions (IPv4)",
-      "type": "stat",
-      "transparent": true
+      "transparent": true,
+      "type": "stat"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "Live RouterOS hardware metrics: CPU load (%), memory usage (%), and CPU temperature (\u00b0C).",
       "fieldConfig": {
         "defaults": {
           "mappings": [],
@@ -330,10 +394,10 @@
         ]
       },
       "gridPos": {
-        "x": 8,
-        "y": 1,
+        "h": 6,
         "w": 8,
-        "h": 6
+        "x": 8,
+        "y": 1
       },
       "id": 81,
       "options": {
@@ -382,19 +446,20 @@
         }
       ],
       "title": "RouterOS System",
-      "type": "gauge",
-      "transparent": true
+      "transparent": true,
+      "type": "gauge"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "RouterOS CPU load percentage over time",
+      "description": "Historical CPU load across all router cores over time.",
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "palette-classic"
+            "fixedColor": "#FF9830",
+            "mode": "fixed"
           },
           "custom": {
             "axisBorderShow": false,
@@ -405,7 +470,7 @@
             "barAlignment": 0,
             "barWidthFactor": 0.6,
             "drawStyle": "line",
-            "fillOpacity": 10,
+            "fillOpacity": 15,
             "gradientMode": "none",
             "hideFrom": {
               "legend": false,
@@ -414,12 +479,12 @@
             },
             "insertNulls": false,
             "lineInterpolation": "smooth",
-            "lineWidth": 1,
+            "lineWidth": 2,
             "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
             },
-            "showPoints": "auto",
+            "showPoints": "never",
             "showValues": false,
             "spanNulls": true,
             "stacking": {
@@ -427,7 +492,7 @@
               "mode": "none"
             },
             "thresholdsStyle": {
-              "mode": "off"
+              "mode": "dashed"
             }
           },
           "mappings": [],
@@ -438,7 +503,7 @@
             "steps": [
               {
                 "color": "green",
-                "value": 0
+                "value": null
               },
               {
                 "color": "yellow",
@@ -455,23 +520,25 @@
         "overrides": []
       },
       "gridPos": {
-        "x": 16,
-        "y": 1,
+        "h": 6,
         "w": 8,
-        "h": 6
+        "x": 16,
+        "y": 1
       },
       "id": 85,
       "options": {
         "legend": {
-          "calcs": [],
-          "displayMode": "list",
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
         },
         "tooltip": {
-          "hideZeros": false,
-          "mode": "single",
-          "sort": "none"
+          "mode": "multi",
+          "sort": "desc"
         }
       },
       "pluginVersion": "12.3.3",
@@ -487,14 +554,15 @@
         }
       ],
       "title": "CPU Load Over Time",
-      "type": "timeseries",
-      "transparent": true
+      "transparent": true,
+      "type": "timeseries"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "Number of currently active IPv6 ban decisions enforced on the router.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -523,10 +591,10 @@
         "overrides": []
       },
       "gridPos": {
-        "x": 0,
-        "y": 4,
+        "h": 3,
         "w": 4,
-        "h": 3
+        "x": 0,
+        "y": 4
       },
       "id": 4,
       "options": {
@@ -559,14 +627,15 @@
         }
       ],
       "title": "Active Decisions (IPv6)",
-      "type": "stat",
-      "transparent": true
+      "transparent": true,
+      "type": "stat"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "Total active decisions across both IPv4 and IPv6 address lists.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -595,15 +664,15 @@
         "overrides": []
       },
       "gridPos": {
-        "x": 4,
-        "y": 4,
+        "h": 3,
         "w": 4,
-        "h": 3
+        "x": 4,
+        "y": 4
       },
       "id": 5,
       "options": {
         "colorMode": "background",
-        "graphMode": "none",
+        "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
         "percentChangeColorMode": "standard",
@@ -631,18 +700,19 @@
         }
       ],
       "title": "Total Active Decisions",
-      "type": "stat",
-      "transparent": true
+      "transparent": true,
+      "type": "stat"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "Time elapsed since the bouncer process started.",
       "fieldConfig": {
         "defaults": {
           "color": {
-            "fixedColor": "text",
+            "fixedColor": "#73BF69",
             "mode": "fixed"
           },
           "mappings": [],
@@ -664,10 +734,10 @@
         "overrides": []
       },
       "gridPos": {
-        "x": 0,
-        "y": 7,
+        "h": 3,
         "w": 4,
-        "h": 3
+        "x": 0,
+        "y": 7
       },
       "id": 6,
       "options": {
@@ -700,14 +770,15 @@
         }
       ],
       "title": "Uptime",
-      "type": "stat",
-      "transparent": true
+      "transparent": true,
+      "type": "stat"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "Bouncer version, build info, and connected RouterOS device identity.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -732,10 +803,10 @@
         "overrides": []
       },
       "gridPos": {
-        "x": 4,
-        "y": 7,
+        "h": 3,
         "w": 4,
-        "h": 3
+        "x": 4,
+        "y": 7
       },
       "id": 7,
       "options": {
@@ -772,14 +843,15 @@
         }
       ],
       "title": "Bouncer Info",
-      "type": "stat",
-      "transparent": true
+      "transparent": true,
+      "type": "stat"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "Distribution of active ban decisions between IPv4 and IPv6 protocols.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -829,10 +901,10 @@
         ]
       },
       "gridPos": {
-        "x": 8,
-        "y": 7,
+        "h": 6,
         "w": 8,
-        "h": 6
+        "x": 8,
+        "y": 7
       },
       "id": 12,
       "options": {
@@ -882,15 +954,15 @@
         }
       ],
       "title": "IPv4 / IPv6 Ratio",
-      "type": "piechart",
-      "transparent": true
+      "transparent": true,
+      "type": "piechart"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "RouterOS memory usage and CPU temperature over time",
+      "description": "Memory usage and CPU temperature trends with dual-axis display.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -914,12 +986,12 @@
             },
             "insertNulls": false,
             "lineInterpolation": "smooth",
-            "lineWidth": 1,
+            "lineWidth": 2,
             "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
             },
-            "showPoints": "auto",
+            "showPoints": "never",
             "showValues": false,
             "spanNulls": true,
             "stacking": {
@@ -1028,27 +1100,59 @@
                 }
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*[Mm]emory.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#73BF69",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*[Tt]emp.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#F2495C",
+                  "mode": "fixed"
+                }
+              }
+            ]
           }
         ]
       },
       "gridPos": {
-        "x": 16,
-        "y": 7,
+        "h": 6,
         "w": 8,
-        "h": 6
+        "x": 16,
+        "y": 7
       },
       "id": 86,
       "options": {
         "legend": {
-          "calcs": [],
-          "displayMode": "list",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
         },
         "tooltip": {
-          "hideZeros": false,
           "mode": "multi",
-          "sort": "none"
+          "sort": "desc"
         }
       },
       "pluginVersion": "12.3.3",
@@ -1082,8 +1186,8 @@
         }
       ],
       "title": "Memory & Temperature Over Time",
-      "type": "timeseries",
-      "transparent": true
+      "transparent": true,
+      "type": "timeseries"
     },
     {
       "collapsed": false,
@@ -1103,6 +1207,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "Active firewall decisions tracked over time, split by IP version.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1125,13 +1230,13 @@
               "viz": false
             },
             "insertNulls": false,
-            "lineInterpolation": "linear",
+            "lineInterpolation": "smooth",
             "lineWidth": 2,
             "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
             },
-            "showPoints": "auto",
+            "showPoints": "never",
             "showValues": false,
             "spanNulls": true,
             "stacking": {
@@ -1161,14 +1266,14 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byName",
-              "options": "IPv4"
+              "id": "byRegexp",
+              "options": ".*IPv4.*|.*ipv4.*"
             },
             "properties": [
               {
                 "id": "color",
                 "value": {
-                  "fixedColor": "blue",
+                  "fixedColor": "#5794F2",
                   "mode": "fixed"
                 }
               }
@@ -1176,14 +1281,14 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "IPv6"
+              "id": "byRegexp",
+              "options": ".*IPv6.*|.*ipv6.*"
             },
             "properties": [
               {
                 "id": "color",
                 "value": {
-                  "fixedColor": "purple",
+                  "fixedColor": "#B877D9",
                   "mode": "fixed"
                 }
               }
@@ -1203,15 +1308,13 @@
           "calcs": [
             "lastNotNull",
             "min",
-            "max",
-            "mean"
+            "max"
           ],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
         },
         "tooltip": {
-          "hideZeros": false,
           "mode": "multi",
           "sort": "desc"
         }
@@ -1238,15 +1341,15 @@
         }
       ],
       "title": "Active Decisions Over Time",
-      "type": "timeseries",
-      "transparent": true
+      "transparent": true,
+      "type": "timeseries"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Total decisions processed since bouncer start",
+      "description": "Running total of all decisions processed since bouncer startup.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1269,13 +1372,13 @@
               "viz": false
             },
             "insertNulls": false,
-            "lineInterpolation": "linear",
+            "lineInterpolation": "smooth",
             "lineWidth": 2,
             "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
             },
-            "showPoints": "auto",
+            "showPoints": "never",
             "showValues": false,
             "spanNulls": true,
             "stacking": {
@@ -1321,7 +1424,6 @@
           "showLegend": true
         },
         "tooltip": {
-          "hideZeros": false,
           "mode": "multi",
           "sort": "desc"
         }
@@ -1348,15 +1450,15 @@
         }
       ],
       "title": "Cumulative Decisions",
-      "type": "timeseries",
-      "transparent": true
+      "transparent": true,
+      "type": "timeseries"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Rate of ban and unban decisions processed per second",
+      "description": "Rate of ban/unban decisions processed per second.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1379,13 +1481,13 @@
               "viz": false
             },
             "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
             "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
             },
-            "showPoints": "auto",
+            "showPoints": "never",
             "showValues": false,
             "spanNulls": false,
             "stacking": {
@@ -1416,13 +1518,13 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": ".*ban$"
+              "options": ".*[Aa]dd.*|.*[Bb]an.*"
             },
             "properties": [
               {
                 "id": "color",
                 "value": {
-                  "fixedColor": "red",
+                  "fixedColor": "#F2495C",
                   "mode": "fixed"
                 }
               }
@@ -1431,13 +1533,13 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": ".*unban$"
+              "options": ".*[Dd]elete.*|.*[Uu]nban.*|.*[Rr]emove.*"
             },
             "properties": [
               {
                 "id": "color",
                 "value": {
-                  "fixedColor": "green",
+                  "fixedColor": "#73BF69",
                   "mode": "fixed"
                 }
               }
@@ -1455,15 +1557,14 @@
       "options": {
         "legend": {
           "calcs": [
-            "sum",
-            "lastNotNull"
+            "lastNotNull",
+            "max"
           ],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
         },
         "tooltip": {
-          "hideZeros": false,
           "mode": "multi",
           "sort": "desc"
         }
@@ -1490,8 +1591,8 @@
         }
       ],
       "title": "Decisions Processed (Rate)",
-      "type": "timeseries",
-      "transparent": true
+      "transparent": true,
+      "type": "timeseries"
     },
     {
       "collapsed": false,
@@ -1511,7 +1612,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Latency percentiles for RouterOS operations",
+      "description": "Operation latency percentiles (p50/p95/p99) for add, remove, and reconcile operations.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1534,13 +1635,13 @@
               "viz": false
             },
             "insertNulls": false,
-            "lineInterpolation": "linear",
+            "lineInterpolation": "smooth",
             "lineWidth": 2,
             "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
             },
-            "showPoints": "auto",
+            "showPoints": "never",
             "showValues": false,
             "spanNulls": true,
             "stacking": {
@@ -1579,16 +1680,15 @@
       "options": {
         "legend": {
           "calcs": [
-            "lastNotNull",
             "mean",
-            "max"
+            "max",
+            "lastNotNull"
           ],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
         },
         "tooltip": {
-          "hideZeros": false,
           "mode": "multi",
           "sort": "desc"
         }
@@ -1624,15 +1724,15 @@
         }
       ],
       "title": "Operation Latency (p50 / p95 / p99)",
-      "type": "timeseries",
-      "transparent": true
+      "transparent": true,
+      "type": "timeseries"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Operations per second by type",
+      "description": "Rate of firewall operations per second by type.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1655,13 +1755,13 @@
               "viz": false
             },
             "insertNulls": false,
-            "lineInterpolation": "linear",
+            "lineInterpolation": "smooth",
             "lineWidth": 2,
             "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
             },
-            "showPoints": "auto",
+            "showPoints": "never",
             "showValues": false,
             "spanNulls": true,
             "stacking": {
@@ -1700,8 +1800,7 @@
       "options": {
         "legend": {
           "calcs": [
-            "sum",
-            "mean",
+            "lastNotNull",
             "max"
           ],
           "displayMode": "table",
@@ -1709,7 +1808,6 @@
           "showLegend": true
         },
         "tooltip": {
-          "hideZeros": false,
           "mode": "multi",
           "sort": "desc"
         }
@@ -1727,8 +1825,8 @@
         }
       ],
       "title": "Operation Rate",
-      "type": "timeseries",
-      "transparent": true
+      "transparent": true,
+      "type": "timeseries"
     },
     {
       "collapsed": false,
@@ -1748,12 +1846,12 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Errors per second by type",
+      "description": "Error rate per second categorized by error type (API, connection, parse).",
       "fieldConfig": {
         "defaults": {
           "color": {
-            "fixedColor": "red",
-            "mode": "palette-classic"
+            "fixedColor": "#F2495C",
+            "mode": "fixed"
           },
           "custom": {
             "axisBorderShow": false,
@@ -1764,7 +1862,7 @@
             "barAlignment": 0,
             "barWidthFactor": 0.6,
             "drawStyle": "bars",
-            "fillOpacity": 10,
+            "fillOpacity": 12,
             "gradientMode": "none",
             "hideFrom": {
               "legend": false,
@@ -1772,13 +1870,13 @@
               "viz": false
             },
             "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
             "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
             },
-            "showPoints": "auto",
+            "showPoints": "never",
             "showValues": false,
             "spanNulls": false,
             "stacking": {
@@ -1818,14 +1916,14 @@
       "options": {
         "legend": {
           "calcs": [
-            "sum"
+            "lastNotNull",
+            "max"
           ],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
         },
         "tooltip": {
-          "hideZeros": false,
           "mode": "multi",
           "sort": "desc"
         }
@@ -1843,14 +1941,15 @@
         }
       ],
       "title": "Error Rate",
-      "type": "timeseries",
-      "transparent": true
+      "transparent": true,
+      "type": "timeseries"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "Total cumulative errors since bouncer startup.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1863,15 +1962,11 @@
             "steps": [
               {
                 "color": "green",
-                "value": 0
-              },
-              {
-                "color": "yellow",
-                "value": 1
+                "value": null
               },
               {
                 "color": "red",
-                "value": 10
+                "value": 1
               }
             ]
           },
@@ -1887,7 +1982,7 @@
       },
       "id": 42,
       "options": {
-        "colorMode": "background",
+        "colorMode": "background_solid",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
@@ -1916,14 +2011,15 @@
         }
       ],
       "title": "Total Errors",
-      "type": "stat",
-      "transparent": true
+      "transparent": true,
+      "type": "stat"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "Time elapsed since the last successful reconciliation cycle.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2048,14 +2144,15 @@
         }
       ],
       "title": "Last Reconciliation",
-      "type": "stat",
-      "transparent": true
+      "transparent": true,
+      "type": "stat"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "Timeline showing RouterOS connection state history (connected/disconnected).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2140,14 +2237,15 @@
         }
       ],
       "title": "RouterOS Connection",
-      "type": "state-timeline",
-      "transparent": true
+      "transparent": true,
+      "type": "state-timeline"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "Duration of the most recent reconciliation operation.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2212,8 +2310,8 @@
         }
       ],
       "title": "Reconciliation Duration",
-      "type": "stat",
-      "transparent": true
+      "transparent": true,
+      "type": "stat"
     },
     {
       "collapsed": false,
@@ -2233,10 +2331,12 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "Total bytes dropped by bouncer-created firewall rules.",
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "thresholds"
+            "fixedColor": "#FF9830",
+            "mode": "fixed"
           },
           "mappings": [],
           "thresholds": {
@@ -2297,18 +2397,20 @@
         }
       ],
       "title": "Dropped Bytes",
-      "type": "stat",
-      "transparent": true
+      "transparent": true,
+      "type": "stat"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "Total packets dropped by bouncer-created firewall rules.",
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "thresholds"
+            "fixedColor": "#F2495C",
+            "mode": "fixed"
           },
           "mappings": [],
           "thresholds": {
@@ -2369,15 +2471,15 @@
         }
       ],
       "title": "Dropped Packets",
-      "type": "stat",
-      "transparent": true
+      "transparent": true,
+      "type": "stat"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Rate of dropped bytes and packets per second by firewall rules",
+      "description": "Real-time rate of dropped traffic (bytes and packets per second).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2436,17 +2538,31 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byName",
-              "options": "Packets/s"
+              "id": "byRegexp",
+              "options": ".*[Bb]ytes.*"
             },
             "properties": [
               {
-                "id": "custom.axisPlacement",
-                "value": "right"
-              },
+                "id": "color",
+                "value": {
+                  "fixedColor": "#FF9830",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*[Pp]ackets.*"
+            },
+            "properties": [
               {
-                "id": "unit",
-                "value": "pps"
+                "id": "color",
+                "value": {
+                  "fixedColor": "#F2495C",
+                  "mode": "fixed"
+                }
               }
             ]
           }
@@ -2462,7 +2578,7 @@
       "options": {
         "legend": {
           "calcs": [
-            "mean",
+            "lastNotNull",
             "max"
           ],
           "displayMode": "table",
@@ -2470,7 +2586,6 @@
           "showLegend": true
         },
         "tooltip": {
-          "hideZeros": false,
           "mode": "multi",
           "sort": "desc"
         }
@@ -2497,15 +2612,15 @@
         }
       ],
       "title": "Dropped Traffic Rate",
-      "type": "timeseries",
-      "transparent": true
+      "transparent": true,
+      "type": "timeseries"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Cumulative bytes and packets dropped since last firewall rule creation",
+      "description": "Cumulative dropped traffic over time.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2529,7 +2644,7 @@
             },
             "insertNulls": false,
             "lineInterpolation": "smooth",
-            "lineWidth": 1,
+            "lineWidth": 2,
             "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
@@ -2564,17 +2679,31 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byName",
-              "options": "Packets"
+              "id": "byRegexp",
+              "options": ".*[Bb]ytes.*"
             },
             "properties": [
               {
-                "id": "custom.axisPlacement",
-                "value": "right"
-              },
+                "id": "color",
+                "value": {
+                  "fixedColor": "#FF9830",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*[Pp]ackets.*"
+            },
+            "properties": [
               {
-                "id": "unit",
-                "value": "short"
+                "id": "color",
+                "value": {
+                  "fixedColor": "#F2495C",
+                  "mode": "fixed"
+                }
               }
             ]
           }
@@ -2597,7 +2726,6 @@
           "showLegend": true
         },
         "tooltip": {
-          "hideZeros": false,
           "mode": "multi",
           "sort": "desc"
         }
@@ -2624,8 +2752,8 @@
         }
       ],
       "title": "Dropped Traffic (Cumulative)",
-      "type": "timeseries",
-      "transparent": true
+      "transparent": true,
+      "type": "timeseries"
     },
     {
       "collapsed": false,
@@ -2645,7 +2773,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Current active decisions broken down by CrowdSec origin (crowdsec, CAPI, cscli)",
+      "description": "Active decision count grouped by origin (CrowdSec, cscli, CAPI).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2716,15 +2844,15 @@
         }
       ],
       "title": "Active Decisions by Origin",
-      "type": "bargauge",
-      "transparent": true
+      "transparent": true,
+      "type": "bargauge"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Rate of decisions processed per second, broken down by origin",
+      "description": "Decision processing rate per second grouped by origin.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2792,7 +2920,7 @@
       "options": {
         "legend": {
           "calcs": [
-            "mean",
+            "lastNotNull",
             "max"
           ],
           "displayMode": "table",
@@ -2800,7 +2928,6 @@
           "showLegend": true
         },
         "tooltip": {
-          "hideZeros": false,
           "mode": "multi",
           "sort": "desc"
         }
@@ -2818,15 +2945,15 @@
         }
       ],
       "title": "Decisions by Origin (Rate)",
-      "type": "timeseries",
-      "transparent": true
+      "transparent": true,
+      "type": "timeseries"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Total decisions processed since start, by origin and action",
+      "description": "Running total of decisions grouped by origin source.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2850,7 +2977,7 @@
             },
             "insertNulls": false,
             "lineInterpolation": "smooth",
-            "lineWidth": 1,
+            "lineWidth": 2,
             "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
@@ -2901,7 +3028,6 @@
           "showLegend": true
         },
         "tooltip": {
-          "hideZeros": false,
           "mode": "multi",
           "sort": "desc"
         }
@@ -2919,8 +3045,8 @@
         }
       ],
       "title": "Cumulative Decisions by Origin",
-      "type": "timeseries",
-      "transparent": true
+      "transparent": true,
+      "type": "timeseries"
     },
     {
       "collapsed": false,
@@ -2940,11 +3066,12 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Resident memory usage of the bouncer process",
+      "description": "Go process resident memory (RSS) and heap allocation.",
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "palette-classic"
+            "fixedColor": "#5794F2",
+            "mode": "fixed"
           },
           "custom": {
             "axisBorderShow": false,
@@ -2955,7 +3082,7 @@
             "barAlignment": 0,
             "barWidthFactor": 0.6,
             "drawStyle": "line",
-            "fillOpacity": 10,
+            "fillOpacity": 12,
             "gradientMode": "none",
             "hideFrom": {
               "legend": false,
@@ -3009,15 +3136,14 @@
         "legend": {
           "calcs": [
             "mean",
-            "lastNotNull",
-            "max"
+            "max",
+            "lastNotNull"
           ],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
         },
         "tooltip": {
-          "hideZeros": false,
           "mode": "multi",
           "sort": "desc"
         }
@@ -3053,19 +3179,20 @@
         }
       ],
       "title": "Memory Usage",
-      "type": "timeseries",
-      "transparent": true
+      "transparent": true,
+      "type": "timeseries"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "CPU seconds consumed by the bouncer process",
+      "description": "Go process CPU usage percentage.",
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "palette-classic"
+            "fixedColor": "#FF9830",
+            "mode": "fixed"
           },
           "custom": {
             "axisBorderShow": false,
@@ -3076,7 +3203,7 @@
             "barAlignment": 0,
             "barWidthFactor": 0.6,
             "drawStyle": "line",
-            "fillOpacity": 10,
+            "fillOpacity": 12,
             "gradientMode": "none",
             "hideFrom": {
               "legend": false,
@@ -3130,14 +3257,14 @@
         "legend": {
           "calcs": [
             "mean",
-            "max"
+            "max",
+            "lastNotNull"
           ],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
         },
         "tooltip": {
-          "hideZeros": false,
           "mode": "multi",
           "sort": "desc"
         }
@@ -3155,15 +3282,15 @@
         }
       ],
       "title": "CPU Usage",
-      "type": "timeseries",
-      "transparent": true
+      "transparent": true,
+      "type": "timeseries"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Number of active goroutines and open file descriptors",
+      "description": "Active goroutines and open file descriptors in the Go runtime.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -3178,7 +3305,7 @@
             "barAlignment": 0,
             "barWidthFactor": 0.6,
             "drawStyle": "line",
-            "fillOpacity": 10,
+            "fillOpacity": 8,
             "gradientMode": "none",
             "hideFrom": {
               "legend": false,
@@ -3245,15 +3372,14 @@
         "legend": {
           "calcs": [
             "mean",
-            "lastNotNull",
-            "max"
+            "max",
+            "lastNotNull"
           ],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
         },
         "tooltip": {
-          "hideZeros": false,
           "mode": "multi",
           "sort": "desc"
         }
@@ -3280,8 +3406,8 @@
         }
       ],
       "title": "Goroutines & File Descriptors",
-      "type": "timeseries",
-      "transparent": true
+      "transparent": true,
+      "type": "timeseries"
     }
   ],
   "preload": false,
@@ -3296,6 +3422,10 @@
   "templating": {
     "list": [
       {
+        "current": {
+          "text": "nginx-server-mikrotik-bouncer",
+          "value": "nginx-server-mikrotik-bouncer"
+        },
         "datasource": {
           "type": "prometheus",
           "uid": "${DS_PROMETHEUS}"
@@ -3317,65 +3447,5 @@
   "timezone": "browser",
   "title": "CrowdSec RouterOS Bouncer",
   "uid": "cs-routeros-bouncer",
-  "weekStart": "",
-  "__inputs": [
-    {
-      "name": "DS_PROMETHEUS",
-      "label": "Prometheus",
-      "description": "",
-      "type": "datasource",
-      "pluginId": "prometheus",
-      "pluginName": "Prometheus"
-    }
-  ],
-  "__requires": [
-    {
-      "type": "grafana",
-      "id": "grafana",
-      "name": "Grafana",
-      "version": "11.0.0"
-    },
-    {
-      "type": "datasource",
-      "id": "prometheus",
-      "name": "Prometheus",
-      "version": "1.0.0"
-    },
-    {
-      "type": "panel",
-      "id": "gauge",
-      "name": "Gauge",
-      "version": ""
-    },
-    {
-      "type": "panel",
-      "id": "stat",
-      "name": "Stat",
-      "version": ""
-    },
-    {
-      "type": "panel",
-      "id": "timeseries",
-      "name": "Time series",
-      "version": ""
-    },
-    {
-      "type": "panel",
-      "id": "piechart",
-      "name": "Pie chart",
-      "version": ""
-    },
-    {
-      "type": "panel",
-      "id": "bargauge",
-      "name": "Bar gauge",
-      "version": ""
-    },
-    {
-      "type": "panel",
-      "id": "state-timeline",
-      "name": "State timeline",
-      "version": ""
-    }
-  ]
+  "weekStart": ""
 }
