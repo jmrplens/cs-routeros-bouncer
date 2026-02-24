@@ -512,6 +512,8 @@ Enable with `metrics.enabled: true`. Available at `http://localhost:2112/metrics
 | `crowdsec_bouncer_dropped_bytes_total` | Gauge | Cumulative bytes dropped by firewall rules |
 | `crowdsec_bouncer_dropped_packets_total` | Gauge | Cumulative packets dropped by firewall rules |
 
+> **Note:** `dropped_bytes_total` and `dropped_packets_total` use the `_total` suffix despite being Gauges. This is because they reflect cumulative counters read from RouterOS — the bouncer sets (not increments) the value each cycle, making Gauge the correct instrument type. The `_total` suffix is retained for semantic clarity.
+
 ### CrowdSec LAPI Metrics
 
 The bouncer reports usage metrics directly to the CrowdSec LAPI (default: every 15 min). These metrics appear in the CrowdSec Console and include:

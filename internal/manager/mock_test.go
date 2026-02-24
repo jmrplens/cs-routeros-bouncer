@@ -59,12 +59,12 @@ type mockROS struct {
 	bulkAddCount     int
 	bulkAddErr       error
 
-	addRuleID     string
-	addRuleErr    error
+	addRuleID         string
+	addRuleErr        error
 	removeRuleErr     error
 	removeRuleErrFunc func(proto, mode, id string) error // per-call error (takes priority)
 	findRuleEntry     *ros.RuleEntry
-	findRuleErr   error
+	findRuleErr       error
 
 	listFirewallRulesResult []ros.RuleEntry
 	listFirewallRulesErr    error
@@ -1482,6 +1482,79 @@ func TestCreateFirewallRules_RejectWithNotOnAccept(t *testing.T) {
 		if c.Rule.Action == "accept" && c.Rule.RejectWith != "" {
 			t.Errorf("accept rules must not have reject-with, got %q", c.Rule.RejectWith)
 		}
+	}
+}
+
+// TestCreateFirewallRules_RawForcesDropOnReject verifies that raw rules always
+// use action=drop even when DenyAction is "reject", because the RouterOS raw
+// table does not support the reject action or reject-with parameter.
+func TestCreateFirewallRules_RawForcesDropOnReject(t *testing.T) {
+	mock := &mockROS{addRuleID: "*R1"}
+	cfg := baseConfig()
+	cfg.Firewall.DenyAction = "reject"
+	cfg.Firewall.RejectWith = "tcp-reset"
+	cfg.Firewall.Filter.Enabled = false
+	cfg.Firewall.Raw.Enabled = true
+	cfg.Firewall.Raw.Chains = []string{"prerouting"}
+	mgr := newTestManager(mock, cfg)
+
+	if err := mgr.createFirewallRules(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, c := range mock.addRuleCalls {
+		if c.Mode == "raw" {
+			if c.Rule.Action == "reject" {
+				t.Errorf("raw rules must not use action=reject, got %q", c.Rule.Action)
+			}
+			if c.Rule.Action != "drop" {
+				t.Errorf("raw rules should force action=drop, got %q", c.Rule.Action)
+			}
+			if c.Rule.RejectWith != "" {
+				t.Errorf("raw rules must not have reject-with, got %q", c.Rule.RejectWith)
+			}
+		}
+	}
+}
+
+// TestCreateFirewallRules_FilterRejectRawDrop verifies that when both filter
+// and raw are enabled with deny_action=reject, filter rules use reject while
+// raw rules are forced to drop.
+func TestCreateFirewallRules_FilterRejectRawDrop(t *testing.T) {
+	mock := &mockROS{addRuleID: "*R1"}
+	cfg := baseConfig()
+	cfg.Firewall.DenyAction = "reject"
+	cfg.Firewall.RejectWith = "tcp-reset"
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"input"}
+	cfg.Firewall.Raw.Enabled = true
+	cfg.Firewall.Raw.Chains = []string{"prerouting"}
+	mgr := newTestManager(mock, cfg)
+
+	if err := mgr.createFirewallRules(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var filterReject, rawDrop bool
+	for _, c := range mock.addRuleCalls {
+		if c.Mode == "filter" && c.Rule.Action == "reject" && c.Rule.RejectWith == "tcp-reset" {
+			filterReject = true
+		}
+		if c.Mode == "raw" && c.Rule.Action == "drop" {
+			rawDrop = true
+		}
+		if c.Mode == "raw" && c.Rule.Action == "reject" {
+			t.Errorf("raw rules must not use reject action")
+		}
+		if c.Mode == "raw" && c.Rule.RejectWith != "" {
+			t.Errorf("raw rules must not have reject-with, got %q", c.Rule.RejectWith)
+		}
+	}
+	if !filterReject {
+		t.Error("expected filter rules to use action=reject with reject-with=tcp-reset")
+	}
+	if !rawDrop {
+		t.Error("expected raw rules to use action=drop")
 	}
 }
 

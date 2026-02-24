@@ -697,18 +697,23 @@ func (m *Manager) createFirewallRules() error {
 				}
 
 				comment := buildRuleComment(m.commentPrefix(), "raw", chain, "input", proto)
+
+				// Raw table does NOT support action=reject or reject-with in RouterOS;
+				// force "drop" regardless of the configured deny_action.
+				rawAction := m.cfg.Firewall.DenyAction
+				if rawAction == "reject" {
+					rawAction = "drop"
+				}
+
 				rule := rosClient.FirewallRule{
 					Chain:          chain,
-					Action:         m.cfg.Firewall.DenyAction,
+					Action:         rawAction,
 					SrcAddressList: listName,
 					Comment:        comment,
 					Log:            m.cfg.Firewall.Log,
 					LogPrefix:      m.resolveLogPrefix("raw"),
 				}
-				// Raw does NOT support connection-state
-				if m.cfg.Firewall.DenyAction == "reject" && m.cfg.Firewall.RejectWith != "" {
-					rule.RejectWith = m.cfg.Firewall.RejectWith
-				}
+				// Raw does NOT support connection-state or reject-with
 				m.applyInputRuleOptions(&rule)
 
 				if err := m.ensureFirewallRule(proto, "raw", rule); err != nil {

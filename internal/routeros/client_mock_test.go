@@ -1760,7 +1760,7 @@ func TestListFirewallRulesBySignature_ParsesAllFields(t *testing.T) {
 		"in-interface-list": "LAN", "out-interface": "ether2",
 		"out-interface-list": "WAN", "connection-state": "new",
 		"reject-with": "icmp-net-unreachable",
-		"comment": "cs:filter-forward-v4 @cs-routeros-bouncer",
+		"comment":     "cs:filter-forward-v4 @cs-routeros-bouncer",
 	}))
 
 	entries, err := c.ListFirewallRulesBySignature("ip", "filter", "@cs-routeros-bouncer")

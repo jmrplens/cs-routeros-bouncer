@@ -126,7 +126,7 @@ chain=input action=drop src-address-list=crowdsec-banned connection-state=new
 When `block_input.whitelist` is set, the bouncer creates an accept rule **before** the drop rule. This allows IPs in the whitelist to bypass the ban, even if they appear in the banned address list.
 
 ```routeros
-;;; crowdsec-bouncer:filter-input-input-v4 @cs-routeros-bouncer
+;;; crowdsec-bouncer:filter-input-whitelist-v4 @cs-routeros-bouncer
 chain=input action=accept src-address-list=crowdsec-whitelist in-interface-list=WAN
 
 ;;; crowdsec-bouncer:filter-input-input-v4 @cs-routeros-bouncer
