@@ -20,7 +20,7 @@ curl http://localhost:2112/health
 {
   "status": "ok",
   "routeros_connected": true,
-  "version": "v0.1.0"
+  "version": "vX.Y.Z"
 }
 ```
 

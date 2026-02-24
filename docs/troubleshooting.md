@@ -170,3 +170,46 @@ Output format:
 ```json
 {"level":"info","time":"2025-01-15T10:30:00Z","message":"ban IPv4","ip":"1.2.3.4","duration":"4h0m0s"}
 ```
+
+## Firewall customization issues
+
+### Reject-with not working
+
+!!! failure "Symptoms"
+    ```
+    reject_with is only valid when deny_action is reject
+    ```
+
+**Solution:** Set `firewall.deny_action: reject` — the `reject_with` parameter is ignored when `deny_action` is `drop`.
+
+### Connection-state has no effect
+
+!!! failure "Symptoms"
+    Banned IPs are blocked even for established connections despite `connection_state: ["new"]`.
+
+**Solutions:**
+
+1. Verify you are using **filter** rules, not raw. Connection-state matching is only available in the filter table (raw rules are processed before connection tracking).
+2. Check the rule in MikroTik: `/ip/firewall/filter/print` — the `connection-state` property should be present.
+
+### Whitelist not bypassing bans
+
+!!! failure "Symptoms"
+    IPs in the whitelist address list are still being blocked.
+
+**Solutions:**
+
+1. Verify the address list exists in MikroTik: `/ip/firewall/address-list/print where list=crowdsec-whitelist`
+2. The whitelist only works for **input** rules (filter). It places an accept rule before the drop rule.
+3. Ensure the whitelist address list name matches exactly in `block_input.whitelist`.
+
+### Output passthrough not working
+
+!!! failure "Symptoms"
+    A local IP configured in `passthrough_v4` is still being affected by output rules.
+
+**Solutions:**
+
+1. Verify `block_output.enabled: true` — passthrough only applies to output rules.
+2. If using `passthrough_v4_list`, the list takes **precedence** over `passthrough_v4` IP. Ensure the list exists in MikroTik.
+3. Check the rule in MikroTik — it should show `src-address=!10.0.0.100` or `src-address-list=!list-name`.

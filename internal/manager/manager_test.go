@@ -3,29 +3,33 @@
 package manager
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/jmrplens/cs-routeros-bouncer/internal/config"
 	"github.com/jmrplens/cs-routeros-bouncer/internal/crowdsec"
+	ros "github.com/jmrplens/cs-routeros-bouncer/internal/routeros"
 )
 
+var errMock = errors.New("mock error")
+
 // TestBuildRuleComment verifies that buildRuleComment produces the expected
-// deterministic comment format: crowdsec-bouncer:<mode>-<chain>-<direction>-<proto>.
+// deterministic comment format with the fixed ruleSignature suffix.
 func TestBuildRuleComment(t *testing.T) {
 	tests := []struct {
 		mode, chain, direction, proto string
 		want                          string
 	}{
-		{"filter", "input", "input", "ip", "crowdsec-bouncer:filter-input-input-v4"},
-		{"filter", "input", "input", "ipv6", "crowdsec-bouncer:filter-input-input-v6"},
-		{"raw", "prerouting", "input", "ip", "crowdsec-bouncer:raw-prerouting-input-v4"},
-		{"raw", "prerouting", "input", "ipv6", "crowdsec-bouncer:raw-prerouting-input-v6"},
-		{"filter", "forward", "output", "ip", "crowdsec-bouncer:filter-forward-output-v4"},
+		{"filter", "input", "input", "ip", "crowdsec-bouncer:filter-input-input-v4 @cs-routeros-bouncer"},
+		{"filter", "input", "input", "ipv6", "crowdsec-bouncer:filter-input-input-v6 @cs-routeros-bouncer"},
+		{"raw", "prerouting", "input", "ip", "crowdsec-bouncer:raw-prerouting-input-v4 @cs-routeros-bouncer"},
+		{"raw", "prerouting", "input", "ipv6", "crowdsec-bouncer:raw-prerouting-input-v6 @cs-routeros-bouncer"},
+		{"filter", "forward", "output", "ip", "crowdsec-bouncer:filter-forward-output-v4 @cs-routeros-bouncer"},
 	}
 	for _, tt := range tests {
-		got := buildRuleComment(tt.mode, tt.chain, tt.direction, tt.proto)
+		got := buildRuleComment(defaultCommentPrefix, tt.mode, tt.chain, tt.direction, tt.proto)
 		if got != tt.want {
 			t.Errorf("buildRuleComment(%q,%q,%q,%q) = %q, want %q",
 				tt.mode, tt.chain, tt.direction, tt.proto, got, tt.want)
@@ -41,12 +45,12 @@ func TestParseRuleCommentValid(t *testing.T) {
 		wantProto string
 		wantMode  string
 	}{
-		{"crowdsec-bouncer:filter-input-input-v4", "ip", "filter"},
-		{"crowdsec-bouncer:raw-prerouting-input-v6", "ipv6", "raw"},
-		{"crowdsec-bouncer:filter-forward-output-v4", "ip", "filter"},
+		{"crowdsec-bouncer:filter-input-input-v4 @cs-routeros-bouncer", "ip", "filter"},
+		{"crowdsec-bouncer:raw-prerouting-input-v6 @cs-routeros-bouncer", "ipv6", "raw"},
+		{"crowdsec-bouncer:filter-forward-output-v4 @cs-routeros-bouncer", "ip", "filter"},
 	}
 	for _, tt := range tests {
-		proto, mode := parseRuleComment(tt.comment)
+		proto, mode := parseRuleComment(defaultCommentPrefix, tt.comment)
 		if proto != tt.wantProto || mode != tt.wantMode {
 			t.Errorf("parseRuleComment(%q) = (%q, %q), want (%q, %q)",
 				tt.comment, proto, mode, tt.wantProto, tt.wantMode)
@@ -64,7 +68,7 @@ func TestParseRuleCommentInvalid(t *testing.T) {
 		"other-prefix:filter-input-input-v4",
 	}
 	for _, comment := range tests {
-		proto, mode := parseRuleComment(comment)
+		proto, mode := parseRuleComment(defaultCommentPrefix, comment)
 		if proto != "" || mode != "" {
 			t.Errorf("parseRuleComment(%q) should return empty, got (%q, %q)", comment, proto, mode)
 		}
@@ -78,10 +82,10 @@ func TestBuildAddressComment(t *testing.T) {
 		Origin:   "crowdsec",
 		Scenario: "ssh-bf",
 	}
-	comment := buildAddressComment(d)
+	comment := buildAddressComment(defaultCommentPrefix, d)
 
-	if !strings.HasPrefix(comment, commentPrefix) {
-		t.Errorf("comment should start with %q, got %q", commentPrefix, comment)
+	if !strings.HasPrefix(comment, defaultCommentPrefix) {
+		t.Errorf("comment should start with %q, got %q", defaultCommentPrefix, comment)
 	}
 	if !strings.Contains(comment, "crowdsec") {
 		t.Error("comment should contain origin")
@@ -92,6 +96,9 @@ func TestBuildAddressComment(t *testing.T) {
 	if !strings.Contains(comment, "T") || !strings.Contains(comment, "Z") {
 		t.Error("comment should contain UTC timestamp")
 	}
+	if !hasRuleSignature(comment) {
+		t.Error("comment should contain fixed signature")
+	}
 }
 
 // TestBuildAddressCommentEmptyFields verifies that buildAddressComment
@@ -101,10 +108,10 @@ func TestBuildAddressCommentEmptyFields(t *testing.T) {
 		Origin:   "",
 		Scenario: "",
 	}
-	comment := buildAddressComment(d)
+	comment := buildAddressComment(defaultCommentPrefix, d)
 
-	if !strings.HasPrefix(comment, commentPrefix) {
-		t.Errorf("comment should start with %q, got %q", commentPrefix, comment)
+	if !strings.HasPrefix(comment, defaultCommentPrefix) {
+		t.Errorf("comment should start with %q, got %q", defaultCommentPrefix, comment)
 	}
 }
 
@@ -115,7 +122,7 @@ func TestBuildAddressCommentPartialFields(t *testing.T) {
 		Origin:   "cscli",
 		Scenario: "",
 	}
-	comment := buildAddressComment(d)
+	comment := buildAddressComment(defaultCommentPrefix, d)
 	if !strings.Contains(comment, "cscli") {
 		t.Error("comment should contain origin 'cscli'")
 	}
@@ -270,8 +277,8 @@ func TestBuildRuleCommentRoundTrip(t *testing.T) {
 		{"raw", "prerouting", "input", "ipv6", "ipv6"},
 	}
 	for _, tt := range tests {
-		comment := buildRuleComment(tt.mode, tt.chain, tt.direction, tt.proto)
-		gotProto, gotMode := parseRuleComment(comment)
+		comment := buildRuleComment(defaultCommentPrefix, tt.mode, tt.chain, tt.direction, tt.proto)
+		gotProto, gotMode := parseRuleComment(defaultCommentPrefix, comment)
 		if gotProto != tt.wantProto {
 			t.Errorf("round-trip proto: got %q, want %q (comment: %q)", gotProto, tt.wantProto, comment)
 		}
@@ -286,9 +293,11 @@ func TestBuildRuleCommentRoundTrip(t *testing.T) {
 func TestBuildAddressCommentTimestamp(t *testing.T) {
 	d := &crowdsec.Decision{Origin: "test", Scenario: "test"}
 	before := time.Now().UTC()
-	comment := buildAddressComment(d)
+	comment := buildAddressComment(defaultCommentPrefix, d)
 	after := time.Now().UTC()
 
+	// Strip the signature suffix before splitting by |
+	comment = strings.TrimSuffix(comment, " "+ruleSignature)
 	parts := strings.Split(comment, "|")
 	ts := parts[len(parts)-1]
 	parsed, err := time.Parse("2006-01-02T15:04:05Z", ts)
@@ -298,4 +307,128 @@ func TestBuildAddressCommentTimestamp(t *testing.T) {
 	if parsed.Before(before.Truncate(time.Second)) || parsed.After(after.Add(time.Second)) {
 		t.Errorf("timestamp %v not in expected range [%v, %v]", parsed, before, after)
 	}
+}
+
+// TestBuildRuleCommentCustomPrefix verifies that a custom prefix is correctly
+// used in place of the default.
+func TestBuildRuleCommentCustomPrefix(t *testing.T) {
+	got := buildRuleComment("my-custom", "filter", "input", "input", "ip")
+	want := "my-custom:filter-input-input-v4 @cs-routeros-bouncer"
+	if got != want {
+		t.Errorf("buildRuleComment with custom prefix = %q, want %q", got, want)
+	}
+}
+
+// TestParseRuleCommentCustomPrefix verifies that parseRuleComment works with
+// a non-default prefix.
+func TestParseRuleCommentCustomPrefix(t *testing.T) {
+	proto, mode := parseRuleComment("my-custom", "my-custom:raw-prerouting-input-v6 @cs-routeros-bouncer")
+	if proto != "ipv6" || mode != "raw" {
+		t.Errorf("parseRuleComment with custom prefix = (%q, %q), want (ipv6, raw)", proto, mode)
+	}
+}
+
+// TestCommentPrefixMethod verifies the Manager.commentPrefix() method
+// returns the configured value or falls back to default.
+func TestCommentPrefixMethod(t *testing.T) {
+	cfg := config.Config{}
+	m := NewManager(cfg, "test")
+
+	if got := m.commentPrefix(); got != defaultCommentPrefix {
+		t.Errorf("empty config: got %q, want %q", got, defaultCommentPrefix)
+	}
+
+	cfg.Firewall.CommentPrefix = "my-prefix"
+	m2 := NewManager(cfg, "test")
+	if got := m2.commentPrefix(); got != "my-prefix" {
+		t.Errorf("custom config: got %q, want %q", got, "my-prefix")
+	}
+}
+
+// TestHasRuleSignature verifies that hasRuleSignature correctly detects
+// the fixed bouncer signature in comment strings.
+func TestHasRuleSignature(t *testing.T) {
+	tests := []struct {
+		comment string
+		want    bool
+	}{
+		{"crowdsec-bouncer:filter-input-input-v4 @cs-routeros-bouncer", true},
+		{"my-prefix:raw-prerouting-input-v6 @cs-routeros-bouncer", true},
+		{"prefix|origin|scenario|ts @cs-routeros-bouncer", true},
+		{"crowdsec-bouncer:filter-input-input-v4", false},
+		{"random comment without signature", false},
+		{"", false},
+		{"@cs-routeros-bouncer", true},
+	}
+	for _, tt := range tests {
+		if got := hasRuleSignature(tt.comment); got != tt.want {
+			t.Errorf("hasRuleSignature(%q) = %v, want %v", tt.comment, got, tt.want)
+		}
+	}
+}
+
+// TestBuildRuleCommentContainsSignature verifies that every comment produced
+// by buildRuleComment contains the fixed ruleSignature.
+func TestBuildRuleCommentContainsSignature(t *testing.T) {
+	comment := buildRuleComment("any-prefix", "filter", "input", "input", "ip")
+	if !hasRuleSignature(comment) {
+		t.Errorf("buildRuleComment output should contain signature, got %q", comment)
+	}
+}
+
+// TestBuildAddressCommentContainsSignature verifies that every comment
+// produced by buildAddressComment contains the fixed ruleSignature.
+func TestBuildAddressCommentContainsSignature(t *testing.T) {
+	d := &crowdsec.Decision{Origin: "test", Scenario: "test"}
+	comment := buildAddressComment("any-prefix", d)
+	if !hasRuleSignature(comment) {
+		t.Errorf("buildAddressComment output should contain signature, got %q", comment)
+	}
+}
+
+// TestPollSystemMetricsSuccess verifies that pollSystemMetrics calls
+// the RouterOS client methods and doesn't panic on success.
+func TestPollSystemMetricsSuccess(t *testing.T) {
+	mock := &mockROS{}
+	cfg := config.Config{
+		Metrics: config.MetricsConfig{Enabled: true, RouterOSPollInterval: 30 * time.Second},
+	}
+	m := newTestManager(mock, cfg)
+	// Should not panic or error.
+	m.pollSystemMetrics()
+}
+
+// TestPollSystemMetricsResourcesError verifies that pollSystemMetrics
+// handles errors from GetSystemResources gracefully.
+func TestPollSystemMetricsResourcesError(t *testing.T) {
+	mock := &mockROS{systemResourcesErr: errMock}
+	cfg := config.Config{
+		Metrics: config.MetricsConfig{Enabled: true, RouterOSPollInterval: 30 * time.Second},
+	}
+	m := newTestManager(mock, cfg)
+	m.pollSystemMetrics() // should not panic
+}
+
+// TestPollSystemMetricsHealthError verifies that pollSystemMetrics
+// handles errors from GetSystemHealth gracefully.
+func TestPollSystemMetricsHealthError(t *testing.T) {
+	mock := &mockROS{systemHealthErr: errMock}
+	cfg := config.Config{
+		Metrics: config.MetricsConfig{Enabled: true, RouterOSPollInterval: 30 * time.Second},
+	}
+	m := newTestManager(mock, cfg)
+	m.pollSystemMetrics() // should not panic
+}
+
+// TestPollSystemMetricsTemperatureUnavailable verifies that a negative
+// temperature value (-1) does not update the gauge.
+func TestPollSystemMetricsTemperatureUnavailable(t *testing.T) {
+	mock := &mockROS{
+		systemHealth: &ros.SystemHealth{CPUTemperature: -1},
+	}
+	cfg := config.Config{
+		Metrics: config.MetricsConfig{Enabled: true, RouterOSPollInterval: 30 * time.Second},
+	}
+	m := newTestManager(mock, cfg)
+	m.pollSystemMetrics() // should not update temperature gauge
 }

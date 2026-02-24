@@ -97,5 +97,5 @@ Or use the bouncer's health endpoint after starting:
 
 ```bash
 curl http://localhost:2112/health
-# {"status":"ok","routeros_connected":true,"version":"v0.1.0"}
+# {"status":"ok","routeros_connected":true,"version":"vX.Y.Z"}
 ```

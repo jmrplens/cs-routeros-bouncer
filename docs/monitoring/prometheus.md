@@ -61,12 +61,21 @@ Unix timestamp of when the bouncer started. Useful for calculating uptime.
 
 Number of currently active ban decisions, broken down by protocol.
 
+### `crowdsec_bouncer_active_decisions_by_origin`
+
+| | |
+|---|---|
+| **Type** | Gauge |
+| **Labels** | `origin` (`crowdsec`, `cscli`, `CAPI`) |
+
+Number of currently active ban decisions, broken down by CrowdSec origin.
+
 ### `crowdsec_bouncer_decisions_total`
 
 | | |
 |---|---|
 | **Type** | Counter |
-| **Labels** | `action` (`ban`, `unban`), `protocol` (`ipv4`, `ipv6`) |
+| **Labels** | `action` (`ban`, `unban`), `proto` (`ipv4`, `ipv6`), `origin` (`crowdsec`, `cscli`, `CAPI`) |
 
 Total number of decisions processed since startup.
 
@@ -75,13 +84,15 @@ Total number of decisions processed since startup.
 | | |
 |---|---|
 | **Type** | Counter |
-| **Labels** | `type` (`api`, `routeros`, `reconcile`) |
+| **Labels** | `operation` (`api`, `routeros`, `reconcile`, `add`, `find`) |
 
 Total number of errors by category:
 
 - `api` — CrowdSec LAPI communication errors
 - `routeros` — MikroTik API errors
 - `reconcile` — Reconciliation errors
+- `add` — Address add/update errors
+- `find` — Address lookup errors
 
 ### `crowdsec_bouncer_operation_duration_seconds`
 
@@ -105,13 +116,90 @@ Latency of operations:
 
 RouterOS connection status: `1` = connected, `0` = disconnected.
 
+### `crowdsec_bouncer_routeros_cpu_load`
+
+| | |
+|---|---|
+| **Type** | Gauge |
+
+RouterOS CPU load percentage (0–100). Polled from `/system/resource/print`.
+
+### `crowdsec_bouncer_routeros_memory_used_bytes`
+
+| | |
+|---|---|
+| **Type** | Gauge |
+
+RouterOS used memory in bytes (total − free). Polled from `/system/resource/print`.
+
+### `crowdsec_bouncer_routeros_memory_total_bytes`
+
+| | |
+|---|---|
+| **Type** | Gauge |
+
+RouterOS total memory in bytes. Polled from `/system/resource/print`.
+
+### `crowdsec_bouncer_routeros_cpu_temperature_celsius`
+
+| | |
+|---|---|
+| **Type** | Gauge |
+
+RouterOS CPU temperature in degrees Celsius. Polled from `/system/health/print`. Not updated if the device does not have a temperature sensor.
+
 ### `crowdsec_bouncer_reconciliation_total`
 
 | | |
 |---|---|
 | **Type** | Counter |
+| **Labels** | `action` (`added`, `removed`) |
 
-Total number of reconciliation events since startup.
+Total number of reconciliation actions performed since startup.
+
+### `crowdsec_bouncer_dropped_bytes_total`
+
+| | |
+|---|---|
+| **Type** | Gauge |
+
+Cumulative bytes dropped by firewall rules managed by the bouncer. Read from MikroTik firewall counters across all 4 paths (filter+raw × IPv4+IPv6).
+
+### `crowdsec_bouncer_dropped_packets_total`
+
+| | |
+|---|---|
+| **Type** | Gauge |
+
+Cumulative packets dropped by firewall rules managed by the bouncer. Read from MikroTik firewall counters across all 4 paths (filter+raw × IPv4+IPv6).
+
+### `crowdsec_bouncer_config_info`
+
+| | |
+|---|---|
+| **Type** | Gauge (info pattern, value always 1) |
+| **Labels** | `group`, `param`, `value` |
+| **Series** | 31 (one per configuration parameter) |
+
+Exposes the current bouncer configuration as one time series per parameter. Each series carries three labels: `group` (category), `param` (human-readable name), and `value` (current setting). Sensitive fields (API key, password, TLS cert paths) are excluded.
+
+**Groups and parameters (31 total):**
+
+| Group | Parameters |
+|-------|-----------|
+| `CrowdSec` | API URL, Update Frequency, Origins, Scopes, Decision Types, TLS Enabled, Retry Initial Connect |
+| `MikroTik` | Address, TLS Enabled, Connection Pool Size, Connection Timeout, Command Timeout |
+| `Firewall` | IPv4 Enabled, IPv4 Address List, IPv6 Enabled, IPv6 Address List, Filter Enabled, Filter Chains, Raw Enabled, Raw Chains, Deny Action, Block Output, Rule Placement, Comment Prefix, Logging Enabled |
+| `Logging` | Level, Format |
+| `Metrics` | Enabled, Listen Address, Listen Port, RouterOS Poll Interval |
+
+**Example output:**
+
+```
+crowdsec_bouncer_config_info{group="CrowdSec",param="API URL",value="http://localhost:8080/"} 1
+crowdsec_bouncer_config_info{group="Firewall",param="Deny Action",value="drop"} 1
+crowdsec_bouncer_config_info{group="MikroTik",param="Connection Pool Size",value="10"} 1
+```
 
 ## CrowdSec LAPI Metrics
 
@@ -133,8 +221,8 @@ Each push also includes bouncer metadata:
 | Field | Example |
 |-------|---------|
 | Type | `cs-routeros-bouncer` |
-| Version | `v1.1.0` |
-| OS | `debian 13.3` |
+| Version | `vX.Y.Z` |
+| OS | `linux` |
 | Startup timestamp | UTC epoch |
 | Feature flags | `[]` (expected empty for bouncers) |
 

@@ -154,7 +154,7 @@ go tool cover -func=coverage.out
 |---------|----------|-------|
 | `internal/config` | ~98% | Config loading, validation, env overrides |
 | `internal/crowdsec` | ~93% | Decision parsing, stream creation, duration parsing, logrus adapter |
-| `internal/manager` | ~89% | Start/Shutdown, ban/unban, reconciliation, bulk ops, pool, cache |
+| `internal/manager` | ~90% | Start/Shutdown, ban/unban, reconciliation, bulk ops, pool, cache |
 | `internal/metrics` | ~97% | All metric recording, health endpoint, server lifecycle |
 | `internal/metrics/lapi` | ~72% | metricsUpdater, metricItem, CounterCollector (SDK wiring excluded) |
 | `internal/routeros` | ~93% | Address/firewall ops, bulk scripts, connect/reconnect, identity |
@@ -224,9 +224,9 @@ Key variables:
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `MIKROTIK_SSH_HOST` | Router IP address | `192.168.0.1` |
-| `MIKROTIK_SSH_PORT` | SSH port | `2200` |
+| `MIKROTIK_SSH_PORT` | SSH port | `22` |
 | `MIKROTIK_SSH_USER` | SSH username | `admin` |
-| `MIKROTIK_SSH_KEY` | Path to SSH private key | `~/.ssh/id_mikrotik` |
+| `MIKROTIK_SSH_KEY` | Path to SSH private key (optional) | `~/.ssh/id_rsa` |
 | `MIKROTIK_SNMP_COMMUNITY` | SNMP v2c community string | `public` |
 | `CROWDSEC_LIST_IPV4` | IPv4 address list name | `crowdsec-banned` |
 | `CROWDSEC_LIST_IPV6` | IPv6 address list name | `crowdsec6-banned` |
@@ -235,7 +235,7 @@ Key variables:
 #### Running Tests
 
 ```bash
-# Run all test groups (t1–t7, excludes CAPI)
+# Run all test groups (t1–t7 and t9, excludes CAPI)
 ./run_tests.sh
 
 # Run specific groups
@@ -252,32 +252,33 @@ Key variables:
 
 #### Test Groups
 
-The 44 tests are organized into 8 groups:
+The 60 tests are organized into 9 groups:
 
 | Group | File | Tests | Description |
 |-------|------|-------|-------------|
 | **T1** | `t1_integrity.sh` | 7 | **Data integrity** — IPv4/IPv6 completeness vs LAPI, orphan detection, address format validation, comment prefix integrity, duplicate detection, router reachability |
-| **T2** | `t2_cache.sh` | 6 | **Cache consistency** — Prometheus metrics vs router count, live ban/unban lifecycle, expired-on-router resilience, cache fast-path verification, rapid ban/unban cycles |
+| **T2** | `t2_cache.sh` | 7 | **Cache consistency** — Prometheus metrics vs router count, live ban/unban lifecycle, expired-on-router resilience, cache fast-path verification, rapid ban/unban cycles |
 | **T3** | `t3_bulk.sh` | 6 | **Bulk operations** — Full reconciliation from empty, partial sync (restore missing addresses), orphan removal, bulk script error checking, stale script cleanup, batch remove |
 | **T4** | `t4_pool.sh` | 3 | **Connection pool** — Pool establishment logging, concurrent operation verification, clean shutdown and restart with state preservation |
 | **T5** | `t5_edge.sh` | 6 | **Edge cases** — Duplicate IP handling, rapid ban/unban within single poll cycle, 20 parallel bans stress test, restart idempotency (3× consecutive), deleteCh drain optimization, IPv6 full lifecycle |
 | **T6** | `t6_cpu.sh` | 3 | **CPU monitoring** — Steady-state CPU via SNMP, reconciliation peak CPU measurement, post-reconciliation recovery (requires `snmpget`) |
 | **T7** | `t7_timing.sh` | 5 | **Timing measurements** — Full reconciliation wall-clock time, single ban latency, single unban latency, restart time with existing data, bulk add throughput (addr/s) |
-| **T8** | `t8_capi.sh` | 8 | **CAPI stress** — Full reconciliation with ~25k community IPs, CPU peak during bulk import, IP completeness, IPv6 parity, restart idempotency at scale, unban latency with large cache, steady-state CPU, restore to local-only (requires `--capi` flag) |
+| **T8** | `t8_capi.sh` | 10 | **CAPI stress** — Full reconciliation with ~25k community IPs, CPU peak during bulk import, IP completeness, IPv6 parity, restart idempotency at scale, unban latency with large cache, steady-state CPU, restore to local-only (requires `--capi` flag) |
+| **T9** | `t9_advanced.sh` | 13 | **Advanced firewall config** — reject-with action, connection-state filter, hierarchical log-prefix, input whitelist, output passthrough (per-IP and address-list variants) |
 
 #### Writing New Tests
 
 Each test group is a standalone Bash script sourced by `run_tests.sh`. To add a
 new group:
 
-1. **Create the file** as `tests/functional/tN_name.sh` (e.g., `t9_network.sh`)
+1. **Create the file** as `tests/functional/tN_name.sh` (e.g., `t10_network.sh`)
 2. **Source helpers** — the file is `source`d by the runner, so all `helpers.sh`
    functions are available automatically
 3. **Use `run_test`** for each test case:
 
 ```bash
-# T9.1: Example test
-run_test "T9.1" "Description of what this test verifies" '
+# T10.1: Example test
+run_test "T10.1" "Description of what this test verifies" '
     local result
     result=$(ssh_cmd "/some/command")
     [[ "$result" == "expected" ]]
@@ -319,7 +320,7 @@ The shared library (`lib/helpers.sh`) provides these function categories:
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| SSH tests fail with "connection refused" | Wrong port or key | Verify `MIKROTIK_SSH_PORT` and `MIKROTIK_SSH_KEY` in `.env` |
+| SSH tests fail with "connection refused" | Wrong port or firewall | Verify `MIKROTIK_SSH_PORT` in `.env` |
 | SNMP tests skipped | `snmpget` not installed | `apt install snmp` or `dnf install net-snmp-utils` |
 | T1.1 fails with >5 diff | Timing drift between LAPI query and SSH query | Re-run — transient decisions may expire between queries |
 | T3.1 hangs at "waiting for reconciliation" | Bouncer failed to start | Check `journalctl -u cs-routeros-bouncer` |

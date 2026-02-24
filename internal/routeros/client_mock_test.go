@@ -873,7 +873,8 @@ func TestAddFirewallRule_AllOptionalFields(t *testing.T) {
 
 	rule := FirewallRule{
 		Chain:            "input",
-		Action:           "drop",
+		Action:           "reject",
+		SrcAddress:       "!10.0.0.5",
 		SrcAddressList:   "src-list",
 		DstAddressList:   "dst-list",
 		InInterface:      "ether1",
@@ -883,9 +884,11 @@ func TestAddFirewallRule_AllOptionalFields(t *testing.T) {
 		Comment:          "full-rule",
 		Log:              true,
 		LogPrefix:        "CS-DROP",
+		ConnectionState:  "new,invalid",
+		RejectWith:       "tcp-reset",
 	}
 
-	_, err := c.AddFirewallRule("ip", "raw", rule)
+	_, err := c.AddFirewallRule("ip", "filter", rule)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -903,8 +906,11 @@ func TestAddFirewallRule_AllOptionalFields(t *testing.T) {
 		"=out-interface-list=LAN",
 		"=log=true",
 		"=log-prefix=CS-DROP",
+		"=src-address=!10.0.0.5",
 		"=src-address-list=src-list",
 		"=dst-address-list=dst-list",
+		"=connection-state=new,invalid",
+		"=reject-with=tcp-reset",
 	}
 	for _, e := range expected {
 		if !argSet[e] {
@@ -1061,11 +1067,14 @@ func TestListFirewallRules_ParsesAllFields(t *testing.T) {
 	c := newTestClient(mc)
 
 	mc.pushReply(reReply(map[string]string{
-		".id": "*1", "chain": "input", "action": "drop",
+		".id": "*1", "chain": "input", "action": "reject",
+		"src-address":      "!10.0.0.5",
 		"src-address-list": "src", "dst-address-list": "dst",
 		"in-interface": "ether1", "in-interface-list": "WAN",
 		"out-interface": "ether2", "out-interface-list": "LAN",
-		"comment": "full",
+		"connection-state": "new,invalid",
+		"reject-with":      "tcp-reset",
+		"comment":          "full",
 	}))
 
 	entries, err := c.ListFirewallRules("ip", "filter", "")
@@ -1073,10 +1082,19 @@ func TestListFirewallRules_ParsesAllFields(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	e := entries[0]
-	if e.Chain != "input" || e.Action != "drop" || e.SrcAddressList != "src" ||
+	if e.Chain != "input" || e.Action != "reject" || e.SrcAddressList != "src" ||
 		e.DstAddressList != "dst" || e.InInterface != "ether1" || e.InInterfaceList != "WAN" ||
 		e.OutInterface != "ether2" || e.OutInterfaceList != "LAN" || e.Comment != "full" {
 		t.Fatalf("field mismatch: %+v", e)
+	}
+	if e.SrcAddress != "!10.0.0.5" {
+		t.Errorf("expected SrcAddress '!10.0.0.5', got %q", e.SrcAddress)
+	}
+	if e.ConnectionState != "new,invalid" {
+		t.Errorf("expected ConnectionState 'new,invalid', got %q", e.ConnectionState)
+	}
+	if e.RejectWith != "tcp-reset" {
+		t.Errorf("expected RejectWith 'tcp-reset', got %q", e.RejectWith)
 	}
 }
 
@@ -1654,5 +1672,125 @@ func TestGetFirewallCounters_InvalidNumbers(t *testing.T) {
 
 	if fc.TotalBytes != 0 || fc.TotalPkts != 0 {
 		t.Errorf("want (0,0) for invalid numbers, got (%d,%d)", fc.TotalBytes, fc.TotalPkts)
+	}
+}
+
+// ===========================================================================
+// ListFirewallRulesBySignature tests — 0% coverage before
+// ===========================================================================
+
+// TestListFirewallRulesBySignature_FiltersMatching verifies that only rules
+// whose comment contains the signature substring are returned.
+func TestListFirewallRulesBySignature_FiltersMatching(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+
+	mc.pushReply(reReply(
+		map[string]string{
+			".id": "*1", "chain": "input", "action": "drop",
+			"comment": "cs-bouncer:filter-input-v4 @cs-routeros-bouncer",
+		},
+		map[string]string{
+			".id": "*2", "chain": "forward", "action": "accept",
+			"comment": "user rule - no signature",
+		},
+		map[string]string{
+			".id": "*3", "chain": "input", "action": "reject",
+			"comment": "other:raw-prerouting-v6 @cs-routeros-bouncer",
+		},
+	))
+
+	entries, err := c.ListFirewallRulesBySignature("ip", "filter", "@cs-routeros-bouncer")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(entries))
+	}
+	if entries[0].ID != "*1" || entries[1].ID != "*3" {
+		t.Errorf("wrong IDs: %q, %q", entries[0].ID, entries[1].ID)
+	}
+}
+
+// TestListFirewallRulesBySignature_NoMatches verifies an empty result when
+// no rules contain the signature.
+func TestListFirewallRulesBySignature_NoMatches(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+
+	mc.pushReply(reReply(
+		map[string]string{".id": "*1", "comment": "user rule"},
+		map[string]string{".id": "*2", "comment": "another rule"},
+	))
+
+	entries, err := c.ListFirewallRulesBySignature("ip", "raw", "@cs-routeros-bouncer")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("expected 0 entries, got %d", len(entries))
+	}
+}
+
+// TestListFirewallRulesBySignature_EmptyList verifies handling of no rules.
+func TestListFirewallRulesBySignature_EmptyList(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+	mc.pushReply(emptyReply())
+
+	entries, err := c.ListFirewallRulesBySignature("ipv6", "filter", "@cs-routeros-bouncer")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("expected 0 entries, got %d", len(entries))
+	}
+}
+
+// TestListFirewallRulesBySignature_ParsesAllFields verifies all RuleEntry
+// fields are populated.
+func TestListFirewallRulesBySignature_ParsesAllFields(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+
+	mc.pushReply(reReply(map[string]string{
+		".id": "*A", "chain": "forward", "action": "reject",
+		"src-address": "10.0.0.0/8", "src-address-list": "banned",
+		"dst-address-list": "servers", "in-interface": "ether1",
+		"in-interface-list": "LAN", "out-interface": "ether2",
+		"out-interface-list": "WAN", "connection-state": "new",
+		"reject-with": "icmp-net-unreachable",
+		"comment":     "cs:filter-forward-v4 @cs-routeros-bouncer",
+	}))
+
+	entries, err := c.ListFirewallRulesBySignature("ip", "filter", "@cs-routeros-bouncer")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+
+	e := entries[0]
+	checks := []struct {
+		name, got, want string
+	}{
+		{"ID", e.ID, "*A"},
+		{"Chain", e.Chain, "forward"},
+		{"Action", e.Action, "reject"},
+		{"SrcAddress", e.SrcAddress, "10.0.0.0/8"},
+		{"SrcAddressList", e.SrcAddressList, "banned"},
+		{"DstAddressList", e.DstAddressList, "servers"},
+		{"InInterface", e.InInterface, "ether1"},
+		{"InInterfaceList", e.InInterfaceList, "LAN"},
+		{"OutInterface", e.OutInterface, "ether2"},
+		{"OutInterfaceList", e.OutInterfaceList, "WAN"},
+		{"ConnectionState", e.ConnectionState, "new"},
+		{"RejectWith", e.RejectWith, "icmp-net-unreachable"},
+	}
+	for _, c := range checks {
+		if c.got != c.want {
+			t.Errorf("%s: expected %q, got %q", c.name, c.want, c.got)
+		}
 	}
 }

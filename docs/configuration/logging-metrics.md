@@ -87,6 +87,20 @@ metrics:
   listen_port: 2112
 ```
 
+### `metrics.routeros_poll_interval`
+
+| | |
+|---|---|
+| **Env** | `METRICS_ROUTEROS_POLL_INTERVAL` |
+| **Default** | `30s` |
+
+How often to poll RouterOS for system metrics (CPU load, memory, temperature). Set to `0` to disable system metrics collection.
+
+```yaml
+metrics:
+  routeros_poll_interval: "30s"
+```
+
 ### Available metrics
 
 See [Prometheus Metrics](../monitoring/prometheus.md) for the full list of exported metrics.

@@ -30,16 +30,99 @@ The dashboard JSON is located at [`grafana/dashboard.json`](https://github.com/j
 
 ## Panels
 
-| Panel | Description |
-|-------|-------------|
-| **Bouncer Info** | Version, RouterOS identity, and uptime |
-| **Active Decisions** | Current banned IPs by protocol (IPv4/IPv6) |
-| **RouterOS Connection** | Connection status over time |
-| **Decisions Processed** | Rate of ban/unban operations |
-| **Cumulative Decisions** | Total decisions processed since startup |
-| **Errors** | Error rate by type (api, routeros, reconcile) |
-| **Operation Latency** | p50/p95/p99 latency for add/remove/reconcile |
-| **Reconciliation Events** | Full sync events timeline |
+The dashboard contains **32 panels** organized in **9 rows** with a modern design:
+
+- **Transparent backgrounds** on all panels for a clean, unified look
+- **Smooth line interpolation** and subtle area fills on time series
+- **Multi-tooltip** mode with sorted values for quick multi-series comparison
+- **Table legends** with calculated stats (last, mean, max) on key panels
+- **Sparkline mini-graphs** on stat panels showing recent trends
+- **Semantic colors** — red for errors/bans, green for unbans/healthy, orange for warnings
+- **Threshold visualization** on CPU load (dashed lines at 60% / 85%)
+- **Hover descriptions** on every panel explaining the metric and normal ranges
+
+### Overview
+
+| Panel | Type | Description |
+|-------|------|-------------|
+| **RouterOS Connected** | stat | Connection status indicator |
+| **Active Decisions (IPv4)** | stat | Current IPv4 banned IPs |
+| **Active Decisions (IPv6)** | stat | Current IPv6 banned IPs |
+| **Total Active Decisions** | stat | Combined IPv4 + IPv6 count |
+| **Uptime** | stat | Time since bouncer started |
+| **Bouncer Info** | stat | Version and RouterOS identity |
+| **IPv4 / IPv6 Ratio** | piechart | Proportion of IPv4 vs IPv6 bans |
+
+### RouterOS System
+
+| Panel | Type | Description |
+|-------|------|-------------|
+| **RouterOS System** | gauge | Combined CPU load (%), CPU temperature (°C), and memory usage (%) with per-metric thresholds |
+| **CPU Load Over Time** | timeseries | CPU load history with threshold lines at 60% and 85% |
+| **Memory Usage Over Time** | timeseries | Memory usage percentage with threshold lines at 70% and 90% |
+| **CPU Temperature Over Time** | timeseries | CPU temperature history with threshold lines at 65°C and 80°C |
+
+### Decisions
+
+| Panel | Type | Description |
+|-------|------|-------------|
+| **Active Decisions Over Time** | timeseries | IPv4 (blue) / IPv6 (purple) decisions over time |
+| **Cumulative Decisions** | timeseries | Total decisions since startup |
+| **Decisions Processed (Rate)** | timeseries | Ban (red) / unban (green) rate per second (full width) |
+
+### Decisions by Origin
+
+| Panel | Type | Description |
+|-------|------|-------------|
+| **Active Decisions by Origin** | bargauge | Per-origin decision count (crowdsec, cscli, CAPI) |
+| **Decisions by Origin (Rate)** | timeseries | Decision rate per origin |
+| **Cumulative Decisions by Origin** | timeseries | Running total per origin |
+
+### Dropped Traffic
+
+| Panel | Type | Description |
+|-------|------|-------------|
+| **Dropped Bytes** | stat | Total bytes dropped by bouncer rules |
+| **Dropped Packets** | stat | Total packets dropped by bouncer rules |
+| **Dropped Traffic Rate** | timeseries | Bytes/packets dropped per second |
+| **Dropped Traffic (Cumulative)** | timeseries | Running total of dropped traffic |
+
+### Errors & Reconciliation
+
+| Panel | Type | Description |
+|-------|------|-------------|
+| **Error Rate** | timeseries | Errors per second by category |
+| **Total Errors** | stat | Cumulative error count (red background when > 0) |
+| **RouterOS Connection** | state-timeline | Connection status history |
+| **Last Reconciliation** | stat | Time since last reconciliation |
+| **Reconciliation Duration** | stat | Duration of last reconciliation |
+
+### Performance & Operations
+
+| Panel | Type | Description |
+|-------|------|-------------|
+| **Operation Latency (p50/p95/p99)** | timeseries | Add/remove/reconcile latency percentiles |
+| **Operation Rate** | timeseries | Operations per second |
+
+### Process Resources
+
+| Panel | Type | Description |
+|-------|------|-------------|
+| **Memory Usage** | timeseries | Bouncer process memory consumption |
+| **CPU Usage** | timeseries | Bouncer process CPU usage |
+| **Goroutines & File Descriptors** | timeseries | Go runtime internals |
+
+### Configuration
+
+A single collapsible **Configuration** row contains a table showing all 31 non-sensitive bouncer parameters. The table has three columns — **Group**, **Parameter**, and **Value** — sorted by group. The Group column uses color-coded background cells for quick visual identification:
+
+| Group | Color | Parameters |
+|-------|-------|-----------|
+| **CrowdSec** | Blue | 7 — API URL, origins, scopes, decision types, update frequency, TLS, retry |
+| **MikroTik** | Green | 5 — Router address, connection pool, timeouts, TLS |
+| **Firewall** | Orange | 13 — IPv4/IPv6 lists, filter/raw chains, deny action, rule placement, logging |
+| **Logging** | Purple | 2 — Log level and format |
+| **Metrics** | Yellow | 4 — Metrics endpoint, listen address/port, RouterOS poll interval |
 
 ## Requirements
 

@@ -8,10 +8,12 @@
 # cscli queries to CrowdSec LAPI, SNMP for CPU/memory, and the bouncer's own
 # Prometheus /metrics endpoint.
 #
-# The suite is organized into 8 test groups (t1–t8), each in its own file.
+# The suite is organized into 9 test groups (t1–t9), each in its own file.
 # Groups t1–t7 run with the default local-only decision set (~1,500 IPs).
 # Group t8 (CAPI) exercises the community blocklist (~25,000 IPs) and must
 # be explicitly enabled with --capi.
+# Group t9 tests advanced firewall configuration options (reject-with,
+# connection-state, log-prefix, passthrough, whitelist, etc.).
 #
 # Prerequisites:
 #   - MikroTik router reachable via SSH (key-based auth)
@@ -48,7 +50,7 @@ ENABLE_CAPI=false   # Set to true by --capi flag
 RUN_GROUPS=()       # Populated from CLI args or defaults to t1–t7
 
 # ─── Parse CLI arguments ────────────────────────────────────────────────────
-# Accepts --capi, --list, and group selectors (t1–t8).
+# Accepts --capi, --list, and group selectors (t1–t9).
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --capi) ENABLE_CAPI=true; shift ;;
@@ -62,17 +64,18 @@ while [[ $# -gt 0 ]]; do
             echo "  t6  CPU monitoring (steady-state, peak, recovery)"
             echo "  t7  Timing measurements (reconciliation, ban/unban latency)"
             echo "  t8  CAPI stress test ~25k IPs (skipped unless --capi flag is set)"
+            echo "  t9  Advanced firewall config (reject-with, connection-state, log-prefix, passthrough, whitelist)"
             exit 0 ;;
-        t[1-7]) RUN_GROUPS+=("$1"); shift ;;
+        t[1-9]) RUN_GROUPS+=("$1"); shift ;;
         t8) if ! $ENABLE_CAPI; then err "t8 requires --capi flag"; exit 1; fi
             RUN_GROUPS+=("$1"); shift ;;
         *)  err "Unknown argument: $1"; exit 1 ;;
     esac
 done
 
-# Default: run t1–t7 when no groups specified. CAPI (t8) only if --capi given.
+# Default: run t1–t7 and t9 when no groups specified. CAPI (t8) only if --capi given.
 if [[ ${#RUN_GROUPS[@]} -eq 0 ]]; then
-    RUN_GROUPS=(t1 t2 t3 t4 t5 t6 t7)
+    RUN_GROUPS=(t1 t2 t3 t4 t5 t6 t7 t9)
     if $ENABLE_CAPI; then RUN_GROUPS+=(t8); fi
 fi
 

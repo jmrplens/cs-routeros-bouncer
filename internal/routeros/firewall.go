@@ -8,17 +8,27 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// ruleProplist is the standard set of properties requested when querying firewall rules.
+var ruleProplist = []string{
+	".id", "chain", "action", "src-address", "src-address-list", "dst-address-list",
+	"in-interface", "in-interface-list", "out-interface", "out-interface-list",
+	"connection-state", "reject-with", "comment",
+}
+
 // RuleEntry represents a MikroTik firewall rule.
 type RuleEntry struct {
 	ID               string
 	Chain            string
 	Action           string
+	SrcAddress       string
 	SrcAddressList   string
 	DstAddressList   string
 	InInterface      string
 	InInterfaceList  string
 	OutInterface     string
 	OutInterfaceList string
+	ConnectionState  string
+	RejectWith       string
 	Comment          string
 }
 
@@ -26,6 +36,7 @@ type RuleEntry struct {
 type FirewallRule struct {
 	Chain            string
 	Action           string
+	SrcAddress       string // negated with ! for passthrough
 	SrcAddressList   string
 	DstAddressList   string
 	InInterface      string
@@ -36,6 +47,8 @@ type FirewallRule struct {
 	PlaceBefore      string // "0" for top of chain
 	Log              bool
 	LogPrefix        string
+	ConnectionState  string // filter only: e.g. "new" or "new,invalid"
+	RejectWith       string // only when action=reject
 }
 
 // firewallPath returns the full path for firewall operations.
@@ -59,6 +72,9 @@ func (c *Client) AddFirewallRule(proto, mode string, rule FirewallRule) (string,
 		"comment": rule.Comment,
 	}
 
+	if rule.SrcAddress != "" {
+		attrs["src-address"] = rule.SrcAddress
+	}
 	if rule.SrcAddressList != "" {
 		attrs["src-address-list"] = rule.SrcAddressList
 	}
@@ -76,6 +92,12 @@ func (c *Client) AddFirewallRule(proto, mode string, rule FirewallRule) (string,
 	}
 	if rule.OutInterfaceList != "" {
 		attrs["out-interface-list"] = rule.OutInterfaceList
+	}
+	if rule.ConnectionState != "" {
+		attrs["connection-state"] = rule.ConnectionState
+	}
+	if rule.RejectWith != "" {
+		attrs["reject-with"] = rule.RejectWith
 	}
 	if rule.Log {
 		attrs["log"] = "true"
@@ -177,10 +199,7 @@ func (c *Client) RemoveFirewallRule(proto, mode, id string) error {
 func (c *Client) ListFirewallRules(proto, mode, commentPrefix string) ([]RuleEntry, error) {
 	path := firewallPath(proto, mode)
 
-	proplist := []string{".id", "chain", "action", "src-address-list", "dst-address-list",
-		"in-interface", "in-interface-list", "out-interface", "out-interface-list", "comment"}
-
-	results, err := c.Print(path, nil, proplist)
+	results, err := c.Print(path, nil, ruleProplist)
 	if err != nil {
 		return nil, fmt.Errorf("list %s/%s rules: %w", proto, mode, err)
 	}
@@ -195,12 +214,53 @@ func (c *Client) ListFirewallRules(proto, mode, commentPrefix string) ([]RuleEnt
 			ID:               r[".id"],
 			Chain:            r["chain"],
 			Action:           r["action"],
+			SrcAddress:       r["src-address"],
 			SrcAddressList:   r["src-address-list"],
 			DstAddressList:   r["dst-address-list"],
 			InInterface:      r["in-interface"],
 			InInterfaceList:  r["in-interface-list"],
 			OutInterface:     r["out-interface"],
 			OutInterfaceList: r["out-interface-list"],
+			ConnectionState:  r["connection-state"],
+			RejectWith:       r["reject-with"],
+			Comment:          r["comment"],
+		})
+	}
+
+	return entries, nil
+}
+
+// ListFirewallRulesBySignature lists all firewall rules whose comment
+// contains the given signature substring. This is used for crash-recovery
+// cleanup: the signature is a fixed, non-configurable identifier embedded
+// in every comment, so it finds all bouncer rules regardless of prefix.
+func (c *Client) ListFirewallRulesBySignature(proto, mode, signature string) ([]RuleEntry, error) {
+	path := firewallPath(proto, mode)
+
+	results, err := c.Print(path, nil, ruleProplist)
+	if err != nil {
+		return nil, fmt.Errorf("list %s/%s rules by signature: %w", proto, mode, err)
+	}
+
+	var entries []RuleEntry
+	for _, r := range results {
+		comment := r["comment"]
+		if !strings.Contains(comment, signature) {
+			continue
+		}
+		entries = append(entries, RuleEntry{
+			ID:               r[".id"],
+			Chain:            r["chain"],
+			Action:           r["action"],
+			SrcAddress:       r["src-address"],
+			SrcAddressList:   r["src-address-list"],
+			DstAddressList:   r["dst-address-list"],
+			InInterface:      r["in-interface"],
+			InInterfaceList:  r["in-interface-list"],
+			OutInterface:     r["out-interface"],
+			OutInterfaceList: r["out-interface-list"],
+			ConnectionState:  r["connection-state"],
+			RejectWith:       r["reject-with"],
 			Comment:          r["comment"],
 		})
 	}
@@ -214,10 +274,8 @@ func (c *Client) FindFirewallRuleByComment(proto, mode, comment string) (*RuleEn
 	path := firewallPath(proto, mode)
 
 	query := []string{"?comment=" + comment}
-	proplist := []string{".id", "chain", "action", "src-address-list", "dst-address-list",
-		"in-interface", "in-interface-list", "out-interface", "out-interface-list", "comment"}
 
-	result, err := c.Find(path, query, proplist)
+	result, err := c.Find(path, query, ruleProplist)
 	if err != nil {
 		return nil, fmt.Errorf("find %s/%s rule by comment %q: %w", proto, mode, comment, err)
 	}
@@ -230,12 +288,15 @@ func (c *Client) FindFirewallRuleByComment(proto, mode, comment string) (*RuleEn
 		ID:               result[".id"],
 		Chain:            result["chain"],
 		Action:           result["action"],
+		SrcAddress:       result["src-address"],
 		SrcAddressList:   result["src-address-list"],
 		DstAddressList:   result["dst-address-list"],
 		InInterface:      result["in-interface"],
 		InInterfaceList:  result["in-interface-list"],
 		OutInterface:     result["out-interface"],
 		OutInterfaceList: result["out-interface-list"],
+		ConnectionState:  result["connection-state"],
+		RejectWith:       result["reject-with"],
 		Comment:          result["comment"],
 	}, nil
 }

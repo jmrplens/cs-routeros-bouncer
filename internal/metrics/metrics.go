@@ -1,6 +1,8 @@
 package metrics
 
 import (
+	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -72,6 +74,31 @@ var (
 		Name: "crowdsec_bouncer_active_decisions_by_origin",
 		Help: "Number of active decisions by CrowdSec origin.",
 	}, []string{"origin"})
+
+	routerosCPULoad = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "crowdsec_bouncer_routeros_cpu_load",
+		Help: "RouterOS CPU load percentage (0-100).",
+	})
+
+	routerosMemoryUsed = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "crowdsec_bouncer_routeros_memory_used_bytes",
+		Help: "RouterOS used memory in bytes.",
+	})
+
+	routerosMemoryTotal = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "crowdsec_bouncer_routeros_memory_total_bytes",
+		Help: "RouterOS total memory in bytes.",
+	})
+
+	routerosCPUTemperature = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "crowdsec_bouncer_routeros_cpu_temperature_celsius",
+		Help: "RouterOS CPU temperature in degrees Celsius.",
+	})
+
+	configInfo = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "crowdsec_bouncer_config_info",
+		Help: "Bouncer configuration parameters (one series per parameter, value is always 1).",
+	}, []string{"group", "param", "value"})
 )
 
 // RecordDecision increments the decisions counter.
@@ -208,4 +235,104 @@ func SetInfo(version, identity string) {
 // SetStartTime records the startup timestamp.
 func SetStartTime() {
 	startTimeSeconds.SetToCurrentTime()
+}
+
+// SetRouterOSSystemMetrics updates the RouterOS system resource gauges.
+func SetRouterOSSystemMetrics(cpuLoad float64, memUsed, memTotal uint64) {
+	routerosCPULoad.Set(cpuLoad)
+	routerosMemoryUsed.Set(float64(memUsed))
+	routerosMemoryTotal.Set(float64(memTotal))
+}
+
+// SetRouterOSCPUTemperature updates the RouterOS CPU temperature gauge.
+func SetRouterOSCPUTemperature(celsius float64) {
+	routerosCPUTemperature.Set(celsius)
+}
+
+// ConfigParams holds non-sensitive configuration values for the info metric.
+type ConfigParams struct {
+	CrowdSecAPIURL           string
+	CrowdSecUpdateFrequency  string
+	CrowdSecOrigins          []string
+	CrowdSecScopes           []string
+	CrowdSecDecisionTypes    []string
+	CrowdSecRetryInitConnect bool
+	CrowdSecTLS              bool
+	MikroTikAddress          string
+	MikroTikTLS              bool
+	MikroTikPoolSize         int
+	MikroTikConnTimeout      string
+	MikroTikCmdTimeout       string
+	FWIPv4Enabled            bool
+	FWIPv4List               string
+	FWIPv6Enabled            bool
+	FWIPv6List               string
+	FWFilterEnabled          bool
+	FWFilterChains           []string
+	FWRawEnabled             bool
+	FWRawChains              []string
+	FWDenyAction             string
+	FWBlockOutput            bool
+	FWRulePlacement          string
+	FWCommentPrefix          string
+	FWLog                    bool
+	LogLevel                 string
+	LogFormat                string
+	MetricsEnabled           bool
+	MetricsListenAddr        string
+	MetricsListenPort        int
+	MetricsPollInterval      string
+}
+
+// SetConfigInfo exposes non-sensitive configuration as Prometheus info metrics.
+// Each parameter is emitted as a separate series with group/param/value labels.
+func SetConfigInfo(p ConfigParams) {
+	b := func(v bool) string {
+		if v {
+			return "true"
+		}
+		return "false"
+	}
+
+	configInfo.Reset()
+
+	params := []struct {
+		group, param, value string
+	}{
+		{"CrowdSec", "API URL", p.CrowdSecAPIURL},
+		{"CrowdSec", "Update Frequency", p.CrowdSecUpdateFrequency},
+		{"CrowdSec", "Origins", strings.Join(p.CrowdSecOrigins, ", ")},
+		{"CrowdSec", "Scopes", strings.Join(p.CrowdSecScopes, ", ")},
+		{"CrowdSec", "Decision Types", strings.Join(p.CrowdSecDecisionTypes, ", ")},
+		{"CrowdSec", "Retry Initial Connect", b(p.CrowdSecRetryInitConnect)},
+		{"CrowdSec", "TLS Enabled", b(p.CrowdSecTLS)},
+		{"MikroTik", "Address", p.MikroTikAddress},
+		{"MikroTik", "TLS Enabled", b(p.MikroTikTLS)},
+		{"MikroTik", "Connection Pool Size", fmt.Sprintf("%d", p.MikroTikPoolSize)},
+		{"MikroTik", "Connection Timeout", p.MikroTikConnTimeout},
+		{"MikroTik", "Command Timeout", p.MikroTikCmdTimeout},
+		{"Firewall", "IPv4 Enabled", b(p.FWIPv4Enabled)},
+		{"Firewall", "IPv4 Address List", p.FWIPv4List},
+		{"Firewall", "IPv6 Enabled", b(p.FWIPv6Enabled)},
+		{"Firewall", "IPv6 Address List", p.FWIPv6List},
+		{"Firewall", "Filter Enabled", b(p.FWFilterEnabled)},
+		{"Firewall", "Filter Chains", strings.Join(p.FWFilterChains, ", ")},
+		{"Firewall", "Raw Enabled", b(p.FWRawEnabled)},
+		{"Firewall", "Raw Chains", strings.Join(p.FWRawChains, ", ")},
+		{"Firewall", "Deny Action", p.FWDenyAction},
+		{"Firewall", "Block Output", b(p.FWBlockOutput)},
+		{"Firewall", "Rule Placement", p.FWRulePlacement},
+		{"Firewall", "Comment Prefix", p.FWCommentPrefix},
+		{"Firewall", "Logging Enabled", b(p.FWLog)},
+		{"Logging", "Level", p.LogLevel},
+		{"Logging", "Format", p.LogFormat},
+		{"Metrics", "Enabled", b(p.MetricsEnabled)},
+		{"Metrics", "Listen Address", p.MetricsListenAddr},
+		{"Metrics", "Listen Port", fmt.Sprintf("%d", p.MetricsListenPort)},
+		{"Metrics", "RouterOS Poll Interval", p.MetricsPollInterval},
+	}
+
+	for _, e := range params {
+		configInfo.WithLabelValues(e.group, e.param, e.value).Set(1)
+	}
 }

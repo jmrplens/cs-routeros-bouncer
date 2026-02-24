@@ -18,8 +18,16 @@ import (
 )
 
 const (
-	// commentPrefix is the prefix for all MikroTik resources managed by this bouncer.
-	commentPrefix = "crowdsec-bouncer"
+	// defaultCommentPrefix is the fallback prefix for MikroTik resources when
+	// no custom comment_prefix is set in the configuration.
+	defaultCommentPrefix = "crowdsec-bouncer"
+
+	// ruleSignature is a fixed, non-configurable identifier embedded in every
+	// comment created by the bouncer (firewall rules and address list entries).
+	// It allows reliable cleanup after a crash regardless of the configured
+	// comment_prefix, since searching for this signature always finds all
+	// bouncer-created resources.
+	ruleSignature = "@cs-routeros-bouncer"
 
 	// channelBuffer is the buffer size for decision channels.
 	channelBuffer = 256
@@ -55,6 +63,15 @@ func NewManager(cfg config.Config, version string) *Manager {
 		ruleIDs:      make(map[string]string),
 		addressCache: make(map[string]struct{}),
 	}
+}
+
+// commentPrefix returns the effective comment prefix from config,
+// falling back to defaultCommentPrefix if not set.
+func (m *Manager) commentPrefix() string {
+	if m.cfg.Firewall.CommentPrefix != "" {
+		return m.cfg.Firewall.CommentPrefix
+	}
+	return defaultCommentPrefix
 }
 
 // Start initializes all components and begins processing decisions.
@@ -103,12 +120,50 @@ func (m *Manager) Start(ctx context.Context) error {
 		metrics.SetInfo(m.version, identity)
 	}
 
-	// 2. Create firewall rules
+	// 2. Expose non-sensitive configuration as Prometheus info metric
+	metrics.SetConfigInfo(metrics.ConfigParams{
+		CrowdSecAPIURL:           m.cfg.CrowdSec.APIURL,
+		CrowdSecUpdateFrequency:  m.cfg.CrowdSec.UpdateFrequency.String(),
+		CrowdSecOrigins:          m.cfg.CrowdSec.Origins,
+		CrowdSecScopes:           m.cfg.CrowdSec.Scopes,
+		CrowdSecDecisionTypes:    m.cfg.CrowdSec.SupportedDecisionTypes,
+		CrowdSecRetryInitConnect: m.cfg.CrowdSec.RetryInitialConnect,
+		CrowdSecTLS:              m.cfg.CrowdSec.CertPath != "",
+		MikroTikAddress:          m.cfg.MikroTik.Address,
+		MikroTikTLS:              m.cfg.MikroTik.TLS,
+		MikroTikPoolSize:         m.cfg.MikroTik.PoolSize,
+		MikroTikConnTimeout:      m.cfg.MikroTik.ConnectionTimeout.String(),
+		MikroTikCmdTimeout:       m.cfg.MikroTik.CommandTimeout.String(),
+		FWIPv4Enabled:            m.cfg.Firewall.IPv4.Enabled,
+		FWIPv4List:               m.cfg.Firewall.IPv4.AddressList,
+		FWIPv6Enabled:            m.cfg.Firewall.IPv6.Enabled,
+		FWIPv6List:               m.cfg.Firewall.IPv6.AddressList,
+		FWFilterEnabled:          m.cfg.Firewall.Filter.Enabled,
+		FWFilterChains:           m.cfg.Firewall.Filter.Chains,
+		FWRawEnabled:             m.cfg.Firewall.Raw.Enabled,
+		FWRawChains:              m.cfg.Firewall.Raw.Chains,
+		FWDenyAction:             m.cfg.Firewall.DenyAction,
+		FWBlockOutput:            m.cfg.Firewall.BlockOutput.Enabled,
+		FWRulePlacement:          m.cfg.Firewall.RulePlacement,
+		FWCommentPrefix:          m.cfg.Firewall.CommentPrefix,
+		FWLog:                    m.cfg.Firewall.Log,
+		LogLevel:                 m.cfg.Logging.Level,
+		LogFormat:                m.cfg.Logging.Format,
+		MetricsEnabled:           m.cfg.Metrics.Enabled,
+		MetricsListenAddr:        m.cfg.Metrics.ListenAddr,
+		MetricsListenPort:        m.cfg.Metrics.ListenPort,
+		MetricsPollInterval:      m.cfg.Metrics.RouterOSPollInterval.String(),
+	})
+
+	// 4. Clean up stale firewall rules from a previous run or prefix change
+	m.cleanupStaleRules()
+
+	// 5. Create firewall rules
 	if err := m.createFirewallRules(); err != nil {
 		return fmt.Errorf("creating firewall rules: %w", err)
 	}
 
-	// 3. Initialize CrowdSec stream
+	// 6. Initialize CrowdSec stream
 	if err := m.stream.Init(); err != nil {
 		return fmt.Errorf("initializing CrowdSec stream: %w", err)
 	}
@@ -126,7 +181,7 @@ func (m *Manager) Start(ctx context.Context) error {
 			// Register firewall counter collector so LAPI metrics include
 			// dropped bytes/packets from MikroTik firewall rules.
 			lapiProvider.SetCounterCollector(func() {
-				fc, err := m.ros.GetFirewallCounters("crowdsec-bouncer:")
+				fc, err := m.ros.GetFirewallCounters(m.commentPrefix() + ":")
 				if err != nil {
 					m.logger.Debug().Err(err).Msg("failed to collect firewall counters for LAPI metrics")
 					return
@@ -145,7 +200,14 @@ func (m *Manager) Start(ctx context.Context) error {
 		m.logger.Info().Msg("LAPI usage metrics reporting disabled")
 	}
 
-	// 4. Start CrowdSec stream and collect initial batch for reconciliation
+	// 3c. Start RouterOS system metrics collector (if enabled)
+	if m.cfg.Metrics.Enabled && m.cfg.Metrics.RouterOSPollInterval > 0 {
+		interval := m.cfg.Metrics.RouterOSPollInterval
+		m.logger.Info().Dur("interval", interval).Msg("RouterOS system metrics polling enabled")
+		go m.collectSystemMetrics(ctx, interval)
+	}
+
+	// 5. Start CrowdSec stream and collect initial batch for reconciliation
 	banCh := make(chan *crowdsec.Decision, channelBuffer)
 	deleteCh := make(chan *crowdsec.Decision, channelBuffer)
 
@@ -202,7 +264,7 @@ collectLoop:
 		Int("deletes", len(initialDeletes)).
 		Msg("initial decisions collected, starting reconciliation")
 
-	// 5. Reconcile: compare CrowdSec state with router state
+	// 6. Reconcile: compare CrowdSec state with router state
 	// Filter out bans that are immediately followed by deletes (expired decisions)
 	filteredBans := make([]*crowdsec.Decision, 0, len(initialBans))
 	skipped := 0
@@ -222,7 +284,7 @@ collectLoop:
 
 	m.logger.Info().Msg("reconciliation complete, processing live decisions")
 
-	// 6. Process live decision events (deltas)
+	// 7. Process live decision events (deltas)
 	for {
 		select {
 		case <-ctx.Done():
@@ -251,6 +313,43 @@ func (m *Manager) Shutdown() {
 	m.ros.Close()
 	metrics.SetConnected(false)
 	m.logger.Info().Msg("shutdown complete")
+}
+
+// collectSystemMetrics periodically polls RouterOS for CPU, memory, and
+// temperature metrics and updates the Prometheus gauges.
+func (m *Manager) collectSystemMetrics(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	// Collect once immediately at startup.
+	m.pollSystemMetrics()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			m.pollSystemMetrics()
+		}
+	}
+}
+
+// pollSystemMetrics executes the RouterOS system resource and health queries.
+func (m *Manager) pollSystemMetrics() {
+	sr, err := m.ros.GetSystemResources()
+	if err != nil {
+		m.logger.Debug().Err(err).Msg("failed to collect system resources")
+	} else {
+		used := sr.TotalMemory - sr.FreeMemory
+		metrics.SetRouterOSSystemMetrics(float64(sr.CPULoad), used, sr.TotalMemory)
+	}
+
+	sh, err := m.ros.GetSystemHealth()
+	if err != nil {
+		m.logger.Debug().Err(err).Msg("failed to collect system health")
+	} else if sh.CPUTemperature >= 0 {
+		metrics.SetRouterOSCPUTemperature(sh.CPUTemperature)
+	}
 }
 
 // handleBan processes a new ban decision.
@@ -283,7 +382,7 @@ func (m *Manager) handleBan(d *crowdsec.Decision) {
 		timeout = rosClient.DurationToMikroTik(d.Duration)
 	}
 
-	comment := buildAddressComment(d)
+	comment := buildAddressComment(m.commentPrefix(), d)
 
 	// Optimistic add: try to add directly (fast ~20ms).
 	// If the address already exists, RouterOS returns an error containing
@@ -416,6 +515,68 @@ func (m *Manager) handleUnban(d *crowdsec.Decision) {
 		Msg("unbanned address")
 }
 
+// resolveLogPrefix returns the effective log-prefix for a rule type.
+// Per-type prefix takes precedence; falls back to global firewall.log_prefix.
+func (m *Manager) resolveLogPrefix(ruleType string) string {
+	switch ruleType {
+	case "filter":
+		if m.cfg.Firewall.Filter.LogPrefix != "" {
+			return m.cfg.Firewall.Filter.LogPrefix
+		}
+	case "raw":
+		if m.cfg.Firewall.Raw.LogPrefix != "" {
+			return m.cfg.Firewall.Raw.LogPrefix
+		}
+	case "output":
+		if m.cfg.Firewall.BlockOutput.LogPrefix != "" {
+			return m.cfg.Firewall.BlockOutput.LogPrefix
+		}
+	}
+	return m.cfg.Firewall.LogPrefix
+}
+
+// cleanupStaleRules removes firewall rules and address list entries left
+// from a previous run. It searches for the fixed ruleSignature embedded in
+// every bouncer-created comment, which reliably identifies all bouncer
+// resources regardless of the configured comment_prefix. This handles:
+//   - Crash recovery (Shutdown was not called)
+//   - comment_prefix changes between restarts
+//   - Any other orphaned bouncer resources
+func (m *Manager) cleanupStaleRules() {
+	modes := []string{"filter", "raw"}
+	protos := m.enabledProtos()
+
+	removed := 0
+	for _, proto := range protos {
+		for _, mode := range modes {
+			rules, err := m.ros.ListFirewallRulesBySignature(proto, mode, ruleSignature)
+			if err != nil {
+				m.logger.Debug().Err(err).
+					Str("proto", proto).Str("mode", mode).
+					Msg("could not list firewall rules for cleanup")
+				continue
+			}
+			for _, r := range rules {
+				if err := m.ros.RemoveFirewallRule(proto, mode, r.ID); err != nil {
+					m.logger.Warn().Err(err).
+						Str("comment", r.Comment).Str("id", r.ID).
+						Msg("failed to remove stale firewall rule")
+				} else {
+					m.logger.Info().
+						Str("comment", r.Comment).
+						Msg("removed stale firewall rule from previous run")
+					removed++
+				}
+			}
+		}
+
+	}
+
+	if removed > 0 {
+		m.logger.Info().Int("count", removed).Msg("stale bouncer resources cleanup complete")
+	}
+}
+
 // createFirewallRules creates all necessary firewall rules in MikroTik.
 func (m *Manager) createFirewallRules() error {
 	m.logger.Info().Msg("creating firewall rules")
@@ -428,15 +589,41 @@ func (m *Manager) createFirewallRules() error {
 		// Filter rules
 		if m.cfg.Firewall.Filter.Enabled {
 			for _, chain := range m.cfg.Firewall.Filter.Chains {
-				// Input rule (src-address-list)
-				comment := buildRuleComment("filter", chain, "input", proto)
+				// Whitelist accept rule (before drop/reject rule)
+				if m.cfg.Firewall.BlockInput.Whitelist != "" {
+					wlComment := buildRuleComment(m.commentPrefix(), "filter", chain, "whitelist", proto)
+					wlRule := rosClient.FirewallRule{
+						Chain:          chain,
+						Action:         "accept",
+						SrcAddressList: m.cfg.Firewall.BlockInput.Whitelist,
+						Comment:        wlComment,
+						Log:            m.cfg.Firewall.Log,
+						LogPrefix:      m.resolveLogPrefix("filter"),
+					}
+					m.applyInputRuleOptions(&wlRule)
+					if m.cfg.Firewall.Filter.ConnectionState != "" {
+						wlRule.ConnectionState = m.cfg.Firewall.Filter.ConnectionState
+					}
+					if err := m.ensureFirewallRule(proto, "filter", wlRule); err != nil {
+						return err
+					}
+				}
+
+				// Input rule (src-address-list = drop/reject)
+				comment := buildRuleComment(m.commentPrefix(), "filter", chain, "input", proto)
 				rule := rosClient.FirewallRule{
 					Chain:          chain,
 					Action:         m.cfg.Firewall.DenyAction,
 					SrcAddressList: listName,
 					Comment:        comment,
 					Log:            m.cfg.Firewall.Log,
-					LogPrefix:      m.cfg.Firewall.LogPrefix,
+					LogPrefix:      m.resolveLogPrefix("filter"),
+				}
+				if m.cfg.Firewall.Filter.ConnectionState != "" {
+					rule.ConnectionState = m.cfg.Firewall.Filter.ConnectionState
+				}
+				if m.cfg.Firewall.DenyAction == "reject" && m.cfg.Firewall.RejectWith != "" {
+					rule.RejectWith = m.cfg.Firewall.RejectWith
 				}
 				m.applyInputRuleOptions(&rule)
 
@@ -446,14 +633,31 @@ func (m *Manager) createFirewallRules() error {
 
 				// Output rule (dst-address-list) — only if block_output enabled
 				if m.cfg.Firewall.BlockOutput.Enabled {
-					outComment := buildRuleComment("filter", "output", "output", proto)
+					outComment := buildRuleComment(m.commentPrefix(), "filter", "output", "output", proto)
 					outRule := rosClient.FirewallRule{
 						Chain:          "output",
 						Action:         m.cfg.Firewall.DenyAction,
 						DstAddressList: listName,
 						Comment:        outComment,
 						Log:            m.cfg.Firewall.Log,
-						LogPrefix:      m.cfg.Firewall.LogPrefix,
+						LogPrefix:      m.resolveLogPrefix("output"),
+					}
+					if m.cfg.Firewall.DenyAction == "reject" && m.cfg.Firewall.RejectWith != "" {
+						outRule.RejectWith = m.cfg.Firewall.RejectWith
+					}
+					// Passthrough: list negation takes precedence over single IP
+					if proto == "ip" {
+						if m.cfg.Firewall.BlockOutput.PassthroughV4List != "" {
+							outRule.SrcAddressList = "!" + m.cfg.Firewall.BlockOutput.PassthroughV4List
+						} else if m.cfg.Firewall.BlockOutput.PassthroughV4 != "" {
+							outRule.SrcAddress = "!" + m.cfg.Firewall.BlockOutput.PassthroughV4
+						}
+					} else {
+						if m.cfg.Firewall.BlockOutput.PassthroughV6List != "" {
+							outRule.SrcAddressList = "!" + m.cfg.Firewall.BlockOutput.PassthroughV6List
+						} else if m.cfg.Firewall.BlockOutput.PassthroughV6 != "" {
+							outRule.SrcAddress = "!" + m.cfg.Firewall.BlockOutput.PassthroughV6
+						}
 					}
 					if m.cfg.Firewall.BlockOutput.Interface != "" {
 						outRule.OutInterface = m.cfg.Firewall.BlockOutput.Interface
@@ -475,15 +679,41 @@ func (m *Manager) createFirewallRules() error {
 		// Raw rules
 		if m.cfg.Firewall.Raw.Enabled {
 			for _, chain := range m.cfg.Firewall.Raw.Chains {
-				comment := buildRuleComment("raw", chain, "input", proto)
+				// Whitelist accept rule (before drop rule)
+				if m.cfg.Firewall.BlockInput.Whitelist != "" {
+					wlComment := buildRuleComment(m.commentPrefix(), "raw", chain, "whitelist", proto)
+					wlRule := rosClient.FirewallRule{
+						Chain:          chain,
+						Action:         "accept",
+						SrcAddressList: m.cfg.Firewall.BlockInput.Whitelist,
+						Comment:        wlComment,
+						Log:            m.cfg.Firewall.Log,
+						LogPrefix:      m.resolveLogPrefix("raw"),
+					}
+					m.applyInputRuleOptions(&wlRule)
+					if err := m.ensureFirewallRule(proto, "raw", wlRule); err != nil {
+						return err
+					}
+				}
+
+				comment := buildRuleComment(m.commentPrefix(), "raw", chain, "input", proto)
+
+				// Raw table does NOT support action=reject or reject-with in RouterOS;
+				// force "drop" regardless of the configured deny_action.
+				rawAction := m.cfg.Firewall.DenyAction
+				if rawAction == "reject" {
+					rawAction = "drop"
+				}
+
 				rule := rosClient.FirewallRule{
 					Chain:          chain,
-					Action:         m.cfg.Firewall.DenyAction,
+					Action:         rawAction,
 					SrcAddressList: listName,
 					Comment:        comment,
 					Log:            m.cfg.Firewall.Log,
-					LogPrefix:      m.cfg.Firewall.LogPrefix,
+					LogPrefix:      m.resolveLogPrefix("raw"),
 				}
+				// Raw does NOT support connection-state or reject-with
 				m.applyInputRuleOptions(&rule)
 
 				if err := m.ensureFirewallRule(proto, "raw", rule); err != nil {
@@ -554,7 +784,7 @@ func (m *Manager) removeFirewallRules() {
 
 	for comment, id := range m.ruleIDs {
 		// Determine proto and mode from comment
-		proto, mode := parseRuleComment(comment)
+		proto, mode := parseRuleComment(m.commentPrefix(), comment)
 		if proto == "" || mode == "" {
 			m.logger.Warn().Str("comment", comment).Msg("could not parse rule comment for cleanup")
 			continue
@@ -593,7 +823,7 @@ func (m *Manager) reconcileAddresses(decisions []*crowdsec.Decision) {
 		}
 
 		// Get current addresses in MikroTik
-		existing, err := m.ros.ListAddresses(proto, listName, commentPrefix)
+		existing, err := m.ros.ListAddresses(proto, listName, m.commentPrefix())
 		if err != nil {
 			m.logger.Error().Err(err).
 				Str("proto", proto).
@@ -635,7 +865,7 @@ func (m *Manager) reconcileAddresses(decisions []*crowdsec.Decision) {
 				toAdd = append(toAdd, rosClient.BulkEntry{
 					Address: d.Value,
 					Timeout: timeout,
-					Comment: buildAddressComment(d),
+					Comment: buildAddressComment(m.commentPrefix(), d),
 				})
 			}
 		}
@@ -788,22 +1018,27 @@ func (m *Manager) getAddressListName(proto string) string {
 }
 
 // buildRuleComment creates a deterministic comment for a firewall rule.
-// Format: crowdsec-bouncer:<mode>-<chain>-<direction>-<proto>
-func buildRuleComment(mode, chain, direction, proto string) string {
+// Format: <prefix>:<mode>-<chain>-<direction>-<proto> @cs-routeros-bouncer
+// The fixed ruleSignature suffix allows reliable identification of all
+// bouncer-created rules regardless of the configured prefix.
+func buildRuleComment(prefix, mode, chain, direction, proto string) string {
 	protoSuffix := "v4"
 	if proto == "ipv6" {
 		protoSuffix = "v6"
 	}
-	return fmt.Sprintf("%s:%s-%s-%s-%s", commentPrefix, mode, chain, direction, protoSuffix)
+	return fmt.Sprintf("%s:%s-%s-%s-%s %s", prefix, mode, chain, direction, protoSuffix, ruleSignature)
 }
 
 // parseRuleComment extracts proto and mode from a rule comment.
-func parseRuleComment(comment string) (proto, mode string) {
-	// Format: crowdsec-bouncer:<mode>-<chain>-<direction>-<proto>
-	if !strings.HasPrefix(comment, commentPrefix+":") {
+func parseRuleComment(prefix, comment string) (proto, mode string) {
+	// Strip the signature suffix before parsing
+	comment = strings.TrimSuffix(comment, " "+ruleSignature)
+
+	// Format: <prefix>:<mode>-<chain>-<direction>-<proto>
+	if !strings.HasPrefix(comment, prefix+":") {
 		return "", ""
 	}
-	parts := strings.SplitN(comment[len(commentPrefix)+1:], "-", 2)
+	parts := strings.SplitN(comment[len(prefix)+1:], "-", 2)
 	if len(parts) < 2 {
 		return "", ""
 	}
@@ -818,9 +1053,16 @@ func parseRuleComment(comment string) (proto, mode string) {
 	return proto, mode
 }
 
+// hasRuleSignature checks whether a comment contains the bouncer's fixed
+// signature, identifying it as a bouncer-created resource.
+func hasRuleSignature(comment string) bool {
+	return strings.Contains(comment, ruleSignature)
+}
+
 // buildAddressComment creates a comment for an address list entry.
-func buildAddressComment(d *crowdsec.Decision) string {
-	parts := []string{commentPrefix}
+// Format: <prefix>|origin|scenario|timestamp @cs-routeros-bouncer
+func buildAddressComment(prefix string, d *crowdsec.Decision) string {
+	parts := []string{prefix}
 	if d.Origin != "" {
 		parts = append(parts, d.Origin)
 	}
@@ -828,5 +1070,5 @@ func buildAddressComment(d *crowdsec.Decision) string {
 		parts = append(parts, d.Scenario)
 	}
 	parts = append(parts, time.Now().UTC().Format("2006-01-02T15:04:05Z"))
-	return strings.Join(parts, "|")
+	return strings.Join(parts, "|") + " " + ruleSignature
 }

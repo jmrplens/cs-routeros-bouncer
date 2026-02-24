@@ -551,3 +551,248 @@ func TestDroppedCountersConcurrency(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// TestSetRouterOSSystemMetrics verifies CPU load and memory gauges.
+func TestSetRouterOSSystemMetrics(t *testing.T) {
+	SetRouterOSSystemMetrics(42, 500_000_000, 1_000_000_000)
+
+	v := testutil.ToFloat64(routerosCPULoad)
+	if v != 42 {
+		t.Errorf("cpu_load = %v, want 42", v)
+	}
+	v = testutil.ToFloat64(routerosMemoryUsed)
+	if v != 500_000_000 {
+		t.Errorf("memory_used = %v, want 500000000", v)
+	}
+	v = testutil.ToFloat64(routerosMemoryTotal)
+	if v != 1_000_000_000 {
+		t.Errorf("memory_total = %v, want 1000000000", v)
+	}
+}
+
+// TestSetRouterOSCPUTemperature verifies the temperature gauge.
+func TestSetRouterOSCPUTemperature(t *testing.T) {
+	SetRouterOSCPUTemperature(55.5)
+	v := testutil.ToFloat64(routerosCPUTemperature)
+	if v != 55.5 {
+		t.Errorf("cpu_temp = %v, want 55.5", v)
+	}
+}
+
+// TestSetRouterOSSystemMetricsConcurrency exercises concurrent access (run with -race).
+func TestSetRouterOSSystemMetricsConcurrency(t *testing.T) {
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(2)
+		go func(n float64) {
+			defer wg.Done()
+			SetRouterOSSystemMetrics(n, uint64(n*1000), uint64(n*2000))
+		}(float64(i))
+		go func(n float64) {
+			defer wg.Done()
+			SetRouterOSCPUTemperature(n)
+		}(float64(i))
+	}
+	wg.Wait()
+}
+
+// --- SetConfigInfo tests ---
+
+// testConfigParams returns a fully populated ConfigParams for testing.
+func testConfigParams() ConfigParams {
+	return ConfigParams{
+		CrowdSecAPIURL:           "http://localhost:8080/",
+		CrowdSecUpdateFrequency:  "15s",
+		CrowdSecOrigins:          []string{"crowdsec", "cscli", "CAPI"},
+		CrowdSecScopes:           []string{"ip", "range"},
+		CrowdSecDecisionTypes:    []string{"ban"},
+		CrowdSecRetryInitConnect: true,
+		CrowdSecTLS:              false,
+		MikroTikAddress:          "192.168.0.1:8728",
+		MikroTikTLS:              false,
+		MikroTikPoolSize:         10,
+		MikroTikConnTimeout:      "10s",
+		MikroTikCmdTimeout:       "30s",
+		FWIPv4Enabled:            true,
+		FWIPv4List:               "crowdsec-banned",
+		FWIPv6Enabled:            true,
+		FWIPv6List:               "crowdsec6-banned",
+		FWFilterEnabled:          true,
+		FWFilterChains:           []string{"input"},
+		FWRawEnabled:             true,
+		FWRawChains:              []string{"prerouting"},
+		FWDenyAction:             "drop",
+		FWBlockOutput:            false,
+		FWRulePlacement:          "top",
+		FWCommentPrefix:          "crowdsec-bouncer",
+		FWLog:                    false,
+		LogLevel:                 "info",
+		LogFormat:                "text",
+		MetricsEnabled:           true,
+		MetricsListenAddr:        "0.0.0.0",
+		MetricsListenPort:        2112,
+		MetricsPollInterval:      "30s",
+	}
+}
+
+// TestSetConfigInfoRegistersMetric verifies the config info metric emits
+// one series per parameter (31 total), each with group/param/value labels.
+func TestSetConfigInfoRegistersMetric(t *testing.T) {
+	configInfo.Reset()
+
+	p := testConfigParams()
+	SetConfigInfo(p)
+
+	count := testutil.CollectAndCount(configInfo)
+	if count != 31 {
+		t.Fatalf("expected 31 config_info series, got %d", count)
+	}
+
+	// Spot-check specific parameters
+	checks := []struct {
+		group, param, value string
+	}{
+		{"CrowdSec", "API URL", "http://localhost:8080/"},
+		{"CrowdSec", "Origins", "crowdsec, cscli, CAPI"},
+		{"MikroTik", "Connection Pool Size", "10"},
+		{"Firewall", "Deny Action", "drop"},
+		{"Logging", "Level", "info"},
+		{"Metrics", "Listen Port", "2112"},
+	}
+	for _, c := range checks {
+		v := testutil.ToFloat64(configInfo.WithLabelValues(c.group, c.param, c.value))
+		if v != 1 {
+			t.Errorf("config_info{group=%q,param=%q,value=%q} = %v, want 1", c.group, c.param, c.value, v)
+		}
+	}
+}
+
+// TestSetConfigInfoEmptySlices verifies behavior when slice fields are empty.
+func TestSetConfigInfoEmptySlices(t *testing.T) {
+	configInfo.Reset()
+
+	p := testConfigParams()
+	p.CrowdSecOrigins = nil
+	p.CrowdSecScopes = []string{}
+	p.FWFilterChains = nil
+	p.FWRawChains = []string{}
+
+	// Should not panic
+	SetConfigInfo(p)
+
+	// Empty slices produce empty string values
+	v := testutil.ToFloat64(configInfo.WithLabelValues("CrowdSec", "Origins", ""))
+	if v != 1 {
+		t.Errorf("empty origins = %v, want 1", v)
+	}
+	v = testutil.ToFloat64(configInfo.WithLabelValues("Firewall", "Filter Chains", ""))
+	if v != 1 {
+		t.Errorf("empty filter chains = %v, want 1", v)
+	}
+}
+
+// TestSetConfigInfoBoolConversion verifies that all boolean fields are
+// correctly represented as "true" or "false" strings.
+func TestSetConfigInfoBoolConversion(t *testing.T) {
+	configInfo.Reset()
+
+	// All booleans true
+	p := testConfigParams()
+	p.CrowdSecRetryInitConnect = true
+	p.CrowdSecTLS = true
+	p.MikroTikTLS = true
+	p.FWIPv4Enabled = true
+	p.FWIPv6Enabled = true
+	p.FWFilterEnabled = true
+	p.FWRawEnabled = true
+	p.FWBlockOutput = true
+	p.FWLog = true
+	p.MetricsEnabled = true
+
+	SetConfigInfo(p)
+
+	boolParams := []struct {
+		group, param string
+	}{
+		{"CrowdSec", "Retry Initial Connect"},
+		{"CrowdSec", "TLS Enabled"},
+		{"MikroTik", "TLS Enabled"},
+		{"Firewall", "IPv4 Enabled"},
+		{"Firewall", "IPv6 Enabled"},
+		{"Firewall", "Filter Enabled"},
+		{"Firewall", "Raw Enabled"},
+		{"Firewall", "Block Output"},
+		{"Firewall", "Logging Enabled"},
+		{"Metrics", "Enabled"},
+	}
+	for _, bp := range boolParams {
+		v := testutil.ToFloat64(configInfo.WithLabelValues(bp.group, bp.param, "true"))
+		if v != 1 {
+			t.Errorf("config_info{group=%q,param=%q,value=\"true\"} = %v, want 1", bp.group, bp.param, v)
+		}
+	}
+
+	// Reset and test all false
+	configInfo.Reset()
+	p.CrowdSecRetryInitConnect = false
+	p.CrowdSecTLS = false
+	p.MikroTikTLS = false
+	p.FWIPv4Enabled = false
+	p.FWIPv6Enabled = false
+	p.FWFilterEnabled = false
+	p.FWRawEnabled = false
+	p.FWBlockOutput = false
+	p.FWLog = false
+	p.MetricsEnabled = false
+
+	SetConfigInfo(p)
+
+	for _, bp := range boolParams {
+		v := testutil.ToFloat64(configInfo.WithLabelValues(bp.group, bp.param, "false"))
+		if v != 1 {
+			t.Errorf("config_info{group=%q,param=%q,value=\"false\"} = %v, want 1", bp.group, bp.param, v)
+		}
+	}
+}
+
+// TestSetConfigInfoMultipleChains verifies comma-joined slice labels.
+func TestSetConfigInfoMultipleChains(t *testing.T) {
+	configInfo.Reset()
+
+	p := testConfigParams()
+	p.FWFilterChains = []string{"input", "forward"}
+	p.FWRawChains = []string{"prerouting", "output"}
+	p.CrowdSecOrigins = []string{"crowdsec", "cscli", "CAPI", "lists"}
+
+	SetConfigInfo(p)
+
+	checks := []struct {
+		group, param, value string
+	}{
+		{"Firewall", "Filter Chains", "input, forward"},
+		{"Firewall", "Raw Chains", "prerouting, output"},
+		{"CrowdSec", "Origins", "crowdsec, cscli, CAPI, lists"},
+	}
+	for _, c := range checks {
+		v := testutil.ToFloat64(configInfo.WithLabelValues(c.group, c.param, c.value))
+		if v != 1 {
+			t.Errorf("config_info{param=%q} value=%q not found", c.param, c.value)
+		}
+	}
+}
+
+// TestSetConfigInfoConcurrency exercises concurrent SetConfigInfo calls (run with -race).
+func TestSetConfigInfoConcurrency(t *testing.T) {
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			p := testConfigParams()
+			p.MikroTikPoolSize = n
+			p.LogLevel = fmt.Sprintf("level-%d", n)
+			SetConfigInfo(p)
+		}(i)
+	}
+	wg.Wait()
+}
