@@ -814,6 +814,9 @@ func (m *Manager) reconcileAddresses(decisions []*crowdsec.Decision) {
 
 	start := time.Now()
 
+	// Accumulate per-origin counts across all protocols.
+	globalOriginCounts := map[string]int64{}
+
 	for _, proto := range m.enabledProtos() {
 		listName := m.getAddressListName(proto)
 
@@ -971,17 +974,13 @@ func (m *Manager) reconcileAddresses(decisions []*crowdsec.Decision) {
 		metrics.RecordReconciliation("unchanged", unchanged)
 		metrics.SetActiveDecisions(metricsProto, len(shouldExist))
 
-		// Track per-origin active decision counts for LAPI metrics.
-		originCounts := map[string]int64{}
+		// Accumulate per-origin counts (set metrics after all protos).
 		for _, d := range shouldExist {
 			origin := d.Origin
 			if origin == "" {
 				origin = "unknown"
 			}
-			originCounts[origin]++
-		}
-		for origin, count := range originCounts {
-			metrics.SetActiveDecisionsByOrigin(origin, count)
+			globalOriginCounts[origin]++
 		}
 
 		m.logger.Info().
@@ -995,6 +994,11 @@ func (m *Manager) reconcileAddresses(decisions []*crowdsec.Decision) {
 	}
 
 	metrics.ObserveOperationDuration("reconcile", time.Since(start))
+
+	// Set per-origin metrics after all protos are processed.
+	for origin, count := range globalOriginCounts {
+		metrics.SetActiveDecisionsByOrigin(origin, count)
+	}
 }
 
 // enabledProtos returns the list of enabled protocol strings ("ip" and/or "ipv6").
