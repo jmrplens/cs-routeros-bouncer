@@ -135,9 +135,9 @@ Prefix for comments on all bouncer-managed resources in MikroTik. Used to identi
 Example comments generated:
 
 ```
-crowdsec-bouncer:filter-input-input-v4
-crowdsec-bouncer:raw-prerouting-input-v4
-crowdsec-bouncer:filter-input-input-v6
+crowdsec-bouncer:filter-input-input-v4 @cs-routeros-bouncer
+crowdsec-bouncer:raw-prerouting-input-v4 @cs-routeros-bouncer
+crowdsec-bouncer:filter-input-input-v6 @cs-routeros-bouncer
 ```
 
 ## Rule Logging
@@ -298,13 +298,13 @@ firewall:
 
 ```routeros
 # Without reject_with (default reject behavior):
-/ip/firewall/filter add chain=input action=reject src-address-list=crowdsec-banned comment="crowdsec-bouncer:filter-input-v4"
+/ip/firewall/filter add chain=input action=reject src-address-list=crowdsec-banned comment="crowdsec-bouncer:filter-input-v4 @cs-routeros-bouncer"
 
 # With reject_with="icmp-admin-prohibited":
-/ip/firewall/filter add chain=input action=reject reject-with=icmp-admin-prohibited src-address-list=crowdsec-banned comment="crowdsec-bouncer:filter-input-v4"
+/ip/firewall/filter add chain=input action=reject reject-with=icmp-admin-prohibited src-address-list=crowdsec-banned comment="crowdsec-bouncer:filter-input-v4 @cs-routeros-bouncer"
 
 # With reject_with="tcp-reset":
-/ip/firewall/filter add chain=input action=reject reject-with=tcp-reset src-address-list=crowdsec-banned comment="crowdsec-bouncer:filter-input-v4"
+/ip/firewall/filter add chain=input action=reject reject-with=tcp-reset src-address-list=crowdsec-banned comment="crowdsec-bouncer:filter-input-v4 @cs-routeros-bouncer"
 ```
 
 !!! tip
@@ -348,13 +348,13 @@ firewall:
 
 ```routeros
 # Without connection_state (default — blocks ALL packets from banned IPs):
-/ip/firewall/filter add chain=input action=drop src-address-list=crowdsec-banned comment="crowdsec-bouncer:filter-input-v4"
+/ip/firewall/filter add chain=input action=drop src-address-list=crowdsec-banned comment="crowdsec-bouncer:filter-input-v4 @cs-routeros-bouncer"
 
 # With connection_state="new" (only blocks NEW connections, existing ones can finish):
-/ip/firewall/filter add chain=input action=drop connection-state=new src-address-list=crowdsec-banned comment="crowdsec-bouncer:filter-input-v4"
+/ip/firewall/filter add chain=input action=drop connection-state=new src-address-list=crowdsec-banned comment="crowdsec-bouncer:filter-input-v4 @cs-routeros-bouncer"
 
 # With connection_state="new,invalid" (blocks new and invalid packets):
-/ip/firewall/filter add chain=input action=drop connection-state=new,invalid src-address-list=crowdsec-banned comment="crowdsec-bouncer:filter-input-v4"
+/ip/firewall/filter add chain=input action=drop connection-state=new,invalid src-address-list=crowdsec-banned comment="crowdsec-bouncer:filter-input-v4 @cs-routeros-bouncer"
 ```
 
 !!! tip "Use case"
@@ -397,13 +397,13 @@ firewall:
 
 ```routeros
 # Filter rules use "cs-filter" prefix:
-/ip/firewall/filter add chain=input action=drop src-address-list=crowdsec-banned log=yes log-prefix="cs-filter" comment="crowdsec-bouncer:filter-input-v4"
+/ip/firewall/filter add chain=input action=drop src-address-list=crowdsec-banned log=yes log-prefix="cs-filter" comment="crowdsec-bouncer:filter-input-v4 @cs-routeros-bouncer"
 
 # Raw rules use "cs-raw" prefix:
-/ip/firewall/raw add chain=prerouting action=drop src-address-list=crowdsec-banned log=yes log-prefix="cs-raw" comment="crowdsec-bouncer:raw-prerouting-v4"
+/ip/firewall/raw add chain=prerouting action=drop src-address-list=crowdsec-banned log=yes log-prefix="cs-raw" comment="crowdsec-bouncer:raw-prerouting-v4 @cs-routeros-bouncer"
 
 # Output rules use "cs-output" prefix:
-/ip/firewall/filter add chain=output action=drop dst-address-list=crowdsec-banned out-interface=ether1 log=yes log-prefix="cs-output" comment="crowdsec-bouncer:filter-output-v4"
+/ip/firewall/filter add chain=output action=drop dst-address-list=crowdsec-banned out-interface=ether1 log=yes log-prefix="cs-output" comment="crowdsec-bouncer:filter-output-v4 @cs-routeros-bouncer"
 ```
 
 **RouterOS log output example** (with different prefixes per type):
@@ -452,17 +452,17 @@ firewall:
 # For each chain, the bouncer creates TWO rules — accept BEFORE drop:
 
 # 1) Accept rule for whitelisted IPs (placed first):
-/ip/firewall/filter add chain=input action=accept src-address-list=crowdsec-whitelist comment="crowdsec-bouncer:filter-input-whitelist-v4"
+/ip/firewall/filter add chain=input action=accept src-address-list=crowdsec-whitelist comment="crowdsec-bouncer:filter-input-whitelist-v4 @cs-routeros-bouncer"
 # 2) Drop rule for banned IPs (placed after accept):
-/ip/firewall/filter add chain=input action=drop src-address-list=crowdsec-banned comment="crowdsec-bouncer:filter-input-v4"
+/ip/firewall/filter add chain=input action=drop src-address-list=crowdsec-banned comment="crowdsec-bouncer:filter-input-v4 @cs-routeros-bouncer"
 
 # Same pattern for raw rules:
-/ip/firewall/raw add chain=prerouting action=accept src-address-list=crowdsec-whitelist comment="crowdsec-bouncer:raw-prerouting-whitelist-v4"
-/ip/firewall/raw add chain=prerouting action=drop src-address-list=crowdsec-banned comment="crowdsec-bouncer:raw-prerouting-v4"
+/ip/firewall/raw add chain=prerouting action=accept src-address-list=crowdsec-whitelist comment="crowdsec-bouncer:raw-prerouting-whitelist-v4 @cs-routeros-bouncer"
+/ip/firewall/raw add chain=prerouting action=drop src-address-list=crowdsec-banned comment="crowdsec-bouncer:raw-prerouting-v4 @cs-routeros-bouncer"
 
 # And for IPv6 (if enabled):
-/ipv6/firewall/filter add chain=input action=accept src-address-list=crowdsec-whitelist comment="crowdsec-bouncer:filter-input-whitelist-v6"
-/ipv6/firewall/filter add chain=input action=drop src-address-list=crowdsec6-banned comment="crowdsec-bouncer:filter-input-v6"
+/ipv6/firewall/filter add chain=input action=accept src-address-list=crowdsec-whitelist comment="crowdsec-bouncer:filter-input-whitelist-v6 @cs-routeros-bouncer"
+/ipv6/firewall/filter add chain=input action=drop src-address-list=crowdsec6-banned comment="crowdsec-bouncer:filter-input-v6 @cs-routeros-bouncer"
 ```
 
 !!! tip "Use case"
@@ -494,13 +494,13 @@ firewall:
 
 ```routeros
 # Without passthrough (default — blocks ALL local clients from reaching banned IPs):
-/ip/firewall/filter add chain=output action=drop dst-address-list=crowdsec-banned out-interface=ether1 comment="crowdsec-bouncer:filter-output-v4"
+/ip/firewall/filter add chain=output action=drop dst-address-list=crowdsec-banned out-interface=ether1 comment="crowdsec-bouncer:filter-output-v4 @cs-routeros-bouncer"
 
 # With passthrough_v4="192.168.1.100" (all clients blocked EXCEPT 192.168.1.100):
-/ip/firewall/filter add chain=output action=drop dst-address-list=crowdsec-banned out-interface=ether1 src-address=!192.168.1.100 comment="crowdsec-bouncer:filter-output-v4"
+/ip/firewall/filter add chain=output action=drop dst-address-list=crowdsec-banned out-interface=ether1 src-address=!192.168.1.100 comment="crowdsec-bouncer:filter-output-v4 @cs-routeros-bouncer"
 
 # With passthrough_v6="fd00::100":
-/ipv6/firewall/filter add chain=output action=drop dst-address-list=crowdsec6-banned out-interface=ether1 src-address=!fd00::100 comment="crowdsec-bouncer:filter-output-v6"
+/ipv6/firewall/filter add chain=output action=drop dst-address-list=crowdsec6-banned out-interface=ether1 src-address=!fd00::100 comment="crowdsec-bouncer:filter-output-v6 @cs-routeros-bouncer"
 ```
 
 !!! tip "Use case"
@@ -543,10 +543,10 @@ firewall:
 
 ```routeros
 # With passthrough_v4_list="trusted-clients-v4" (all clients blocked EXCEPT those in the list):
-/ip/firewall/filter add chain=output action=drop dst-address-list=crowdsec-banned out-interface=ether1 src-address-list=!trusted-clients-v4 comment="crowdsec-bouncer:filter-output-v4"
+/ip/firewall/filter add chain=output action=drop dst-address-list=crowdsec-banned out-interface=ether1 src-address-list=!trusted-clients-v4 comment="crowdsec-bouncer:filter-output-v4 @cs-routeros-bouncer"
 
 # With passthrough_v6_list="trusted-clients-v6":
-/ipv6/firewall/filter add chain=output action=drop dst-address-list=crowdsec6-banned out-interface=ether1 src-address-list=!trusted-clients-v6 comment="crowdsec-bouncer:filter-output-v6"
+/ipv6/firewall/filter add chain=output action=drop dst-address-list=crowdsec6-banned out-interface=ether1 src-address-list=!trusted-clients-v6 comment="crowdsec-bouncer:filter-output-v6 @cs-routeros-bouncer"
 ```
 
 ---
@@ -585,17 +585,17 @@ firewall:
 
 ```routeros
 # Filter — input chain (whitelist + reject with connection-state):
-/ip/firewall/filter add chain=input action=accept src-address-list=crowdsec-whitelist in-interface=ether1 connection-state=new log=yes log-prefix="cs-filter" comment="crowdsec-bouncer:filter-input-whitelist-v4" place-before=0
-/ip/firewall/filter add chain=input action=reject reject-with=tcp-reset src-address-list=crowdsec-banned in-interface=ether1 connection-state=new log=yes log-prefix="cs-filter" comment="crowdsec-bouncer:filter-input-v4" place-before=1
+/ip/firewall/filter add chain=input action=accept src-address-list=crowdsec-whitelist in-interface=ether1 connection-state=new log=yes log-prefix="cs-filter" comment="crowdsec-bouncer:filter-input-whitelist-v4 @cs-routeros-bouncer" place-before=0
+/ip/firewall/filter add chain=input action=reject reject-with=tcp-reset src-address-list=crowdsec-banned in-interface=ether1 connection-state=new log=yes log-prefix="cs-filter" comment="crowdsec-bouncer:filter-input-v4 @cs-routeros-bouncer" place-before=1
 
 # Filter — forward chain (same pattern):
-/ip/firewall/filter add chain=forward action=accept src-address-list=crowdsec-whitelist in-interface=ether1 connection-state=new log=yes log-prefix="cs-filter" comment="crowdsec-bouncer:filter-forward-whitelist-v4" place-before=0
-/ip/firewall/filter add chain=forward action=reject reject-with=tcp-reset src-address-list=crowdsec-banned in-interface=ether1 connection-state=new log=yes log-prefix="cs-filter" comment="crowdsec-bouncer:filter-forward-v4" place-before=1
+/ip/firewall/filter add chain=forward action=accept src-address-list=crowdsec-whitelist in-interface=ether1 connection-state=new log=yes log-prefix="cs-filter" comment="crowdsec-bouncer:filter-forward-whitelist-v4 @cs-routeros-bouncer" place-before=0
+/ip/firewall/filter add chain=forward action=reject reject-with=tcp-reset src-address-list=crowdsec-banned in-interface=ether1 connection-state=new log=yes log-prefix="cs-filter" comment="crowdsec-bouncer:filter-forward-v4 @cs-routeros-bouncer" place-before=1
 
 # Raw — prerouting chain (no connection-state, no reject-with):
-/ip/firewall/raw add chain=prerouting action=accept src-address-list=crowdsec-whitelist in-interface=ether1 log=yes log-prefix="cs-raw" comment="crowdsec-bouncer:raw-prerouting-whitelist-v4" place-before=0
-/ip/firewall/raw add chain=prerouting action=drop src-address-list=crowdsec-banned in-interface=ether1 log=yes log-prefix="cs-raw" comment="crowdsec-bouncer:raw-prerouting-v4" place-before=1
+/ip/firewall/raw add chain=prerouting action=accept src-address-list=crowdsec-whitelist in-interface=ether1 log=yes log-prefix="cs-raw" comment="crowdsec-bouncer:raw-prerouting-whitelist-v4 @cs-routeros-bouncer" place-before=0
+/ip/firewall/raw add chain=prerouting action=drop src-address-list=crowdsec-banned in-interface=ether1 log=yes log-prefix="cs-raw" comment="crowdsec-bouncer:raw-prerouting-v4 @cs-routeros-bouncer" place-before=1
 
 # Filter — output chain (with passthrough list):
-/ip/firewall/filter add chain=output action=reject reject-with=tcp-reset dst-address-list=crowdsec-banned out-interface=ether1 src-address-list=!trusted-clients-v4 log=yes log-prefix="cs-output" comment="crowdsec-bouncer:filter-output-v4" place-before=0
+/ip/firewall/filter add chain=output action=reject reject-with=tcp-reset dst-address-list=crowdsec-banned out-interface=ether1 src-address-list=!trusted-clients-v4 log=yes log-prefix="cs-output" comment="crowdsec-bouncer:filter-output-v4 @cs-routeros-bouncer" place-before=0
 ```

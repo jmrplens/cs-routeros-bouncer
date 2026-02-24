@@ -407,10 +407,10 @@ mikrotik:
 The bouncer creates rules with descriptive comments for identification:
 
 ```
-;;; crowdsec-bouncer:filter-input-input-v4
+;;; crowdsec-bouncer:filter-input-input-v4 @cs-routeros-bouncer
 chain=input action=drop src-address-list=crowdsec-banned
 
-;;; crowdsec-bouncer:raw-prerouting-input-v4
+;;; crowdsec-bouncer:raw-prerouting-input-v4 @cs-routeros-bouncer
 chain=prerouting action=drop src-address-list=crowdsec-banned
 ```
 

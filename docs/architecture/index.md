@@ -67,13 +67,13 @@ sequenceDiagram
 All resources created by the bouncer in MikroTik are tagged with a structured comment:
 
 ```
-{comment_prefix}:{type}-{chain}-{direction}-{protocol}
+{comment_prefix}:{type}-{chain}-{direction}-{protocol} @cs-routeros-bouncer
 ```
 
 Examples:
 
-- `crowdsec-bouncer:filter-input-input-v4`
-- `crowdsec-bouncer:raw-prerouting-input-v6`
+- `crowdsec-bouncer:filter-input-input-v4 @cs-routeros-bouncer`
+- `crowdsec-bouncer:raw-prerouting-input-v6 @cs-routeros-bouncer`
 
 This allows the bouncer to precisely identify and manage its own resources without affecting user-created rules.
 
