@@ -1124,7 +1124,7 @@ func TestCreateFirewallRules_OutputPassthroughV4List(t *testing.T) {
 	cfg.Firewall.Filter.Enabled = true
 	cfg.Firewall.Filter.Chains = []string{"input"}
 	cfg.Firewall.BlockOutput.Enabled = true
-	cfg.Firewall.BlockOutput.PassthroughV4 = "10.0.0.5"     // should be ignored
+	cfg.Firewall.BlockOutput.PassthroughV4 = "10.0.0.5"       // should be ignored
 	cfg.Firewall.BlockOutput.PassthroughV4List = "whitelist4" // takes precedence
 	mgr := newTestManager(mock, cfg)
 

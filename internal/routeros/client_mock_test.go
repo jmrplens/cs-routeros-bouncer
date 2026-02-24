@@ -1068,13 +1068,13 @@ func TestListFirewallRules_ParsesAllFields(t *testing.T) {
 
 	mc.pushReply(reReply(map[string]string{
 		".id": "*1", "chain": "input", "action": "reject",
-		"src-address": "!10.0.0.5",
+		"src-address":      "!10.0.0.5",
 		"src-address-list": "src", "dst-address-list": "dst",
 		"in-interface": "ether1", "in-interface-list": "WAN",
 		"out-interface": "ether2", "out-interface-list": "LAN",
 		"connection-state": "new,invalid",
-		"reject-with": "tcp-reset",
-		"comment": "full",
+		"reject-with":      "tcp-reset",
+		"comment":          "full",
 	}))
 
 	entries, err := c.ListFirewallRules("ip", "filter", "")

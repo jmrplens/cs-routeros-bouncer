@@ -102,10 +102,10 @@ type BlockInputConfig struct {
 
 // BlockOutputConfig holds output blocking settings.
 type BlockOutputConfig struct {
-	Enabled          bool   `yaml:"enabled" mapstructure:"enabled"`
-	Interface        string `yaml:"interface" mapstructure:"interface"`
-	InterfaceList    string `yaml:"interface_list" mapstructure:"interface_list"`
-	LogPrefix        string `yaml:"log_prefix" mapstructure:"log_prefix"`
+	Enabled           bool   `yaml:"enabled" mapstructure:"enabled"`
+	Interface         string `yaml:"interface" mapstructure:"interface"`
+	InterfaceList     string `yaml:"interface_list" mapstructure:"interface_list"`
+	LogPrefix         string `yaml:"log_prefix" mapstructure:"log_prefix"`
 	PassthroughV4     string `yaml:"passthrough_v4" mapstructure:"passthrough_v4"`
 	PassthroughV4List string `yaml:"passthrough_v4_list" mapstructure:"passthrough_v4_list"`
 	PassthroughV6     string `yaml:"passthrough_v6" mapstructure:"passthrough_v6"`
@@ -194,30 +194,30 @@ func Load(configPath string) (*Config, error) {
 		"mikrotik.command_timeout":    "MIKROTIK_CMD_TIMEOUT",
 		"mikrotik.pool_size":          "MIKROTIK_POOL_SIZE",
 		// Firewall
-		"firewall.ipv4.enabled":                "FIREWALL_IPV4_ENABLED",
-		"firewall.ipv4.address_list":           "FIREWALL_IPV4_ADDRESS_LIST",
-		"firewall.ipv6.enabled":                "FIREWALL_IPV6_ENABLED",
-		"firewall.ipv6.address_list":           "FIREWALL_IPV6_ADDRESS_LIST",
-		"firewall.filter.enabled":              "FIREWALL_FILTER_ENABLED",
-		"firewall.filter.chains":               "FIREWALL_FILTER_CHAINS",
-		"firewall.raw.enabled":                 "FIREWALL_RAW_ENABLED",
-		"firewall.raw.chains":                  "FIREWALL_RAW_CHAINS",
-		"firewall.deny_action":                 "FIREWALL_DENY_ACTION",
-		"firewall.reject_with":                 "FIREWALL_REJECT_WITH",
-		"firewall.rule_placement":              "FIREWALL_RULE_PLACEMENT",
-		"firewall.comment_prefix":              "FIREWALL_COMMENT_PREFIX",
-		"firewall.log":                         "FIREWALL_LOG",
-		"firewall.log_prefix":                  "FIREWALL_LOG_PREFIX",
-		"firewall.filter.log_prefix":           "FIREWALL_FILTER_LOG_PREFIX",
-		"firewall.filter.connection_state":     "FIREWALL_FILTER_CONNECTION_STATE",
-		"firewall.raw.log_prefix":              "FIREWALL_RAW_LOG_PREFIX",
-		"firewall.block_input.interface":       "FIREWALL_INPUT_INTERFACE",
-		"firewall.block_input.interface_list":  "FIREWALL_INPUT_INTERFACE_LIST",
-		"firewall.block_input.whitelist":       "FIREWALL_INPUT_WHITELIST",
-		"firewall.block_output.enabled":        "FIREWALL_BLOCK_OUTPUT",
-		"firewall.block_output.interface":      "FIREWALL_OUTPUT_INTERFACE",
-		"firewall.block_output.interface_list": "FIREWALL_OUTPUT_INTERFACE_LIST",
-		"firewall.block_output.log_prefix":     "FIREWALL_OUTPUT_LOG_PREFIX",
+		"firewall.ipv4.enabled":                     "FIREWALL_IPV4_ENABLED",
+		"firewall.ipv4.address_list":                "FIREWALL_IPV4_ADDRESS_LIST",
+		"firewall.ipv6.enabled":                     "FIREWALL_IPV6_ENABLED",
+		"firewall.ipv6.address_list":                "FIREWALL_IPV6_ADDRESS_LIST",
+		"firewall.filter.enabled":                   "FIREWALL_FILTER_ENABLED",
+		"firewall.filter.chains":                    "FIREWALL_FILTER_CHAINS",
+		"firewall.raw.enabled":                      "FIREWALL_RAW_ENABLED",
+		"firewall.raw.chains":                       "FIREWALL_RAW_CHAINS",
+		"firewall.deny_action":                      "FIREWALL_DENY_ACTION",
+		"firewall.reject_with":                      "FIREWALL_REJECT_WITH",
+		"firewall.rule_placement":                   "FIREWALL_RULE_PLACEMENT",
+		"firewall.comment_prefix":                   "FIREWALL_COMMENT_PREFIX",
+		"firewall.log":                              "FIREWALL_LOG",
+		"firewall.log_prefix":                       "FIREWALL_LOG_PREFIX",
+		"firewall.filter.log_prefix":                "FIREWALL_FILTER_LOG_PREFIX",
+		"firewall.filter.connection_state":          "FIREWALL_FILTER_CONNECTION_STATE",
+		"firewall.raw.log_prefix":                   "FIREWALL_RAW_LOG_PREFIX",
+		"firewall.block_input.interface":            "FIREWALL_INPUT_INTERFACE",
+		"firewall.block_input.interface_list":       "FIREWALL_INPUT_INTERFACE_LIST",
+		"firewall.block_input.whitelist":            "FIREWALL_INPUT_WHITELIST",
+		"firewall.block_output.enabled":             "FIREWALL_BLOCK_OUTPUT",
+		"firewall.block_output.interface":           "FIREWALL_OUTPUT_INTERFACE",
+		"firewall.block_output.interface_list":      "FIREWALL_OUTPUT_INTERFACE_LIST",
+		"firewall.block_output.log_prefix":          "FIREWALL_OUTPUT_LOG_PREFIX",
 		"firewall.block_output.passthrough_v4":      "FIREWALL_OUTPUT_PASSTHROUGH_V4",
 		"firewall.block_output.passthrough_v4_list": "FIREWALL_OUTPUT_PASSTHROUGH_V4_LIST",
 		"firewall.block_output.passthrough_v6":      "FIREWALL_OUTPUT_PASSTHROUGH_V6",
