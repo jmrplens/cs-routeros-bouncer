@@ -95,6 +95,26 @@ var (
 		Help: "RouterOS CPU temperature in degrees Celsius.",
 	})
 
+	routerosUptimeSeconds = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "crowdsec_bouncer_routeros_uptime_seconds",
+		Help: "RouterOS uptime in seconds.",
+	})
+
+	routerosInfo = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "crowdsec_bouncer_routeros_info",
+		Help: "RouterOS system information.",
+	}, []string{"version", "board_name"})
+
+	droppedBytesProto = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "crowdsec_bouncer_dropped_bytes_by_proto",
+		Help: "Cumulative bytes dropped by firewall rules, by protocol.",
+	}, []string{"proto"})
+
+	droppedPacketsProto = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "crowdsec_bouncer_dropped_packets_by_proto",
+		Help: "Cumulative packets dropped by firewall rules, by protocol.",
+	}, []string{"proto"})
+
 	configInfo = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "crowdsec_bouncer_config_info",
 		Help: "Bouncer configuration parameters (one series per parameter, value is always 1).",
@@ -111,13 +131,52 @@ func RecordError(operation string) {
 	errorsTotal.WithLabelValues(operation).Inc()
 }
 
+// normalizeProto normalizes CrowdSec scope values to consistent protocol labels.
+// CrowdSec sends "Ip" or "ip" for IPv4 and "Ip6"/"ipv6" for IPv6.
+func normalizeProto(proto string) string {
+	switch proto {
+	case "ip", "Ip":
+		return "ipv4"
+	case "ipv6", "Ip6":
+		return "ipv6"
+	default:
+		return proto
+	}
+}
+
 // SetActiveDecisions sets the gauge for active decisions and updates the atomic counter.
 func SetActiveDecisions(proto string, count int) {
+	proto = normalizeProto(proto)
 	activeDecisions.WithLabelValues(proto).Set(float64(count))
-	if proto == "ipv4" {
+	switch proto {
+	case "ipv4":
 		activeDecisionCounts.ipv4.Store(int64(count))
-	} else {
+	case "ipv6":
 		activeDecisionCounts.ipv6.Store(int64(count))
+	}
+}
+
+// IncrActiveDecisions increments the active decisions gauge and atomic counter.
+func IncrActiveDecisions(proto string) {
+	proto = normalizeProto(proto)
+	activeDecisions.WithLabelValues(proto).Inc()
+	switch proto {
+	case "ipv4":
+		activeDecisionCounts.ipv4.Add(1)
+	case "ipv6":
+		activeDecisionCounts.ipv6.Add(1)
+	}
+}
+
+// DecrActiveDecisions decrements the active decisions gauge and atomic counter.
+func DecrActiveDecisions(proto string) {
+	proto = normalizeProto(proto)
+	activeDecisions.WithLabelValues(proto).Dec()
+	switch proto {
+	case "ipv4":
+		activeDecisionCounts.ipv4.Add(-1)
+	case "ipv6":
+		activeDecisionCounts.ipv6.Add(-1)
 	}
 }
 
@@ -161,6 +220,33 @@ func GetActiveDecisionsByOrigin() map[string]int64 {
 		result[k] = v
 	}
 	return result
+}
+
+// IncrActiveDecisionsByOrigin increments the active count for a given origin.
+func IncrActiveDecisionsByOrigin(origin string) {
+	if origin == "" {
+		origin = "unknown"
+	}
+	originDecisionsMu.Lock()
+	defer originDecisionsMu.Unlock()
+	originDecisions[origin]++
+	activeDecisionsByOrigin.WithLabelValues(origin).Set(float64(originDecisions[origin]))
+}
+
+// DecrActiveDecisionsByOrigin decrements the active count for a given origin.
+func DecrActiveDecisionsByOrigin(origin string) {
+	if origin == "" {
+		origin = "unknown"
+	}
+	originDecisionsMu.Lock()
+	defer originDecisionsMu.Unlock()
+	originDecisions[origin]--
+	if originDecisions[origin] <= 0 {
+		delete(originDecisions, origin)
+		activeDecisionsByOrigin.WithLabelValues(origin).Set(0)
+	} else {
+		activeDecisionsByOrigin.WithLabelValues(origin).Set(float64(originDecisions[origin]))
+	}
 }
 
 // --- Firewall dropped counters for LAPI ---
@@ -247,6 +333,25 @@ func SetRouterOSSystemMetrics(cpuLoad float64, memUsed, memTotal uint64) {
 // SetRouterOSCPUTemperature updates the RouterOS CPU temperature gauge.
 func SetRouterOSCPUTemperature(celsius float64) {
 	routerosCPUTemperature.Set(celsius)
+}
+
+// SetRouterOSUptime updates the RouterOS uptime gauge.
+func SetRouterOSUptime(seconds float64) {
+	routerosUptimeSeconds.Set(seconds)
+}
+
+// SetRouterOSInfo sets the RouterOS info metric with version and board labels.
+func SetRouterOSInfo(version, boardName string) {
+	routerosInfo.Reset()
+	routerosInfo.WithLabelValues(version, boardName).Set(1)
+}
+
+// SetDroppedCountersByProto updates the per-protocol dropped counters.
+func SetDroppedCountersByProto(ipv4Bytes, ipv4Pkts, ipv6Bytes, ipv6Pkts uint64) {
+	droppedBytesProto.WithLabelValues("ipv4").Set(float64(ipv4Bytes))
+	droppedBytesProto.WithLabelValues("ipv6").Set(float64(ipv6Bytes))
+	droppedPacketsProto.WithLabelValues("ipv4").Set(float64(ipv4Pkts))
+	droppedPacketsProto.WithLabelValues("ipv6").Set(float64(ipv6Pkts))
 }
 
 // ConfigParams holds non-sensitive configuration values for the info metric.

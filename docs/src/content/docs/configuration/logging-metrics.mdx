@@ -1,0 +1,94 @@
+---
+title: Logging & Metrics
+description: Bouncer logging and Prometheus metrics configuration parameters.
+---
+
+import { Badge, LinkCard } from '@astrojs/starlight/components';
+
+Settings for bouncer logging and Prometheus metrics.
+
+## Logging
+
+### `logging.level`
+
+<Badge text="Optional" variant="note" /> **Env:** `LOG_LEVEL` · **Default:** `info`
+
+Log verbosity level:
+
+| Level | Description |
+|-------|-------------|
+| `debug` | Detailed information for debugging (noisy) |
+| `info` | Normal operation messages |
+| `warn` | Warning conditions |
+| `error` | Error conditions only |
+
+```yaml
+logging:
+  level: "debug"  # Useful for troubleshooting
+```
+
+### `logging.format`
+
+<Badge text="Optional" variant="note" /> **Env:** `LOG_FORMAT` · **Default:** `text`
+
+Log output format:
+
+- `text` — human-readable, colored output (best for console/journalctl)
+- `json` — structured JSON (best for log aggregation systems)
+
+### `logging.file`
+
+<Badge text="Optional" variant="note" /> **Env:** `LOG_FILE` · **Default:** — (stdout)
+
+Path to a log file. When empty, logs are written to stdout only. When set, logs are written to both stdout and the specified file.
+
+```yaml
+logging:
+  file: "/var/log/cs-routeros-bouncer.log"
+```
+
+## Prometheus Metrics
+
+### `metrics.enabled`
+
+<Badge text="Optional" variant="note" /> **Env:** `METRICS_ENABLED` · **Default:** `false`
+
+Enable the Prometheus metrics endpoint. When enabled, the bouncer exposes metrics at `/metrics` and a health check at `/health`.
+
+### `metrics.listen_addr`
+
+<Badge text="Optional" variant="note" /> **Env:** `METRICS_ADDR` · **Default:** `0.0.0.0`
+
+Listen address for the metrics HTTP server.
+
+### `metrics.listen_port`
+
+<Badge text="Optional" variant="note" /> **Env:** `METRICS_PORT` · **Default:** `2112`
+
+Listen port for the metrics HTTP server.
+
+```yaml
+metrics:
+  enabled: true
+  listen_addr: "0.0.0.0"
+  listen_port: 2112
+```
+
+### `metrics.routeros_poll_interval`
+
+<Badge text="Optional" variant="note" /> **Env:** `METRICS_ROUTEROS_POLL_INTERVAL` · **Default:** `30s`
+
+How often to poll RouterOS for system metrics (CPU load, memory, temperature). Set to `0` to disable system metrics collection.
+
+```yaml
+metrics:
+  routeros_poll_interval: "30s"
+```
+
+### Available metrics
+
+<LinkCard title="Prometheus Metrics Reference" description="Full list of all exported metrics with PromQL examples" href="/cs-routeros-bouncer/monitoring/prometheus/" />
+
+:::caution[Security]
+The metrics endpoint should not be exposed to the internet. Use firewall rules or network segmentation to restrict access.
+:::

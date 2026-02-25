@@ -1,0 +1,69 @@
+---
+title: Security
+description: Security policy, supported versions, and vulnerability reporting.
+---
+
+import { Steps, Badge } from '@astrojs/starlight/components';
+
+## Supported versions
+
+| Version | Supported |
+|---------|-----------|
+| Latest release | <Badge text="✓" variant="success" /> |
+| Previous minor | <Badge text="✓" variant="success" /> |
+| Older versions | <Badge text="✗" variant="danger" /> |
+
+## Reporting vulnerabilities
+
+<Steps>
+
+1. **Do not** open a public issue
+
+2. **Contact privately**
+
+   Email the maintainer directly or use [GitHub's private vulnerability reporting](https://docs.github.com/en/code-security/security-advisories/guidance-on-reporting-and-writing-information-about-vulnerabilities/privately-reporting-a-security-vulnerability) feature.
+
+3. **Include details**
+
+   - Description of the vulnerability
+   - Steps to reproduce
+   - Potential impact
+   - Suggested fix (if any)
+
+</Steps>
+
+We aim to respond within 48 hours and will work with you to understand and address the issue.
+
+## Security considerations
+
+### RouterOS API credentials
+
+- Use a dedicated user with minimal permissions (only `api`, `read`, `write` policies)
+- Use TLS when possible (`mikrotik.tls: true`)
+- Store credentials securely (environment variables or secrets management)
+- Never commit credentials to version control
+
+### CrowdSec LAPI connection
+
+- Use TLS certificates for LAPI connections when available
+- Restrict LAPI access to trusted networks
+- Rotate bouncer API keys periodically
+
+### Metrics endpoint
+
+:::caution
+The `/metrics` and `/health` endpoints do not require authentication. Restrict access via network segmentation or firewall rules. Do not expose the metrics port to the internet.
+:::
+
+### Docker security
+
+- The official Docker image runs as a non-root user
+- Use read-only filesystem mount where possible
+- Limit container capabilities
+- Use secrets management for credentials (Docker secrets, Kubernetes secrets)
+
+### Firewall rule integrity
+
+- The bouncer identifies its rules by structured comments — do not modify these comments manually
+- Use the `comment_prefix` option to avoid conflicts with other tools
+- The bouncer performs cleanup on startup and shutdown to prevent stale rules

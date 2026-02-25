@@ -1,0 +1,137 @@
+---
+title: Router Setup
+description: MikroTik RouterOS configuration required for cs-routeros-bouncer.
+---
+
+import { Steps, Badge, LinkCard } from '@astrojs/starlight/components';
+
+This guide covers the MikroTik RouterOS configuration required for cs-routeros-bouncer.
+
+## API Service
+
+The bouncer communicates with MikroTik via the RouterOS API. Ensure the API service is enabled:
+
+```routeros
+/ip/service/print
+```
+
+You need either:
+
+- **api** (port 8728) — plaintext connection
+- **api-ssl** (port 8729) — TLS-encrypted connection <Badge text="Recommended" variant="tip" />
+
+To enable:
+
+```routeros
+# Enable plaintext API
+/ip/service/enable api
+
+# Enable TLS API (recommended)
+/ip/service/enable api-ssl
+```
+
+:::tip[Production recommendation]
+Use TLS (port 8729) for production deployments. Configure the bouncer with `mikrotik.tls: true`.
+:::
+
+## API User
+
+Create a dedicated user with minimal permissions:
+
+<Steps>
+
+1. **Create a group with only the required policies**
+
+   ```routeros
+   /user/group/add name=crowdsec policy=read,write,api,sensitive,!ftp,!local,!ssh,!reboot,!policy,!test,!password,!sniff,!romon,!rest-api
+   ```
+
+2. **Create the API user**
+
+   ```routeros
+   /user/add name=crowdsec group=crowdsec password=YOUR_SECURE_PASSWORD
+   ```
+
+</Steps>
+
+### Required policies
+
+| Policy | Why |
+|--------|-----|
+| `read` | Read firewall rules and address lists |
+| `write` | Create/modify/delete firewall rules and address lists |
+| `api` | Access the RouterOS API |
+| `sensitive` | Required for some API operations |
+
+### Denied policies
+
+All other policies are explicitly denied to follow the principle of least privilege:
+
+`!ftp`, `!local`, `!ssh`, `!reboot`, `!policy`, `!test`, `!password`, `!sniff`, `!romon`, `!rest-api`
+
+## Firewall access
+
+If you have firewall rules restricting API access, allow connections from the bouncer host:
+
+```routeros
+# For plaintext API (port 8728)
+/ip/firewall/filter/add chain=input protocol=tcp dst-port=8728 src-address=BOUNCER_IP action=accept comment="Allow CrowdSec bouncer API access" place-before=0
+
+# For TLS API (port 8729) — if using tls: true
+/ip/firewall/filter/add chain=input protocol=tcp dst-port=8729 src-address=BOUNCER_IP action=accept comment="Allow CrowdSec bouncer API-SSL access" place-before=0
+```
+
+Replace `BOUNCER_IP` with the IP address of the machine running the bouncer.
+
+:::caution[Security]
+Restrict API access to only the bouncer host IP. Never expose the API port to the internet.
+:::
+
+## TLS Configuration
+
+For TLS connections:
+
+<Steps>
+
+1. **Ensure your router has a valid certificate** (self-signed or CA-signed)
+
+2. **Enable the `api-ssl` service**
+
+   ```routeros
+   /ip/service/enable api-ssl
+   ```
+
+3. **Configure the bouncer**
+
+   ```yaml
+   mikrotik:
+     address: "192.168.0.1:8729"
+     tls: true
+     tls_insecure: false  # Set to true only for self-signed certs (disables cert verification — avoid in production)
+   ```
+
+</Steps>
+
+## Verification
+
+After setup, verify the API user can connect:
+
+```bash
+# Test plaintext API connectivity
+nc -vz ROUTER_IP 8728
+# Test TLS API connectivity (if using api-ssl)
+openssl s_client -connect ROUTER_IP:8729 -servername ROUTER_IP </dev/null
+```
+
+Or use the bouncer's health endpoint after starting:
+
+```bash
+curl http://localhost:2112/health
+# {"status":"ok","routeros_connected":true,"version":"vX.Y.Z"}
+```
+
+<LinkCard
+  title="Next: Installation"
+  description="Deploy the bouncer using Docker, systemd, or build from source."
+  href="/cs-routeros-bouncer/getting-started/installation/"
+/>

@@ -1,0 +1,111 @@
+---
+title: Contributing
+description: Guidelines for contributing to cs-routeros-bouncer.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+Thank you for considering contributing to cs-routeros-bouncer!
+
+## Getting started
+
+### Prerequisites
+
+- Go 1.24+
+- A MikroTik router (for functional testing — optional)
+- Git
+
+### Setup
+
+<Steps>
+
+1. **Fork and clone the repository**
+
+   ```bash
+   git clone https://github.com/YOUR-USERNAME/cs-routeros-bouncer.git
+   cd cs-routeros-bouncer
+   ```
+
+2. **Install dependencies and verify the build**
+
+   ```bash
+   go mod download
+   go build ./...
+   go test ./...
+   ```
+
+</Steps>
+
+## Development workflow
+
+<Steps>
+
+1. **Create a branch** from `main`
+
+   ```bash
+   git checkout -b feat/my-feature
+   ```
+
+2. **Make your changes** — keep commits focused and atomic
+
+3. **Write tests** for new functionality
+
+4. **Run the test suite and linter**
+
+   ```bash
+   go test ./...
+   golangci-lint run
+   ```
+
+5. **Commit** using conventional commit messages
+
+   ```
+   feat: add support for new feature
+   fix: correct handling of edge case
+   docs: update configuration reference
+   ```
+
+6. **Push** and create a Pull Request
+
+</Steps>
+
+## Commit messages
+
+Follow [Conventional Commits](https://www.conventionalcommits.org/):
+
+| Prefix | Usage |
+|--------|-------|
+| `feat:` | New feature |
+| `fix:` | Bug fix |
+| `docs:` | Documentation changes |
+| `test:` | Adding or modifying tests |
+| `refactor:` | Code change that neither fixes a bug nor adds a feature |
+| `perf:` | Performance improvement |
+| `chore:` | Build process or auxiliary tool changes |
+| `ci:` | CI/CD changes |
+
+## Code style
+
+- Follow standard Go conventions (`gofmt`, `go vet`)
+- Use meaningful variable and function names
+- Add comments for exported functions and complex logic
+- Keep functions focused — one function, one responsibility
+- Handle errors explicitly — no silent failures
+
+## Pull request guidelines
+
+- Keep PRs focused on a single change
+- Include tests for new functionality
+- Update documentation if behavior changes
+- Ensure all CI checks pass
+- Provide a clear description of what and why
+
+## Reporting issues
+
+When reporting bugs, please include:
+
+1. Bouncer version (`cs-routeros-bouncer version`)
+2. MikroTik RouterOS version
+3. Configuration (with credentials redacted)
+4. Relevant log output (`LOG_LEVEL=debug`)
+5. Steps to reproduce

@@ -640,3 +640,26 @@ func TestDurationToMikroTikLarge(t *testing.T) {
 		t.Errorf("expected '1000d', got %q", result)
 	}
 }
+
+func TestParseMikroTikUptime(t *testing.T) {
+	tests := []struct {
+		input string
+		want  float64
+	}{
+		{"1w2d3h4m5s", 1*604800 + 2*86400 + 3*3600 + 4*60 + 5},
+		{"5s", 5},
+		{"10m30s", 630},
+		{"2h", 7200},
+		{"3d12h", 3*86400 + 12*3600},
+		{"1w", 604800},
+		{"", 0},
+		{"0s", 0},
+		{"1w0d0h0m1s", 604801},
+	}
+	for _, tt := range tests {
+		got := ParseMikroTikUptime(tt.input)
+		if got != tt.want {
+			t.Errorf("ParseMikroTikUptime(%q) = %v, want %v", tt.input, got, tt.want)
+		}
+	}
+}
