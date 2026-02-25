@@ -186,7 +186,17 @@ func (m *Manager) Start(ctx context.Context) error {
 					m.logger.Debug().Err(err).Msg("failed to collect firewall counters for LAPI metrics")
 					return
 				}
-				metrics.SetDroppedCounters(fc.TotalBytes, fc.TotalPkts)
+				// Dropped: only drop/reject rule counters.
+				metrics.SetDroppedCounters(fc.DroppedBytes, fc.DroppedPkts)
+				metrics.SetDroppedCountersByIPType(
+					fc.DroppedIPv4Bytes, fc.DroppedIPv4Pkts,
+					fc.DroppedIPv6Bytes, fc.DroppedIPv6Pkts,
+				)
+				// Processed: total traffic through all bouncer rules.
+				metrics.SetProcessedCounters(
+					fc.IPv4Bytes, fc.IPv4Pkts,
+					fc.IPv6Bytes, fc.IPv6Pkts,
+				)
 			})
 
 			m.logger.Info().Dur("interval", m.cfg.CrowdSec.LapiMetricsInterval).Msg("LAPI usage metrics reporting enabled")
@@ -363,8 +373,9 @@ func (m *Manager) pollSystemMetrics() {
 	if err != nil {
 		m.logger.Debug().Err(err).Msg("failed to collect firewall counters")
 	} else {
-		metrics.SetDroppedCounters(fc.TotalBytes, fc.TotalPkts)
-		metrics.SetDroppedCountersByProto(fc.IPv4Bytes, fc.IPv4Pkts, fc.IPv6Bytes, fc.IPv6Pkts)
+		// Prometheus "dropped" gauges use only drop/reject rule counters.
+		metrics.SetDroppedCounters(fc.DroppedBytes, fc.DroppedPkts)
+		metrics.SetDroppedCountersByProto(fc.DroppedIPv4Bytes, fc.DroppedIPv4Pkts, fc.DroppedIPv6Bytes, fc.DroppedIPv6Pkts)
 	}
 }
 

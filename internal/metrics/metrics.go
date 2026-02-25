@@ -257,9 +257,31 @@ type DroppedCounters struct {
 	Packets uint64
 }
 
+// ProtoCounters holds byte/packet counters per IP protocol.
+type ProtoCounters struct {
+	IPv4Bytes uint64
+	IPv4Pkts  uint64
+	IPv6Bytes uint64
+	IPv6Pkts  uint64
+}
+
 var droppedCountersMu sync.Mutex
 var droppedCounters DroppedCounters
 var lastSentCounters DroppedCounters
+
+// Per-ip_type dropped counters for LAPI (delta tracking).
+var droppedProtoState struct {
+	mu       sync.Mutex
+	current  ProtoCounters
+	lastSent ProtoCounters
+}
+
+// Per-ip_type processed counters for LAPI (delta tracking).
+var processedProtoState struct {
+	mu       sync.Mutex
+	current  ProtoCounters
+	lastSent ProtoCounters
+}
 
 // SetDroppedCounters updates the current firewall dropped counters (cumulative).
 func SetDroppedCounters(bytes, packets uint64) {
@@ -292,6 +314,67 @@ func GetAndResetDroppedDeltas() (bytes, packets uint64) {
 	lastSentCounters = droppedCounters
 
 	return bytes, packets
+}
+
+// SetDroppedCountersByIPType updates the per-ip_type dropped counters (cumulative).
+func SetDroppedCountersByIPType(ipv4Bytes, ipv4Pkts, ipv6Bytes, ipv6Pkts uint64) {
+	droppedProtoState.mu.Lock()
+	defer droppedProtoState.mu.Unlock()
+	droppedProtoState.current = ProtoCounters{
+		IPv4Bytes: ipv4Bytes,
+		IPv4Pkts:  ipv4Pkts,
+		IPv6Bytes: ipv6Bytes,
+		IPv6Pkts:  ipv6Pkts,
+	}
+}
+
+// computeDelta returns the delta handling wrap-around/reset.
+func computeDelta(current, lastSent uint64) uint64 {
+	if current >= lastSent {
+		return current - lastSent
+	}
+	return current // counter was reset
+}
+
+// GetAndResetDroppedDeltasByIPType returns per-ip_type dropped deltas and resets baseline.
+func GetAndResetDroppedDeltasByIPType() (ipv4Bytes, ipv4Pkts, ipv6Bytes, ipv6Pkts uint64) {
+	droppedProtoState.mu.Lock()
+	defer droppedProtoState.mu.Unlock()
+
+	ipv4Bytes = computeDelta(droppedProtoState.current.IPv4Bytes, droppedProtoState.lastSent.IPv4Bytes)
+	ipv4Pkts = computeDelta(droppedProtoState.current.IPv4Pkts, droppedProtoState.lastSent.IPv4Pkts)
+	ipv6Bytes = computeDelta(droppedProtoState.current.IPv6Bytes, droppedProtoState.lastSent.IPv6Bytes)
+	ipv6Pkts = computeDelta(droppedProtoState.current.IPv6Pkts, droppedProtoState.lastSent.IPv6Pkts)
+
+	droppedProtoState.lastSent = droppedProtoState.current
+	return
+}
+
+// SetProcessedCounters updates the per-ip_type processed counters (cumulative).
+// Processed = total traffic through all bouncer rules (drop + whitelist + passthrough).
+func SetProcessedCounters(ipv4Bytes, ipv4Pkts, ipv6Bytes, ipv6Pkts uint64) {
+	processedProtoState.mu.Lock()
+	defer processedProtoState.mu.Unlock()
+	processedProtoState.current = ProtoCounters{
+		IPv4Bytes: ipv4Bytes,
+		IPv4Pkts:  ipv4Pkts,
+		IPv6Bytes: ipv6Bytes,
+		IPv6Pkts:  ipv6Pkts,
+	}
+}
+
+// GetAndResetProcessedDeltas returns per-ip_type processed deltas and resets baseline.
+func GetAndResetProcessedDeltas() (ipv4Bytes, ipv4Pkts, ipv6Bytes, ipv6Pkts uint64) {
+	processedProtoState.mu.Lock()
+	defer processedProtoState.mu.Unlock()
+
+	ipv4Bytes = computeDelta(processedProtoState.current.IPv4Bytes, processedProtoState.lastSent.IPv4Bytes)
+	ipv4Pkts = computeDelta(processedProtoState.current.IPv4Pkts, processedProtoState.lastSent.IPv4Pkts)
+	ipv6Bytes = computeDelta(processedProtoState.current.IPv6Bytes, processedProtoState.lastSent.IPv6Bytes)
+	ipv6Pkts = computeDelta(processedProtoState.current.IPv6Pkts, processedProtoState.lastSent.IPv6Pkts)
+
+	processedProtoState.lastSent = processedProtoState.current
+	return
 }
 
 // SetConnected sets the RouterOS connection gauge.

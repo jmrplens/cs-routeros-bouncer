@@ -304,19 +304,30 @@ func (c *Client) FindFirewallRuleByComment(proto, mode, comment string) (*RuleEn
 // RuleCounters holds byte and packet counters for a single firewall rule.
 type RuleCounters struct {
 	Comment string
+	Action  string
 	Bytes   uint64
 	Packets uint64
 }
 
 // FirewallCounters aggregates counters from all bouncer firewall rules.
 type FirewallCounters struct {
-	Rules      []RuleCounters
+	Rules []RuleCounters
+
+	// Total counters across ALL bouncer rules (= processed traffic).
 	TotalBytes uint64
 	TotalPkts  uint64
 	IPv4Bytes  uint64
 	IPv4Pkts   uint64
 	IPv6Bytes  uint64
 	IPv6Pkts   uint64
+
+	// Dropped only: counters from drop/reject rules.
+	DroppedBytes     uint64
+	DroppedPkts      uint64
+	DroppedIPv4Bytes uint64
+	DroppedIPv4Pkts  uint64
+	DroppedIPv6Bytes uint64
+	DroppedIPv6Pkts  uint64
 }
 
 // GetFirewallCounters queries byte/packet counters from all firewall rules
@@ -337,7 +348,7 @@ func (c *Client) GetFirewallCounters(commentPrefix string) (*FirewallCounters, e
 		{protoPrefix("ipv6") + "/firewall/raw", "ipv6"},
 	}
 
-	proplist := []string{".id", "bytes", "packets", "comment"}
+	proplist := []string{".id", "bytes", "packets", "comment", "action"}
 
 	for _, q := range queries {
 		results, err := c.Print(q.path, nil, proplist)
@@ -354,13 +365,16 @@ func (c *Client) GetFirewallCounters(commentPrefix string) (*FirewallCounters, e
 
 			bytes, _ := strconv.ParseUint(r["bytes"], 10, 64)
 			packets, _ := strconv.ParseUint(r["packets"], 10, 64)
+			action := r["action"]
 
 			fc.Rules = append(fc.Rules, RuleCounters{
 				Comment: comment,
+				Action:  action,
 				Bytes:   bytes,
 				Packets: packets,
 			})
 
+			// Total (= processed): all bouncer rules.
 			fc.TotalBytes += bytes
 			fc.TotalPkts += packets
 
@@ -370,6 +384,20 @@ func (c *Client) GetFirewallCounters(commentPrefix string) (*FirewallCounters, e
 			} else {
 				fc.IPv6Bytes += bytes
 				fc.IPv6Pkts += packets
+			}
+
+			// Dropped: only drop/reject rules.
+			if action == "drop" || action == "reject" {
+				fc.DroppedBytes += bytes
+				fc.DroppedPkts += packets
+
+				if q.proto == "ipv4" {
+					fc.DroppedIPv4Bytes += bytes
+					fc.DroppedIPv4Pkts += packets
+				} else {
+					fc.DroppedIPv6Bytes += bytes
+					fc.DroppedIPv6Pkts += packets
+				}
 			}
 		}
 	}
