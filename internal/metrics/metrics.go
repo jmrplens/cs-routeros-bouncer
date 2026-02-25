@@ -115,6 +115,26 @@ var (
 		Help: "Cumulative packets dropped by firewall rules, by protocol.",
 	}, []string{"proto"})
 
+	processedBytesTotal = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "crowdsec_bouncer_processed_bytes_total",
+		Help: "Cumulative bytes processed (evaluated) by firewall rules.",
+	})
+
+	processedPacketsTotal = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "crowdsec_bouncer_processed_packets_total",
+		Help: "Cumulative packets processed (evaluated) by firewall rules.",
+	})
+
+	processedBytesProto = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "crowdsec_bouncer_processed_bytes_by_proto",
+		Help: "Cumulative bytes processed (evaluated) by firewall rules, by protocol.",
+	}, []string{"proto"})
+
+	processedPacketsProto = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "crowdsec_bouncer_processed_packets_by_proto",
+		Help: "Cumulative packets processed (evaluated) by firewall rules, by protocol.",
+	}, []string{"proto"})
+
 	configInfo = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "crowdsec_bouncer_config_info",
 		Help: "Bouncer configuration parameters (one series per parameter, value is always 1).",
@@ -435,6 +455,18 @@ func SetDroppedCountersByProto(ipv4Bytes, ipv4Pkts, ipv6Bytes, ipv6Pkts uint64) 
 	droppedBytesProto.WithLabelValues("ipv6").Set(float64(ipv6Bytes))
 	droppedPacketsProto.WithLabelValues("ipv4").Set(float64(ipv4Pkts))
 	droppedPacketsProto.WithLabelValues("ipv6").Set(float64(ipv6Pkts))
+}
+
+// SetProcessedCountersPrometheus updates the Prometheus processed gauges.
+func SetProcessedCountersPrometheus(ipv4Bytes, ipv4Pkts, ipv6Bytes, ipv6Pkts uint64) {
+	total := ipv4Bytes + ipv6Bytes
+	totalPkts := ipv4Pkts + ipv6Pkts
+	processedBytesTotal.Set(float64(total))
+	processedPacketsTotal.Set(float64(totalPkts))
+	processedBytesProto.WithLabelValues("ipv4").Set(float64(ipv4Bytes))
+	processedBytesProto.WithLabelValues("ipv6").Set(float64(ipv6Bytes))
+	processedPacketsProto.WithLabelValues("ipv4").Set(float64(ipv4Pkts))
+	processedPacketsProto.WithLabelValues("ipv6").Set(float64(ipv6Pkts))
 }
 
 // ConfigParams holds non-sensitive configuration values for the info metric.

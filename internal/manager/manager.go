@@ -380,6 +380,8 @@ func (m *Manager) pollSystemMetrics() {
 		// Prometheus "dropped" gauges use only drop/reject rule counters.
 		metrics.SetDroppedCounters(fc.DroppedBytes, fc.DroppedPkts)
 		metrics.SetDroppedCountersByProto(fc.DroppedIPv4Bytes, fc.DroppedIPv4Pkts, fc.DroppedIPv6Bytes, fc.DroppedIPv6Pkts)
+		// Prometheus "processed" gauges from passthrough counting rules.
+		metrics.SetProcessedCountersPrometheus(fc.ProcessedIPv4Bytes, fc.ProcessedIPv4Pkts, fc.ProcessedIPv6Bytes, fc.ProcessedIPv6Pkts)
 	}
 }
 
