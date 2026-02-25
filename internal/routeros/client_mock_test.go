@@ -1607,6 +1607,14 @@ func TestGetFirewallCounters_AllPaths(t *testing.T) {
 	if fc.DroppedBytes != 3300 || fc.DroppedPkts != 33 {
 		t.Errorf("DroppedTotal: want (3300,33), got (%d,%d)", fc.DroppedBytes, fc.DroppedPkts)
 	}
+
+	// Processed: only passthrough rules. IPv4 has none, IPv6 has (700,7).
+	if fc.ProcessedIPv4Bytes != 0 || fc.ProcessedIPv4Pkts != 0 {
+		t.Errorf("ProcessedIPv4: want (0,0), got (%d,%d)", fc.ProcessedIPv4Bytes, fc.ProcessedIPv4Pkts)
+	}
+	if fc.ProcessedIPv6Bytes != 700 || fc.ProcessedIPv6Pkts != 7 {
+		t.Errorf("ProcessedIPv6: want (700,7), got (%d,%d)", fc.ProcessedIPv6Bytes, fc.ProcessedIPv6Pkts)
+	}
 }
 
 // TestGetFirewallCounters_EmptyPrefix verifies that an empty comment prefix
