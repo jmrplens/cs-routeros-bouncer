@@ -74,7 +74,11 @@ All other policies are explicitly denied to follow the principle of least privil
 If you have firewall rules restricting API access, allow connections from the bouncer host:
 
 ```routeros
+# For plaintext API (port 8728)
 /ip/firewall/filter/add chain=input protocol=tcp dst-port=8728 src-address=BOUNCER_IP action=accept comment="Allow CrowdSec bouncer API access" place-before=0
+
+# For TLS API (port 8729) — if using tls: true
+/ip/firewall/filter/add chain=input protocol=tcp dst-port=8729 src-address=BOUNCER_IP action=accept comment="Allow CrowdSec bouncer API-SSL access" place-before=0
 ```
 
 Replace `BOUNCER_IP` with the IP address of the machine running the bouncer.
@@ -113,8 +117,10 @@ For TLS connections:
 After setup, verify the API user can connect:
 
 ```bash
-# Test from the bouncer host
+# Test plaintext API
 curl -s telnet://ROUTER_IP:8728
+# Test TLS API (if using api-ssl)
+curl -sk https://ROUTER_IP:8729
 # Should connect (Ctrl+C to exit)
 ```
 

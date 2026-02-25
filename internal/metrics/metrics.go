@@ -131,8 +131,22 @@ func RecordError(operation string) {
 	errorsTotal.WithLabelValues(operation).Inc()
 }
 
+// normalizeProto normalizes CrowdSec scope values to consistent protocol labels.
+// CrowdSec sends "Ip" or "ip" for IPv4 and "Ip6"/"ipv6" for IPv6.
+func normalizeProto(proto string) string {
+	switch proto {
+	case "ip", "Ip":
+		return "ipv4"
+	case "ipv6", "Ip6":
+		return "ipv6"
+	default:
+		return proto
+	}
+}
+
 // SetActiveDecisions sets the gauge for active decisions and updates the atomic counter.
 func SetActiveDecisions(proto string, count int) {
+	proto = normalizeProto(proto)
 	activeDecisions.WithLabelValues(proto).Set(float64(count))
 	if proto == "ipv4" {
 		activeDecisionCounts.ipv4.Store(int64(count))
@@ -143,6 +157,7 @@ func SetActiveDecisions(proto string, count int) {
 
 // IncrActiveDecisions increments the active decisions gauge and atomic counter.
 func IncrActiveDecisions(proto string) {
+	proto = normalizeProto(proto)
 	activeDecisions.WithLabelValues(proto).Inc()
 	if proto == "ipv4" {
 		activeDecisionCounts.ipv4.Add(1)
@@ -153,6 +168,7 @@ func IncrActiveDecisions(proto string) {
 
 // DecrActiveDecisions decrements the active decisions gauge and atomic counter.
 func DecrActiveDecisions(proto string) {
+	proto = normalizeProto(proto)
 	activeDecisions.WithLabelValues(proto).Dec()
 	if proto == "ipv4" {
 		activeDecisionCounts.ipv4.Add(-1)

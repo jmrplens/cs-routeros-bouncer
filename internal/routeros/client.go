@@ -3,6 +3,7 @@ package routeros
 import (
 	"crypto/tls"
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -340,8 +341,7 @@ func ParseMikroTikUptime(uptime string) float64 {
 			if num == "" {
 				continue
 			}
-			var val float64
-			_, _ = fmt.Sscanf(num, "%f", &val)
+			val, _ := strconv.ParseFloat(num, 64)
 			num = ""
 			switch ch {
 			case 'w':
