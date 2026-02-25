@@ -5,7 +5,7 @@
 // It uses the go-cs-bouncer MetricsProvider to periodically report
 // bouncer metrics to the CrowdSec LAPI /v1/usage-metrics endpoint.
 //
-// The provider sends five metric types per the CrowdSec bouncer spec:
+// The provider sends three metric types per the CrowdSec bouncer spec:
 //   - active_decisions: current count of active decisions (by origin + ip_type)
 //   - dropped: bytes and packets blocked by drop/reject rules (delta, by ip_type)
 //   - processed: total bytes and packets through all bouncer rules (delta, by ip_type)

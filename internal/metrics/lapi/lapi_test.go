@@ -200,6 +200,85 @@ func TestMetricsUpdaterDroppedDelta(t *testing.T) {
 	}
 }
 
+// TestMetricsUpdaterProcessedCounters verifies that processed metrics are
+// included in the LAPI payload with per-ip_type labels.
+func TestMetricsUpdaterProcessedCounters(t *testing.T) {
+	resetMetrics()
+	metrics.SetProcessedCounters(8000, 200, 2000, 50)
+
+	p := testProvider()
+	payload := callUpdater(p, time.Minute)
+
+	dm := payload.Metrics[0]
+	processed := map[string]float64{}
+	for _, item := range dm.Items {
+		if item.Name != nil && *item.Name == "processed" {
+			key := item.Labels["ip_type"] + ":" + *item.Unit
+			processed[key] = *item.Value
+		}
+	}
+
+	if processed["ipv4:byte"] != 8000 {
+		t.Errorf("expected processed ipv4 bytes=8000, got %v", processed["ipv4:byte"])
+	}
+	if processed["ipv4:packet"] != 200 {
+		t.Errorf("expected processed ipv4 packets=200, got %v", processed["ipv4:packet"])
+	}
+	if processed["ipv6:byte"] != 2000 {
+		t.Errorf("expected processed ipv6 bytes=2000, got %v", processed["ipv6:byte"])
+	}
+	if processed["ipv6:packet"] != 50 {
+		t.Errorf("expected processed ipv6 packets=50, got %v", processed["ipv6:packet"])
+	}
+}
+
+// TestMetricsUpdaterProcessedDelta verifies the delta behavior for processed
+// metrics: after a push, only new counters since last push are reported.
+func TestMetricsUpdaterProcessedDelta(t *testing.T) {
+	resetMetrics()
+	metrics.SetProcessedCounters(5000, 100, 0, 0)
+
+	p := testProvider()
+	// First push: gets full delta.
+	payload1 := callUpdater(p, time.Minute)
+	dm1 := payload1.Metrics[0]
+	var bytes1, pkts1 float64
+	for _, item := range dm1.Items {
+		if item.Name != nil && *item.Name == "processed" && item.Labels["ip_type"] == "ipv4" {
+			if *item.Unit == "byte" {
+				bytes1 = *item.Value
+			}
+			if *item.Unit == "packet" {
+				pkts1 = *item.Value
+			}
+		}
+	}
+	if bytes1 != 5000 || pkts1 != 100 {
+		t.Errorf("first push: expected bytes=5000 pkts=100, got bytes=%v pkts=%v", bytes1, pkts1)
+	}
+
+	// Update counters to simulate more traffic.
+	metrics.SetProcessedCounters(7500, 160, 0, 0)
+
+	// Second push: delta should be 2500 bytes, 60 pkts.
+	payload2 := callUpdater(p, time.Minute)
+	dm2 := payload2.Metrics[0]
+	var bytes2, pkts2 float64
+	for _, item := range dm2.Items {
+		if item.Name != nil && *item.Name == "processed" && item.Labels["ip_type"] == "ipv4" {
+			if *item.Unit == "byte" {
+				bytes2 = *item.Value
+			}
+			if *item.Unit == "packet" {
+				pkts2 = *item.Value
+			}
+		}
+	}
+	if bytes2 != 2500 || pkts2 != 60 {
+		t.Errorf("second push: expected bytes=2500 pkts=60, got bytes=%v pkts=%v", bytes2, pkts2)
+	}
+}
+
 // TestMetricsUpdaterZeroDecisions verifies behavior with no active decisions.
 func TestMetricsUpdaterZeroDecisions(t *testing.T) {
 	resetMetrics()

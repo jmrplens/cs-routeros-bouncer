@@ -194,15 +194,11 @@ func (m *Manager) Start(ctx context.Context) error {
 					fc.DroppedIPv6Bytes, fc.DroppedIPv6Pkts,
 				)
 				// Processed: passthrough counting rule counters (total chain traffic).
-				// Falls back to total if no passthrough rules exist.
 				if m.cfg.Metrics.TrackProcessed {
-					pv4b, pv4p := fc.ProcessedIPv4Bytes, fc.ProcessedIPv4Pkts
-					pv6b, pv6p := fc.ProcessedIPv6Bytes, fc.ProcessedIPv6Pkts
-					if pv4b == 0 && pv4p == 0 && pv6b == 0 && pv6p == 0 {
-						pv4b, pv4p = fc.IPv4Bytes, fc.IPv4Pkts
-						pv6b, pv6p = fc.IPv6Bytes, fc.IPv6Pkts
-					}
-					metrics.SetProcessedCounters(pv4b, pv4p, pv6b, pv6p)
+					metrics.SetProcessedCounters(
+						fc.ProcessedIPv4Bytes, fc.ProcessedIPv4Pkts,
+						fc.ProcessedIPv6Bytes, fc.ProcessedIPv6Pkts,
+					)
 				}
 			})
 
@@ -871,6 +867,11 @@ func (m *Manager) ensureCountingRule(proto, mode string, rule rosClient.Firewall
 	}
 	if target != nil {
 		rule.PlaceBefore = target.ID
+	} else {
+		m.logger.Warn().
+			Str("counting_rule", rule.Comment).
+			Str("target_rule", beforeComment).
+			Msg("target rule not found for counting placement; rule will be appended at end of chain")
 	}
 
 	id, err := m.ros.AddFirewallRule(proto, mode, rule)

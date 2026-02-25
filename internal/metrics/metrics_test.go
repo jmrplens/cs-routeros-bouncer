@@ -889,6 +889,7 @@ func testConfigParams() ConfigParams {
 		LogLevel:                 "info",
 		LogFormat:                "text",
 		MetricsEnabled:           true,
+		MetricsTrackProcessed:    true,
 		MetricsListenAddr:        "0.0.0.0",
 		MetricsListenPort:        2112,
 		MetricsPollInterval:      "30s",
@@ -918,6 +919,7 @@ func TestSetConfigInfoRegistersMetric(t *testing.T) {
 		{"Firewall", "Deny Action", "drop"},
 		{"Logging", "Level", "info"},
 		{"Metrics", "Listen Port", "2112"},
+		{"Metrics", "Track Processed", "true"},
 	}
 	for _, c := range checks {
 		v := testutil.ToFloat64(configInfo.WithLabelValues(c.group, c.param, c.value))

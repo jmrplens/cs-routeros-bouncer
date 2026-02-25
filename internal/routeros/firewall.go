@@ -388,6 +388,12 @@ func (c *Client) GetFirewallCounters(commentPrefix string) (*FirewallCounters, e
 			bytes, _ := strconv.ParseUint(r["bytes"], 10, 64)
 			packets, _ := strconv.ParseUint(r["packets"], 10, 64)
 			action := r["action"]
+			if action == "" {
+				c.logger.Warn().
+					Str("comment", comment).
+					Msg("firewall rule has empty action, treating as drop")
+				action = "drop"
+			}
 
 			fc.Rules = append(fc.Rules, RuleCounters{
 				Comment: comment,
@@ -396,7 +402,7 @@ func (c *Client) GetFirewallCounters(commentPrefix string) (*FirewallCounters, e
 				Packets: packets,
 			})
 
-			// Total (= processed): all bouncer rules.
+			// Total across all bouncer rules.
 			fc.TotalBytes += bytes
 			fc.TotalPkts += packets
 
