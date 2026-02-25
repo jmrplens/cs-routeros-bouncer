@@ -148,9 +148,10 @@ func normalizeProto(proto string) string {
 func SetActiveDecisions(proto string, count int) {
 	proto = normalizeProto(proto)
 	activeDecisions.WithLabelValues(proto).Set(float64(count))
-	if proto == "ipv4" {
+	switch proto {
+	case "ipv4":
 		activeDecisionCounts.ipv4.Store(int64(count))
-	} else if proto == "ipv6" {
+	case "ipv6":
 		activeDecisionCounts.ipv6.Store(int64(count))
 	}
 }
@@ -159,9 +160,10 @@ func SetActiveDecisions(proto string, count int) {
 func IncrActiveDecisions(proto string) {
 	proto = normalizeProto(proto)
 	activeDecisions.WithLabelValues(proto).Inc()
-	if proto == "ipv4" {
+	switch proto {
+	case "ipv4":
 		activeDecisionCounts.ipv4.Add(1)
-	} else if proto == "ipv6" {
+	case "ipv6":
 		activeDecisionCounts.ipv6.Add(1)
 	}
 }
@@ -170,9 +172,10 @@ func IncrActiveDecisions(proto string) {
 func DecrActiveDecisions(proto string) {
 	proto = normalizeProto(proto)
 	activeDecisions.WithLabelValues(proto).Dec()
-	if proto == "ipv4" {
+	switch proto {
+	case "ipv4":
 		activeDecisionCounts.ipv4.Add(-1)
-	} else if proto == "ipv6" {
+	case "ipv6":
 		activeDecisionCounts.ipv6.Add(-1)
 	}
 }
