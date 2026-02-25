@@ -107,7 +107,7 @@ For TLS connections:
    mikrotik:
      address: "192.168.0.1:8729"
      tls: true
-     tls_insecure: false  # Set to true for self-signed certs
+     tls_insecure: false  # Set to true only for self-signed certs (disables cert verification — avoid in production)
    ```
 
 </Steps>

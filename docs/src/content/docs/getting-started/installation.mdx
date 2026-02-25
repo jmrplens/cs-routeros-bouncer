@@ -192,7 +192,11 @@ After installing with any method, verify the bouncer is running correctly:
 1. **Check service status**
 
    ```bash
+   # Binary installation
    sudo systemctl status cs-routeros-bouncer
+
+   # Docker Compose
+   docker compose ps cs-routeros-bouncer
    ```
 
 2. **Check health endpoint**
@@ -205,7 +209,11 @@ After installing with any method, verify the bouncer is running correctly:
 3. **Check logs**
 
    ```bash
+   # Binary installation
    sudo journalctl -u cs-routeros-bouncer -f
+
+   # Docker Compose
+   docker compose logs -f cs-routeros-bouncer
    ```
 
 4. **Verify router-side rules**
