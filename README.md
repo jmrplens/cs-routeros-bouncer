@@ -72,7 +72,7 @@ Choose your preferred installation method below.
 
 ## Installation
 
-### Docker Compose (recommended)
+### Docker Compose
 
 ```yaml
 services:

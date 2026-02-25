@@ -117,11 +117,10 @@ For TLS connections:
 After setup, verify the API user can connect:
 
 ```bash
-# Test plaintext API
-curl -s telnet://ROUTER_IP:8728
-# Test TLS API (if using api-ssl)
-curl -sk https://ROUTER_IP:8729
-# Should connect (Ctrl+C to exit)
+# Test plaintext API connectivity
+nc -vz ROUTER_IP 8728
+# Test TLS API connectivity (if using api-ssl)
+openssl s_client -connect ROUTER_IP:8729 -servername ROUTER_IP </dev/null
 ```
 
 Or use the bouncer's health endpoint after starting:

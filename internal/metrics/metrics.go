@@ -150,7 +150,7 @@ func SetActiveDecisions(proto string, count int) {
 	activeDecisions.WithLabelValues(proto).Set(float64(count))
 	if proto == "ipv4" {
 		activeDecisionCounts.ipv4.Store(int64(count))
-	} else {
+	} else if proto == "ipv6" {
 		activeDecisionCounts.ipv6.Store(int64(count))
 	}
 }
@@ -161,7 +161,7 @@ func IncrActiveDecisions(proto string) {
 	activeDecisions.WithLabelValues(proto).Inc()
 	if proto == "ipv4" {
 		activeDecisionCounts.ipv4.Add(1)
-	} else {
+	} else if proto == "ipv6" {
 		activeDecisionCounts.ipv6.Add(1)
 	}
 }
@@ -172,7 +172,7 @@ func DecrActiveDecisions(proto string) {
 	activeDecisions.WithLabelValues(proto).Dec()
 	if proto == "ipv4" {
 		activeDecisionCounts.ipv4.Add(-1)
-	} else {
+	} else if proto == "ipv6" {
 		activeDecisionCounts.ipv6.Add(-1)
 	}
 }
