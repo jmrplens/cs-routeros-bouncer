@@ -60,10 +60,10 @@ func TestRecordError(t *testing.T) {
 }
 
 // TestSetActiveDecisions verifies that SetActiveDecisions correctly sets
-// the gauge value for a given protocol.
+// the gauge value for a given protocol, including normalizing "ip" to "ipv4".
 func TestSetActiveDecisions(t *testing.T) {
 	SetActiveDecisions("ip", 42)
-	if got := testutil.ToFloat64(activeDecisions.WithLabelValues("ip")); got != 42 {
+	if got := testutil.ToFloat64(activeDecisions.WithLabelValues("ipv4")); got != 42 {
 		t.Errorf("expected 42, got %v", got)
 	}
 }
