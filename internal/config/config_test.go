@@ -125,6 +125,25 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Metrics.ListenPort != 2112 {
 		t.Errorf("expected metrics port 2112, got %d", cfg.Metrics.ListenPort)
 	}
+	if !cfg.Metrics.TrackProcessed {
+		t.Error("expected track_processed true by default")
+	}
+}
+
+// TestMetricsTrackProcessedEnvOverride verifies that METRICS_TRACK_PROCESSED
+// environment variable overrides the default value.
+func TestMetricsTrackProcessedEnvOverride(t *testing.T) {
+	setMinimalEnv(t)
+	t.Setenv("METRICS_TRACK_PROCESSED", "false")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+
+	if cfg.Metrics.TrackProcessed {
+		t.Error("expected track_processed false when METRICS_TRACK_PROCESSED=false")
+	}
 }
 
 // TestValidateMissingAPIKey verifies that validation fails when the CrowdSec

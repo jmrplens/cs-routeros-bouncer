@@ -7,12 +7,14 @@
 //
 // The provider sends three metric types per the CrowdSec bouncer spec:
 //   - active_decisions: current count of active decisions (by origin + ip_type)
-//   - dropped: bytes and packets blocked by the firewall (delta since last push)
+//   - dropped: bytes and packets blocked by drop/reject rules (delta, by ip_type)
+//   - processed: total bytes and packets through all bouncer rules (delta, by ip_type)
 //
 // The metricsUpdater callback runs on each tick and gathers data from:
 //   - metrics.GetActiveDecisionsByOrigin() for per-origin decision counts
 //   - metrics.GetActiveDecisionsByIPType() for per-protocol decision counts
-//   - metrics.GetAndResetDroppedDeltas() for firewall byte/packet deltas
+//   - metrics.GetAndResetDroppedDeltasByIPType() for per-ip_type firewall drop deltas
+//   - metrics.GetAndResetProcessedDeltas() for per-ip_type processed deltas
 //
 // An optional CounterCollector can be registered by the manager to refresh
 // firewall counters from MikroTik just before each LAPI push.
@@ -125,13 +127,34 @@ func (p *Provider) metricsUpdater(payload *models.RemediationComponentsMetrics, 
 		items = append(items, metricItem("active_decisions", "ip", total, nil))
 	}
 
-	// --- dropped bytes/packets (delta since last push) ---
-	droppedBytes, droppedPkts := metrics.GetAndResetDroppedDeltas()
-	if droppedBytes > 0 {
-		items = append(items, metricItem("dropped", "byte", float64(droppedBytes), nil))
+	// --- dropped bytes/packets per ip_type (delta since last push) ---
+	dv4b, dv4p, dv6b, dv6p := metrics.GetAndResetDroppedDeltasByIPType()
+	if dv4b > 0 {
+		items = append(items, metricItem("dropped", "byte", float64(dv4b), map[string]string{"ip_type": "ipv4"}))
 	}
-	if droppedPkts > 0 {
-		items = append(items, metricItem("dropped", "packet", float64(droppedPkts), nil))
+	if dv4p > 0 {
+		items = append(items, metricItem("dropped", "packet", float64(dv4p), map[string]string{"ip_type": "ipv4"}))
+	}
+	if dv6b > 0 {
+		items = append(items, metricItem("dropped", "byte", float64(dv6b), map[string]string{"ip_type": "ipv6"}))
+	}
+	if dv6p > 0 {
+		items = append(items, metricItem("dropped", "packet", float64(dv6p), map[string]string{"ip_type": "ipv6"}))
+	}
+
+	// --- processed bytes/packets per ip_type (delta since last push) ---
+	pv4b, pv4p, pv6b, pv6p := metrics.GetAndResetProcessedDeltas()
+	if pv4b > 0 {
+		items = append(items, metricItem("processed", "byte", float64(pv4b), map[string]string{"ip_type": "ipv4"}))
+	}
+	if pv4p > 0 {
+		items = append(items, metricItem("processed", "packet", float64(pv4p), map[string]string{"ip_type": "ipv4"}))
+	}
+	if pv6b > 0 {
+		items = append(items, metricItem("processed", "byte", float64(pv6b), map[string]string{"ip_type": "ipv6"}))
+	}
+	if pv6p > 0 {
+		items = append(items, metricItem("processed", "packet", float64(pv6p), map[string]string{"ip_type": "ipv6"}))
 	}
 
 	payload.Metrics = append(payload.Metrics, &models.DetailedMetrics{

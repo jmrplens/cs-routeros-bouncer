@@ -675,9 +675,9 @@ func TestCreateFirewallRules_IPv6Only(t *testing.T) {
 		}
 	}
 
-	// Should have exactly 1 input rule for forward chain
-	if len(mock.addRuleCalls) != 1 {
-		t.Errorf("expected 1 firewall rule call (IPv6 input), got %d", len(mock.addRuleCalls))
+	// Should have exactly 2 calls: 1 input rule + 1 counting rule for forward chain
+	if len(mock.addRuleCalls) != 2 {
+		t.Errorf("expected 2 firewall rule calls (IPv6 input + counting), got %d", len(mock.addRuleCalls))
 	}
 }
 
@@ -702,8 +702,8 @@ func TestCreateFirewallRules_WithInputInterface(t *testing.T) {
 	mock.mu.Lock()
 	defer mock.mu.Unlock()
 
-	if len(mock.addRuleCalls) != 1 {
-		t.Fatalf("expected 1 rule call, got %d", len(mock.addRuleCalls))
+	if len(mock.addRuleCalls) != 2 {
+		t.Fatalf("expected 2 rule calls (input + counting), got %d", len(mock.addRuleCalls))
 	}
 
 	rule := mock.addRuleCalls[0].Rule
@@ -737,12 +737,12 @@ func TestCreateFirewallRules_WithOutputInterface(t *testing.T) {
 	mock.mu.Lock()
 	defer mock.mu.Unlock()
 
-	// Should have 2 rules: input + output
-	if len(mock.addRuleCalls) != 2 {
-		t.Fatalf("expected 2 rule calls (input+output), got %d", len(mock.addRuleCalls))
+	// Should have 3 rules: input + counting + output
+	if len(mock.addRuleCalls) != 3 {
+		t.Fatalf("expected 3 rule calls (input + counting + output), got %d", len(mock.addRuleCalls))
 	}
 
-	outRule := mock.addRuleCalls[1].Rule
+	outRule := mock.addRuleCalls[2].Rule
 	if outRule.OutInterface != "ether2" {
 		t.Errorf("expected OutInterface=ether2, got %s", outRule.OutInterface)
 	}
@@ -769,8 +769,8 @@ func TestCreateFirewallRules_RawChains(t *testing.T) {
 	mock.mu.Lock()
 	defer mock.mu.Unlock()
 
-	if len(mock.addRuleCalls) != 1 {
-		t.Fatalf("expected 1 raw rule call, got %d", len(mock.addRuleCalls))
+	if len(mock.addRuleCalls) != 2 {
+		t.Fatalf("expected 2 raw rule calls (drop + counting), got %d", len(mock.addRuleCalls))
 	}
 	if mock.addRuleCalls[0].Rule.Chain != "prerouting" {
 		t.Errorf("expected chain prerouting, got %s", mock.addRuleCalls[0].Rule.Chain)
@@ -819,9 +819,40 @@ func TestCreateFirewallRules_FilterAndRawCombined(t *testing.T) {
 	mock.mu.Lock()
 	defer mock.mu.Unlock()
 
-	// 1 filter input + 1 raw input = 2
+	// 1 filter input + 1 counting + 1 raw input + 1 counting = 4
+	if len(mock.addRuleCalls) != 4 {
+		t.Errorf("expected 4 rule calls (filter+raw with counting), got %d", len(mock.addRuleCalls))
+	}
+}
+
+// TestCreateFirewallRules_TrackProcessedDisabled verifies that passthrough
+// counting rules are NOT created when metrics.track_processed is false.
+func TestCreateFirewallRules_TrackProcessedDisabled(t *testing.T) {
+	mock := &mockROS{addRuleID: "*1"}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"forward"}
+	cfg.Firewall.Raw.Enabled = true
+	cfg.Firewall.Raw.Chains = []string{"prerouting"}
+	cfg.Metrics.TrackProcessed = false
+	mgr := newTestManager(mock, cfg)
+
+	if err := mgr.createFirewallRules(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	mock.mu.Lock()
+	defer mock.mu.Unlock()
+
+	// Only drop rules, no counting: 1 filter input + 1 raw = 2
 	if len(mock.addRuleCalls) != 2 {
-		t.Errorf("expected 2 rule calls (filter+raw), got %d", len(mock.addRuleCalls))
+		t.Errorf("expected 2 rule calls (no counting rules), got %d", len(mock.addRuleCalls))
+	}
+	for _, call := range mock.addRuleCalls {
+		if call.Rule.Action == "passthrough" {
+			t.Error("passthrough counting rule should not be created when track_processed is false")
+		}
 	}
 }
 
@@ -866,9 +897,9 @@ func TestCreateFirewallRules_ExistingRuleSkipsAdd(t *testing.T) {
 		t.Error("should not call AddFirewallRule when rule already exists")
 	}
 
-	// Verify the existing ID was stored
-	if len(mgr.ruleIDs) != 1 {
-		t.Errorf("expected 1 rule ID stored, got %d", len(mgr.ruleIDs))
+	// Verify the existing IDs were stored (input + counting = 2)
+	if len(mgr.ruleIDs) != 2 {
+		t.Errorf("expected 2 rule IDs stored, got %d", len(mgr.ruleIDs))
 	}
 }
 

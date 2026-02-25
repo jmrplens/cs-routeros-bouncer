@@ -211,6 +211,58 @@ crowdsec_bouncer_dropped_bytes_by_proto{proto="ipv4"}
 crowdsec_bouncer_dropped_bytes_by_proto{proto="ipv6"}
 ```
 
+## Processed Traffic
+
+Processed traffic metrics measure ALL traffic evaluated by the bouncer's firewall chains — not just blocked traffic. The bouncer automatically creates `action=passthrough` counting rules positioned before each drop rule to track total chain throughput. These are the MikroTik equivalent of iptables JUMP counters used by `cs-firewall-bouncer`.
+
+:::note
+Processed traffic tracking requires `metrics.track_processed: true` (the default). Set it to `false` to disable these metrics and avoid creating passthrough counting rules on the router.
+:::
+
+### `crowdsec_bouncer_processed_bytes_total`
+
+<Badge text="Gauge" variant="note" /> <Badge text="New" variant="success" />
+
+Cumulative bytes processed (evaluated) by all bouncer firewall rules.
+
+### `crowdsec_bouncer_processed_packets_total`
+
+<Badge text="Gauge" variant="note" /> <Badge text="New" variant="success" />
+
+Cumulative packets processed (evaluated) by all bouncer firewall rules.
+
+### `crowdsec_bouncer_processed_bytes_by_proto`
+
+<Badge text="Gauge" variant="note" /> <Badge text="Labels: proto" variant="default" /> <Badge text="New" variant="success" />
+
+Cumulative bytes processed by firewall rules, broken down by protocol.
+
+| Label | Values | Description |
+|-------|--------|-------------|
+| `proto` | `ipv4`, `ipv6` | Protocol version |
+
+### `crowdsec_bouncer_processed_packets_by_proto`
+
+<Badge text="Gauge" variant="note" /> <Badge text="Labels: proto" variant="default" /> <Badge text="New" variant="success" />
+
+Cumulative packets processed by firewall rules, broken down by protocol.
+
+| Label | Values | Description |
+|-------|--------|-------------|
+| `proto` | `ipv4`, `ipv6` | Protocol version |
+
+```promql
+# Processed traffic rate by protocol
+rate(crowdsec_bouncer_processed_bytes_by_proto[5m])
+
+# Drop rate percentage (how much traffic is being blocked)
+sum(crowdsec_bouncer_dropped_packets_total) / sum(crowdsec_bouncer_processed_packets_total) * 100
+```
+
+<Aside type="note">
+Processed traffic is typically 200-500x higher than dropped traffic, since it counts ALL packets entering the bouncer chains — not just the ones matching banned IPs. This ratio is expected and provides context for how much traffic the bouncer is actually evaluating.
+</Aside>
+
 ## RouterOS System Metrics
 
 When `metrics.routeros_poll_interval` is non-zero, the bouncer collects MikroTik system metrics:
@@ -280,5 +332,11 @@ The bouncer reports the following to LAPI on each metrics push:
 | Metric | Description |
 |--------|-------------|
 | **active_decisions** | Per-origin and per-protocol active decision counts |
-| **dropped (bytes)** | Delta of bytes blocked since last push |
-| **dropped (packets)** | Delta of packets blocked since last push |
+| **dropped (bytes)** | Delta of bytes blocked since last push, per `ip_type` (`ipv4`/`ipv6`) |
+| **dropped (packets)** | Delta of packets blocked since last push, per `ip_type` |
+| **processed (bytes)** | Delta of bytes processed (evaluated) since last push, per `ip_type` |
+| **processed (packets)** | Delta of packets processed since last push, per `ip_type` |
+
+<Aside type="note">
+Dropped and processed metrics are sent as deltas (difference since the last push). The LAPI aggregates these to show cumulative bouncer activity in `cscli metrics show bouncers`. The `ip_type` label enables per-protocol analysis in the CrowdSec Console.
+</Aside>

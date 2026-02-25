@@ -153,6 +153,7 @@ func (m *Manager) Start(ctx context.Context) error {
 		MetricsListenAddr:        m.cfg.Metrics.ListenAddr,
 		MetricsListenPort:        m.cfg.Metrics.ListenPort,
 		MetricsPollInterval:      m.cfg.Metrics.RouterOSPollInterval.String(),
+		MetricsTrackProcessed:    m.cfg.Metrics.TrackProcessed,
 	})
 
 	// 4. Clean up stale firewall rules from a previous run or prefix change
@@ -186,7 +187,19 @@ func (m *Manager) Start(ctx context.Context) error {
 					m.logger.Debug().Err(err).Msg("failed to collect firewall counters for LAPI metrics")
 					return
 				}
-				metrics.SetDroppedCounters(fc.TotalBytes, fc.TotalPkts)
+				// Dropped: only drop/reject rule counters.
+				metrics.SetDroppedCounters(fc.DroppedBytes, fc.DroppedPkts)
+				metrics.SetDroppedCountersByIPType(
+					fc.DroppedIPv4Bytes, fc.DroppedIPv4Pkts,
+					fc.DroppedIPv6Bytes, fc.DroppedIPv6Pkts,
+				)
+				// Processed: passthrough counting rule counters (total chain traffic).
+				if m.cfg.Metrics.TrackProcessed {
+					metrics.SetProcessedCounters(
+						fc.ProcessedIPv4Bytes, fc.ProcessedIPv4Pkts,
+						fc.ProcessedIPv6Bytes, fc.ProcessedIPv6Pkts,
+					)
+				}
 			})
 
 			m.logger.Info().Dur("interval", m.cfg.CrowdSec.LapiMetricsInterval).Msg("LAPI usage metrics reporting enabled")
@@ -363,8 +376,13 @@ func (m *Manager) pollSystemMetrics() {
 	if err != nil {
 		m.logger.Debug().Err(err).Msg("failed to collect firewall counters")
 	} else {
-		metrics.SetDroppedCounters(fc.TotalBytes, fc.TotalPkts)
-		metrics.SetDroppedCountersByProto(fc.IPv4Bytes, fc.IPv4Pkts, fc.IPv6Bytes, fc.IPv6Pkts)
+		// Prometheus "dropped" gauges use only drop/reject rule counters.
+		metrics.SetDroppedCounters(fc.DroppedBytes, fc.DroppedPkts)
+		metrics.SetDroppedCountersByProto(fc.DroppedIPv4Bytes, fc.DroppedIPv4Pkts, fc.DroppedIPv6Bytes, fc.DroppedIPv6Pkts)
+		// Prometheus "processed" gauges from passthrough counting rules.
+		if m.cfg.Metrics.TrackProcessed {
+			metrics.SetProcessedCountersPrometheus(fc.ProcessedIPv4Bytes, fc.ProcessedIPv4Pkts, fc.ProcessedIPv6Bytes, fc.ProcessedIPv6Pkts)
+		}
 	}
 }
 
@@ -651,6 +669,22 @@ func (m *Manager) createFirewallRules() error {
 					return err
 				}
 
+				// Passthrough counting rule: measures total traffic evaluated by the
+				// bouncer at this chain position. Placed just before the drop/reject
+				// rule so its counters represent ALL packets the bouncer processes.
+				if m.cfg.Metrics.TrackProcessed {
+					countComment := buildRuleComment(m.commentPrefix(), "filter", chain, "counting", proto)
+					countRule := rosClient.FirewallRule{
+						Chain:   chain,
+						Action:  "passthrough",
+						Comment: countComment,
+					}
+					m.applyInputRuleOptions(&countRule)
+					if err := m.ensureCountingRule(proto, "filter", countRule, comment); err != nil {
+						return err
+					}
+				}
+
 				// Output rule (dst-address-list) — only if block_output enabled
 				if m.cfg.Firewall.BlockOutput.Enabled {
 					outComment := buildRuleComment(m.commentPrefix(), "filter", "output", "output", proto)
@@ -739,6 +773,20 @@ func (m *Manager) createFirewallRules() error {
 				if err := m.ensureFirewallRule(proto, "raw", rule); err != nil {
 					return err
 				}
+
+				// Passthrough counting rule for raw table.
+				if m.cfg.Metrics.TrackProcessed {
+					countComment := buildRuleComment(m.commentPrefix(), "raw", chain, "counting", proto)
+					countRule := rosClient.FirewallRule{
+						Chain:   chain,
+						Action:  "passthrough",
+						Comment: countComment,
+					}
+					m.applyInputRuleOptions(&countRule)
+					if err := m.ensureCountingRule(proto, "raw", countRule, comment); err != nil {
+						return err
+					}
+				}
 			}
 		}
 	}
@@ -793,6 +841,52 @@ func (m *Manager) ensureFirewallRule(proto, mode string, rule rosClient.Firewall
 	m.ruleMu.Lock()
 	m.ruleIDs[rule.Comment] = id
 	m.ruleMu.Unlock()
+
+	return nil
+}
+
+// ensureCountingRule creates a passthrough counting rule if it doesn't exist,
+// positioning it just before the specified target rule. These rules measure
+// total traffic evaluated by the bouncer, analogous to iptables JUMP counters.
+func (m *Manager) ensureCountingRule(proto, mode string, rule rosClient.FirewallRule, beforeComment string) error {
+	existing, err := m.ros.FindFirewallRuleByComment(proto, mode, rule.Comment)
+	if err != nil {
+		return fmt.Errorf("checking counting rule %q: %w", rule.Comment, err)
+	}
+	if existing != nil {
+		m.ruleMu.Lock()
+		m.ruleIDs[rule.Comment] = existing.ID
+		m.ruleMu.Unlock()
+		return nil
+	}
+
+	// Find the target rule to position before it
+	target, err := m.ros.FindFirewallRuleByComment(proto, mode, beforeComment)
+	if err != nil {
+		return fmt.Errorf("finding target rule %q for counting placement: %w", beforeComment, err)
+	}
+	if target != nil {
+		rule.PlaceBefore = target.ID
+	} else {
+		m.logger.Warn().
+			Str("counting_rule", rule.Comment).
+			Str("target_rule", beforeComment).
+			Msg("target rule not found for counting placement; rule will be appended at end of chain")
+	}
+
+	id, err := m.ros.AddFirewallRule(proto, mode, rule)
+	if err != nil {
+		return fmt.Errorf("creating counting rule %q: %w", rule.Comment, err)
+	}
+
+	m.ruleMu.Lock()
+	m.ruleIDs[rule.Comment] = id
+	m.ruleMu.Unlock()
+
+	m.logger.Info().
+		Str("comment", rule.Comment).
+		Str("id", id).
+		Msg("created passthrough counting rule for processed metrics")
 
 	return nil
 }

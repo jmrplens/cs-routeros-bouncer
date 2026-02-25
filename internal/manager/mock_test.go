@@ -308,6 +308,9 @@ func baseConfig() config.Config {
 				AddressList: "crowdsec6-banned",
 			},
 		},
+		Metrics: config.MetricsConfig{
+			TrackProcessed: true,
+		},
 	}
 }
 
@@ -729,9 +732,9 @@ func TestCreateFirewallRules_FilterOnly(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// IPv4 input + IPv6 input = 2 rules (no output)
-	if len(mock.addRuleCalls) != 2 {
-		t.Errorf("expected 2 rule creations (ipv4+ipv6 input), got %d", len(mock.addRuleCalls))
+	// IPv4 input + IPv4 counting + IPv6 input + IPv6 counting = 4 rules
+	if len(mock.addRuleCalls) != 4 {
+		t.Errorf("expected 4 rule creations (ipv4+ipv6 input+counting), got %d", len(mock.addRuleCalls))
 	}
 }
 
@@ -749,9 +752,9 @@ func TestCreateFirewallRules_FilterWithOutput(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// IPv4 input + IPv4 output + IPv6 input + IPv6 output = 4
-	if len(mock.addRuleCalls) != 4 {
-		t.Errorf("expected 4 rule creations, got %d", len(mock.addRuleCalls))
+	// IPv4 input + counting + IPv4 output + IPv6 input + counting + IPv6 output = 6
+	if len(mock.addRuleCalls) != 6 {
+		t.Errorf("expected 6 rule creations, got %d", len(mock.addRuleCalls))
 	}
 }
 
@@ -768,9 +771,9 @@ func TestCreateFirewallRules_RawOnly(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// IPv4 prerouting + IPv6 prerouting = 2
-	if len(mock.addRuleCalls) != 2 {
-		t.Errorf("expected 2 rule creations, got %d", len(mock.addRuleCalls))
+	// IPv4 prerouting + counting + IPv6 prerouting + counting = 4
+	if len(mock.addRuleCalls) != 4 {
+		t.Errorf("expected 4 rule creations, got %d", len(mock.addRuleCalls))
 	}
 }
 
@@ -789,9 +792,9 @@ func TestCreateFirewallRules_FilterAndRaw(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// (filter input + raw prerouting) × 2 protos = 4
-	if len(mock.addRuleCalls) != 4 {
-		t.Errorf("expected 4 rule creations (filter+raw × ipv4+ipv6), got %d", len(mock.addRuleCalls))
+	// (filter input + counting + raw prerouting + counting) × 2 protos = 8
+	if len(mock.addRuleCalls) != 8 {
+		t.Errorf("expected 8 rule creations (filter+raw × ipv4+ipv6 with counting), got %d", len(mock.addRuleCalls))
 	}
 }
 
@@ -1291,6 +1294,9 @@ func TestCreateFirewallRules_ConnectionState(t *testing.T) {
 	}
 
 	for _, c := range mock.addRuleCalls {
+		if c.Rule.Action == "passthrough" {
+			continue // counting rules don't filter by connection-state
+		}
 		if c.Rule.ConnectionState != "new,invalid" {
 			t.Errorf("expected connection-state=new,invalid, got %q", c.Rule.ConnectionState)
 		}
@@ -1333,6 +1339,9 @@ func TestCreateFirewallRules_LogPrefixGlobal(t *testing.T) {
 	}
 
 	for _, c := range mock.addRuleCalls {
+		if c.Rule.Action == "passthrough" {
+			continue // counting rules don't use log-prefix
+		}
 		if c.Rule.LogPrefix != "global-prefix" {
 			t.Errorf("expected global log-prefix, got %q", c.Rule.LogPrefix)
 		}
@@ -1358,6 +1367,9 @@ func TestCreateFirewallRules_LogPrefixPerType(t *testing.T) {
 	}
 
 	for _, c := range mock.addRuleCalls {
+		if c.Rule.Action == "passthrough" {
+			continue // counting rules don't use log-prefix
+		}
 		switch c.Mode {
 		case "filter":
 			if c.Rule.DstAddressList != "" {
@@ -1395,9 +1407,9 @@ func TestCreateFirewallRules_InputWhitelist(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Should create: whitelist-accept-v4, drop-v4, whitelist-accept-v6, drop-v6 = 4 rules
-	if len(mock.addRuleCalls) != 4 {
-		t.Fatalf("expected 4 rules (2 whitelist + 2 drop), got %d", len(mock.addRuleCalls))
+	// Should create: whitelist-accept-v4, drop-v4, counting-v4, whitelist-accept-v6, drop-v6, counting-v6 = 6 rules
+	if len(mock.addRuleCalls) != 6 {
+		t.Fatalf("expected 6 rules (2 whitelist + 2 drop + 2 counting), got %d", len(mock.addRuleCalls))
 	}
 
 	// First rule should be the whitelist accept
@@ -1428,9 +1440,9 @@ func TestCreateFirewallRules_InputWhitelistWithRaw(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Whitelist also applies to raw rules: 4 rules total
-	if len(mock.addRuleCalls) != 4 {
-		t.Fatalf("expected 4 rules (2 whitelist + 2 raw drop), got %d", len(mock.addRuleCalls))
+	// Whitelist also applies to raw rules: 6 rules total (2 whitelist + 2 drop + 2 counting)
+	if len(mock.addRuleCalls) != 6 {
+		t.Fatalf("expected 6 rules (2 whitelist + 2 raw drop + 2 counting), got %d", len(mock.addRuleCalls))
 	}
 
 	// First raw whitelist should NOT have connection-state
@@ -1504,6 +1516,9 @@ func TestCreateFirewallRules_RawForcesDropOnReject(t *testing.T) {
 
 	for _, c := range mock.addRuleCalls {
 		if c.Mode == "raw" {
+			if c.Rule.Action == "passthrough" {
+				continue // counting rules are expected to be passthrough
+			}
 			if c.Rule.Action == "reject" {
 				t.Errorf("raw rules must not use action=reject, got %q", c.Rule.Action)
 			}
@@ -1625,10 +1640,10 @@ func TestCreateFirewallRules_AllFeaturesCombined(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Expected: per proto: whitelist-accept + reject-input + reject-output = 3
-	// For 2 protos: 6 rules total
-	if len(mock.addRuleCalls) != 6 {
-		t.Fatalf("expected 6 rules, got %d", len(mock.addRuleCalls))
+	// Expected: per proto: whitelist-accept + reject-input + counting + reject-output = 4
+	// For 2 protos: 8 rules total
+	if len(mock.addRuleCalls) != 8 {
+		t.Fatalf("expected 8 rules, got %d", len(mock.addRuleCalls))
 	}
 
 	// Verify connection-state on whitelist accept rule (filter)

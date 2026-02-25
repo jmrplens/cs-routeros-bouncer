@@ -300,6 +300,7 @@ Fine-tuning options for decision filtering, TLS, performance, firewall customiza
 | `metrics.listen_addr` | `METRICS_ADDR` | `0.0.0.0` | Metrics server listen address |
 | `metrics.listen_port` | `METRICS_PORT` | `2112` | Metrics server listen port |
 | `metrics.routeros_poll_interval` | `METRICS_ROUTEROS_POLL_INTERVAL` | `30s` | RouterOS system metrics poll interval (0 to disable) |
+| `metrics.track_processed` | `METRICS_TRACK_PROCESSED` | `true` | Track processed (non-blocked) traffic via passthrough counting rules |
 
 </details>
 
@@ -511,6 +512,12 @@ Enable with `metrics.enabled: true`. Available at `http://localhost:2112/metrics
 | `crowdsec_bouncer_reconciliation_total` | Counter | Total reconciliation actions (`added`/`removed`) |
 | `crowdsec_bouncer_dropped_bytes_total` | Gauge | Cumulative bytes dropped by firewall rules |
 | `crowdsec_bouncer_dropped_packets_total` | Gauge | Cumulative packets dropped by firewall rules |
+| `crowdsec_bouncer_dropped_bytes_by_proto` | Gauge | Dropped bytes by protocol (`ipv4`/`ipv6`) |
+| `crowdsec_bouncer_dropped_packets_by_proto` | Gauge | Dropped packets by protocol |
+| `crowdsec_bouncer_processed_bytes_total` | Gauge | Cumulative bytes processed (evaluated) by firewall rules |
+| `crowdsec_bouncer_processed_packets_total` | Gauge | Cumulative packets processed by firewall rules |
+| `crowdsec_bouncer_processed_bytes_by_proto` | Gauge | Processed bytes by protocol (`ipv4`/`ipv6`) |
+| `crowdsec_bouncer_processed_packets_by_proto` | Gauge | Processed packets by protocol |
 
 > **Note:** `dropped_bytes_total` and `dropped_packets_total` use the `_total` suffix despite being Gauges. This is because they reflect cumulative counters read from RouterOS — the bouncer sets (not increments) the value each cycle, making Gauge the correct instrument type. The `_total` suffix is retained for semantic clarity.
 
@@ -519,7 +526,8 @@ Enable with `metrics.enabled: true`. Available at `http://localhost:2112/metrics
 The bouncer reports usage metrics directly to the CrowdSec LAPI (default: every 15 min). These metrics appear in the CrowdSec Console and include:
 
 - **Active decisions** — per-origin (`crowdsec`, `cscli`, `CAPI`) and per-IP-type (`ipv4`, `ipv6`)
-- **Dropped traffic** — bytes and packets blocked by MikroTik firewall rules (delta between pushes)
+- **Dropped traffic** — bytes and packets blocked by MikroTik firewall rules (delta between pushes), per IP type
+- **Processed traffic** — bytes and packets evaluated by all bouncer chains (delta between pushes), per IP type
 - **Bouncer metadata** — type (`cs-routeros-bouncer`), version, OS info, startup timestamp
 
 Configure with `crowdsec.lapi_metrics_interval` (set to `0` to disable).
@@ -555,6 +563,7 @@ The dashboard provides real-time visibility into the bouncer's operation:
 | **Performance & Operations** | Operation Latency (p50/p95/p99), Operation Rate |
 | **Errors & Reconciliation** | Error Rate, Total Errors, RouterOS Connection, Last Reconciliation, Reconciliation Duration |
 | **Dropped Traffic** | Dropped Bytes, Dropped Packets, Dropped Traffic Rate, Dropped Traffic (Cumulative) |
+| **Processed Traffic** | Processed Traffic Rate (Bytes/s, Packets/s), Drop Rate % |
 | **Decisions by Origin** | Active Decisions by Origin, Decisions by Origin (Rate), Cumulative Decisions by Origin |
 | **Process Resources** | Memory Usage, CPU Usage, Goroutines & File Descriptors |
 

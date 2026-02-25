@@ -1543,27 +1543,29 @@ func TestParallelExec_WorkersLimitedByItems(t *testing.T) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // TestGetFirewallCounters_AllPaths verifies that GetFirewallCounters queries
-// all 4 firewall paths and aggregates bytes/packets per IP type.
+// all 4 firewall paths and aggregates bytes/packets per IP type, separating
+// dropped (drop/reject) from processed (all rules).
 func TestGetFirewallCounters_AllPaths(t *testing.T) {
 	mc := newMockConn()
 	c := newTestClient(mc)
 
-	// Path 1: ip/firewall/filter — one matching rule
+	// Path 1: ip/firewall/filter — drop rule + accept (whitelist) rule
 	mc.pushReply(reReply(
-		map[string]string{".id": "*1", "bytes": "1000", "packets": "10", "comment": "crowdsec-bouncer:filter-input-v4"},
-		map[string]string{".id": "*2", "bytes": "500", "packets": "5", "comment": "other-rule"},
+		map[string]string{".id": "*1", "bytes": "1000", "packets": "10", "comment": "crowdsec-bouncer:filter-input-v4", "action": "drop"},
+		map[string]string{".id": "*A", "bytes": "200", "packets": "2", "comment": "crowdsec-bouncer:filter-wl-v4", "action": "accept"},
+		map[string]string{".id": "*2", "bytes": "500", "packets": "5", "comment": "other-rule", "action": "drop"},
 	))
-	// Path 2: ip/firewall/raw — one matching rule
+	// Path 2: ip/firewall/raw — reject rule
 	mc.pushReply(reReply(
-		map[string]string{".id": "*3", "bytes": "2000", "packets": "20", "comment": "crowdsec-bouncer:raw-prerouting-v4"},
+		map[string]string{".id": "*3", "bytes": "2000", "packets": "20", "comment": "crowdsec-bouncer:raw-prerouting-v4", "action": "reject"},
 	))
-	// Path 3: ipv6/firewall/filter — one matching rule
+	// Path 3: ipv6/firewall/filter — drop rule
 	mc.pushReply(reReply(
-		map[string]string{".id": "*4", "bytes": "300", "packets": "3", "comment": "crowdsec-bouncer:filter-input-v6"},
+		map[string]string{".id": "*4", "bytes": "300", "packets": "3", "comment": "crowdsec-bouncer:filter-input-v6", "action": "drop"},
 	))
-	// Path 4: ipv6/firewall/raw — one matching rule
+	// Path 4: ipv6/firewall/raw — passthrough rule
 	mc.pushReply(reReply(
-		map[string]string{".id": "*5", "bytes": "700", "packets": "7", "comment": "crowdsec-bouncer:raw-prerouting-v6"},
+		map[string]string{".id": "*5", "bytes": "700", "packets": "7", "comment": "crowdsec-bouncer:raw-prerouting-v6", "action": "passthrough"},
 	))
 
 	fc, err := c.GetFirewallCounters("crowdsec-bouncer:")
@@ -1571,24 +1573,47 @@ func TestGetFirewallCounters_AllPaths(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Only 4 rules should match (not "other-rule").
-	if len(fc.Rules) != 4 {
-		t.Errorf("want 4 matching rules, got %d", len(fc.Rules))
+	// 5 rules should match (not "other-rule").
+	if len(fc.Rules) != 5 {
+		t.Errorf("want 5 matching rules, got %d", len(fc.Rules))
 	}
 
-	// IPv4 totals: 1000 + 2000 = 3000 bytes, 10 + 20 = 30 packets.
-	if fc.IPv4Bytes != 3000 || fc.IPv4Pkts != 30 {
-		t.Errorf("IPv4: want (3000,30), got (%d,%d)", fc.IPv4Bytes, fc.IPv4Pkts)
+	// IPv4 totals (processed): 1000 + 200 + 2000 = 3200 bytes, 10 + 2 + 20 = 32 packets.
+	if fc.IPv4Bytes != 3200 || fc.IPv4Pkts != 32 {
+		t.Errorf("IPv4: want (3200,32), got (%d,%d)", fc.IPv4Bytes, fc.IPv4Pkts)
 	}
 
-	// IPv6 totals: 300 + 700 = 1000 bytes, 3 + 7 = 10 packets.
+	// IPv6 totals (processed): 300 + 700 = 1000 bytes, 3 + 7 = 10 packets.
 	if fc.IPv6Bytes != 1000 || fc.IPv6Pkts != 10 {
 		t.Errorf("IPv6: want (1000,10), got (%d,%d)", fc.IPv6Bytes, fc.IPv6Pkts)
 	}
 
-	// Grand totals: 3000 + 1000 = 4000 bytes, 30 + 10 = 40 packets.
-	if fc.TotalBytes != 4000 || fc.TotalPkts != 40 {
-		t.Errorf("Total: want (4000,40), got (%d,%d)", fc.TotalBytes, fc.TotalPkts)
+	// Grand totals (processed): 3200 + 1000 = 4200 bytes, 32 + 10 = 42 packets.
+	if fc.TotalBytes != 4200 || fc.TotalPkts != 42 {
+		t.Errorf("Total: want (4200,42), got (%d,%d)", fc.TotalBytes, fc.TotalPkts)
+	}
+
+	// Dropped IPv4: drop(1000,10) + reject(2000,20) = (3000,30). Accept is excluded.
+	if fc.DroppedIPv4Bytes != 3000 || fc.DroppedIPv4Pkts != 30 {
+		t.Errorf("DroppedIPv4: want (3000,30), got (%d,%d)", fc.DroppedIPv4Bytes, fc.DroppedIPv4Pkts)
+	}
+
+	// Dropped IPv6: only drop(300,3). Passthrough is excluded.
+	if fc.DroppedIPv6Bytes != 300 || fc.DroppedIPv6Pkts != 3 {
+		t.Errorf("DroppedIPv6: want (300,3), got (%d,%d)", fc.DroppedIPv6Bytes, fc.DroppedIPv6Pkts)
+	}
+
+	// Dropped total: 3000 + 300 = 3300 bytes, 30 + 3 = 33 packets.
+	if fc.DroppedBytes != 3300 || fc.DroppedPkts != 33 {
+		t.Errorf("DroppedTotal: want (3300,33), got (%d,%d)", fc.DroppedBytes, fc.DroppedPkts)
+	}
+
+	// Processed: only passthrough rules. IPv4 has none, IPv6 has (700,7).
+	if fc.ProcessedIPv4Bytes != 0 || fc.ProcessedIPv4Pkts != 0 {
+		t.Errorf("ProcessedIPv4: want (0,0), got (%d,%d)", fc.ProcessedIPv4Bytes, fc.ProcessedIPv4Pkts)
+	}
+	if fc.ProcessedIPv6Bytes != 700 || fc.ProcessedIPv6Pkts != 7 {
+		t.Errorf("ProcessedIPv6: want (700,7), got (%d,%d)", fc.ProcessedIPv6Bytes, fc.ProcessedIPv6Pkts)
 	}
 }
 
@@ -1600,8 +1625,8 @@ func TestGetFirewallCounters_EmptyPrefix(t *testing.T) {
 
 	// Only one path with two rules (both should match with empty prefix).
 	mc.pushReply(reReply(
-		map[string]string{".id": "*1", "bytes": "100", "packets": "1", "comment": "anything"},
-		map[string]string{".id": "*2", "bytes": "200", "packets": "2", "comment": ""},
+		map[string]string{".id": "*1", "bytes": "100", "packets": "1", "comment": "anything", "action": "drop"},
+		map[string]string{".id": "*2", "bytes": "200", "packets": "2", "comment": "", "action": "accept"},
 	))
 	mc.pushReply(reReply()) // empty paths
 	mc.pushReply(reReply())
@@ -1628,13 +1653,13 @@ func TestGetFirewallCounters_PathError(t *testing.T) {
 
 	// Path 1: success
 	mc.pushReply(reReply(
-		map[string]string{".id": "*1", "bytes": "500", "packets": "5", "comment": "cs:test"},
+		map[string]string{".id": "*1", "bytes": "500", "packets": "5", "comment": "cs:test", "action": "drop"},
 	))
 	// Path 2: error (e.g. ipv6 not enabled)
 	mc.pushError(errors.New("no such command prefix"))
 	// Path 3: success
 	mc.pushReply(reReply(
-		map[string]string{".id": "*2", "bytes": "100", "packets": "1", "comment": "cs:test6"},
+		map[string]string{".id": "*2", "bytes": "100", "packets": "1", "comment": "cs:test6", "action": "drop"},
 	))
 	// Path 4: error
 	mc.pushError(errors.New("no such command prefix"))
@@ -1659,7 +1684,7 @@ func TestGetFirewallCounters_InvalidNumbers(t *testing.T) {
 	c := newTestClient(mc)
 
 	mc.pushReply(reReply(
-		map[string]string{".id": "*1", "bytes": "notanumber", "packets": "", "comment": "cs:test"},
+		map[string]string{".id": "*1", "bytes": "notanumber", "packets": "", "comment": "cs:test", "action": "drop"},
 	))
 	mc.pushReply(reReply())
 	mc.pushReply(reReply())

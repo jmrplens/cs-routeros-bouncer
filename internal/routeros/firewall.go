@@ -115,11 +115,25 @@ func (c *Client) AddFirewallRule(proto, mode string, rule FirewallRule) (string,
 		Msg("creating firewall rule")
 
 	wantTop := rule.PlaceBefore == "top" || rule.PlaceBefore == "0"
+	wantBefore := !wantTop && rule.PlaceBefore != ""
 
 	// Add the rule (appended to end by default)
 	id, err := c.Add(path, attrs)
 	if err != nil {
 		return "", fmt.Errorf("add %s/%s rule: %w", proto, mode, err)
+	}
+
+	// Move before a specific target rule (e.g. counting rule before drop rule)
+	if wantBefore {
+		moveErr := c.moveRule(path, id, rule.PlaceBefore)
+		if moveErr != nil {
+			log.Warn().Err(moveErr).Str("id", id).Str("target", rule.PlaceBefore).
+				Msg("could not move rule before target, left at current position")
+		} else {
+			log.Info().Str("id", id).Str("before", rule.PlaceBefore).
+				Msg("firewall rule moved before target rule")
+		}
+		return id, nil
 	}
 
 	if !wantTop {
@@ -304,19 +318,38 @@ func (c *Client) FindFirewallRuleByComment(proto, mode, comment string) (*RuleEn
 // RuleCounters holds byte and packet counters for a single firewall rule.
 type RuleCounters struct {
 	Comment string
+	Action  string
 	Bytes   uint64
 	Packets uint64
 }
 
 // FirewallCounters aggregates counters from all bouncer firewall rules.
 type FirewallCounters struct {
-	Rules      []RuleCounters
+	Rules []RuleCounters
+
+	// Total counters across ALL bouncer rules.
 	TotalBytes uint64
 	TotalPkts  uint64
 	IPv4Bytes  uint64
 	IPv4Pkts   uint64
 	IPv6Bytes  uint64
 	IPv6Pkts   uint64
+
+	// Dropped only: counters from drop/reject rules.
+	DroppedBytes     uint64
+	DroppedPkts      uint64
+	DroppedIPv4Bytes uint64
+	DroppedIPv4Pkts  uint64
+	DroppedIPv6Bytes uint64
+	DroppedIPv6Pkts  uint64
+
+	// Processed: counters from passthrough counting rules.
+	// These represent ALL traffic evaluated by the bouncer chains,
+	// analogous to iptables JUMP counters used by firewall-bouncer.
+	ProcessedIPv4Bytes uint64
+	ProcessedIPv4Pkts  uint64
+	ProcessedIPv6Bytes uint64
+	ProcessedIPv6Pkts  uint64
 }
 
 // GetFirewallCounters queries byte/packet counters from all firewall rules
@@ -337,7 +370,7 @@ func (c *Client) GetFirewallCounters(commentPrefix string) (*FirewallCounters, e
 		{protoPrefix("ipv6") + "/firewall/raw", "ipv6"},
 	}
 
-	proplist := []string{".id", "bytes", "packets", "comment"}
+	proplist := []string{".id", "bytes", "packets", "comment", "action"}
 
 	for _, q := range queries {
 		results, err := c.Print(q.path, nil, proplist)
@@ -354,13 +387,22 @@ func (c *Client) GetFirewallCounters(commentPrefix string) (*FirewallCounters, e
 
 			bytes, _ := strconv.ParseUint(r["bytes"], 10, 64)
 			packets, _ := strconv.ParseUint(r["packets"], 10, 64)
+			action := r["action"]
+			if action == "" {
+				c.logger.Warn().
+					Str("comment", comment).
+					Msg("firewall rule has empty action, treating as drop")
+				action = "drop"
+			}
 
 			fc.Rules = append(fc.Rules, RuleCounters{
 				Comment: comment,
+				Action:  action,
 				Bytes:   bytes,
 				Packets: packets,
 			})
 
+			// Total across all bouncer rules.
 			fc.TotalBytes += bytes
 			fc.TotalPkts += packets
 
@@ -370,6 +412,31 @@ func (c *Client) GetFirewallCounters(commentPrefix string) (*FirewallCounters, e
 			} else {
 				fc.IPv6Bytes += bytes
 				fc.IPv6Pkts += packets
+			}
+
+			// Dropped: only drop/reject rules.
+			if action == "drop" || action == "reject" {
+				fc.DroppedBytes += bytes
+				fc.DroppedPkts += packets
+
+				if q.proto == "ipv4" {
+					fc.DroppedIPv4Bytes += bytes
+					fc.DroppedIPv4Pkts += packets
+				} else {
+					fc.DroppedIPv6Bytes += bytes
+					fc.DroppedIPv6Pkts += packets
+				}
+			}
+
+			// Processed: passthrough counting rules measure total chain traffic.
+			if action == "passthrough" {
+				if q.proto == "ipv4" {
+					fc.ProcessedIPv4Bytes += bytes
+					fc.ProcessedIPv4Pkts += packets
+				} else {
+					fc.ProcessedIPv6Bytes += bytes
+					fc.ProcessedIPv6Pkts += packets
+				}
 			}
 		}
 	}

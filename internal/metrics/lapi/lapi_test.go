@@ -31,8 +31,12 @@ func resetMetrics() {
 	metrics.SetActiveDecisions("ipv4", 0)
 	metrics.SetActiveDecisions("ipv6", 0)
 	metrics.SetDroppedCounters(0, 0)
+	metrics.SetDroppedCountersByIPType(0, 0, 0, 0)
+	metrics.SetProcessedCounters(0, 0, 0, 0)
 	// Reset deltas by reading them once.
 	metrics.GetAndResetDroppedDeltas()
+	metrics.GetAndResetDroppedDeltasByIPType()
+	metrics.GetAndResetProcessedDeltas()
 }
 
 // TestMetricsUpdaterActiveDecisionsFallback verifies that when no per-origin
@@ -116,28 +120,36 @@ func TestMetricsUpdaterPerOriginDecisions(t *testing.T) {
 	metrics.SetActiveDecisionsByOrigin("CAPI", 0)
 }
 
-// TestMetricsUpdaterDroppedCounters verifies that dropped byte/packet deltas
+// TestMetricsUpdaterDroppedCounters verifies that dropped metrics per ip_type
 // are included when firewall counters have been set.
 func TestMetricsUpdaterDroppedCounters(t *testing.T) {
 	resetMetrics()
-	metrics.SetDroppedCounters(5000, 100)
+	metrics.SetDroppedCountersByIPType(4000, 80, 1000, 20)
 
 	p := testProvider()
 	payload := callUpdater(p, time.Minute)
 
 	dm := payload.Metrics[0]
+	// Collect dropped items keyed by "iptype:unit".
 	dropped := map[string]float64{}
 	for _, item := range dm.Items {
 		if item.Name != nil && *item.Name == "dropped" {
-			dropped[*item.Unit] = *item.Value
+			key := item.Labels["ip_type"] + ":" + *item.Unit
+			dropped[key] = *item.Value
 		}
 	}
 
-	if dropped["byte"] != 5000 {
-		t.Errorf("expected dropped bytes=5000, got %v", dropped["byte"])
+	if dropped["ipv4:byte"] != 4000 {
+		t.Errorf("expected dropped ipv4 bytes=4000, got %v", dropped["ipv4:byte"])
 	}
-	if dropped["packet"] != 100 {
-		t.Errorf("expected dropped packets=100, got %v", dropped["packet"])
+	if dropped["ipv4:packet"] != 80 {
+		t.Errorf("expected dropped ipv4 packets=80, got %v", dropped["ipv4:packet"])
+	}
+	if dropped["ipv6:byte"] != 1000 {
+		t.Errorf("expected dropped ipv6 bytes=1000, got %v", dropped["ipv6:byte"])
+	}
+	if dropped["ipv6:packet"] != 20 {
+		t.Errorf("expected dropped ipv6 packets=20, got %v", dropped["ipv6:packet"])
 	}
 }
 
@@ -145,7 +157,7 @@ func TestMetricsUpdaterDroppedCounters(t *testing.T) {
 // only new counters since last push are reported.
 func TestMetricsUpdaterDroppedDelta(t *testing.T) {
 	resetMetrics()
-	metrics.SetDroppedCounters(1000, 50)
+	metrics.SetDroppedCountersByIPType(1000, 50, 0, 0)
 
 	p := testProvider()
 	// First push: gets full delta (1000-0=1000, 50-0=50).
@@ -153,7 +165,7 @@ func TestMetricsUpdaterDroppedDelta(t *testing.T) {
 	dm1 := payload1.Metrics[0]
 	var bytes1, pkts1 float64
 	for _, item := range dm1.Items {
-		if item.Name != nil && *item.Name == "dropped" {
+		if item.Name != nil && *item.Name == "dropped" && item.Labels["ip_type"] == "ipv4" {
 			if *item.Unit == "byte" {
 				bytes1 = *item.Value
 			}
@@ -167,14 +179,14 @@ func TestMetricsUpdaterDroppedDelta(t *testing.T) {
 	}
 
 	// Update counters to simulate more traffic.
-	metrics.SetDroppedCounters(1500, 80)
+	metrics.SetDroppedCountersByIPType(1500, 80, 0, 0)
 
 	// Second push: delta should be 500 bytes, 30 pkts.
 	payload2 := callUpdater(p, time.Minute)
 	dm2 := payload2.Metrics[0]
 	var bytes2, pkts2 float64
 	for _, item := range dm2.Items {
-		if item.Name != nil && *item.Name == "dropped" {
+		if item.Name != nil && *item.Name == "dropped" && item.Labels["ip_type"] == "ipv4" {
 			if *item.Unit == "byte" {
 				bytes2 = *item.Value
 			}
@@ -185,6 +197,85 @@ func TestMetricsUpdaterDroppedDelta(t *testing.T) {
 	}
 	if bytes2 != 500 || pkts2 != 30 {
 		t.Errorf("second push: expected bytes=500 pkts=30, got bytes=%v pkts=%v", bytes2, pkts2)
+	}
+}
+
+// TestMetricsUpdaterProcessedCounters verifies that processed metrics are
+// included in the LAPI payload with per-ip_type labels.
+func TestMetricsUpdaterProcessedCounters(t *testing.T) {
+	resetMetrics()
+	metrics.SetProcessedCounters(8000, 200, 2000, 50)
+
+	p := testProvider()
+	payload := callUpdater(p, time.Minute)
+
+	dm := payload.Metrics[0]
+	processed := map[string]float64{}
+	for _, item := range dm.Items {
+		if item.Name != nil && *item.Name == "processed" {
+			key := item.Labels["ip_type"] + ":" + *item.Unit
+			processed[key] = *item.Value
+		}
+	}
+
+	if processed["ipv4:byte"] != 8000 {
+		t.Errorf("expected processed ipv4 bytes=8000, got %v", processed["ipv4:byte"])
+	}
+	if processed["ipv4:packet"] != 200 {
+		t.Errorf("expected processed ipv4 packets=200, got %v", processed["ipv4:packet"])
+	}
+	if processed["ipv6:byte"] != 2000 {
+		t.Errorf("expected processed ipv6 bytes=2000, got %v", processed["ipv6:byte"])
+	}
+	if processed["ipv6:packet"] != 50 {
+		t.Errorf("expected processed ipv6 packets=50, got %v", processed["ipv6:packet"])
+	}
+}
+
+// TestMetricsUpdaterProcessedDelta verifies the delta behavior for processed
+// metrics: after a push, only new counters since last push are reported.
+func TestMetricsUpdaterProcessedDelta(t *testing.T) {
+	resetMetrics()
+	metrics.SetProcessedCounters(5000, 100, 0, 0)
+
+	p := testProvider()
+	// First push: gets full delta.
+	payload1 := callUpdater(p, time.Minute)
+	dm1 := payload1.Metrics[0]
+	var bytes1, pkts1 float64
+	for _, item := range dm1.Items {
+		if item.Name != nil && *item.Name == "processed" && item.Labels["ip_type"] == "ipv4" {
+			if *item.Unit == "byte" {
+				bytes1 = *item.Value
+			}
+			if *item.Unit == "packet" {
+				pkts1 = *item.Value
+			}
+		}
+	}
+	if bytes1 != 5000 || pkts1 != 100 {
+		t.Errorf("first push: expected bytes=5000 pkts=100, got bytes=%v pkts=%v", bytes1, pkts1)
+	}
+
+	// Update counters to simulate more traffic.
+	metrics.SetProcessedCounters(7500, 160, 0, 0)
+
+	// Second push: delta should be 2500 bytes, 60 pkts.
+	payload2 := callUpdater(p, time.Minute)
+	dm2 := payload2.Metrics[0]
+	var bytes2, pkts2 float64
+	for _, item := range dm2.Items {
+		if item.Name != nil && *item.Name == "processed" && item.Labels["ip_type"] == "ipv4" {
+			if *item.Unit == "byte" {
+				bytes2 = *item.Value
+			}
+			if *item.Unit == "packet" {
+				pkts2 = *item.Value
+			}
+		}
+	}
+	if bytes2 != 2500 || pkts2 != 60 {
+		t.Errorf("second push: expected bytes=2500 pkts=60, got bytes=%v pkts=%v", bytes2, pkts2)
 	}
 }
 
@@ -275,7 +366,7 @@ func TestMetricsUpdaterCounterCollector(t *testing.T) {
 	p := testProvider()
 	p.SetCounterCollector(func() {
 		called = true
-		metrics.SetDroppedCounters(999, 42)
+		metrics.SetDroppedCountersByIPType(999, 42, 0, 0)
 	})
 
 	payload := callUpdater(p, time.Minute)
@@ -287,7 +378,7 @@ func TestMetricsUpdaterCounterCollector(t *testing.T) {
 	dm := payload.Metrics[0]
 	found := false
 	for _, item := range dm.Items {
-		if item.Name != nil && *item.Name == "dropped" && *item.Unit == "byte" {
+		if item.Name != nil && *item.Name == "dropped" && *item.Unit == "byte" && item.Labels["ip_type"] == "ipv4" {
 			found = true
 			if *item.Value != 999 {
 				t.Errorf("expected dropped bytes=999, got %v", *item.Value)
@@ -368,9 +459,9 @@ func TestMetricsUpdaterWithCollector(t *testing.T) {
 	p := testProvider()
 	resetMetrics()
 
-	// Collector sets dropped counters.
+	// Collector sets dropped counters per ip_type.
 	p.SetCounterCollector(func() {
-		metrics.SetDroppedCounters(1000, 50)
+		metrics.SetDroppedCountersByIPType(1000, 50, 0, 0)
 	})
 
 	// First call to get baseline deltas.
@@ -378,7 +469,7 @@ func TestMetricsUpdaterWithCollector(t *testing.T) {
 
 	// Set new counters.
 	p.SetCounterCollector(func() {
-		metrics.SetDroppedCounters(2000, 100)
+		metrics.SetDroppedCountersByIPType(2000, 100, 0, 0)
 	})
 	payload := callUpdater(p, time.Minute)
 

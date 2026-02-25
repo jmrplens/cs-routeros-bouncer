@@ -115,6 +115,26 @@ var (
 		Help: "Cumulative packets dropped by firewall rules, by protocol.",
 	}, []string{"proto"})
 
+	processedBytesTotal = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "crowdsec_bouncer_processed_bytes_total",
+		Help: "Cumulative bytes processed (evaluated) by firewall rules.",
+	})
+
+	processedPacketsTotal = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "crowdsec_bouncer_processed_packets_total",
+		Help: "Cumulative packets processed (evaluated) by firewall rules.",
+	})
+
+	processedBytesProto = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "crowdsec_bouncer_processed_bytes_by_proto",
+		Help: "Cumulative bytes processed (evaluated) by firewall rules, by protocol.",
+	}, []string{"proto"})
+
+	processedPacketsProto = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "crowdsec_bouncer_processed_packets_by_proto",
+		Help: "Cumulative packets processed (evaluated) by firewall rules, by protocol.",
+	}, []string{"proto"})
+
 	configInfo = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "crowdsec_bouncer_config_info",
 		Help: "Bouncer configuration parameters (one series per parameter, value is always 1).",
@@ -257,9 +277,31 @@ type DroppedCounters struct {
 	Packets uint64
 }
 
+// ProtoCounters holds byte/packet counters per IP protocol.
+type ProtoCounters struct {
+	IPv4Bytes uint64
+	IPv4Pkts  uint64
+	IPv6Bytes uint64
+	IPv6Pkts  uint64
+}
+
 var droppedCountersMu sync.Mutex
 var droppedCounters DroppedCounters
 var lastSentCounters DroppedCounters
+
+// Per-ip_type dropped counters for LAPI (delta tracking).
+var droppedProtoState struct {
+	mu       sync.Mutex
+	current  ProtoCounters
+	lastSent ProtoCounters
+}
+
+// Per-ip_type processed counters for LAPI (delta tracking).
+var processedProtoState struct {
+	mu       sync.Mutex
+	current  ProtoCounters
+	lastSent ProtoCounters
+}
 
 // SetDroppedCounters updates the current firewall dropped counters (cumulative).
 func SetDroppedCounters(bytes, packets uint64) {
@@ -292,6 +334,67 @@ func GetAndResetDroppedDeltas() (bytes, packets uint64) {
 	lastSentCounters = droppedCounters
 
 	return bytes, packets
+}
+
+// SetDroppedCountersByIPType updates the per-ip_type dropped counters (cumulative).
+func SetDroppedCountersByIPType(ipv4Bytes, ipv4Pkts, ipv6Bytes, ipv6Pkts uint64) {
+	droppedProtoState.mu.Lock()
+	defer droppedProtoState.mu.Unlock()
+	droppedProtoState.current = ProtoCounters{
+		IPv4Bytes: ipv4Bytes,
+		IPv4Pkts:  ipv4Pkts,
+		IPv6Bytes: ipv6Bytes,
+		IPv6Pkts:  ipv6Pkts,
+	}
+}
+
+// computeDelta returns the delta handling wrap-around/reset.
+func computeDelta(current, lastSent uint64) uint64 {
+	if current >= lastSent {
+		return current - lastSent
+	}
+	return current // counter was reset
+}
+
+// GetAndResetDroppedDeltasByIPType returns per-ip_type dropped deltas and resets baseline.
+func GetAndResetDroppedDeltasByIPType() (ipv4Bytes, ipv4Pkts, ipv6Bytes, ipv6Pkts uint64) {
+	droppedProtoState.mu.Lock()
+	defer droppedProtoState.mu.Unlock()
+
+	ipv4Bytes = computeDelta(droppedProtoState.current.IPv4Bytes, droppedProtoState.lastSent.IPv4Bytes)
+	ipv4Pkts = computeDelta(droppedProtoState.current.IPv4Pkts, droppedProtoState.lastSent.IPv4Pkts)
+	ipv6Bytes = computeDelta(droppedProtoState.current.IPv6Bytes, droppedProtoState.lastSent.IPv6Bytes)
+	ipv6Pkts = computeDelta(droppedProtoState.current.IPv6Pkts, droppedProtoState.lastSent.IPv6Pkts)
+
+	droppedProtoState.lastSent = droppedProtoState.current
+	return
+}
+
+// SetProcessedCounters updates the per-ip_type processed counters (cumulative).
+// Processed = total traffic through all bouncer rules (drop + whitelist + passthrough).
+func SetProcessedCounters(ipv4Bytes, ipv4Pkts, ipv6Bytes, ipv6Pkts uint64) {
+	processedProtoState.mu.Lock()
+	defer processedProtoState.mu.Unlock()
+	processedProtoState.current = ProtoCounters{
+		IPv4Bytes: ipv4Bytes,
+		IPv4Pkts:  ipv4Pkts,
+		IPv6Bytes: ipv6Bytes,
+		IPv6Pkts:  ipv6Pkts,
+	}
+}
+
+// GetAndResetProcessedDeltas returns per-ip_type processed deltas and resets baseline.
+func GetAndResetProcessedDeltas() (ipv4Bytes, ipv4Pkts, ipv6Bytes, ipv6Pkts uint64) {
+	processedProtoState.mu.Lock()
+	defer processedProtoState.mu.Unlock()
+
+	ipv4Bytes = computeDelta(processedProtoState.current.IPv4Bytes, processedProtoState.lastSent.IPv4Bytes)
+	ipv4Pkts = computeDelta(processedProtoState.current.IPv4Pkts, processedProtoState.lastSent.IPv4Pkts)
+	ipv6Bytes = computeDelta(processedProtoState.current.IPv6Bytes, processedProtoState.lastSent.IPv6Bytes)
+	ipv6Pkts = computeDelta(processedProtoState.current.IPv6Pkts, processedProtoState.lastSent.IPv6Pkts)
+
+	processedProtoState.lastSent = processedProtoState.current
+	return
 }
 
 // SetConnected sets the RouterOS connection gauge.
@@ -354,6 +457,18 @@ func SetDroppedCountersByProto(ipv4Bytes, ipv4Pkts, ipv6Bytes, ipv6Pkts uint64) 
 	droppedPacketsProto.WithLabelValues("ipv6").Set(float64(ipv6Pkts))
 }
 
+// SetProcessedCountersPrometheus updates the Prometheus processed gauges.
+func SetProcessedCountersPrometheus(ipv4Bytes, ipv4Pkts, ipv6Bytes, ipv6Pkts uint64) {
+	total := ipv4Bytes + ipv6Bytes
+	totalPkts := ipv4Pkts + ipv6Pkts
+	processedBytesTotal.Set(float64(total))
+	processedPacketsTotal.Set(float64(totalPkts))
+	processedBytesProto.WithLabelValues("ipv4").Set(float64(ipv4Bytes))
+	processedBytesProto.WithLabelValues("ipv6").Set(float64(ipv6Bytes))
+	processedPacketsProto.WithLabelValues("ipv4").Set(float64(ipv4Pkts))
+	processedPacketsProto.WithLabelValues("ipv6").Set(float64(ipv6Pkts))
+}
+
 // ConfigParams holds non-sensitive configuration values for the info metric.
 type ConfigParams struct {
 	CrowdSecAPIURL           string
@@ -387,6 +502,7 @@ type ConfigParams struct {
 	MetricsListenAddr        string
 	MetricsListenPort        int
 	MetricsPollInterval      string
+	MetricsTrackProcessed    bool
 }
 
 // SetConfigInfo exposes non-sensitive configuration as Prometheus info metrics.
@@ -435,6 +551,7 @@ func SetConfigInfo(p ConfigParams) {
 		{"Metrics", "Listen Address", p.MetricsListenAddr},
 		{"Metrics", "Listen Port", fmt.Sprintf("%d", p.MetricsListenPort)},
 		{"Metrics", "RouterOS Poll Interval", p.MetricsPollInterval},
+		{"Metrics", "Track Processed", b(p.MetricsTrackProcessed)},
 	}
 
 	for _, e := range params {
