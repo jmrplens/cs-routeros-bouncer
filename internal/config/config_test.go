@@ -125,6 +125,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Metrics.ListenPort != 2112 {
 		t.Errorf("expected metrics port 2112, got %d", cfg.Metrics.ListenPort)
 	}
+	if !cfg.Metrics.TrackProcessed {
+		t.Error("expected track_processed true by default")
+	}
 }
 
 // TestValidateMissingAPIKey verifies that validation fails when the CrowdSec

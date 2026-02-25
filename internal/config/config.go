@@ -125,6 +125,7 @@ type MetricsConfig struct {
 	ListenAddr           string        `yaml:"listen_addr" mapstructure:"listen_addr"`
 	ListenPort           int           `yaml:"listen_port" mapstructure:"listen_port"`
 	RouterOSPollInterval time.Duration `yaml:"routeros_poll_interval" mapstructure:"routeros_poll_interval"`
+	TrackProcessed       bool          `yaml:"track_processed" mapstructure:"track_processed"`
 }
 
 // Load reads configuration from a YAML file and environment variables.
@@ -168,6 +169,7 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("metrics.listen_addr", "0.0.0.0")
 	v.SetDefault("metrics.listen_port", 2112)
 	v.SetDefault("metrics.routeros_poll_interval", "30s")
+	v.SetDefault("metrics.track_processed", true)
 
 	// Environment variable bindings (flat names for Docker compatibility)
 	envBindings := map[string]string{ //nolint:gosec // G101: environment variable names, not credentials
@@ -233,6 +235,7 @@ func Load(configPath string) (*Config, error) {
 		"metrics.listen_addr":            "METRICS_ADDR",
 		"metrics.listen_port":            "METRICS_PORT",
 		"metrics.routeros_poll_interval": "METRICS_ROUTEROS_POLL_INTERVAL",
+		"metrics.track_processed":        "METRICS_TRACK_PROCESSED",
 	}
 
 	for key, env := range envBindings {

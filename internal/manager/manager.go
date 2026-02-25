@@ -153,6 +153,7 @@ func (m *Manager) Start(ctx context.Context) error {
 		MetricsListenAddr:        m.cfg.Metrics.ListenAddr,
 		MetricsListenPort:        m.cfg.Metrics.ListenPort,
 		MetricsPollInterval:      m.cfg.Metrics.RouterOSPollInterval.String(),
+		MetricsTrackProcessed:    m.cfg.Metrics.TrackProcessed,
 	})
 
 	// 4. Clean up stale firewall rules from a previous run or prefix change
@@ -194,13 +195,15 @@ func (m *Manager) Start(ctx context.Context) error {
 				)
 				// Processed: passthrough counting rule counters (total chain traffic).
 				// Falls back to total if no passthrough rules exist.
-				pv4b, pv4p := fc.ProcessedIPv4Bytes, fc.ProcessedIPv4Pkts
-				pv6b, pv6p := fc.ProcessedIPv6Bytes, fc.ProcessedIPv6Pkts
-				if pv4b == 0 && pv4p == 0 && pv6b == 0 && pv6p == 0 {
-					pv4b, pv4p = fc.IPv4Bytes, fc.IPv4Pkts
-					pv6b, pv6p = fc.IPv6Bytes, fc.IPv6Pkts
+				if m.cfg.Metrics.TrackProcessed {
+					pv4b, pv4p := fc.ProcessedIPv4Bytes, fc.ProcessedIPv4Pkts
+					pv6b, pv6p := fc.ProcessedIPv6Bytes, fc.ProcessedIPv6Pkts
+					if pv4b == 0 && pv4p == 0 && pv6b == 0 && pv6p == 0 {
+						pv4b, pv4p = fc.IPv4Bytes, fc.IPv4Pkts
+						pv6b, pv6p = fc.IPv6Bytes, fc.IPv6Pkts
+					}
+					metrics.SetProcessedCounters(pv4b, pv4p, pv6b, pv6p)
 				}
-				metrics.SetProcessedCounters(pv4b, pv4p, pv6b, pv6p)
 			})
 
 			m.logger.Info().Dur("interval", m.cfg.CrowdSec.LapiMetricsInterval).Msg("LAPI usage metrics reporting enabled")
@@ -381,7 +384,9 @@ func (m *Manager) pollSystemMetrics() {
 		metrics.SetDroppedCounters(fc.DroppedBytes, fc.DroppedPkts)
 		metrics.SetDroppedCountersByProto(fc.DroppedIPv4Bytes, fc.DroppedIPv4Pkts, fc.DroppedIPv6Bytes, fc.DroppedIPv6Pkts)
 		// Prometheus "processed" gauges from passthrough counting rules.
-		metrics.SetProcessedCountersPrometheus(fc.ProcessedIPv4Bytes, fc.ProcessedIPv4Pkts, fc.ProcessedIPv6Bytes, fc.ProcessedIPv6Pkts)
+		if m.cfg.Metrics.TrackProcessed {
+			metrics.SetProcessedCountersPrometheus(fc.ProcessedIPv4Bytes, fc.ProcessedIPv4Pkts, fc.ProcessedIPv6Bytes, fc.ProcessedIPv6Pkts)
+		}
 	}
 }
 
@@ -671,15 +676,17 @@ func (m *Manager) createFirewallRules() error {
 				// Passthrough counting rule: measures total traffic evaluated by the
 				// bouncer at this chain position. Placed just before the drop/reject
 				// rule so its counters represent ALL packets the bouncer processes.
-				countComment := buildRuleComment(m.commentPrefix(), "filter", chain, "counting", proto)
-				countRule := rosClient.FirewallRule{
-					Chain:   chain,
-					Action:  "passthrough",
-					Comment: countComment,
-				}
-				m.applyInputRuleOptions(&countRule)
-				if err := m.ensureCountingRule(proto, "filter", countRule, comment); err != nil {
-					return err
+				if m.cfg.Metrics.TrackProcessed {
+					countComment := buildRuleComment(m.commentPrefix(), "filter", chain, "counting", proto)
+					countRule := rosClient.FirewallRule{
+						Chain:   chain,
+						Action:  "passthrough",
+						Comment: countComment,
+					}
+					m.applyInputRuleOptions(&countRule)
+					if err := m.ensureCountingRule(proto, "filter", countRule, comment); err != nil {
+						return err
+					}
 				}
 
 				// Output rule (dst-address-list) — only if block_output enabled
@@ -772,15 +779,17 @@ func (m *Manager) createFirewallRules() error {
 				}
 
 				// Passthrough counting rule for raw table.
-				countComment := buildRuleComment(m.commentPrefix(), "raw", chain, "counting", proto)
-				countRule := rosClient.FirewallRule{
-					Chain:   chain,
-					Action:  "passthrough",
-					Comment: countComment,
-				}
-				m.applyInputRuleOptions(&countRule)
-				if err := m.ensureCountingRule(proto, "raw", countRule, comment); err != nil {
-					return err
+				if m.cfg.Metrics.TrackProcessed {
+					countComment := buildRuleComment(m.commentPrefix(), "raw", chain, "counting", proto)
+					countRule := rosClient.FirewallRule{
+						Chain:   chain,
+						Action:  "passthrough",
+						Comment: countComment,
+					}
+					m.applyInputRuleOptions(&countRule)
+					if err := m.ensureCountingRule(proto, "raw", countRule, comment); err != nil {
+						return err
+					}
 				}
 			}
 		}

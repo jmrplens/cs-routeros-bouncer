@@ -502,6 +502,7 @@ type ConfigParams struct {
 	MetricsListenAddr        string
 	MetricsListenPort        int
 	MetricsPollInterval      string
+	MetricsTrackProcessed    bool
 }
 
 // SetConfigInfo exposes non-sensitive configuration as Prometheus info metrics.
@@ -550,6 +551,7 @@ func SetConfigInfo(p ConfigParams) {
 		{"Metrics", "Listen Address", p.MetricsListenAddr},
 		{"Metrics", "Listen Port", fmt.Sprintf("%d", p.MetricsListenPort)},
 		{"Metrics", "RouterOS Poll Interval", p.MetricsPollInterval},
+		{"Metrics", "Track Processed", b(p.MetricsTrackProcessed)},
 	}
 
 	for _, e := range params {

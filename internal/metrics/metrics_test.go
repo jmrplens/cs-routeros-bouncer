@@ -1,6 +1,7 @@
 // Tests for the metrics package covering Prometheus metric recording,
 // the HTTP health endpoint, the metrics server lifecycle, per-origin
-// active decision tracking, and dropped counter delta logic.
+// active decision tracking, dropped/processed counter delta logic,
+// and per-ip_type LAPI delta metrics.
 package metrics
 
 import (
@@ -903,8 +904,8 @@ func TestSetConfigInfoRegistersMetric(t *testing.T) {
 	SetConfigInfo(p)
 
 	count := testutil.CollectAndCount(configInfo)
-	if count != 31 {
-		t.Fatalf("expected 31 config_info series, got %d", count)
+	if count != 32 {
+		t.Fatalf("expected 32 config_info series, got %d", count)
 	}
 
 	// Spot-check specific parameters
@@ -1052,6 +1053,217 @@ func TestSetConfigInfoConcurrency(t *testing.T) {
 			p.LogLevel = fmt.Sprintf("level-%d", n)
 			SetConfigInfo(p)
 		}(i)
+	}
+	wg.Wait()
+}
+
+// --- computeDelta ---
+
+func TestComputeDeltaNormal(t *testing.T) {
+	if d := computeDelta(100, 50); d != 50 {
+		t.Errorf("computeDelta(100, 50) = %d, want 50", d)
+	}
+}
+
+func TestComputeDeltaZero(t *testing.T) {
+	if d := computeDelta(50, 50); d != 0 {
+		t.Errorf("computeDelta(50, 50) = %d, want 0", d)
+	}
+}
+
+func TestComputeDeltaWrapAround(t *testing.T) {
+	// When current < lastSent, counter was reset — return current as full delta.
+	if d := computeDelta(30, 100); d != 30 {
+		t.Errorf("computeDelta(30, 100) = %d, want 30 (reset case)", d)
+	}
+}
+
+func TestComputeDeltaFromZero(t *testing.T) {
+	if d := computeDelta(0, 0); d != 0 {
+		t.Errorf("computeDelta(0, 0) = %d, want 0", d)
+	}
+}
+
+// --- SetDroppedCountersByIPType / GetAndResetDroppedDeltasByIPType ---
+
+func TestDroppedByIPTypeDelta(t *testing.T) {
+	// Reset state.
+	droppedProtoState.mu.Lock()
+	droppedProtoState.current = ProtoCounters{}
+	droppedProtoState.lastSent = ProtoCounters{}
+	droppedProtoState.mu.Unlock()
+
+	SetDroppedCountersByIPType(100, 10, 200, 20)
+	b4, p4, b6, p6 := GetAndResetDroppedDeltasByIPType()
+
+	if b4 != 100 || p4 != 10 || b6 != 200 || p6 != 20 {
+		t.Errorf("first delta = (%d,%d,%d,%d), want (100,10,200,20)", b4, p4, b6, p6)
+	}
+
+	// Second call with no changes → zero deltas.
+	b4, p4, b6, p6 = GetAndResetDroppedDeltasByIPType()
+	if b4 != 0 || p4 != 0 || b6 != 0 || p6 != 0 {
+		t.Errorf("second delta (no change) = (%d,%d,%d,%d), want (0,0,0,0)", b4, p4, b6, p6)
+	}
+}
+
+func TestDroppedByIPTypeIncrementalDeltas(t *testing.T) {
+	droppedProtoState.mu.Lock()
+	droppedProtoState.current = ProtoCounters{}
+	droppedProtoState.lastSent = ProtoCounters{}
+	droppedProtoState.mu.Unlock()
+
+	SetDroppedCountersByIPType(100, 10, 50, 5)
+	GetAndResetDroppedDeltasByIPType() // baseline
+
+	SetDroppedCountersByIPType(150, 15, 70, 8)
+	b4, p4, b6, p6 := GetAndResetDroppedDeltasByIPType()
+	if b4 != 50 || p4 != 5 || b6 != 20 || p6 != 3 {
+		t.Errorf("incremental delta = (%d,%d,%d,%d), want (50,5,20,3)", b4, p4, b6, p6)
+	}
+}
+
+func TestDroppedByIPTypeWrapAround(t *testing.T) {
+	droppedProtoState.mu.Lock()
+	droppedProtoState.current = ProtoCounters{}
+	droppedProtoState.lastSent = ProtoCounters{}
+	droppedProtoState.mu.Unlock()
+
+	SetDroppedCountersByIPType(100, 10, 100, 10)
+	GetAndResetDroppedDeltasByIPType() // baseline at 100
+
+	// Counter resets to lower value.
+	SetDroppedCountersByIPType(20, 2, 30, 3)
+	b4, p4, b6, p6 := GetAndResetDroppedDeltasByIPType()
+	if b4 != 20 || p4 != 2 || b6 != 30 || p6 != 3 {
+		t.Errorf("wrap-around delta = (%d,%d,%d,%d), want (20,2,30,3)", b4, p4, b6, p6)
+	}
+}
+
+// --- SetProcessedCounters / GetAndResetProcessedDeltas ---
+
+func TestProcessedDelta(t *testing.T) {
+	processedProtoState.mu.Lock()
+	processedProtoState.current = ProtoCounters{}
+	processedProtoState.lastSent = ProtoCounters{}
+	processedProtoState.mu.Unlock()
+
+	SetProcessedCounters(1000, 100, 2000, 200)
+	b4, p4, b6, p6 := GetAndResetProcessedDeltas()
+
+	if b4 != 1000 || p4 != 100 || b6 != 2000 || p6 != 200 {
+		t.Errorf("first delta = (%d,%d,%d,%d), want (1000,100,2000,200)", b4, p4, b6, p6)
+	}
+
+	// No change → zero.
+	b4, p4, b6, p6 = GetAndResetProcessedDeltas()
+	if b4 != 0 || p4 != 0 || b6 != 0 || p6 != 0 {
+		t.Errorf("second delta = (%d,%d,%d,%d), want zeros", b4, p4, b6, p6)
+	}
+}
+
+func TestProcessedIncrementalDeltas(t *testing.T) {
+	processedProtoState.mu.Lock()
+	processedProtoState.current = ProtoCounters{}
+	processedProtoState.lastSent = ProtoCounters{}
+	processedProtoState.mu.Unlock()
+
+	SetProcessedCounters(500, 50, 300, 30)
+	GetAndResetProcessedDeltas() // baseline
+
+	SetProcessedCounters(800, 80, 450, 45)
+	b4, p4, b6, p6 := GetAndResetProcessedDeltas()
+	if b4 != 300 || p4 != 30 || b6 != 150 || p6 != 15 {
+		t.Errorf("delta = (%d,%d,%d,%d), want (300,30,150,15)", b4, p4, b6, p6)
+	}
+}
+
+func TestProcessedWrapAround(t *testing.T) {
+	processedProtoState.mu.Lock()
+	processedProtoState.current = ProtoCounters{}
+	processedProtoState.lastSent = ProtoCounters{}
+	processedProtoState.mu.Unlock()
+
+	SetProcessedCounters(500, 50, 500, 50)
+	GetAndResetProcessedDeltas() // baseline at 500
+
+	SetProcessedCounters(10, 1, 20, 2)
+	b4, p4, b6, p6 := GetAndResetProcessedDeltas()
+	if b4 != 10 || p4 != 1 || b6 != 20 || p6 != 2 {
+		t.Errorf("wrap-around = (%d,%d,%d,%d), want (10,1,20,2)", b4, p4, b6, p6)
+	}
+}
+
+// --- SetProcessedCountersPrometheus ---
+
+func TestSetProcessedCountersPrometheus(t *testing.T) {
+	processedBytesTotal.Set(0)
+	processedPacketsTotal.Set(0)
+	processedBytesProto.Reset()
+	processedPacketsProto.Reset()
+
+	SetProcessedCountersPrometheus(1000, 100, 2000, 200)
+
+	if v := testutil.ToFloat64(processedBytesTotal); v != 3000 {
+		t.Errorf("processedBytesTotal = %v, want 3000", v)
+	}
+	if v := testutil.ToFloat64(processedPacketsTotal); v != 300 {
+		t.Errorf("processedPacketsTotal = %v, want 300", v)
+	}
+	if v := testutil.ToFloat64(processedBytesProto.WithLabelValues("ipv4")); v != 1000 {
+		t.Errorf("processedBytesProto{ipv4} = %v, want 1000", v)
+	}
+	if v := testutil.ToFloat64(processedBytesProto.WithLabelValues("ipv6")); v != 2000 {
+		t.Errorf("processedBytesProto{ipv6} = %v, want 2000", v)
+	}
+	if v := testutil.ToFloat64(processedPacketsProto.WithLabelValues("ipv4")); v != 100 {
+		t.Errorf("processedPacketsProto{ipv4} = %v, want 100", v)
+	}
+	if v := testutil.ToFloat64(processedPacketsProto.WithLabelValues("ipv6")); v != 200 {
+		t.Errorf("processedPacketsProto{ipv6} = %v, want 200", v)
+	}
+}
+
+// --- Concurrency ---
+
+func TestDroppedByIPTypeConcurrency(t *testing.T) {
+	droppedProtoState.mu.Lock()
+	droppedProtoState.current = ProtoCounters{}
+	droppedProtoState.lastSent = ProtoCounters{}
+	droppedProtoState.mu.Unlock()
+
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(2)
+		go func(n uint64) {
+			defer wg.Done()
+			SetDroppedCountersByIPType(n*10, n, n*20, n*2)
+		}(uint64(i))
+		go func() {
+			defer wg.Done()
+			GetAndResetDroppedDeltasByIPType()
+		}()
+	}
+	wg.Wait()
+}
+
+func TestProcessedConcurrency(t *testing.T) {
+	processedProtoState.mu.Lock()
+	processedProtoState.current = ProtoCounters{}
+	processedProtoState.lastSent = ProtoCounters{}
+	processedProtoState.mu.Unlock()
+
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(2)
+		go func(n uint64) {
+			defer wg.Done()
+			SetProcessedCounters(n*100, n*10, n*200, n*20)
+		}(uint64(i))
+		go func() {
+			defer wg.Done()
+			GetAndResetProcessedDeltas()
+		}()
 	}
 	wg.Wait()
 }

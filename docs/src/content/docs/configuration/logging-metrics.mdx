@@ -85,6 +85,19 @@ metrics:
   routeros_poll_interval: "30s"
 ```
 
+### `metrics.track_processed`
+
+<Badge text="Advanced" variant="caution" /> **Env:** `METRICS_TRACK_PROCESSED` · **Default:** `true`
+
+Enable tracking of processed (non-blocked) traffic through the firewall. When enabled, the bouncer creates passthrough counting rules on RouterOS to measure all traffic passing through monitored chains and reports the data to both Prometheus and LAPI.
+
+Set to `false` to disable processed traffic tracking, which avoids creating additional rules on the router and reduces metric overhead.
+
+```yaml
+metrics:
+  track_processed: true
+```
+
 ### Available metrics
 
 <LinkCard title="Prometheus Metrics Reference" description="Full list of all exported metrics with PromQL examples" href="/cs-routeros-bouncer/monitoring/prometheus/" />

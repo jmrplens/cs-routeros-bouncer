@@ -308,6 +308,9 @@ func baseConfig() config.Config {
 				AddressList: "crowdsec6-banned",
 			},
 		},
+		Metrics: config.MetricsConfig{
+			TrackProcessed: true,
+		},
 	}
 }
 

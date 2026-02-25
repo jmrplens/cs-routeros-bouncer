@@ -825,6 +825,37 @@ func TestCreateFirewallRules_FilterAndRawCombined(t *testing.T) {
 	}
 }
 
+// TestCreateFirewallRules_TrackProcessedDisabled verifies that passthrough
+// counting rules are NOT created when metrics.track_processed is false.
+func TestCreateFirewallRules_TrackProcessedDisabled(t *testing.T) {
+	mock := &mockROS{addRuleID: "*1"}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"forward"}
+	cfg.Firewall.Raw.Enabled = true
+	cfg.Firewall.Raw.Chains = []string{"prerouting"}
+	cfg.Metrics.TrackProcessed = false
+	mgr := newTestManager(mock, cfg)
+
+	if err := mgr.createFirewallRules(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	mock.mu.Lock()
+	defer mock.mu.Unlock()
+
+	// Only drop rules, no counting: 1 filter input + 1 raw = 2
+	if len(mock.addRuleCalls) != 2 {
+		t.Errorf("expected 2 rule calls (no counting rules), got %d", len(mock.addRuleCalls))
+	}
+	for _, call := range mock.addRuleCalls {
+		if call.Rule.Action == "passthrough" {
+			t.Error("passthrough counting rule should not be created when track_processed is false")
+		}
+	}
+}
+
 // TestCreateFirewallRules_FindRuleError verifies that an error checking
 // for existing rules is propagated.
 func TestCreateFirewallRules_FindRuleError(t *testing.T) {
