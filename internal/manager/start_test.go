@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -161,18 +162,24 @@ func TestStart_HappyPath(t *testing.T) {
 // Start — error paths
 // ===========================================================================
 
+// setTestRetryTimings overrides the retry interval and timeout for testing
+// and registers a t.Cleanup to restore the original values.
+func setTestRetryTimings(t *testing.T, interval, timeout time.Duration) {
+	t.Helper()
+	origInterval := connectRetryInterval
+	origTimeout := connectRetryTimeout
+	connectRetryInterval = interval
+	connectRetryTimeout = timeout
+	t.Cleanup(func() {
+		connectRetryInterval = origInterval
+		connectRetryTimeout = origTimeout
+	})
+}
+
 // TestStart_ConnectError verifies that Start returns an error when
 // the initial RouterOS connection fails after exhausting all retries.
 func TestStart_ConnectError(t *testing.T) {
-	// Speed up retries for testing
-	origInterval := connectRetryInterval
-	origTimeout := connectRetryTimeout
-	connectRetryInterval = 10 * time.Millisecond
-	connectRetryTimeout = 30 * time.Millisecond
-	defer func() {
-		connectRetryInterval = origInterval
-		connectRetryTimeout = origTimeout
-	}()
+	setTestRetryTimings(t, 10*time.Millisecond, 30*time.Millisecond)
 
 	mock := &mockROS{
 		connectErr: errors.New("connection refused"),
@@ -205,20 +212,13 @@ func TestStart_ConnectError(t *testing.T) {
 // TestStart_ConnectRetrySuccess verifies that Start succeeds when
 // connection fails initially but succeeds on a subsequent retry.
 func TestStart_ConnectRetrySuccess(t *testing.T) {
-	origInterval := connectRetryInterval
-	origTimeout := connectRetryTimeout
-	connectRetryInterval = 10 * time.Millisecond
-	connectRetryTimeout = 1 * time.Second
-	defer func() {
-		connectRetryInterval = origInterval
-		connectRetryTimeout = origTimeout
-	}()
+	setTestRetryTimings(t, 10*time.Millisecond, 1*time.Second)
 
-	callCount := 0
+	var callCount int32
 	mock := &mockROS{
 		connectFunc: func() error {
-			callCount++
-			if callCount < 3 {
+			n := atomic.AddInt32(&callCount, 1)
+			if n < 3 {
 				return errors.New("connection refused")
 			}
 			return nil
@@ -247,22 +247,15 @@ func TestStart_ConnectRetrySuccess(t *testing.T) {
 	if err := <-errCh; err != nil {
 		t.Fatalf("Start should succeed after retry, got: %v", err)
 	}
-	if callCount < 3 {
-		t.Errorf("expected at least 3 connect calls, got %d", callCount)
+	if atomic.LoadInt32(&callCount) < 3 {
+		t.Errorf("expected at least 3 connect calls, got %d", atomic.LoadInt32(&callCount))
 	}
 }
 
 // TestStart_ConnectRetryContextCancel verifies that Start returns
-// promptly when context is cancelled during the connection retry loop.
+// promptly when context is canceled during the connection retry loop.
 func TestStart_ConnectRetryContextCancel(t *testing.T) {
-	origInterval := connectRetryInterval
-	origTimeout := connectRetryTimeout
-	connectRetryInterval = 1 * time.Second
-	connectRetryTimeout = 30 * time.Second
-	defer func() {
-		connectRetryInterval = origInterval
-		connectRetryTimeout = origTimeout
-	}()
+	setTestRetryTimings(t, 1*time.Second, 30*time.Second)
 
 	mock := &mockROS{
 		connectErr: errors.New("connection refused"),
@@ -283,8 +276,8 @@ func TestStart_ConnectRetryContextCancel(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error on context cancel during retry")
 		}
-		if !strings.Contains(err.Error(), "context cancelled") {
-			t.Fatalf("expected context cancelled error, got: %v", err)
+		if !strings.Contains(err.Error(), "context canceled") {
+			t.Fatalf("expected context canceled error, got: %v", err)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("Start did not return promptly after context cancel")

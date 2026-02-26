@@ -82,7 +82,7 @@ func (m *Manager) commentPrefix() string {
 
 // connectWithRetry attempts to connect to the MikroTik router, retrying every
 // connectRetryInterval for up to connectRetryTimeout. If the context is
-// cancelled during the retry loop, it returns immediately.
+// canceled during the retry loop, it returns immediately.
 func (m *Manager) connectWithRetry(ctx context.Context) error {
 	maxAttempts := int(connectRetryTimeout/connectRetryInterval) + 1
 	var lastErr error
@@ -105,10 +105,12 @@ func (m *Manager) connectWithRetry(ctx context.Context) error {
 				Dur("remaining", remaining).
 				Msg("failed to connect to MikroTik, retrying...")
 
+			timer := time.NewTimer(connectRetryInterval)
 			select {
 			case <-ctx.Done():
-				return fmt.Errorf("connecting to MikroTik: context cancelled during retry: %w", ctx.Err())
-			case <-time.After(connectRetryInterval):
+				timer.Stop()
+				return fmt.Errorf("connecting to MikroTik: context canceled during retry: %w", ctx.Err())
+			case <-timer.C:
 			}
 			continue
 		}
