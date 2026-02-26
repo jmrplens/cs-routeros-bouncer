@@ -6,8 +6,8 @@ interface Props {
 const { version = 'latest' } = Astro.props;
 ---
 
-<span class="version-badge">
-  <span class="version-badge__label">v</span>
+<span class="version-badge" aria-label={`Version ${version}`}>
+  <span class="version-badge__label" aria-hidden="true">v</span>
   <span class="version-badge__value">{version}</span>
 </span>
 
@@ -23,7 +23,7 @@ const { version = 'latest' } = Astro.props;
     vertical-align: middle;
   }
   .version-badge__label {
-    background: rgb(var(--sl-color-accent));
+    background: var(--sl-color-accent);
     color: rgb(var(--sl-color-accent-text, 255, 255, 255));
     padding: 0.25em 0.4em;
   }

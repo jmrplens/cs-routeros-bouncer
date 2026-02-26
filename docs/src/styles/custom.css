@@ -157,7 +157,7 @@ td, th {
 
 /* Hero CTA buttons */
 .hero .action-group a[data-variant="primary"] {
-  background: linear-gradient(135deg, rgb(var(--brand-primary)), rgb(var(--brand-primary-dark)));
+  background: linear-gradient(135deg, rgb(var(--brand-primary)), rgb(var(--brand-dark)));
   border: none;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -263,7 +263,7 @@ pre {
     max-width: 100% !important;
     padding: 0 !important;
   }
-  a[href]::after {
+  a[href^="http"]::after {
     content: " (" attr(href) ")";
     font-size: 0.8em;
     color: #555;
@@ -305,14 +305,14 @@ pre {
    15. MERMAID DIAGRAMS  (TASK-014)
    Ensure rendered diagrams scale nicely
    ------------------------------------------------------------------ */
-.rehype-mermaid > svg {
+.rehype-mermaid svg {
   max-width: 100%;
   height: auto;
   border-radius: var(--sl-border-radius);
   margin-block: 1rem;
 }
 
-:root[data-theme="dark"] .rehype-mermaid > svg {
+:root[data-theme="dark"] .rehype-mermaid svg {
   filter: invert(0.88) hue-rotate(180deg);
 }
 
@@ -420,9 +420,9 @@ pre {
 .sl-markdown-content tr:hover td {
   background: rgba(var(--brand-primary), 0.03);
 }
-/* Highlight the "our" column */
-.sl-markdown-content th:last-child,
-.sl-markdown-content td:last-child {
+/* Highlight the "our" column (comparison table only) */
+.comparison-table th:last-child,
+.comparison-table td:last-child {
   background: rgba(var(--brand-accent), 0.06);
   font-weight: 500;
 }
@@ -459,7 +459,7 @@ pre {
 }
 .flow-step__desc {
   font-size: 0.8rem;
-  color: var(--sl-color-gray-3);
+  color: var(--sl-color-gray-6);
 }
 
 /* Arrow between steps (desktop) */

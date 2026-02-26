@@ -4,7 +4,7 @@ import Default from "@astrojs/starlight/components/Footer.astro";
 
 <Default {...Astro.props}><slot /></Default>
 
-<footer class="custom-footer">
+<div class="custom-footer">
   <div class="footer-inner">
     <p>
       Built with <a href="https://starlight.astro.build/" target="_blank" rel="noopener noreferrer">Starlight</a>
@@ -18,7 +18,7 @@ import Default from "@astrojs/starlight/components/Footer.astro";
       <a href="https://github.com/jmrplens/cs-routeros-bouncer/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT License</a>
     </p>
   </div>
-</footer>
+</div>
 
 <style>
   .custom-footer {

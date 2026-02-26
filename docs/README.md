@@ -25,7 +25,7 @@ docs/
 - **Theme system** — Full design system in `src/styles/custom.css` (color palette, typography, dark/high-contrast modes, responsive tables, print styles)
 - **Mermaid diagrams** — Server-side rendering via `rehype-mermaid` (requires Playwright)
 - **Component overrides** — Custom Header (announcement bar) and Footer
-- **SEO** — OpenGraph/Twitter meta tags, JSON-LD structured data, sitemap
+- **SEO** — Open Graph/Twitter meta tags, JSON-LD structured data, sitemap
 - **Accessibility** — WCAG focus indicators, reduced-motion support, proper ARIA landmarks
 
 ## Commands
