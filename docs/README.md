@@ -1,49 +1,40 @@
-# Starlight Starter Kit: Basics
+# cs-routeros-bouncer — Documentation
 
 [![Built with Starlight](https://astro.badg.es/v2/built-with-starlight/tiny.svg)](https://starlight.astro.build)
 
-```
-pnpm create astro@latest -- --template starlight
-```
+Documentation site for **cs-routeros-bouncer**, the CrowdSec bouncer for MikroTik RouterOS.
+Live at: <https://jmrplens.github.io/cs-routeros-bouncer>
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
-
-## 🚀 Project Structure
-
-Inside of your Astro + Starlight project, you'll see the following folders and files:
+## Project Structure
 
 ```
-.
-├── public/
+docs/
+├── public/              # Static assets (og-image, favicon)
 ├── src/
-│   ├── assets/
-│   ├── content/
-│   │   └── docs/
-│   └── content.config.ts
-├── astro.config.mjs
-├── package.json
-└── tsconfig.json
+│   ├── assets/          # Logo, images
+│   ├── components/
+│   │   └── overrides/   # Starlight component overrides (Header, Footer)
+│   ├── content/docs/    # MDX documentation pages
+│   └── styles/          # Custom CSS theme system
+├── astro.config.mjs     # Starlight + Astro configuration
+└── package.json
 ```
 
-Starlight looks for `.md` or `.mdx` files in the `src/content/docs/` directory. Each file is exposed as a route based on its file name.
+### Key customizations
 
-Images can be added to `src/assets/` and embedded in Markdown with a relative link.
+- **Theme system** — Full design system in `src/styles/custom.css` (color palette, typography, dark/high-contrast modes, responsive tables, print styles)
+- **Mermaid diagrams** — Server-side rendering via `rehype-mermaid` (requires Playwright)
+- **Component overrides** — Custom Header (announcement bar) and Footer
+- **SEO** — OpenGraph/Twitter meta tags, JSON-LD structured data, sitemap
+- **Accessibility** — WCAG focus indicators, reduced-motion support, proper ARIA landmarks
 
-Static assets, like favicons, can be placed in the `public/` directory.
+## Commands
 
-## 🧞 Commands
+| Command          | Action                                      |
+| :--------------- | :------------------------------------------ |
+| `pnpm install`   | Install dependencies                        |
+| `pnpm dev`       | Start dev server at `localhost:4321`         |
+| `pnpm build`     | Build production site to `./dist/`           |
+| `pnpm preview`   | Preview build locally before deploying       |
 
-All commands are run from the root of the project, from a terminal:
-
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `pnpm install`             | Installs dependencies                            |
-| `pnpm dev`             | Starts local dev server at `localhost:4321`      |
-| `pnpm build`           | Build your production site to `./dist/`          |
-| `pnpm preview`         | Preview your build locally, before deploying     |
-| `pnpm astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `pnpm astro -- --help` | Get help using the Astro CLI                     |
-
-## 👀 Want to learn more?
-
-Check out [Starlight’s docs](https://starlight.astro.build/), read [the Astro documentation](https://docs.astro.build), or jump into the [Astro Discord server](https://astro.build/chat).
+> **Note:** First install requires `pnpm approve-builds` to approve esbuild/sharp post-install scripts, and Playwright's Chromium browser (`npx playwright install chromium`).

@@ -1,6 +1,7 @@
 // @ts-check
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import rehypeMermaid from "rehype-mermaid";
 import fs from "node:fs";
 
 // Load RouterOS TextMate grammar for syntax highlighting
@@ -37,6 +38,11 @@ function routerosLanguage() {
 export default defineConfig({
   site: "https://jmrplens.github.io/cs-routeros-bouncer",
   base: "/cs-routeros-bouncer",
+  markdown: {
+    rehypePlugins: [
+      [rehypeMermaid, { strategy: "img-svg" }],
+    ],
+  },
   integrations: [
     routerosLanguage(),
     starlight({
@@ -62,6 +68,10 @@ export default defineConfig({
       lastUpdated: true,
       pagination: true,
       customCss: ["./src/styles/custom.css"],
+      components: {
+        Header: "./src/components/overrides/Header.astro",
+        Footer: "./src/components/overrides/Footer.astro",
+      },
       head: [
         {
           tag: "meta",
@@ -70,6 +80,52 @@ export default defineConfig({
             content:
               "https://jmrplens.github.io/cs-routeros-bouncer/og-image.png",
           },
+        },
+        {
+          tag: "meta",
+          attrs: { property: "og:type", content: "website" },
+        },
+        {
+          tag: "meta",
+          attrs: { property: "og:site_name", content: "cs-routeros-bouncer" },
+        },
+        {
+          tag: "meta",
+          attrs: {
+            name: "twitter:card",
+            content: "summary_large_image",
+          },
+        },
+        {
+          tag: "meta",
+          attrs: {
+            name: "twitter:image",
+            content:
+              "https://jmrplens.github.io/cs-routeros-bouncer/og-image.png",
+          },
+        },
+        {
+          tag: "meta",
+          attrs: {
+            name: "theme-color",
+            content: "#3F51B5",
+          },
+        },
+        {
+          tag: "script",
+          attrs: { type: "application/ld+json" },
+          content: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "SoftwareApplication",
+            name: "cs-routeros-bouncer",
+            description:
+              "CrowdSec bouncer for MikroTik RouterOS — automatic firewall management via the RouterOS API",
+            applicationCategory: "SecurityApplication",
+            operatingSystem: "Linux",
+            url: "https://jmrplens.github.io/cs-routeros-bouncer",
+            license: "https://github.com/jmrplens/cs-routeros-bouncer/blob/main/LICENSE",
+            offers: { "@type": "Offer", price: "0" },
+          }),
         },
       ],
       sidebar: [

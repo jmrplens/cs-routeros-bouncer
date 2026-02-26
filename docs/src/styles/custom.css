@@ -1,6 +1,477 @@
-/* Custom styles for cs-routeros-bouncer docs */
+/* ============================================================
+   cs-routeros-bouncer — Starlight custom theme
+   ============================================================ */
 
-/* Subtle table styling */
+/* ------------------------------------------------------------------
+   1. COLOR PALETTE  (TASK-001)
+   CrowdSec indigo + RouterOS teal accent
+   ------------------------------------------------------------------ */
+:root {
+  /* Brand */
+  --brand-primary: 63, 81, 181;       /* #3F51B5 — CrowdSec indigo */
+  --brand-accent: 0, 150, 136;        /* #009688 — teal (RouterOS) */
+  --brand-dark: 26, 35, 126;          /* #1A237E — deep indigo */
+
+  /* Starlight overrides — light mode */
+  --sl-color-accent-low: color-mix(in srgb, rgb(var(--brand-primary)) 15%, white);
+  --sl-color-accent: rgb(var(--brand-primary));
+  --sl-color-accent-high: rgb(var(--brand-dark));
+
+  --sl-color-white: #ffffff;
+  --sl-color-gray-1: #f5f6fa;
+  --sl-color-gray-2: #e8eaf6;
+  --sl-color-gray-3: #c5cae9;
+  --sl-color-gray-4: #7986cb;
+  --sl-color-gray-5: #3949ab;
+  --sl-color-gray-6: #1a237e;
+  --sl-color-black: #0d1117;
+
+  --sl-color-text-accent: rgb(var(--brand-primary));
+}
+
+/* Dark mode overrides */
+:root[data-theme="dark"] {
+  --sl-color-accent-low: color-mix(in srgb, rgb(var(--brand-primary)) 20%, #0d1117);
+  --sl-color-accent: #7986cb;
+  --sl-color-accent-high: #c5cae9;
+
+  --sl-color-gray-1: #1e2030;
+  --sl-color-gray-2: #262940;
+  --sl-color-gray-3: #3b3f5c;
+  --sl-color-gray-4: #9096b8;
+  --sl-color-gray-5: #c5cae9;
+  --sl-color-gray-6: #e8eaf6;
+
+  --sl-color-text-accent: #9fa8da;
+}
+
+/* ------------------------------------------------------------------
+   2. SEMANTIC TOKENS  (TASK-002)
+   Callout / aside tints that harmonise with the palette
+   ------------------------------------------------------------------ */
+:root {
+  --sl-color-green-low:  #e8f5e9;
+  --sl-color-green-high: #2e7d32;
+  --sl-color-orange-low: #fff3e0;
+  --sl-color-orange-high:#e65100;
+  --sl-color-red-low:    #ffebee;
+  --sl-color-red-high:   #c62828;
+  --sl-color-blue-low:   #e3f2fd;
+  --sl-color-blue-high:  #1565c0;
+  --sl-color-purple-low: #ede7f6;
+  --sl-color-purple-high:#4527a0;
+}
+
+:root[data-theme="dark"] {
+  --sl-color-green-low:  #1b3d1f;
+  --sl-color-green-high: #66bb6a;
+  --sl-color-orange-low: #3d2800;
+  --sl-color-orange-high:#ffb74d;
+  --sl-color-red-low:    #3d1010;
+  --sl-color-red-high:   #ef5350;
+  --sl-color-blue-low:   #0d2137;
+  --sl-color-blue-high:  #64b5f6;
+  --sl-color-purple-low: #1a0a33;
+  --sl-color-purple-high:#b39ddb;
+}
+
+/* ------------------------------------------------------------------
+   3. TYPOGRAPHY  (TASK-003)
+   System font stack + fluid headings
+   ------------------------------------------------------------------ */
+:root {
+  --sl-font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --sl-font-mono: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo,
+    Consolas, "DejaVu Sans Mono", monospace;
+
+  --sl-text-h1: clamp(1.75rem, 1.25rem + 2vw, 2.5rem);
+  --sl-text-h2: clamp(1.375rem, 1rem + 1.5vw, 1.875rem);
+  --sl-text-h3: clamp(1.125rem, 0.95rem + 0.75vw, 1.375rem);
+  --sl-text-body: clamp(0.9375rem, 0.875rem + 0.25vw, 1.0625rem);
+  --sl-line-height-headings: 1.25;
+}
+
+h1 { font-size: var(--sl-text-h1); }
+h2 { font-size: var(--sl-text-h2); }
+h3 { font-size: var(--sl-text-h3); }
+
+/* ------------------------------------------------------------------
+   4. SPACING & RADIUS  (TASK-004)
+   ------------------------------------------------------------------ */
+:root {
+  --sl-border-radius: 0.5rem;
+  --sl-content-pad-x: clamp(1rem, 3vw, 2rem);
+}
+
+/* ------------------------------------------------------------------
+   5. TABLE STYLING  (refined)
+   ------------------------------------------------------------------ */
 table {
-  font-size: 0.9rem;
+  font-size: 0.85rem;
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: var(--sl-border-radius);
+  overflow: hidden;
+}
+th {
+  background: var(--sl-color-accent-low);
+  font-weight: 600;
+}
+td, th {
+  padding: 0.625rem 0.875rem;
+}
+
+/* ------------------------------------------------------------------
+   6. HERO SECTION  (TASK-006)
+   ------------------------------------------------------------------ */
+.hero {
+  background:
+    linear-gradient(
+      135deg,
+      rgba(var(--brand-primary), 0.06) 0%,
+      transparent 60%
+    ),
+    linear-gradient(
+      225deg,
+      rgba(var(--brand-accent), 0.04) 0%,
+      transparent 50%
+    );
+  border-radius: var(--sl-border-radius);
+  padding-block: 2rem;
+}
+
+:root[data-theme="dark"] .hero {
+  background:
+    linear-gradient(
+      135deg,
+      rgba(var(--brand-primary), 0.12) 0%,
+      transparent 60%
+    ),
+    linear-gradient(
+      225deg,
+      rgba(var(--brand-accent), 0.08) 0%,
+      transparent 50%
+    );
+}
+
+/* Hero CTA buttons */
+.hero .action-group a[data-variant="primary"] {
+  background: linear-gradient(135deg, rgb(var(--brand-primary)), rgb(var(--brand-primary-dark)));
+  border: none;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.hero .action-group a[data-variant="primary"]:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(var(--brand-primary), 0.35);
+}
+
+/* Hero image (logo) polish */
+.hero img {
+  filter: drop-shadow(0 4px 12px rgba(var(--brand-primary), 0.15));
+}
+
+/* ------------------------------------------------------------------
+   7. CARD & LINK-CARD POLISH
+   ------------------------------------------------------------------ */
+.card {
+  border-radius: var(--sl-border-radius);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+.card:hover {
+  box-shadow: 0 4px 12px rgba(var(--brand-primary), 0.12);
+  transform: translateY(-2px);
+}
+.link-card {
+  border-radius: var(--sl-border-radius);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.link-card:hover {
+  border-color: rgb(var(--brand-primary));
+  box-shadow: 0 2px 8px rgba(var(--brand-primary), 0.10);
+}
+
+/* ------------------------------------------------------------------
+   8. SIDEBAR REFINEMENTS
+   ------------------------------------------------------------------ */
+nav.sidebar a[aria-current="page"] {
+  border-inline-start: 3px solid rgb(var(--brand-primary));
+  padding-inline-start: 0.625rem;
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------------
+   9. CODE BLOCKS
+   ------------------------------------------------------------------ */
+pre {
+  border-radius: var(--sl-border-radius) !important;
+}
+
+/* ------------------------------------------------------------------
+   10. FOCUS INDICATORS  (Accessibility — TASK-019)
+   WCAG 2.2 AA — 3 : 1 contrast, 2px visible outline
+   ------------------------------------------------------------------ */
+:focus-visible {
+  outline: 2px solid rgb(var(--brand-primary));
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+:root[data-theme="dark"] :focus-visible {
+  outline-color: #9fa8da;
+}
+
+/* Skip-to-content (Starlight provides it, we just restyle) */
+.skip-link:focus {
+  position: fixed;
+  top: 1rem;
+  left: 1rem;
+  z-index: 9999;
+  padding: 0.75rem 1.25rem;
+  background: rgb(var(--brand-primary));
+  color: var(--sl-color-white);
+  font-weight: 600;
+  border-radius: var(--sl-border-radius);
+}
+
+/* ------------------------------------------------------------------
+   11. REDUCED MOTION  (Accessibility — TASK-020)
+   ------------------------------------------------------------------ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ------------------------------------------------------------------
+   12. PRINT STYLES  (TASK-037)
+   ------------------------------------------------------------------ */
+@media print {
+  nav.sidebar,
+  header,
+  .right-sidebar,
+  .pagination-links,
+  footer {
+    display: none !important;
+  }
+  main {
+    max-width: 100% !important;
+    padding: 0 !important;
+  }
+  a[href]::after {
+    content: " (" attr(href) ")";
+    font-size: 0.8em;
+    color: #555;
+  }
+  pre {
+    white-space: pre-wrap;
+    word-break: break-all;
+    border: 1px solid #ccc;
+  }
+}
+
+/* ------------------------------------------------------------------
+   13. RESPONSIVE TABLES  (TASK-029)
+   Horizontal scroll wrapper for narrow viewports
+   ------------------------------------------------------------------ */
+@media (max-width: 48rem) {
+  table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+  }
+}
+
+/* ------------------------------------------------------------------
+   14. TOUCH TARGETS  (TASK-027 — Accessibility)
+   Minimum 44×44 px touch area per WCAG 2.2 AA
+   ------------------------------------------------------------------ */
+@media (pointer: coarse) {
+  nav.sidebar a,
+  .pagination-links a {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+}
+
+/* ------------------------------------------------------------------
+   15. MERMAID DIAGRAMS  (TASK-014)
+   Ensure rendered diagrams scale nicely
+   ------------------------------------------------------------------ */
+.rehype-mermaid > svg {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--sl-border-radius);
+  margin-block: 1rem;
+}
+
+:root[data-theme="dark"] .rehype-mermaid > svg {
+  filter: invert(0.88) hue-rotate(180deg);
+}
+
+/* ------------------------------------------------------------------
+   16. BADGES & INLINE-CODE
+   ------------------------------------------------------------------ */
+:not(pre) > code {
+  background: var(--sl-color-accent-low);
+  padding: 0.15em 0.35em;
+  border-radius: 0.25rem;
+  font-size: 0.875em;
+}
+
+/* ------------------------------------------------------------------
+   17. HIGH CONTRAST MODE  (TASK-024 — Accessibility)
+   Respect prefers-contrast: more
+   ------------------------------------------------------------------ */
+@media (prefers-contrast: more) {
+  :root {
+    --sl-color-accent: #1a237e;
+    --sl-color-text-accent: #1a237e;
+    --sl-color-gray-4: #333;
+  }
+  :root[data-theme="dark"] {
+    --sl-color-accent: #b3c0ff;
+    --sl-color-text-accent: #b3c0ff;
+    --sl-color-gray-4: #ccc;
+  }
+  .hero { background: none; border: 2px solid var(--sl-color-accent); }
+  .card, .link-card { border-width: 2px; }
+}
+
+/* ------------------------------------------------------------------
+   18. HERO MOBILE OPTIMISATION  (TASK-030)
+   ------------------------------------------------------------------ */
+@media (max-width: 48rem) {
+  .hero {
+    padding-block: 1.25rem;
+    text-align: center;
+  }
+  .hero .action-group {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+}
+
+/* ------------------------------------------------------------------
+   19. HEADING ANCHORS — visual polish
+   ------------------------------------------------------------------ */
+.sl-markdown-content :is(h2, h3, h4) .anchor-link {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.sl-markdown-content :is(h2, h3, h4):hover .anchor-link {
+  opacity: 0.6;
+}
+
+/* ------------------------------------------------------------------
+   20. STARLIGHT ASIDE/CALLOUT REFINEMENTS
+   ------------------------------------------------------------------ */
+.starlight-aside {
+  border-radius: var(--sl-border-radius);
+  border-inline-start-width: 4px;
+}
+
+/* ------------------------------------------------------------------
+   21. PAGINATION LINKS
+   ------------------------------------------------------------------ */
+.pagination-links a {
+  border-radius: var(--sl-border-radius);
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+.pagination-links a:hover {
+  border-color: rgb(var(--brand-primary));
+  background: rgba(var(--brand-primary), 0.04);
+}
+
+/* ------------------------------------------------------------------
+   22. COMPARISON TABLE POLISH  (TASK-017)
+   ------------------------------------------------------------------ */
+.sl-markdown-content table {
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: var(--sl-border-radius);
+  overflow: hidden;
+  width: 100%;
+}
+.sl-markdown-content th {
+  background: rgba(var(--brand-primary), 0.08);
+  font-weight: 700;
+  text-align: left;
+  white-space: nowrap;
+}
+:root[data-theme="dark"] .sl-markdown-content th {
+  background: rgba(var(--brand-primary), 0.15);
+}
+.sl-markdown-content td,
+.sl-markdown-content th {
+  padding: 0.625rem 0.875rem;
+  border-bottom: 1px solid var(--sl-color-gray-5);
+}
+.sl-markdown-content tr:last-child td {
+  border-bottom: none;
+}
+.sl-markdown-content tr:hover td {
+  background: rgba(var(--brand-primary), 0.03);
+}
+/* Highlight the "our" column */
+.sl-markdown-content th:last-child,
+.sl-markdown-content td:last-child {
+  background: rgba(var(--brand-accent), 0.06);
+  font-weight: 500;
+}
+
+/* ------------------------------------------------------------------
+   23. HOW-IT-WORKS FLOW  (TASK-018)
+   ------------------------------------------------------------------ */
+.flow-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5rem;
+  margin-block: 2rem;
+}
+.flow-step {
+  text-align: center;
+  padding: 1.25rem 1rem;
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: var(--sl-border-radius);
+  position: relative;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.flow-step:hover {
+  border-color: rgb(var(--brand-primary));
+  box-shadow: 0 2px 8px rgba(var(--brand-primary), 0.10);
+}
+.flow-step__icon {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+}
+.flow-step__title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  margin-bottom: 0.25rem;
+}
+.flow-step__desc {
+  font-size: 0.8rem;
+  color: var(--sl-color-gray-3);
+}
+
+/* Arrow between steps (desktop) */
+@media (min-width: 48rem) {
+  .flow-step + .flow-step::before {
+    content: "→";
+    position: absolute;
+    left: -1.125rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 1.25rem;
+    color: var(--sl-color-gray-4);
+    font-weight: 700;
+  }
 }

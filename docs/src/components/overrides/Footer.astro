@@ -1,0 +1,45 @@
+---
+import Default from "@astrojs/starlight/components/Footer.astro";
+---
+
+<Default {...Astro.props}><slot /></Default>
+
+<footer class="custom-footer">
+  <div class="footer-inner">
+    <p>
+      Built with <a href="https://starlight.astro.build/" target="_blank" rel="noopener noreferrer">Starlight</a>
+      &middot; Powered by <a href="https://www.crowdsec.net/" target="_blank" rel="noopener noreferrer">CrowdSec</a>
+    </p>
+    <p class="footer-links">
+      <a href="https://github.com/jmrplens/cs-routeros-bouncer" target="_blank" rel="noopener noreferrer">GitHub</a>
+      <span aria-hidden="true">&middot;</span>
+      <a href="https://github.com/jmrplens/cs-routeros-bouncer/issues" target="_blank" rel="noopener noreferrer">Issues</a>
+      <span aria-hidden="true">&middot;</span>
+      <a href="https://github.com/jmrplens/cs-routeros-bouncer/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT License</a>
+    </p>
+  </div>
+</footer>
+
+<style>
+  .custom-footer {
+    border-top: 1px solid var(--sl-color-gray-5);
+    padding: 1.5rem 1rem;
+    text-align: center;
+    font-size: var(--sl-text-xs);
+    color: var(--sl-color-gray-3);
+  }
+  .footer-inner {
+    max-width: 72rem;
+    margin: 0 auto;
+  }
+  .custom-footer a {
+    color: var(--sl-color-text-accent);
+    text-decoration: none;
+  }
+  .custom-footer a:hover {
+    text-decoration: underline;
+  }
+  .footer-links {
+    margin-top: 0.5rem;
+  }
+</style>
