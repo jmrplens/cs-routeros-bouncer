@@ -37,6 +37,13 @@ import Default from '@astrojs/starlight/components/Header.astro';
     opacity: 0.85;
   }
 
+  /* Hide on mobile — fixed header (3.5rem) has no room for both bar + nav */
+  @media (max-width: 48rem) {
+    .announcement-bar {
+      display: none;
+    }
+  }
+
   @media print {
     .announcement-bar {
       display: none;
