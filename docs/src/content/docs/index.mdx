@@ -19,8 +19,34 @@ hero:
 ---
 
 import { Card, CardGrid, LinkCard, Badge } from '@astrojs/starlight/components';
+import VersionBadge from '../../components/VersionBadge.astro';
 
-## Why cs-routeros-bouncer?
+## How it works
+
+<div class="flow-steps">
+  <div class="flow-step">
+    <div class="flow-step__icon">🛡️</div>
+    <div class="flow-step__title">CrowdSec detects</div>
+    <div class="flow-step__desc">LAPI receives threat intelligence and community decisions</div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-step__icon">🔄</div>
+    <div class="flow-step__title">Bouncer syncs</div>
+    <div class="flow-step__desc">Polls LAPI for new and expired decisions in real-time</div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-step__icon">🔥</div>
+    <div class="flow-step__title">RouterOS blocks</div>
+    <div class="flow-step__desc">Firewall rules are created or removed via the RouterOS API</div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-step__icon">📊</div>
+    <div class="flow-step__title">You monitor</div>
+    <div class="flow-step__desc">Prometheus metrics and Grafana dashboards for full visibility</div>
+  </div>
+</div>
+
+## Why cs-routeros-bouncer? <VersionBadge version="1.0" />
 
 <CardGrid stagger>
   <Card title="Zero Manual Configuration" icon="approve-check">
@@ -39,6 +65,8 @@ import { Card, CardGrid, LinkCard, Badge } from '@astrojs/starlight/components';
 
 ## How it compares
 
+<div class="comparison-table">
+
 | Feature | funkolab <Badge text="archived" variant="danger" /> | nvtkaszpir-alt | **cs-routeros-bouncer** |
 |---------|:---:|:---:|:---:|
 | Auto-create firewall rules | ❌ | ❌ | ✅ |
@@ -52,6 +80,8 @@ import { Card, CardGrid, LinkCard, Badge } from '@astrojs/starlight/components';
 | Prometheus metrics | ❌ | ✅ | ✅ |
 | Health endpoint | ❌ | ❌ | ✅ |
 | Go (compiled, low resource) | ❌ | ❌ | ✅ |
+
+</div>
 
 ## Requirements
 

@@ -1,0 +1,35 @@
+---
+interface Props {
+  version?: string;
+}
+
+const { version = 'latest' } = Astro.props;
+---
+
+<span class="version-badge" aria-label={`Version ${version}`}>
+  <span class="version-badge__label" aria-hidden="true">v</span>
+  <span class="version-badge__value">{version}</span>
+</span>
+
+<style>
+  .version-badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1;
+    border-radius: 999px;
+    overflow: hidden;
+    vertical-align: middle;
+  }
+  .version-badge__label {
+    background: var(--sl-color-accent);
+    color: rgb(var(--sl-color-accent-text, 255, 255, 255));
+    padding: 0.25em 0.4em;
+  }
+  .version-badge__value {
+    background: var(--sl-color-gray-5);
+    color: var(--sl-color-gray-1);
+    padding: 0.25em 0.5em;
+  }
+</style>
