@@ -285,11 +285,11 @@ pre {
    Horizontal scroll wrapper for narrow viewports
    ------------------------------------------------------------------ */
 @media (max-width: 48rem) {
-  table {
+  .sl-markdown-content table {
     display: block;
     overflow-x: auto;
+    overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
-    white-space: nowrap;
   }
 }
 
