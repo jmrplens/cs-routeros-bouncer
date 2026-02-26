@@ -113,8 +113,9 @@ func main() {
 	}()
 
 	// Start manager (blocks until context canceled or error)
-	if err := mgr.Start(ctx); err != nil {
-		log.Error().Err(err).Msg("manager error")
+	var startErr error
+	if startErr = mgr.Start(ctx); startErr != nil {
+		log.Error().Err(startErr).Msg("manager error")
 	}
 
 	// Graceful shutdown: remove firewall rules, close connections
@@ -127,6 +128,11 @@ func main() {
 		if err := metricsSrv.Shutdown(shutdownCtx); err != nil {
 			log.Error().Err(err).Msg("error shutting down metrics server")
 		}
+	}
+
+	if startErr != nil {
+		log.Error().Msg("cs-routeros-bouncer stopped with error")
+		os.Exit(1)
 	}
 
 	log.Info().Msg("cs-routeros-bouncer stopped")
