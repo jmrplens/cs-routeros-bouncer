@@ -7,7 +7,7 @@ Live at: <https://jmrplens.github.io/cs-routeros-bouncer>
 
 ## Project Structure
 
-```
+```text
 docs/
 ├── public/              # Static assets (og-image, favicon)
 ├── src/
