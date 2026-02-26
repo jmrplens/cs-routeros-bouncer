@@ -117,7 +117,6 @@ table {
   border-collapse: separate;
   border-spacing: 0;
   border-radius: var(--sl-border-radius);
-  overflow: hidden;
 }
 th {
   background: var(--sl-color-accent-low);
@@ -282,16 +281,8 @@ pre {
 
 /* ------------------------------------------------------------------
    13. RESPONSIVE TABLES  (TASK-029)
-   Horizontal scroll wrapper for narrow viewports
+   Horizontal scroll applied universally in section 22
    ------------------------------------------------------------------ */
-@media (max-width: 48rem) {
-  .sl-markdown-content table {
-    display: block;
-    overflow-x: auto;
-    overflow-y: hidden;
-    -webkit-overflow-scrolling: touch;
-  }
-}
 
 /* ------------------------------------------------------------------
    14. TOUCH TARGETS  (TASK-027 — Accessibility)
@@ -399,6 +390,10 @@ pre {
    22. COMPARISON TABLE POLISH  (TASK-017)
    ------------------------------------------------------------------ */
 .sl-markdown-content table {
+  display: block;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
   border-collapse: separate;
   border-spacing: 0;
   border-radius: var(--sl-border-radius);
@@ -432,7 +427,43 @@ pre {
 }
 
 /* ------------------------------------------------------------------
-   23. HOW-IT-WORKS FLOW  (TASK-018)
+   23. EXPRESSIVE-CODE POLISH
+   Rounded corners, copy button refinement
+   ------------------------------------------------------------------ */
+.expressive-code {
+  border-radius: var(--sl-border-radius) !important;
+  overflow: hidden;
+}
+.expressive-code .frame {
+  border-radius: var(--sl-border-radius) !important;
+}
+.expressive-code .copy {
+  border-radius: 6px;
+  opacity: 0;
+  transition: opacity 0.2s ease, background 0.2s ease;
+}
+.expressive-code:hover .copy {
+  opacity: 0.7;
+}
+.expressive-code .copy:hover {
+  opacity: 1;
+  background: rgba(var(--brand-primary), 0.15);
+}
+
+/* ------------------------------------------------------------------
+   24. BADGE INLINE POLISH
+   Badges inside headings — proper vertical alignment
+   ------------------------------------------------------------------ */
+.sl-markdown-content h3 .sl-badge {
+  vertical-align: middle;
+  font-size: 0.7em;
+  margin-inline-start: 0.5em;
+  position: relative;
+  top: -1px;
+}
+
+/* ------------------------------------------------------------------
+   25. HOW-IT-WORKS FLOW  (TASK-018)
    ------------------------------------------------------------------ */
 .flow-steps {
   display: grid;

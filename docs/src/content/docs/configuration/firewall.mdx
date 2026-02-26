@@ -9,43 +9,43 @@ Settings for IPv4/IPv6 blocking, firewall rule creation, and output blocking.
 
 ## IPv4
 
-### `firewall.ipv4.enabled`
+### `firewall.ipv4.enabled` <Badge text="Optional" variant="note" />
 
-<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_IPV4_ENABLED` · **Default:** `true`
+**Env:** `FIREWALL_IPV4_ENABLED` · **Default:** `true`
 
 Enable IPv4 address blocking. When enabled, the bouncer creates IPv4 firewall rules and manages the IPv4 address list.
 
-### `firewall.ipv4.address_list`
+### `firewall.ipv4.address_list` <Badge text="Optional" variant="note" />
 
-<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_IPV4_ADDRESS_LIST` · **Default:** `crowdsec-banned`
+**Env:** `FIREWALL_IPV4_ADDRESS_LIST` · **Default:** `crowdsec-banned`
 
 Name of the IPv4 address list in MikroTik where banned IPs are stored.
 
 ## IPv6
 
-### `firewall.ipv6.enabled`
+### `firewall.ipv6.enabled` <Badge text="Optional" variant="note" />
 
-<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_IPV6_ENABLED` · **Default:** `true`
+**Env:** `FIREWALL_IPV6_ENABLED` · **Default:** `true`
 
 Enable IPv6 address blocking. When enabled, the bouncer creates IPv6 firewall rules and manages the IPv6 address list.
 
-### `firewall.ipv6.address_list`
+### `firewall.ipv6.address_list` <Badge text="Optional" variant="note" />
 
-<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_IPV6_ADDRESS_LIST` · **Default:** `crowdsec6-banned`
+**Env:** `FIREWALL_IPV6_ADDRESS_LIST` · **Default:** `crowdsec6-banned`
 
 Name of the IPv6 address list in MikroTik.
 
 ## Filter Rules
 
-### `firewall.filter.enabled`
+### `firewall.filter.enabled` <Badge text="Optional" variant="note" />
 
-<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_FILTER_ENABLED` · **Default:** `true`
+**Env:** `FIREWALL_FILTER_ENABLED` · **Default:** `true`
 
 Create rules in `/ip/firewall/filter` (and `/ipv6/firewall/filter` if IPv6 enabled). Filter rules are the standard RouterOS firewall rules processed after connection tracking.
 
-### `firewall.filter.chains`
+### `firewall.filter.chains` <Badge text="Optional" variant="note" />
 
-<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_FILTER_CHAINS` · **Default:** `["input"]`
+**Env:** `FIREWALL_FILTER_CHAINS` · **Default:** `["input"]`
 
 Which chains to create filter rules in. Common values:
 
@@ -60,9 +60,9 @@ firewall:
 
 ## Raw Rules
 
-### `firewall.raw.enabled`
+### `firewall.raw.enabled` <Badge text="Optional" variant="note" />
 
-<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_RAW_ENABLED` · **Default:** `true`
+**Env:** `FIREWALL_RAW_ENABLED` · **Default:** `true`
 
 Create rules in `/ip/firewall/raw` (and `/ipv6/firewall/raw` if IPv6 enabled). Raw rules are processed before connection tracking, providing earlier packet filtering with less CPU usage.
 
@@ -70,26 +70,26 @@ Create rules in `/ip/firewall/raw` (and `/ipv6/firewall/raw` if IPv6 enabled). R
 Enable both filter and raw rules for defense-in-depth. Raw rules block traffic earlier in the packet processing pipeline.
 :::
 
-### `firewall.raw.chains`
+### `firewall.raw.chains` <Badge text="Optional" variant="note" />
 
-<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_RAW_CHAINS` · **Default:** `["prerouting"]`
+**Env:** `FIREWALL_RAW_CHAINS` · **Default:** `["prerouting"]`
 
 Which chains to create raw rules in. Typically `prerouting`.
 
 ## Rule Behavior
 
-### `firewall.deny_action`
+### `firewall.deny_action` <Badge text="Optional" variant="note" />
 
-<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_DENY_ACTION` · **Default:** `drop`
+**Env:** `FIREWALL_DENY_ACTION` · **Default:** `drop`
 
 Action for firewall rules:
 
 - `drop` — silently drops packets (recommended)
 - `reject` — sends a rejection response to the sender
 
-### `firewall.rule_placement`
+### `firewall.rule_placement` <Badge text="Optional" variant="note" />
 
-<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_RULE_PLACEMENT` · **Default:** `top`
+**Env:** `FIREWALL_RULE_PLACEMENT` · **Default:** `top`
 
 Where to place new firewall rules in the chain:
 
@@ -100,9 +100,9 @@ Where to place new firewall rules in the chain:
 If a dynamic/built-in rule occupies position 0 (e.g., RouterOS fasttrack counters), the bouncer iterates through subsequent positions until it finds one where the rule can be placed.
 :::
 
-### `firewall.comment_prefix`
+### `firewall.comment_prefix` <Badge text="Optional" variant="note" />
 
-<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_COMMENT_PREFIX` · **Default:** `crowdsec-bouncer`
+**Env:** `FIREWALL_COMMENT_PREFIX` · **Default:** `crowdsec-bouncer`
 
 Prefix for comments on all bouncer-managed resources in MikroTik. Used to identify and manage rules.
 
@@ -116,15 +116,15 @@ crowdsec-bouncer:filter-input-input-v6 @cs-routeros-bouncer
 
 ## Rule Logging
 
-### `firewall.log`
+### `firewall.log` <Badge text="Optional" variant="note" />
 
-<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_LOG` · **Default:** `false`
+**Env:** `FIREWALL_LOG` · **Default:** `false`
 
 Enable RouterOS logging on firewall rules. When enabled, matched packets are logged in the RouterOS system log.
 
-### `firewall.log_prefix`
+### `firewall.log_prefix` <Badge text="Optional" variant="note" />
 
-<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_LOG_PREFIX` · **Default:** `crowdsec-bouncer`
+**Env:** `FIREWALL_LOG_PREFIX` · **Default:** `crowdsec-bouncer`
 
 Prefix for RouterOS log entries when logging is enabled. Helps identify bouncer-related log entries in the router log.
 
@@ -144,9 +144,9 @@ When both `interface` and `interface_list` are empty (the default), firewall rul
 
 Use this setting to limit blocking to the WAN interface only, so that banned IPs on the LAN side can still reach the router (e.g., for management or internal services).
 
-### `firewall.block_input.interface`
+### `firewall.block_input.interface` <Badge text="Optional" variant="note" />
 
-<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_INPUT_INTERFACE` · **Default:** — (all interfaces)
+**Env:** `FIREWALL_INPUT_INTERFACE` · **Default:** — (all interfaces)
 
 Restrict input/raw rules to a single interface.
 
@@ -156,9 +156,9 @@ firewall:
     interface: "ether1"
 ```
 
-### `firewall.block_input.interface_list`
+### `firewall.block_input.interface_list` <Badge text="Optional" variant="note" />
 
-<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_INPUT_INTERFACE_LIST` · **Default:** — (all interfaces)
+**Env:** `FIREWALL_INPUT_INTERFACE_LIST` · **Default:** — (all interfaces)
 
 Restrict input/raw rules to an interface list. Alternative to specifying a single interface.
 
@@ -176,15 +176,15 @@ If both `interface` and `interface_list` are set, both are applied to the rule (
 
 Block outbound traffic to banned IPs. Disabled by default.
 
-### `firewall.block_output.enabled`
+### `firewall.block_output.enabled` <Badge text="Optional" variant="note" />
 
-<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_BLOCK_OUTPUT` · **Default:** `false`
+**Env:** `FIREWALL_BLOCK_OUTPUT` · **Default:** `false`
 
 Enable blocking of outgoing traffic to banned IPs. This prevents your network from establishing connections to known malicious IPs.
 
-### `firewall.block_output.interface`
+### `firewall.block_output.interface` <Badge text="Optional" variant="note" />
 
-<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_OUTPUT_INTERFACE` · **Default:** —
+**Env:** `FIREWALL_OUTPUT_INTERFACE` · **Default:** —
 
 WAN interface for output rules. Required if `block_output.enabled` is true (unless `interface_list` is set).
 
@@ -195,9 +195,9 @@ firewall:
     interface: "ether1"
 ```
 
-### `firewall.block_output.interface_list`
+### `firewall.block_output.interface_list` <Badge text="Optional" variant="note" />
 
-<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_OUTPUT_INTERFACE_LIST` · **Default:** —
+**Env:** `FIREWALL_OUTPUT_INTERFACE_LIST` · **Default:** —
 
 WAN interface list for output rules. Alternative to specifying a single interface.
 
@@ -220,9 +220,9 @@ Advanced options for customizing how firewall rules are created and what traffic
 
 Each option below shows the bouncer YAML configuration and the equivalent RouterOS command that the bouncer generates. The RouterOS commands are shown to help you understand exactly what rules are created on the router.
 
-### `firewall.reject_with`
+### `firewall.reject_with` <Badge text="Optional" variant="note" />
 
-<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_REJECT_WITH` · **Default:** —
+**Env:** `FIREWALL_REJECT_WITH` · **Default:** —
 
 Customize the ICMP response type when `deny_action` is `reject`. Only valid when `deny_action: "reject"`.
 
@@ -264,9 +264,9 @@ Use `tcp-reset` if you mainly want to reject TCP connections (SSH brute-force, w
 
 ---
 
-### `firewall.filter.connection_state`
+### `firewall.filter.connection_state` <Badge text="Optional" variant="note" />
 
-<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_FILTER_CONNECTION_STATE` · **Default:** — (matches all)
+**Env:** `FIREWALL_FILTER_CONNECTION_STATE` · **Default:** — (matches all)
 
 Add a `connection-state` matcher to filter rules. This restricts rule matching to specific connection states, allowing established/related connections to pass through even if the source IP is banned.
 
@@ -311,9 +311,9 @@ Setting `connection_state: "new"` is useful if you want to block new connections
 
 ---
 
-### `firewall.filter.log_prefix` / `firewall.raw.log_prefix` / `firewall.block_output.log_prefix`
+### `firewall.filter.log_prefix` / `firewall.raw.log_prefix` / `firewall.block_output.log_prefix` <Badge text="Optional" variant="note" />
 
-<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_FILTER_LOG_PREFIX` / `FIREWALL_RAW_LOG_PREFIX` / `FIREWALL_OUTPUT_LOG_PREFIX`
+**Env:** `FIREWALL_FILTER_LOG_PREFIX` / `FIREWALL_RAW_LOG_PREFIX` / `FIREWALL_OUTPUT_LOG_PREFIX`
 
 Override the global `log_prefix` for specific rule types. This allows differentiating log entries from filter, raw, and output rules when parsing RouterOS logs.
 
@@ -369,9 +369,9 @@ Per-type log prefixes are essential for log parsing tools (e.g., syslog parsers,
 
 ---
 
-### `firewall.block_input.whitelist`
+### `firewall.block_input.whitelist` <Badge text="Optional" variant="note" />
 
-<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_INPUT_WHITELIST` · **Default:** —
+**Env:** `FIREWALL_INPUT_WHITELIST` · **Default:** —
 
 Name of a RouterOS address-list containing trusted IPs that should bypass CrowdSec blocking. When set, the bouncer creates an **accept** rule before the drop/reject rule for each chain, allowing traffic from the whitelisted sources to pass through even if they are in the CrowdSec ban list.
 
@@ -422,9 +422,9 @@ When [`connection_state`](#firewallfilterconnection_state) is configured, it als
 
 ---
 
-### `firewall.block_output.passthrough_v4` / `passthrough_v6`
+### `firewall.block_output.passthrough_v4` / `passthrough_v6` <Badge text="Optional" variant="note" />
 
-<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_OUTPUT_PASSTHROUGH_V4` / `FIREWALL_OUTPUT_PASSTHROUGH_V6` · **Default:** —
+**Env:** `FIREWALL_OUTPUT_PASSTHROUGH_V4` / `FIREWALL_OUTPUT_PASSTHROUGH_V6` · **Default:** —
 
 Allow a specific local client IP to bypass output blocking. Uses `src-address` negation (`!IP`) on the output drop/reject rule, so packets from this source address are not blocked even when going to a banned destination.
 
@@ -458,9 +458,9 @@ Use this when you have a security scanner or honeypot (e.g., `192.168.1.100`) th
 
 ---
 
-### `firewall.block_output.passthrough_v4_list` / `passthrough_v6_list`
+### `firewall.block_output.passthrough_v4_list` / `passthrough_v6_list` <Badge text="Optional" variant="note" />
 
-<Badge text="Optional" variant="note" /> **Env:** `FIREWALL_OUTPUT_PASSTHROUGH_V4_LIST` / `FIREWALL_OUTPUT_PASSTHROUGH_V6_LIST` · **Default:** —
+**Env:** `FIREWALL_OUTPUT_PASSTHROUGH_V4_LIST` / `FIREWALL_OUTPUT_PASSTHROUGH_V6_LIST` · **Default:** —
 
 Same as passthrough but using an address-list instead of a single IP. Uses `src-address-list` negation (`!list`) on the output rule. This is more flexible when multiple clients need to bypass output blocking.
 
