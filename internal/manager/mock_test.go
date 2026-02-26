@@ -45,6 +45,7 @@ type mockROS struct {
 
 	// Return values — set these before calling the method under test.
 	connectErr       error
+	connectFunc      func() error // if set, takes priority over connectErr
 	identityName     string
 	identityErr      error
 	maxSessions      int
@@ -140,6 +141,9 @@ func (m *mockROS) Connect() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.connectCalls++
+	if m.connectFunc != nil {
+		return m.connectFunc()
+	}
 	return m.connectErr
 }
 

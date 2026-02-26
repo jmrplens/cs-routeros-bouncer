@@ -113,9 +113,7 @@ func main() {
 	}()
 
 	// Start manager (blocks until context canceled or error)
-	if err := mgr.Start(ctx); err != nil {
-		log.Error().Err(err).Msg("manager error")
-	}
+	startErr := mgr.Start(ctx)
 
 	// Graceful shutdown: remove firewall rules, close connections
 	mgr.Shutdown()
@@ -127,6 +125,16 @@ func main() {
 		if err := metricsSrv.Shutdown(shutdownCtx); err != nil {
 			log.Error().Err(err).Msg("error shutting down metrics server")
 		}
+	}
+
+	if startErr != nil {
+		// Context cancellation from SIGTERM/SIGINT is a clean shutdown, not a failure.
+		if ctx.Err() != nil {
+			log.Info().Msg("cs-routeros-bouncer stopped")
+			return
+		}
+		log.Error().Err(startErr).Msg("cs-routeros-bouncer stopped with error")
+		os.Exit(1)
 	}
 
 	log.Info().Msg("cs-routeros-bouncer stopped")

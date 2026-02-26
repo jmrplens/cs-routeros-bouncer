@@ -33,6 +33,12 @@ const (
 	channelBuffer = 256
 )
 
+// Connection retry settings (vars so tests can override).
+var (
+	connectRetryInterval = 10 * time.Second
+	connectRetryTimeout  = 3 * time.Minute
+)
+
 // Manager orchestrates the CrowdSec stream and MikroTik firewall operations.
 type Manager struct {
 	cfg     config.Config
@@ -74,17 +80,61 @@ func (m *Manager) commentPrefix() string {
 	return defaultCommentPrefix
 }
 
+// connectWithRetry attempts to connect to the MikroTik router, retrying every
+// connectRetryInterval for up to connectRetryTimeout. If the context is
+// canceled during the retry loop, it returns immediately.
+func (m *Manager) connectWithRetry(ctx context.Context) error {
+	maxAttempts := int(connectRetryTimeout/connectRetryInterval) + 1
+	var lastErr error
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if err := m.ros.Connect(); err != nil {
+			lastErr = err
+			metrics.SetConnected(false)
+
+			if attempt == maxAttempts {
+				break
+			}
+
+			remaining := connectRetryTimeout - time.Duration(attempt)*connectRetryInterval
+			m.logger.Warn().
+				Err(err).
+				Int("attempt", attempt).
+				Int("max_attempts", maxAttempts).
+				Dur("retry_in", connectRetryInterval).
+				Dur("remaining", remaining).
+				Msg("failed to connect to MikroTik, retrying...")
+
+			timer := time.NewTimer(connectRetryInterval)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return fmt.Errorf("connecting to MikroTik: context canceled during retry: %w", ctx.Err())
+			case <-timer.C:
+			}
+			continue
+		}
+
+		if attempt > 1 {
+			m.logger.Info().Int("attempt", attempt).Msg("successfully connected to MikroTik after retry")
+		}
+		metrics.SetConnected(true)
+		return nil
+	}
+
+	return fmt.Errorf("connecting to MikroTik: exhausted %d attempts over %v: %w",
+		maxAttempts, connectRetryTimeout, lastErr)
+}
+
 // Start initializes all components and begins processing decisions.
 func (m *Manager) Start(ctx context.Context) error {
 	// Record startup metrics
 	metrics.SetStartTime()
 
-	// 1. Connect to MikroTik
-	if err := m.ros.Connect(); err != nil {
-		metrics.SetConnected(false)
-		return fmt.Errorf("connecting to MikroTik: %w", err)
+	// 1. Connect to MikroTik (with retry)
+	if err := m.connectWithRetry(ctx); err != nil {
+		return err
 	}
-	metrics.SetConnected(true)
 
 	// 1b. Determine effective pool size (configured value capped by router limit)
 	poolSize := m.cfg.MikroTik.PoolSize

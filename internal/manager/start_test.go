@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -161,9 +162,25 @@ func TestStart_HappyPath(t *testing.T) {
 // Start — error paths
 // ===========================================================================
 
+// setTestRetryTimings overrides the retry interval and timeout for testing
+// and registers a t.Cleanup to restore the original values.
+func setTestRetryTimings(t *testing.T, interval, timeout time.Duration) {
+	t.Helper()
+	origInterval := connectRetryInterval
+	origTimeout := connectRetryTimeout
+	connectRetryInterval = interval
+	connectRetryTimeout = timeout
+	t.Cleanup(func() {
+		connectRetryInterval = origInterval
+		connectRetryTimeout = origTimeout
+	})
+}
+
 // TestStart_ConnectError verifies that Start returns an error when
-// the initial RouterOS connection fails.
+// the initial RouterOS connection fails after exhausting all retries.
 func TestStart_ConnectError(t *testing.T) {
+	setTestRetryTimings(t, 10*time.Millisecond, 30*time.Millisecond)
+
 	mock := &mockROS{
 		connectErr: errors.New("connection refused"),
 	}
@@ -174,10 +191,96 @@ func TestStart_ConnectError(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "connecting to MikroTik") {
 		t.Fatalf("expected MikroTik connection error, got: %v", err)
 	}
+	if !strings.Contains(err.Error(), "exhausted") {
+		t.Fatalf("expected exhausted retries message, got: %v", err)
+	}
+
+	// Should have retried multiple times
+	mock.mu.Lock()
+	calls := mock.connectCalls
+	mock.mu.Unlock()
+	if calls < 2 {
+		t.Errorf("expected multiple connect attempts, got %d", calls)
+	}
 
 	// Stream should NOT have been initialized
 	if stream.initCalled != 0 {
 		t.Error("stream.Init should not be called when connect fails")
+	}
+}
+
+// TestStart_ConnectRetrySuccess verifies that Start succeeds when
+// connection fails initially but succeeds on a subsequent retry.
+func TestStart_ConnectRetrySuccess(t *testing.T) {
+	setTestRetryTimings(t, 10*time.Millisecond, 1*time.Second)
+
+	var callCount int32
+	mock := &mockROS{
+		connectFunc: func() error {
+			n := atomic.AddInt32(&callCount, 1)
+			if n < 3 {
+				return errors.New("connection refused")
+			}
+			return nil
+		},
+		maxSessions: 20,
+		addRuleID:   "*1",
+	}
+	stream := &mockStream{
+		RunFunc: func(ctx context.Context, banCh chan<- *crowdsec.Decision, deleteCh chan<- *crowdsec.Decision) error {
+			<-ctx.Done()
+			return nil
+		},
+	}
+	cfg := baseConfig()
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"forward"}
+	mgr := newTestManagerWithStream(mock, stream, cfg)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() { errCh <- mgr.Start(ctx) }()
+
+	time.Sleep(500 * time.Millisecond)
+	cancel()
+
+	if err := <-errCh; err != nil {
+		t.Fatalf("Start should succeed after retry, got: %v", err)
+	}
+	if atomic.LoadInt32(&callCount) < 3 {
+		t.Errorf("expected at least 3 connect calls, got %d", atomic.LoadInt32(&callCount))
+	}
+}
+
+// TestStart_ConnectRetryContextCancel verifies that Start returns
+// promptly when context is canceled during the connection retry loop.
+func TestStart_ConnectRetryContextCancel(t *testing.T) {
+	setTestRetryTimings(t, 1*time.Second, 30*time.Second)
+
+	mock := &mockROS{
+		connectErr: errors.New("connection refused"),
+	}
+	stream := &mockStream{}
+	mgr := newTestManagerWithStream(mock, stream, baseConfig())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() { errCh <- mgr.Start(ctx) }()
+
+	// Cancel after a brief moment (during retry wait)
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err == nil {
+			t.Fatal("expected error on context cancel during retry")
+		}
+		if !strings.Contains(err.Error(), "context canceled") {
+			t.Fatalf("expected context canceled error, got: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Start did not return promptly after context cancel")
 	}
 }
 
