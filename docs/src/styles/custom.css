@@ -12,37 +12,42 @@
   --brand-accent: 0, 150, 136;        /* #009688 — teal (RouterOS) */
   --brand-dark: 26, 35, 126;          /* #1A237E — deep indigo */
 
-  /* Starlight overrides — light mode */
-  --sl-color-accent-low: color-mix(in srgb, rgb(var(--brand-primary)) 15%, white);
-  --sl-color-accent: rgb(var(--brand-primary));
-  --sl-color-accent-high: rgb(var(--brand-dark));
-
-  --sl-color-white: #ffffff;
-  --sl-color-gray-1: #f5f6fa;
-  --sl-color-gray-2: #e8eaf6;
-  --sl-color-gray-3: #c5cae9;
-  --sl-color-gray-4: #7986cb;
-  --sl-color-gray-5: #3949ab;
-  --sl-color-gray-6: #1a237e;
-  --sl-color-black: #0d1117;
-
-  --sl-color-text-accent: rgb(var(--brand-primary));
-}
-
-/* Dark mode overrides */
-:root[data-theme="dark"] {
+  /* Starlight overrides — dark mode (Starlight :root = dark default)
+     Gray scale: light → dark to match Starlight semantics
+     gray-2 → text, gray-5 → code bg, gray-6 → sidebar/nav bg */
   --sl-color-accent-low: color-mix(in srgb, rgb(var(--brand-primary)) 20%, #0d1117);
   --sl-color-accent: #7986cb;
   --sl-color-accent-high: #c5cae9;
 
-  --sl-color-gray-1: #1e2030;
-  --sl-color-gray-2: #262940;
-  --sl-color-gray-3: #3b3f5c;
-  --sl-color-gray-4: #9096b8;
-  --sl-color-gray-5: #c5cae9;
-  --sl-color-gray-6: #e8eaf6;
+  --sl-color-white: #ffffff;
+  --sl-color-gray-1: #e8eaf6;
+  --sl-color-gray-2: #c5cae9;
+  --sl-color-gray-3: #9096b8;
+  --sl-color-gray-4: #5c6199;
+  --sl-color-gray-5: #2d3258;
+  --sl-color-gray-6: #1e2030;
+  --sl-color-black: #0d1117;
 
   --sl-color-text-accent: #9fa8da;
+}
+
+/* Light mode overrides (Starlight uses [data-theme="light"]) */
+:root[data-theme="light"] {
+  --sl-color-accent-low: color-mix(in srgb, rgb(var(--brand-primary)) 15%, white);
+  --sl-color-accent: rgb(var(--brand-primary));
+  --sl-color-accent-high: rgb(var(--brand-dark));
+
+  --sl-color-white: #1a237e;
+  --sl-color-gray-1: #283593;
+  --sl-color-gray-2: #3b3f5c;
+  --sl-color-gray-3: #7986cb;
+  --sl-color-gray-4: #9096b8;
+  --sl-color-gray-5: #e0e3f5;
+  --sl-color-gray-6: #f0f1f8;
+  --sl-color-gray-7: #f7f8fc;
+  --sl-color-black: #ffffff;
+
+  --sl-color-text-accent: rgb(var(--brand-primary));
 }
 
 /* ------------------------------------------------------------------
@@ -50,19 +55,6 @@
    Callout / aside tints that harmonise with the palette
    ------------------------------------------------------------------ */
 :root {
-  --sl-color-green-low:  #e8f5e9;
-  --sl-color-green-high: #2e7d32;
-  --sl-color-orange-low: #fff3e0;
-  --sl-color-orange-high:#e65100;
-  --sl-color-red-low:    #ffebee;
-  --sl-color-red-high:   #c62828;
-  --sl-color-blue-low:   #e3f2fd;
-  --sl-color-blue-high:  #1565c0;
-  --sl-color-purple-low: #ede7f6;
-  --sl-color-purple-high:#4527a0;
-}
-
-:root[data-theme="dark"] {
   --sl-color-green-low:  #1b3d1f;
   --sl-color-green-high: #66bb6a;
   --sl-color-orange-low: #3d2800;
@@ -73,6 +65,19 @@
   --sl-color-blue-high:  #64b5f6;
   --sl-color-purple-low: #1a0a33;
   --sl-color-purple-high:#b39ddb;
+}
+
+:root[data-theme="light"] {
+  --sl-color-green-low:  #e8f5e9;
+  --sl-color-green-high: #2e7d32;
+  --sl-color-orange-low: #fff3e0;
+  --sl-color-orange-high:#e65100;
+  --sl-color-red-low:    #ffebee;
+  --sl-color-red-high:   #c62828;
+  --sl-color-blue-low:   #e3f2fd;
+  --sl-color-blue-high:  #1565c0;
+  --sl-color-purple-low: #ede7f6;
+  --sl-color-purple-high:#4527a0;
 }
 
 /* ------------------------------------------------------------------
@@ -459,7 +464,7 @@ pre {
 }
 .flow-step__desc {
   font-size: 0.8rem;
-  color: var(--sl-color-gray-6);
+  color: var(--sl-color-gray-3);
 }
 
 /* Arrow between steps (desktop) */
