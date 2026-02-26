@@ -402,7 +402,6 @@ pre {
   border-collapse: separate;
   border-spacing: 0;
   border-radius: var(--sl-border-radius);
-  overflow: hidden;
   width: 100%;
 }
 .sl-markdown-content th {
