@@ -41,6 +41,10 @@ func (p *Pool) Connect() error {
 	}
 	for i := 0; i < p.size; i++ {
 		c := p.newClient(p.cfg)
+		if c == nil {
+			p.Close()
+			return fmt.Errorf("pool connection %d: newClient returned nil client", i)
+		}
 		if err := c.Connect(); err != nil {
 			p.Close()
 			return fmt.Errorf("pool connection %d: %w", i, err)

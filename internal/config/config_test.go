@@ -667,12 +667,14 @@ func TestRejectWithValidValues(t *testing.T) {
 		"icmp-admin-prohibited", "tcp-reset",
 	}
 	for _, v := range valid {
-		cfg := validCfg()
-		cfg.Firewall.DenyAction = "reject"
-		cfg.Firewall.RejectWith = v
-		if err := cfg.Validate(); err != nil {
-			t.Errorf("reject_with=%q should be valid: %v", v, err)
-		}
+		t.Run(v, func(t *testing.T) {
+			cfg := validCfg()
+			cfg.Firewall.DenyAction = "reject"
+			cfg.Firewall.RejectWith = v
+			if err := cfg.Validate(); err != nil {
+				t.Errorf("reject_with=%q should be valid: %v", v, err)
+			}
+		})
 	}
 }
 
@@ -698,11 +700,13 @@ func TestConnectionStateValid(t *testing.T) {
 		"  established , related , new  ",
 	}
 	for _, v := range tests {
-		cfg := validCfg()
-		cfg.Firewall.Filter.ConnectionState = v
-		if err := cfg.Validate(); err != nil {
-			t.Errorf("connection_state=%q should be valid: %v", v, err)
-		}
+		t.Run(v, func(t *testing.T) {
+			cfg := validCfg()
+			cfg.Firewall.Filter.ConnectionState = v
+			if err := cfg.Validate(); err != nil {
+				t.Errorf("connection_state=%q should be valid: %v", v, err)
+			}
+		})
 	}
 }
 
