@@ -12,11 +12,12 @@ import (
 
 // Pool manages a set of RouterOS API connections for concurrent operations.
 type Pool struct {
-	cfg    config.MikroTikConfig
-	size   int
-	conns  chan *Client
-	logger zerolog.Logger
-	once   sync.Once
+	cfg       config.MikroTikConfig
+	size      int
+	conns     chan *Client
+	logger    zerolog.Logger
+	once      sync.Once
+	newClient func(config.MikroTikConfig) *Client // injectable for testing
 }
 
 // NewPool creates a pool of n RouterOS client connections.
@@ -25,17 +26,25 @@ func NewPool(cfg config.MikroTikConfig, size int) *Pool {
 		size = 1
 	}
 	return &Pool{
-		cfg:    cfg,
-		size:   size,
-		conns:  make(chan *Client, size),
-		logger: log.With().Str("component", "routeros-pool").Logger(),
+		cfg:       cfg,
+		size:      size,
+		conns:     make(chan *Client, size),
+		logger:    log.With().Str("component", "routeros-pool").Logger(),
+		newClient: NewClient,
 	}
 }
 
 // Connect initializes all pool connections.
 func (p *Pool) Connect() error {
+	if p.newClient == nil {
+		p.newClient = NewClient
+	}
 	for i := 0; i < p.size; i++ {
-		c := NewClient(p.cfg)
+		c := p.newClient(p.cfg)
+		if c == nil {
+			p.Close()
+			return fmt.Errorf("pool connection %d: newClient returned nil client", i)
+		}
 		if err := c.Connect(); err != nil {
 			p.Close()
 			return fmt.Errorf("pool connection %d: %w", i, err)

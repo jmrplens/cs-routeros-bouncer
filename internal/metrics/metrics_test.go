@@ -806,6 +806,8 @@ func TestSetRouterOSSystemMetricsConcurrency(t *testing.T) {
 
 // --- RouterOS uptime, info, and per-proto dropped counter tests ---
 
+// TestSetRouterOSUptime verifies that SetRouterOSUptime correctly sets the
+// uptime gauge and that subsequent calls overwrite the previous value.
 func TestSetRouterOSUptime(t *testing.T) {
 	SetRouterOSUptime(86400)
 	v := testutil.ToFloat64(routerosUptimeSeconds)
@@ -819,6 +821,8 @@ func TestSetRouterOSUptime(t *testing.T) {
 	}
 }
 
+// TestSetRouterOSInfo verifies that SetRouterOSInfo registers the info gauge
+// with version and board_name labels, and that a second call replaces the labels.
 func TestSetRouterOSInfo(t *testing.T) {
 	routerosInfo.Reset()
 	SetRouterOSInfo("7.21.3 (stable)", "RB5009UG+S+")
@@ -840,6 +844,8 @@ crowdsec_bouncer_routeros_info{board_name="RB5009UG+S+",version="7.21.3 (stable)
 	}
 }
 
+// TestSetDroppedCountersByProto verifies that per-protocol dropped bytes and
+// packets gauges are set correctly for both IPv4 and IPv6.
 func TestSetDroppedCountersByProto(t *testing.T) {
 	SetDroppedCountersByProto(1000, 10, 500, 5)
 	if v := testutil.ToFloat64(droppedBytesProto.WithLabelValues("ipv4")); v != 1000 {
@@ -1061,18 +1067,24 @@ func TestSetConfigInfoConcurrency(t *testing.T) {
 
 // --- computeDelta ---
 
+// TestComputeDeltaNormal verifies that computeDelta returns the difference when
+// current > last (normal counter increment).
 func TestComputeDeltaNormal(t *testing.T) {
 	if d := computeDelta(100, 50); d != 50 {
 		t.Errorf("computeDelta(100, 50) = %d, want 50", d)
 	}
 }
 
+// TestComputeDeltaZero verifies that computeDelta returns 0 when current equals
+// last (no change).
 func TestComputeDeltaZero(t *testing.T) {
 	if d := computeDelta(50, 50); d != 0 {
 		t.Errorf("computeDelta(50, 50) = %d, want 0", d)
 	}
 }
 
+// TestComputeDeltaWrapAround verifies that computeDelta handles counter resets
+// (current < last) by returning the full current value.
 func TestComputeDeltaWrapAround(t *testing.T) {
 	// When current < lastSent, counter was reset — return current as full delta.
 	if d := computeDelta(30, 100); d != 30 {
@@ -1080,6 +1092,8 @@ func TestComputeDeltaWrapAround(t *testing.T) {
 	}
 }
 
+// TestComputeDeltaFromZero verifies that computeDelta returns 0 when both
+// current and last are zero.
 func TestComputeDeltaFromZero(t *testing.T) {
 	if d := computeDelta(0, 0); d != 0 {
 		t.Errorf("computeDelta(0, 0) = %d, want 0", d)
@@ -1088,6 +1102,8 @@ func TestComputeDeltaFromZero(t *testing.T) {
 
 // --- SetDroppedCountersByIPType / GetAndResetDroppedDeltasByIPType ---
 
+// TestDroppedByIPTypeDelta verifies that SetDroppedCountersByIPType computes the correct
+// delta on first call and returns zero on a second call with the same values.
 func TestDroppedByIPTypeDelta(t *testing.T) {
 	// Reset state.
 	droppedProtoState.mu.Lock()
@@ -1109,6 +1125,8 @@ func TestDroppedByIPTypeDelta(t *testing.T) {
 	}
 }
 
+// TestDroppedByIPTypeIncrementalDeltas verifies that SetDroppedCountersByIPType computes
+// correct incremental deltas between successive counter updates.
 func TestDroppedByIPTypeIncrementalDeltas(t *testing.T) {
 	droppedProtoState.mu.Lock()
 	droppedProtoState.current = ProtoCounters{}
@@ -1125,6 +1143,8 @@ func TestDroppedByIPTypeIncrementalDeltas(t *testing.T) {
 	}
 }
 
+// TestDroppedByIPTypeWrapAround verifies that SetDroppedCountersByIPType correctly
+// handles counter resets by returning the full new value instead of a negative.
 func TestDroppedByIPTypeWrapAround(t *testing.T) {
 	droppedProtoState.mu.Lock()
 	droppedProtoState.current = ProtoCounters{}
@@ -1144,6 +1164,8 @@ func TestDroppedByIPTypeWrapAround(t *testing.T) {
 
 // --- SetProcessedCounters / GetAndResetProcessedDeltas ---
 
+// TestProcessedDelta verifies that SetProcessedCounters computes the correct
+// delta on first and second calls for accepted, dropped, and forwarded counters.
 func TestProcessedDelta(t *testing.T) {
 	processedProtoState.mu.Lock()
 	processedProtoState.current = ProtoCounters{}
@@ -1164,6 +1186,8 @@ func TestProcessedDelta(t *testing.T) {
 	}
 }
 
+// TestProcessedIncrementalDeltas verifies that SetProcessedCounters computes
+// correct incremental deltas between successive counter updates.
 func TestProcessedIncrementalDeltas(t *testing.T) {
 	processedProtoState.mu.Lock()
 	processedProtoState.current = ProtoCounters{}
@@ -1180,6 +1204,8 @@ func TestProcessedIncrementalDeltas(t *testing.T) {
 	}
 }
 
+// TestProcessedWrapAround verifies that SetProcessedCounters correctly handles
+// counter resets by returning the full new value instead of a negative delta.
 func TestProcessedWrapAround(t *testing.T) {
 	processedProtoState.mu.Lock()
 	processedProtoState.current = ProtoCounters{}
@@ -1198,6 +1224,8 @@ func TestProcessedWrapAround(t *testing.T) {
 
 // --- SetProcessedCountersPrometheus ---
 
+// TestSetProcessedCountersPrometheus verifies that SetProcessedCountersPrometheus
+// correctly sets the processed bytes/packets totals and per-IP-type gauges.
 func TestSetProcessedCountersPrometheus(t *testing.T) {
 	processedBytesTotal.Set(0)
 	processedPacketsTotal.Set(0)
@@ -1228,6 +1256,8 @@ func TestSetProcessedCountersPrometheus(t *testing.T) {
 
 // --- Concurrency ---
 
+// TestDroppedByIPTypeConcurrency exercises concurrent SetDroppedCountersByIPType calls
+// to verify there are no data races (run with -race).
 func TestDroppedByIPTypeConcurrency(t *testing.T) {
 	droppedProtoState.mu.Lock()
 	droppedProtoState.current = ProtoCounters{}
@@ -1249,6 +1279,8 @@ func TestDroppedByIPTypeConcurrency(t *testing.T) {
 	wg.Wait()
 }
 
+// TestProcessedConcurrency exercises concurrent SetProcessedCounters calls to
+// verify there are no data races (run with -race).
 func TestProcessedConcurrency(t *testing.T) {
 	processedProtoState.mu.Lock()
 	processedProtoState.current = ProtoCounters{}

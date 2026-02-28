@@ -23,6 +23,7 @@ import (
 	"errors"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -77,6 +78,7 @@ type mockROS struct {
 	systemResourcesErr error
 	systemHealth       *ros.SystemHealth
 	systemHealthErr    error
+	pollCount          atomic.Int32 // tracks GetSystemResources calls
 
 	// Call tracking — inspected in assertions after calling the method under test.
 	connectCalls       int
@@ -137,6 +139,8 @@ type findRuleCall struct {
 	Proto, Mode, Comment string
 }
 
+// Connect implements RouterOSClient.Connect and returns the configured error or
+// calls connectFunc if set. Increments connectCalls for verification.
 func (m *mockROS) Connect() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -147,14 +151,19 @@ func (m *mockROS) Connect() error {
 	return m.connectErr
 }
 
+// Close implements RouterOSClient.Close and increments closeCalls for verification.
 func (m *mockROS) Close() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.closeCalls++
 }
 
+// GetAPIMaxSessions implements RouterOSClient.GetAPIMaxSessions and returns the
+// configured maxSessions value.
 func (m *mockROS) GetAPIMaxSessions() int { return m.maxSessions }
 
+// GetIdentity implements RouterOSClient.GetIdentity and returns the configured
+// identity name and error.
 func (m *mockROS) GetIdentity() (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -162,6 +171,8 @@ func (m *mockROS) GetIdentity() (string, error) {
 	return m.identityName, m.identityErr
 }
 
+// AddAddress implements RouterOSClient.AddAddress and records the call arguments
+// for later inspection.
 func (m *mockROS) AddAddress(proto, list, address, timeout, comment string) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -169,6 +180,8 @@ func (m *mockROS) AddAddress(proto, list, address, timeout, comment string) (str
 	return m.addAddressID, m.addAddressErr
 }
 
+// FindAddress implements RouterOSClient.FindAddress and returns the pre-configured
+// entry and error.
 func (m *mockROS) FindAddress(proto, list, address string) (*ros.AddressEntry, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -176,6 +189,8 @@ func (m *mockROS) FindAddress(proto, list, address string) (*ros.AddressEntry, e
 	return m.findAddressEntry, m.findAddressErr
 }
 
+// UpdateAddressTimeout implements RouterOSClient.UpdateAddressTimeout and records
+// the call arguments for later inspection.
 func (m *mockROS) UpdateAddressTimeout(proto, id, timeout string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -183,6 +198,8 @@ func (m *mockROS) UpdateAddressTimeout(proto, id, timeout string) error {
 	return m.updateTimeoutErr
 }
 
+// RemoveAddress implements RouterOSClient.RemoveAddress and records the call
+// arguments for later inspection.
 func (m *mockROS) RemoveAddress(proto, id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -190,6 +207,8 @@ func (m *mockROS) RemoveAddress(proto, id string) error {
 	return m.removeAddressErr
 }
 
+// ListAddresses implements RouterOSClient.ListAddresses and returns the
+// pre-configured address list and error.
 func (m *mockROS) ListAddresses(proto, list, commentPrefix string) ([]ros.AddressEntry, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -197,6 +216,8 @@ func (m *mockROS) ListAddresses(proto, list, commentPrefix string) ([]ros.Addres
 	return m.listAddresses, m.listAddressesErr
 }
 
+// BulkAddAddresses implements RouterOSClient.BulkAddAddresses and records the
+// call arguments including the batch of entries.
 func (m *mockROS) BulkAddAddresses(proto, list string, entries []ros.BulkEntry) (int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -204,6 +225,8 @@ func (m *mockROS) BulkAddAddresses(proto, list string, entries []ros.BulkEntry) 
 	return m.bulkAddCount, m.bulkAddErr
 }
 
+// AddFirewallRule implements RouterOSClient.AddFirewallRule and records the call
+// arguments for verifying firewall rule creation logic.
 func (m *mockROS) AddFirewallRule(proto, mode string, rule ros.FirewallRule) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -211,6 +234,8 @@ func (m *mockROS) AddFirewallRule(proto, mode string, rule ros.FirewallRule) (st
 	return m.addRuleID, m.addRuleErr
 }
 
+// RemoveFirewallRule implements RouterOSClient.RemoveFirewallRule and optionally
+// delegates to removeRuleErrFunc for per-call error control.
 func (m *mockROS) RemoveFirewallRule(proto, mode, id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -221,6 +246,8 @@ func (m *mockROS) RemoveFirewallRule(proto, mode, id string) error {
 	return m.removeRuleErr
 }
 
+// FindFirewallRuleByComment implements RouterOSClient.FindFirewallRuleByComment
+// and returns the pre-configured rule entry and error.
 func (m *mockROS) FindFirewallRuleByComment(proto, mode, comment string) (*ros.RuleEntry, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -228,6 +255,8 @@ func (m *mockROS) FindFirewallRuleByComment(proto, mode, comment string) (*ros.R
 	return m.findRuleEntry, m.findRuleErr
 }
 
+// ListFirewallRules implements RouterOSClient.ListFirewallRules and returns the
+// pre-configured rule list.
 func (m *mockROS) ListFirewallRules(proto, mode, commentPrefix string) ([]ros.RuleEntry, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -237,6 +266,8 @@ func (m *mockROS) ListFirewallRules(proto, mode, commentPrefix string) ([]ros.Ru
 	return nil, m.listFirewallRulesErr
 }
 
+// ListFirewallRulesBySignature implements RouterOSClient.ListFirewallRulesBySignature
+// and filters the pre-configured rules by comment signature substring.
 func (m *mockROS) ListFirewallRulesBySignature(proto, mode, signature string) ([]ros.RuleEntry, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -250,6 +281,8 @@ func (m *mockROS) ListFirewallRulesBySignature(proto, mode, signature string) ([
 	return filtered, m.listFirewallRulesErr
 }
 
+// GetFirewallCounters implements RouterOSClient.GetFirewallCounters and returns
+// the pre-configured counters or an empty struct if none configured.
 func (m *mockROS) GetFirewallCounters(commentPrefix string) (*ros.FirewallCounters, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -260,7 +293,10 @@ func (m *mockROS) GetFirewallCounters(commentPrefix string) (*ros.FirewallCounte
 	return &ros.FirewallCounters{}, m.getCountersErr
 }
 
+// GetSystemResources implements RouterOSClient.GetSystemResources and returns
+// the pre-configured resources or sensible defaults (5% CPU, ~75% memory).
 func (m *mockROS) GetSystemResources() (*ros.SystemResources, error) {
+	m.pollCount.Add(1)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.systemResources != nil {
@@ -269,6 +305,8 @@ func (m *mockROS) GetSystemResources() (*ros.SystemResources, error) {
 	return &ros.SystemResources{CPULoad: 5, FreeMemory: 800000000, TotalMemory: 1073741824}, m.systemResourcesErr
 }
 
+// GetSystemHealth implements RouterOSClient.GetSystemHealth and returns the
+// pre-configured health data or a default 38°C CPU temperature.
 func (m *mockROS) GetSystemHealth() (*ros.SystemHealth, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -1153,6 +1191,9 @@ func TestGetAddressListName(t *testing.T) {
 // Feature 1: Output passthrough tests
 // ===========================================================================
 
+// TestCreateFirewallRules_OutputPassthroughV4IP verifies that when block_output
+// is enabled with a single IPv4 passthrough IP, the output rule includes a
+// negated src-address for that IP.
 func TestCreateFirewallRules_OutputPassthroughV4IP(t *testing.T) {
 	mock := &mockROS{addRuleID: "*R1"}
 	cfg := baseConfig()
@@ -1178,6 +1219,9 @@ func TestCreateFirewallRules_OutputPassthroughV4IP(t *testing.T) {
 	t.Error("IPv4 output rule not found")
 }
 
+// TestCreateFirewallRules_OutputPassthroughV4List verifies that when both
+// PassthroughV4 (single IP) and PassthroughV4List (address list) are configured,
+// the address list takes precedence and the single IP is ignored.
 func TestCreateFirewallRules_OutputPassthroughV4List(t *testing.T) {
 	mock := &mockROS{addRuleID: "*R1"}
 	cfg := baseConfig()
@@ -1206,6 +1250,9 @@ func TestCreateFirewallRules_OutputPassthroughV4List(t *testing.T) {
 	t.Error("IPv4 output rule not found")
 }
 
+// TestCreateFirewallRules_OutputPassthroughV6 verifies that when block_output is
+// enabled with an IPv6 passthrough address list, the output rule includes a
+// negated src-address-list for that list.
 func TestCreateFirewallRules_OutputPassthroughV6(t *testing.T) {
 	mock := &mockROS{addRuleID: "*R1"}
 	cfg := baseConfig()
@@ -1230,6 +1277,9 @@ func TestCreateFirewallRules_OutputPassthroughV6(t *testing.T) {
 	t.Error("IPv6 output rule not found")
 }
 
+// TestCreateFirewallRules_OutputPassthroughV6IP verifies that when block_output
+// is enabled with a single IPv6 passthrough IP (no list), the output rule
+// includes a negated src-address for that IP.
 func TestCreateFirewallRules_OutputPassthroughV6IP(t *testing.T) {
 	mock := &mockROS{addRuleID: "*R1"}
 	cfg := baseConfig()
@@ -1257,6 +1307,9 @@ func TestCreateFirewallRules_OutputPassthroughV6IP(t *testing.T) {
 	t.Error("IPv6 output rule not found")
 }
 
+// TestCreateFirewallRules_OutputPassthroughV6ListPrecedence verifies that when
+// both PassthroughV6 (single IP) and PassthroughV6List are configured, the
+// address list takes precedence and the single IP is ignored.
 func TestCreateFirewallRules_OutputPassthroughV6ListPrecedence(t *testing.T) {
 	mock := &mockROS{addRuleID: "*R1"}
 	cfg := baseConfig()
@@ -1285,6 +1338,9 @@ func TestCreateFirewallRules_OutputPassthroughV6ListPrecedence(t *testing.T) {
 	t.Error("IPv6 output rule not found")
 }
 
+// TestCreateFirewallRules_ConnectionState verifies that when connection_state is
+// configured, all non-passthrough filter rules include the connection-state
+// parameter in the generated firewall rules.
 func TestCreateFirewallRules_ConnectionState(t *testing.T) {
 	mock := &mockROS{addRuleID: "*R1"}
 	cfg := baseConfig()
@@ -1307,6 +1363,9 @@ func TestCreateFirewallRules_ConnectionState(t *testing.T) {
 	}
 }
 
+// TestCreateFirewallRules_ConnectionStateNotOnRaw verifies that connection-state
+// is never applied to raw table rules, even when filter.connection_state is
+// configured, because the raw table processes packets before connection tracking.
 func TestCreateFirewallRules_ConnectionStateNotOnRaw(t *testing.T) {
 	mock := &mockROS{addRuleID: "*R1"}
 	cfg := baseConfig()
@@ -1330,6 +1389,9 @@ func TestCreateFirewallRules_ConnectionStateNotOnRaw(t *testing.T) {
 // Feature 3: Hierarchical log-prefix tests
 // ===========================================================================
 
+// TestCreateFirewallRules_LogPrefixGlobal verifies that when only a global
+// log_prefix is configured, all non-counting firewall rules inherit the global
+// log prefix value.
 func TestCreateFirewallRules_LogPrefixGlobal(t *testing.T) {
 	mock := &mockROS{addRuleID: "*R1"}
 	cfg := baseConfig()
@@ -1352,6 +1414,9 @@ func TestCreateFirewallRules_LogPrefixGlobal(t *testing.T) {
 	}
 }
 
+// TestCreateFirewallRules_LogPrefixPerType verifies that per-type log_prefix
+// overrides (filter, raw, output) take precedence over the global log_prefix
+// for their respective rule types.
 func TestCreateFirewallRules_LogPrefixPerType(t *testing.T) {
 	mock := &mockROS{addRuleID: "*R1"}
 	cfg := baseConfig()
@@ -1399,6 +1464,9 @@ func TestCreateFirewallRules_LogPrefixPerType(t *testing.T) {
 // Feature 4: Input whitelist tests
 // ===========================================================================
 
+// TestCreateFirewallRules_InputWhitelist verifies that when an input whitelist
+// address list is configured, accept rules are created before the deny rules to
+// allow traffic from trusted hosts through the CrowdSec blocklist.
 func TestCreateFirewallRules_InputWhitelist(t *testing.T) {
 	mock := &mockROS{addRuleID: "*R1"}
 	cfg := baseConfig()
@@ -1432,6 +1500,9 @@ func TestCreateFirewallRules_InputWhitelist(t *testing.T) {
 	}
 }
 
+// TestCreateFirewallRules_InputWhitelistWithRaw verifies that input whitelist
+// rules also work with the raw table and that raw whitelist rules do not include
+// a connection-state parameter.
 func TestCreateFirewallRules_InputWhitelistWithRaw(t *testing.T) {
 	mock := &mockROS{addRuleID: "*R1"}
 	cfg := baseConfig()
@@ -1460,6 +1531,9 @@ func TestCreateFirewallRules_InputWhitelistWithRaw(t *testing.T) {
 // Feature 5: reject-with tests
 // ===========================================================================
 
+// TestCreateFirewallRules_RejectWith verifies that when deny_action is "reject"
+// and reject_with is set, all reject rules include the configured reject-with
+// parameter (e.g., tcp-reset).
 func TestCreateFirewallRules_RejectWith(t *testing.T) {
 	mock := &mockROS{addRuleID: "*R1"}
 	cfg := baseConfig()
@@ -1480,6 +1554,9 @@ func TestCreateFirewallRules_RejectWith(t *testing.T) {
 	}
 }
 
+// TestCreateFirewallRules_RejectWithNotOnAccept verifies that reject-with is
+// never applied to accept rules (whitelist rules), even when deny_action is
+// "reject" and a whitelist is configured alongside reject-with.
 func TestCreateFirewallRules_RejectWithNotOnAccept(t *testing.T) {
 	mock := &mockROS{addRuleID: "*R1"}
 	cfg := baseConfig()
@@ -1581,6 +1658,9 @@ func TestCreateFirewallRules_FilterRejectRawDrop(t *testing.T) {
 // resolveLogPrefix unit tests
 // ===========================================================================
 
+// TestResolveLogPrefix_Fallback verifies that resolveLogPrefix returns the
+// global log_prefix for all rule types (filter, raw, output, unknown) when no
+// per-type overrides are configured.
 func TestResolveLogPrefix_Fallback(t *testing.T) {
 	cfg := baseConfig()
 	cfg.Firewall.LogPrefix = "global"
@@ -1600,6 +1680,8 @@ func TestResolveLogPrefix_Fallback(t *testing.T) {
 	}
 }
 
+// TestResolveLogPrefix_Overrides verifies that per-type log_prefix values
+// (filter, raw, output) override the global log_prefix when both are configured.
 func TestResolveLogPrefix_Overrides(t *testing.T) {
 	cfg := baseConfig()
 	cfg.Firewall.LogPrefix = "global"
@@ -1623,6 +1705,11 @@ func TestResolveLogPrefix_Overrides(t *testing.T) {
 // Combined features test
 // ===========================================================================
 
+// TestCreateFirewallRules_AllFeaturesCombined is an integration-style test that
+// exercises all firewall rule features simultaneously: reject-with, log-prefix,
+// connection-state, input whitelist, and output passthrough (IPv4 single IP and
+// IPv6 address list). It verifies the correct number of rules and spot-checks
+// key properties on whitelist, reject, and output rules.
 func TestCreateFirewallRules_AllFeaturesCombined(t *testing.T) {
 	mock := &mockROS{addRuleID: "*R1"}
 	cfg := baseConfig()

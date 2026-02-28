@@ -52,6 +52,8 @@ type mockStream struct {
 	RunFunc func(ctx context.Context, banCh chan<- *crowdsec.Decision, deleteCh chan<- *crowdsec.Decision) error
 }
 
+// Init implements StreamIface.Init, counting calls and returning the configured
+// initErr for test verification.
 func (s *mockStream) Init() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -59,6 +61,8 @@ func (s *mockStream) Init() error {
 	return s.initErr
 }
 
+// Run implements StreamIface.Run, delegating to RunFunc if set or returning
+// runErr immediately.
 func (s *mockStream) Run(ctx context.Context, banCh chan<- *crowdsec.Decision, deleteCh chan<- *crowdsec.Decision) error {
 	s.mu.Lock()
 	s.runCalled++
@@ -72,6 +76,8 @@ func (s *mockStream) Run(ctx context.Context, banCh chan<- *crowdsec.Decision, d
 	return runErr
 }
 
+// APIClient implements StreamIface.APIClient and returns nil (not needed in
+// start tests).
 func (s *mockStream) APIClient() *apiclient.ApiClient {
 	return nil
 }

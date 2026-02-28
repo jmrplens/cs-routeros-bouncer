@@ -42,6 +42,8 @@ func NewMockBouncer() *MockBouncer {
 	}
 }
 
+// Init implements BouncerIface.Init and records whether it was called, returning
+// the pre-configured InitErr.
 func (m *MockBouncer) Init() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -49,6 +51,8 @@ func (m *MockBouncer) Init() error {
 	return m.InitErr
 }
 
+// Run implements BouncerIface.Run and blocks until the context is canceled,
+// mimicking the real bouncer's lifecycle.
 func (m *MockBouncer) Run(ctx context.Context) error {
 	m.mu.Lock()
 	m.RunCalled = true
@@ -59,10 +63,14 @@ func (m *MockBouncer) Run(ctx context.Context) error {
 	return m.RunErr
 }
 
+// DecisionStream implements BouncerIface.DecisionStream and returns the mock's
+// decision channel for test-driven decision delivery.
 func (m *MockBouncer) DecisionStream() <-chan *models.DecisionsStreamResponse {
 	return m.DecisionCh
 }
 
+// Client implements BouncerIface.Client and returns the pre-configured mock API
+// client (or nil if not set).
 func (m *MockBouncer) Client() *apiclient.ApiClient {
 	return m.APIClientVal
 }

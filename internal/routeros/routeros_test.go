@@ -4,6 +4,7 @@
 package routeros
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -641,6 +642,9 @@ func TestDurationToMikroTikLarge(t *testing.T) {
 	}
 }
 
+// TestParseMikroTikUptime verifies that ParseMikroTikUptime correctly converts
+// RouterOS uptime strings (e.g., "1w2d3h4m5s") into total seconds using
+// table-driven subtests for various combinations of time components.
 func TestParseMikroTikUptime(t *testing.T) {
 	tests := []struct {
 		input string
@@ -661,5 +665,74 @@ func TestParseMikroTikUptime(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("ParseMikroTikUptime(%q) = %v, want %v", tt.input, got, tt.want)
 		}
+	}
+}
+
+// --- Pool.Connect tests ---
+
+// TestPoolConnect_Success verifies Connect populates the pool when all dials succeed.
+func TestPoolConnect_Success(t *testing.T) {
+	p := NewPool(config.MikroTikConfig{}, 2)
+	p.newClient = func(_ config.MikroTikConfig) *Client {
+		mc := newMockConn()
+		return &Client{
+			dialFunc: func(_ config.MikroTikConfig) (RouterConn, error) {
+				return mc, nil
+			},
+		}
+	}
+
+	if err := p.Connect(); err != nil {
+		t.Fatalf("Connect() returned unexpected error: %v", err)
+	}
+	if len(p.conns) != 2 {
+		t.Errorf("expected 2 connections in pool, got %d", len(p.conns))
+	}
+}
+
+// TestPoolConnect_Error verifies Connect returns an error when dialing fails.
+func TestPoolConnect_Error(t *testing.T) {
+	p := NewPool(config.MikroTikConfig{}, 1)
+	p.newClient = func(_ config.MikroTikConfig) *Client {
+		return &Client{
+			dialFunc: func(_ config.MikroTikConfig) (RouterConn, error) {
+				return nil, fmt.Errorf("dial refused")
+			},
+		}
+	}
+
+	err := p.Connect()
+	if err == nil {
+		t.Fatal("Connect() should have returned an error")
+	}
+	if !strings.Contains(err.Error(), "dial refused") {
+		t.Errorf("expected error to contain 'dial refused', got: %v", err)
+	}
+}
+
+// TestPoolConnect_PartialFailure verifies Connect returns an error when
+// only some connections succeed (third of three fails).
+func TestPoolConnect_PartialFailure(t *testing.T) {
+	var callCount int
+	p := NewPool(config.MikroTikConfig{}, 3)
+	p.newClient = func(_ config.MikroTikConfig) *Client {
+		idx := callCount
+		callCount++
+		return &Client{
+			dialFunc: func(_ config.MikroTikConfig) (RouterConn, error) {
+				if idx == 2 {
+					return nil, fmt.Errorf("connection 2 failed")
+				}
+				return newMockConn(), nil
+			},
+		}
+	}
+
+	err := p.Connect()
+	if err == nil {
+		t.Fatal("Connect() should have returned an error on partial failure")
+	}
+	if !strings.Contains(err.Error(), "connection 2 failed") {
+		t.Errorf("expected error about connection 2, got: %v", err)
 	}
 }
