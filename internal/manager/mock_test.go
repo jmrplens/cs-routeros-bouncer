@@ -23,6 +23,7 @@ import (
 	"errors"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -77,6 +78,7 @@ type mockROS struct {
 	systemResourcesErr error
 	systemHealth       *ros.SystemHealth
 	systemHealthErr    error
+	pollCount          atomic.Int32 // tracks GetSystemResources calls
 
 	// Call tracking — inspected in assertions after calling the method under test.
 	connectCalls       int
@@ -294,6 +296,7 @@ func (m *mockROS) GetFirewallCounters(commentPrefix string) (*ros.FirewallCounte
 // GetSystemResources implements RouterOSClient.GetSystemResources and returns
 // the pre-configured resources or sensible defaults (5% CPU, ~75% memory).
 func (m *mockROS) GetSystemResources() (*ros.SystemResources, error) {
+	m.pollCount.Add(1)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.systemResources != nil {

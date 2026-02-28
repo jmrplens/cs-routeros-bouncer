@@ -436,7 +436,7 @@ func TestPollSystemMetricsTemperatureUnavailable(t *testing.T) {
 
 // TestCollectSystemMetrics verifies that collectSystemMetrics calls
 // pollSystemMetrics immediately and then on each tick, stopping when
-// the context is cancelled.
+// the context is canceled.
 func TestCollectSystemMetrics(t *testing.T) {
 	mock := &mockROS{}
 	cfg := config.Config{
@@ -451,8 +451,16 @@ func TestCollectSystemMetrics(t *testing.T) {
 		close(done)
 	}()
 
-	// Give it time to run initial poll + at least one tick
-	time.Sleep(50 * time.Millisecond)
+	// Wait until the mock has been polled at least twice (initial + one tick).
+	deadline := time.After(2 * time.Second)
+	for mock.pollCount.Load() < 2 {
+		select {
+		case <-deadline:
+			t.Fatalf("timed out waiting for polls; got %d", mock.pollCount.Load())
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
 	cancel()
 
 	// Wait for goroutine to finish

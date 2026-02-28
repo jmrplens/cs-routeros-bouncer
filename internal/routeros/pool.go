@@ -36,6 +36,9 @@ func NewPool(cfg config.MikroTikConfig, size int) *Pool {
 
 // Connect initializes all pool connections.
 func (p *Pool) Connect() error {
+	if p.newClient == nil {
+		p.newClient = NewClient
+	}
 	for i := 0; i < p.size; i++ {
 		c := p.newClient(p.cfg)
 		if err := c.Connect(); err != nil {

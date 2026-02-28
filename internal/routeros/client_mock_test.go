@@ -1872,6 +1872,7 @@ func TestGetSystemResources_Error(t *testing.T) {
 	client := newTestClient(mc)
 
 	mc.pushError(fmt.Errorf("connection lost"))
+	mc.pushError(fmt.Errorf("connection lost")) // retry path also fails
 
 	_, err := client.GetSystemResources()
 	if err == nil {
@@ -1948,6 +1949,7 @@ func TestGetSystemHealth_Error(t *testing.T) {
 	client := newTestClient(mc)
 
 	mc.pushError(fmt.Errorf("connection lost"))
+	mc.pushError(fmt.Errorf("connection lost")) // retry path also fails
 
 	_, err := client.GetSystemHealth()
 	if err == nil {

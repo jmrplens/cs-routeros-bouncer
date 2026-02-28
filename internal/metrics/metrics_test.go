@@ -1102,7 +1102,7 @@ func TestComputeDeltaFromZero(t *testing.T) {
 
 // --- SetDroppedCountersByIPType / GetAndResetDroppedDeltasByIPType ---
 
-// TestDroppedByIPTypeDelta verifies that SetDroppedByIPType computes the correct
+// TestDroppedByIPTypeDelta verifies that SetDroppedCountersByIPType computes the correct
 // delta on first call and returns zero on a second call with the same values.
 func TestDroppedByIPTypeDelta(t *testing.T) {
 	// Reset state.
@@ -1125,7 +1125,7 @@ func TestDroppedByIPTypeDelta(t *testing.T) {
 	}
 }
 
-// TestDroppedByIPTypeIncrementalDeltas verifies that SetDroppedByIPType computes
+// TestDroppedByIPTypeIncrementalDeltas verifies that SetDroppedCountersByIPType computes
 // correct incremental deltas between successive counter updates.
 func TestDroppedByIPTypeIncrementalDeltas(t *testing.T) {
 	droppedProtoState.mu.Lock()
@@ -1143,7 +1143,7 @@ func TestDroppedByIPTypeIncrementalDeltas(t *testing.T) {
 	}
 }
 
-// TestDroppedByIPTypeWrapAround verifies that SetDroppedByIPType correctly
+// TestDroppedByIPTypeWrapAround verifies that SetDroppedCountersByIPType correctly
 // handles counter resets by returning the full new value instead of a negative.
 func TestDroppedByIPTypeWrapAround(t *testing.T) {
 	droppedProtoState.mu.Lock()
@@ -1224,8 +1224,8 @@ func TestProcessedWrapAround(t *testing.T) {
 
 // --- SetProcessedCountersPrometheus ---
 
-// TestSetProcessedCountersPrometheus verifies that SetProcessedCounters correctly
-// publishes delta values to the Prometheus accepted, dropped, and forwarded gauges.
+// TestSetProcessedCountersPrometheus verifies that SetProcessedCountersPrometheus
+// correctly sets the processed bytes/packets totals and per-IP-type gauges.
 func TestSetProcessedCountersPrometheus(t *testing.T) {
 	processedBytesTotal.Set(0)
 	processedPacketsTotal.Set(0)
@@ -1256,7 +1256,7 @@ func TestSetProcessedCountersPrometheus(t *testing.T) {
 
 // --- Concurrency ---
 
-// TestDroppedByIPTypeConcurrency exercises concurrent SetDroppedByIPType calls
+// TestDroppedByIPTypeConcurrency exercises concurrent SetDroppedCountersByIPType calls
 // to verify there are no data races (run with -race).
 func TestDroppedByIPTypeConcurrency(t *testing.T) {
 	droppedProtoState.mu.Lock()
