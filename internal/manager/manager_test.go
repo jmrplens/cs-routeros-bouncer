@@ -3,6 +3,7 @@
 package manager
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -431,4 +432,33 @@ func TestPollSystemMetricsTemperatureUnavailable(t *testing.T) {
 	}
 	m := newTestManager(mock, cfg)
 	m.pollSystemMetrics() // should not update temperature gauge
+}
+
+// TestCollectSystemMetrics verifies that collectSystemMetrics calls
+// pollSystemMetrics immediately and then on each tick, stopping when
+// the context is cancelled.
+func TestCollectSystemMetrics(t *testing.T) {
+	mock := &mockROS{}
+	cfg := config.Config{
+		Metrics: config.MetricsConfig{Enabled: true, RouterOSPollInterval: 30 * time.Second},
+	}
+	m := newTestManager(mock, cfg)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		m.collectSystemMetrics(ctx, 10*time.Millisecond)
+		close(done)
+	}()
+
+	// Give it time to run initial poll + at least one tick
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+
+	// Wait for goroutine to finish
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("collectSystemMetrics did not return after context cancellation")
+	}
 }

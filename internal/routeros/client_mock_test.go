@@ -5,6 +5,7 @@ package routeros
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -1817,5 +1818,156 @@ func TestListFirewallRulesBySignature_ParsesAllFields(t *testing.T) {
 		if c.got != c.want {
 			t.Errorf("%s: expected %q, got %q", c.name, c.want, c.got)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// GetSystemResources
+// ---------------------------------------------------------------------------
+
+// TestGetSystemResources_HappyPath verifies that GetSystemResources correctly
+// parses a complete RouterOS /system/resource response into the SystemResources
+// struct, including CPU load, memory, uptime, version, and board name.
+func TestGetSystemResources_HappyPath(t *testing.T) {
+	mc := newMockConn()
+	client := newTestClient(mc)
+
+	mc.pushReply(reReply(map[string]string{
+		"cpu-load":     "15",
+		"free-memory":  "536870912",
+		"total-memory": "1073741824",
+		"uptime":       "1w2d3h4m5s",
+		"version":      "7.16.2",
+		"board-name":   "RB4011iGS+",
+	}))
+
+	sr, err := client.GetSystemResources()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if sr.CPULoad != 15 {
+		t.Errorf("CPULoad: expected 15, got %d", sr.CPULoad)
+	}
+	if sr.FreeMemory != 536870912 {
+		t.Errorf("FreeMemory: expected 536870912, got %d", sr.FreeMemory)
+	}
+	if sr.TotalMemory != 1073741824 {
+		t.Errorf("TotalMemory: expected 1073741824, got %d", sr.TotalMemory)
+	}
+	if sr.Uptime != "1w2d3h4m5s" {
+		t.Errorf("Uptime: expected %q, got %q", "1w2d3h4m5s", sr.Uptime)
+	}
+	if sr.Version != "7.16.2" {
+		t.Errorf("Version: expected %q, got %q", "7.16.2", sr.Version)
+	}
+	if sr.BoardName != "RB4011iGS+" {
+		t.Errorf("BoardName: expected %q, got %q", "RB4011iGS+", sr.BoardName)
+	}
+}
+
+// TestGetSystemResources_Error verifies that GetSystemResources propagates
+// connection errors from the underlying RouterOS command.
+func TestGetSystemResources_Error(t *testing.T) {
+	mc := newMockConn()
+	client := newTestClient(mc)
+
+	mc.pushError(fmt.Errorf("connection lost"))
+
+	_, err := client.GetSystemResources()
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+// TestGetSystemResources_EmptyResponse verifies that GetSystemResources returns
+// an "empty response" error when the router replies with no data sentences.
+func TestGetSystemResources_EmptyResponse(t *testing.T) {
+	mc := newMockConn()
+	client := newTestClient(mc)
+
+	mc.pushReply(emptyReply())
+
+	_, err := client.GetSystemResources()
+	if err == nil {
+		t.Fatal("expected error for empty response, got nil")
+	}
+	if !strings.Contains(err.Error(), "empty response") {
+		t.Errorf("expected error to mention 'empty response', got: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// GetSystemHealth
+// ---------------------------------------------------------------------------
+
+// TestGetSystemHealth_HappyPath verifies that GetSystemHealth correctly parses
+// the cpu-temperature entry from a RouterOS /system/health response.
+func TestGetSystemHealth_HappyPath(t *testing.T) {
+	mc := newMockConn()
+	client := newTestClient(mc)
+
+	mc.pushReply(reReply(map[string]string{
+		"name":  "cpu-temperature",
+		"value": "47",
+	}))
+
+	sh, err := client.GetSystemHealth()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if sh.CPUTemperature != 47 {
+		t.Errorf("CPUTemperature: expected 47, got %f", sh.CPUTemperature)
+	}
+}
+
+// TestGetSystemHealth_NoTemperature verifies that GetSystemHealth returns -1
+// for CPUTemperature when the response contains health entries but none for
+// cpu-temperature (e.g., devices without a temperature sensor).
+func TestGetSystemHealth_NoTemperature(t *testing.T) {
+	mc := newMockConn()
+	client := newTestClient(mc)
+
+	mc.pushReply(reReply(map[string]string{
+		"name":  "voltage",
+		"value": "24.1",
+	}))
+
+	sh, err := client.GetSystemHealth()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if sh.CPUTemperature != -1 {
+		t.Errorf("CPUTemperature: expected -1 when not found, got %f", sh.CPUTemperature)
+	}
+}
+
+// TestGetSystemHealth_Error verifies that GetSystemHealth propagates connection
+// errors from the underlying RouterOS command.
+func TestGetSystemHealth_Error(t *testing.T) {
+	mc := newMockConn()
+	client := newTestClient(mc)
+
+	mc.pushError(fmt.Errorf("connection lost"))
+
+	_, err := client.GetSystemHealth()
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+// TestGetSystemHealth_EmptyResults verifies that GetSystemHealth returns -1
+// for CPUTemperature when the router replies with an empty health table.
+func TestGetSystemHealth_EmptyResults(t *testing.T) {
+	mc := newMockConn()
+	client := newTestClient(mc)
+
+	mc.pushReply(emptyReply())
+
+	sh, err := client.GetSystemHealth()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if sh.CPUTemperature != -1 {
+		t.Errorf("CPUTemperature: expected -1 for empty results, got %f", sh.CPUTemperature)
 	}
 }
