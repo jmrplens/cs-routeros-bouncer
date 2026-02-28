@@ -647,6 +647,8 @@ func TestBlockInputEmptyIsValid(t *testing.T) {
 
 // ---------- New firewall feature validation tests ----------
 
+// TestRejectWithRequiresRejectAction verifies that setting reject_with without
+// deny_action=reject produces a validation error.
 func TestRejectWithRequiresRejectAction(t *testing.T) {
 	cfg := validCfg()
 	cfg.Firewall.DenyAction = "drop"
@@ -656,6 +658,8 @@ func TestRejectWithRequiresRejectAction(t *testing.T) {
 	}
 }
 
+// TestRejectWithValidValues verifies that all supported ICMP reject types and
+// tcp-reset are accepted by validation when deny_action is "reject".
 func TestRejectWithValidValues(t *testing.T) {
 	valid := []string{
 		"icmp-network-unreachable", "icmp-host-unreachable", "icmp-port-unreachable",
@@ -672,6 +676,8 @@ func TestRejectWithValidValues(t *testing.T) {
 	}
 }
 
+// TestRejectWithInvalidValue verifies that an unrecognized reject_with value
+// causes a validation error.
 func TestRejectWithInvalidValue(t *testing.T) {
 	cfg := validCfg()
 	cfg.Firewall.DenyAction = "reject"
@@ -681,6 +687,8 @@ func TestRejectWithInvalidValue(t *testing.T) {
 	}
 }
 
+// TestConnectionStateValid verifies that valid connection-state strings
+// (including whitespace-padded variants) pass validation.
 func TestConnectionStateValid(t *testing.T) {
 	tests := []string{
 		"new",
@@ -698,6 +706,8 @@ func TestConnectionStateValid(t *testing.T) {
 	}
 }
 
+// TestConnectionStateInvalid verifies that a connection_state value containing
+// an unrecognized token causes a validation error.
 func TestConnectionStateInvalid(t *testing.T) {
 	cfg := validCfg()
 	cfg.Firewall.Filter.ConnectionState = "new,bogus"
@@ -706,6 +716,8 @@ func TestConnectionStateInvalid(t *testing.T) {
 	}
 }
 
+// TestRejectWithEmptyIsValid verifies that an empty reject_with string is
+// accepted when deny_action is "reject" (RouterOS uses its default).
 func TestRejectWithEmptyIsValid(t *testing.T) {
 	cfg := validCfg()
 	cfg.Firewall.DenyAction = "reject"
