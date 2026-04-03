@@ -460,63 +460,76 @@ func TestHandleBan_ZeroDurationNoTimeout(t *testing.T) {
 	}
 }
 
-// TestHandleBan_AlreadyExists_UpdateTimeout verifies the "already have" fallback:
-// when AddAddress fails because the entry already exists and the decision has
-// a non-zero duration, the manager finds the existing entry and updates its timeout.
+// TestHandleBan_AlreadyExists_UpdateTimeout verifies that when the address is
+// already in the local cache (duplicate decision), AddAddress is still called
+// (to update timeout/comment on router) but the manager does not call
+// FindAddress or UpdateAddressTimeout directly (handled inside AddAddress).
 func TestHandleBan_AlreadyExists_UpdateTimeout(t *testing.T) {
 	mock := &mockROS{
-		addAddressErr:    errors.New("failure: already have such entry"),
-		findAddressEntry: &ros.AddressEntry{ID: "*5", Address: "10.0.0.1"},
+		addAddressID: "*5", // AddAddress succeeds (duplicate handled internally)
 	}
 	mgr := newTestManager(mock, baseConfig())
 
+	// Pre-populate cache to simulate a duplicate
+	mgr.cacheMu.Lock()
+	mgr.addressCache["10.0.0.1"] = struct{}{}
+	mgr.cacheMu.Unlock()
+
 	mgr.handleBan(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1", Duration: 7200 * time.Second})
 
-	if len(mock.findAddressCalls) != 1 {
-		t.Fatalf("expected FindAddress call for already-existing, got %d", len(mock.findAddressCalls))
+	// AddAddress should be called
+	if len(mock.addAddressCalls) != 1 {
+		t.Fatalf("expected 1 AddAddress call, got %d", len(mock.addAddressCalls))
 	}
-	if len(mock.updateTimeoutCalls) != 1 {
-		t.Fatalf("expected UpdateAddressTimeout call, got %d", len(mock.updateTimeoutCalls))
+	// Manager should NOT call FindAddress/UpdateTimeout — that's now in AddAddress
+	if len(mock.findAddressCalls) != 0 {
+		t.Errorf("expected 0 FindAddress calls, got %d", len(mock.findAddressCalls))
 	}
-	if mock.updateTimeoutCalls[0].ID != "*5" {
-		t.Errorf("expected update on ID *5, got %s", mock.updateTimeoutCalls[0].ID)
+	if len(mock.updateTimeoutCalls) != 0 {
+		t.Errorf("expected 0 UpdateTimeout calls, got %d", len(mock.updateTimeoutCalls))
 	}
 }
 
 // TestHandleBan_AlreadyExists_ZeroDuration verifies that when an address
-// already exists and the decision has duration 0 (permanent), the manager
-// does NOT attempt to find/update it — the existing permanent entry is fine.
+// already exists and the decision has duration 0 (permanent), AddAddress
+// is still called and succeeds (duplicate handled internally).
 func TestHandleBan_AlreadyExists_ZeroDuration(t *testing.T) {
 	mock := &mockROS{
-		addAddressErr: errors.New("failure: already have such entry"),
+		addAddressID: "*5",
 	}
 	mgr := newTestManager(mock, baseConfig())
 
+	// Pre-populate cache
+	mgr.cacheMu.Lock()
+	mgr.addressCache["10.0.0.1"] = struct{}{}
+	mgr.cacheMu.Unlock()
+
 	mgr.handleBan(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1", Duration: 0})
 
+	if len(mock.addAddressCalls) != 1 {
+		t.Fatalf("expected 1 AddAddress call, got %d", len(mock.addAddressCalls))
+	}
 	if len(mock.findAddressCalls) != 0 {
-		t.Error("should not call FindAddress when duration is 0 (no timeout to update)")
+		t.Error("should not call FindAddress — duplicate handling is in AddAddress")
 	}
 }
 
-// TestHandleBan_AlreadyExists_FindReturnsNil verifies that when AddAddress
-// returns "already have" but FindAddress returns nil (entry disappeared between
-// the two calls, e.g. expired), the manager does not panic or crash.
+// TestHandleBan_AlreadyExists_FindReturnsNil verifies that a new address
+// (not in cache) that AddAddress adds successfully is placed in the cache.
 func TestHandleBan_AlreadyExists_FindReturnsNil(t *testing.T) {
 	mock := &mockROS{
-		addAddressErr:    errors.New("failure: already have such entry"),
-		findAddressEntry: nil, // disappeared between add and find
+		addAddressID: "*7",
 	}
 	mgr := newTestManager(mock, baseConfig())
 
 	mgr.handleBan(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1", Duration: 3600 * time.Second})
 
-	// FindAddress was called but returned nil → no UpdateAddressTimeout
-	if len(mock.findAddressCalls) != 1 {
-		t.Fatalf("expected 1 FindAddress call, got %d", len(mock.findAddressCalls))
-	}
-	if len(mock.updateTimeoutCalls) != 0 {
-		t.Error("should not call UpdateAddressTimeout when FindAddress returns nil")
+	// AddAddress succeeded — address should be in cache
+	mgr.cacheMu.RLock()
+	_, inCache := mgr.addressCache["10.0.0.1"]
+	mgr.cacheMu.RUnlock()
+	if !inCache {
+		t.Error("address should be in cache after successful AddAddress")
 	}
 }
 

@@ -468,45 +468,33 @@ func (m *Manager) handleBan(d *crowdsec.Decision) {
 
 	comment := buildAddressComment(m.commentPrefix(), d)
 
-	// Optimistic add: try to add directly (fast ~20ms).
-	// If the address already exists, RouterOS returns an error containing
-	// "already have" — in that case, find and update the timeout.
+	// Check if already cached locally (likely a duplicate decision).
+	addr := rosClient.NormalizeAddress(d.Value, d.Proto)
+	m.cacheMu.RLock()
+	_, alreadyCached := m.addressCache[addr]
+	m.cacheMu.RUnlock()
+
+	// AddAddress handles duplicates internally: if the address already exists
+	// on the router it finds the existing entry and updates its attributes,
+	// returning the existing ID with nil error.
 	_, err := m.ros.AddAddress(d.Proto, listName, d.Value, timeout, comment)
 	if err != nil {
-		if strings.Contains(err.Error(), "already have") {
-			// Address exists — update timeout if needed
-			if timeout != "" {
-				existing, findErr := m.ros.FindAddress(d.Proto, listName, d.Value)
-				if findErr != nil {
-					m.logger.Error().Err(findErr).Str("address", d.Value).Msg("error finding existing address for timeout update")
-					metrics.RecordError("find")
-					return
-				}
-				if existing != nil {
-					if updErr := m.ros.UpdateAddressTimeout(d.Proto, existing.ID, timeout); updErr != nil {
-						m.logger.Error().Err(updErr).Str("address", d.Value).Msg("error updating address timeout")
-						metrics.RecordError("add")
-					} else {
-						m.logger.Debug().Str("address", d.Value).Str("timeout", timeout).Msg("updated existing address timeout")
-					}
-				}
-			}
-			return
-		}
 		m.logger.Error().Err(err).Str("address", d.Value).Str("list", listName).Msg("error adding address to MikroTik")
 		metrics.RecordError("add")
 		return
 	}
 
 	// Update address cache
-	addr := rosClient.NormalizeAddress(d.Value, d.Proto)
 	m.cacheMu.Lock()
 	m.addressCache[addr] = struct{}{}
 	m.cacheMu.Unlock()
 
-	metrics.RecordDecision("ban", metricsProto, d.Origin)
-	metrics.IncrActiveDecisions(metricsProto)
-	metrics.IncrActiveDecisionsByOrigin(d.Origin)
+	// Only record ban metrics for genuinely new entries, not duplicates.
+	if !alreadyCached {
+		metrics.RecordDecision("ban", metricsProto, d.Origin)
+		metrics.IncrActiveDecisions(metricsProto)
+		metrics.IncrActiveDecisionsByOrigin(d.Origin)
+	}
 	metrics.ObserveOperationDuration("add", time.Since(start))
 
 	m.logger.Info().

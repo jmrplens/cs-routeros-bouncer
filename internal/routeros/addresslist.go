@@ -7,6 +7,12 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// isDuplicateEntryError returns true when the error is a RouterOS DeviceError
+// indicating that the resource already exists ("already have such entry").
+func isDuplicateEntryError(err error) bool {
+	return isDeviceError(err) && strings.Contains(err.Error(), "already have such entry")
+}
+
 // AddressEntry represents an entry in a MikroTik address list.
 type AddressEntry struct {
 	ID      string // MikroTik .id (e.g., "*1A3B")
@@ -71,6 +77,39 @@ func (c *Client) AddAddress(proto, list, address, timeout, comment string) (stri
 
 	id, err := c.Add(path, attrs)
 	if err != nil {
+		// If the address already exists, find it and update its attributes.
+		if isDuplicateEntryError(err) {
+			existing, findErr := c.FindAddress(proto, list, address)
+			if findErr != nil {
+				return "", fmt.Errorf("add address %s to %s: duplicate entry and lookup failed: %w", address, list, findErr)
+			}
+			if existing == nil {
+				return "", fmt.Errorf("add address %s to %s: duplicate entry but could not find it", address, list)
+			}
+
+			updateAttrs := make(map[string]string)
+			if timeout != "" {
+				updateAttrs["timeout"] = timeout
+			}
+			if comment != "" {
+				updateAttrs["comment"] = comment
+			}
+			if len(updateAttrs) > 0 {
+				if updErr := c.Set(path, existing.ID, updateAttrs); updErr != nil {
+					return "", fmt.Errorf("add address %s to %s: duplicate entry and update failed: %w", address, list, updErr)
+				}
+				log.Debug().
+					Str("address", address).
+					Str("list", list).
+					Msg("address already exists, updated existing entry")
+			} else {
+				log.Debug().
+					Str("address", address).
+					Str("list", list).
+					Msg("address already exists, no update needed")
+			}
+			return existing.ID, nil
+		}
 		return "", fmt.Errorf("add address %s to %s: %w", address, list, err)
 	}
 

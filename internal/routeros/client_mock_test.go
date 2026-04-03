@@ -119,6 +119,49 @@ func TestRun_NilConnAutoConnects(t *testing.T) {
 	}
 }
 
+// TestRun_DeviceErrorNoReconnect verifies that a DeviceError (e.g. "already
+// have such entry") is returned immediately without triggering a reconnect.
+func TestRun_DeviceErrorNoReconnect(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+
+	mc.pushError(newDuplicateDeviceError())
+
+	_, err := c.Run("/ip/firewall/address-list/add")
+	if err == nil {
+		t.Fatal("expected device error to be returned")
+	}
+	if !strings.Contains(err.Error(), "already have such entry") {
+		t.Fatalf("expected 'already have such entry', got: %v", err)
+	}
+	// Connection should still be set (no reconnect happened).
+	if !c.IsConnected() {
+		t.Fatal("connection should remain active after device error")
+	}
+	// Only 1 RunArgs call (no retry).
+	if mc.callCount() != 1 {
+		t.Fatalf("expected 1 call (no retry), got %d", mc.callCount())
+	}
+}
+
+// TestRun_ConnectionErrorTriggersReconnect verifies that non-device errors
+// still trigger the reconnect+retry logic.
+func TestRun_ConnectionErrorTriggersReconnect(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+
+	mc.pushError(errors.New("connection reset by peer"))
+	mc.pushReply(emptyReply()) // retry after reconnect succeeds
+
+	_, err := c.Run("/test/cmd")
+	if err != nil {
+		t.Fatalf("expected success after reconnect, got: %v", err)
+	}
+	if mc.callCount() != 2 {
+		t.Fatalf("expected 2 calls (original + retry), got %d", mc.callCount())
+	}
+}
+
 // TestAdd_ReturnsID verifies that Add parses the ret field from Done.
 func TestAdd_ReturnsID(t *testing.T) {
 	mc := newMockConn()
@@ -598,6 +641,63 @@ func TestAddAddress_Error(t *testing.T) {
 	_, err := c.AddAddress("ip", "list", "1.2.3.4", "", "test")
 	if err == nil || !strings.Contains(err.Error(), "add address 1.2.3.4") {
 		t.Fatalf("expected wrapped error, got: %v", err)
+	}
+}
+
+// TestAddAddress_DuplicateUpdatesTimeout verifies that when Add returns
+// "already have such entry", AddAddress finds the existing entry and updates
+// its timeout and comment instead of failing (fixes issue #14).
+func TestAddAddress_DuplicateUpdatesTimeout(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+
+	// 1. Add fails with "already have such entry" (DeviceError, no reconnect).
+	mc.pushError(newDuplicateDeviceError())
+
+	// 2. FindAddress (Print) returns the existing entry.
+	mc.pushReply(reReply(map[string]string{
+		".id":     "*AB",
+		"address": "1.2.3.4",
+		"list":    "crowdsec",
+		"timeout": "1h",
+		"comment": "blocked",
+	}))
+
+	// 3. Set updates timeout and comment.
+	mc.pushReply(emptyReply())
+
+	id, err := c.AddAddress("ip", "crowdsec", "1.2.3.4", "4h", "blocked")
+	if err != nil {
+		t.Fatalf("expected no error on duplicate, got: %v", err)
+	}
+	if id != "*AB" {
+		t.Fatalf("expected existing id *AB, got %q", id)
+	}
+}
+
+// TestAddAddress_DuplicateNoTimeout verifies that when a duplicate exists and
+// no timeout or comment is provided, the existing entry is returned without updating.
+func TestAddAddress_DuplicateNoTimeout(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+
+	mc.pushError(newDuplicateDeviceError())
+
+	// FindAddress returns existing entry.
+	mc.pushReply(reReply(map[string]string{
+		".id":     "*CD",
+		"address": "5.6.7.8",
+		"list":    "crowdsec",
+		"comment": "test",
+	}))
+
+	// No Set call expected since both timeout and comment are empty.
+	id, err := c.AddAddress("ip", "crowdsec", "5.6.7.8", "", "")
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if id != "*CD" {
+		t.Fatalf("expected existing id *CD, got %q", id)
 	}
 }
 
@@ -1259,22 +1359,33 @@ func TestBulkAddAddresses_FallbackAlreadyHaveIgnored(t *testing.T) {
 		{Address: "1.1.1.1", Timeout: "1h", Comment: "test"},
 	}
 
-	// Script fails
+	// Script fails (Print for run check + Add fails + reconnect retry fails)
 	mc.pushReply(emptyReply())
 	mc.pushError(errors.New("fail"))
 	mc.pushError(errors.New("fail"))
 
-	// Individual add returns "already have"
-	mc.pushError(errors.New("already have such entry"))
-	mc.pushError(errors.New("already have such entry"))
+	// Individual add returns "already have" as a DeviceError (no reconnect).
+	mc.pushError(newDuplicateDeviceError())
+
+	// FindAddress (Print) returns the existing entry.
+	mc.pushReply(reReply(map[string]string{
+		".id":     "*EE",
+		"address": "1.1.1.1",
+		"list":    "list",
+		"timeout": "30m",
+		"comment": "test",
+	}))
+
+	// Set updates timeout and comment.
+	mc.pushReply(emptyReply())
 
 	added, err := c.BulkAddAddresses("ip", "list", entries)
-	// No error because "already have" is silently ignored
+	// No error because "already have" is handled gracefully.
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if added != 0 {
-		t.Fatalf("expected 0 added (already exists), got %d", added)
+	if added != 1 {
+		t.Fatalf("expected 1 added (existing updated), got %d", added)
 	}
 }
 
