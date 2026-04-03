@@ -10,9 +10,6 @@ import (
 	"sync"
 	"testing"
 
-	routerosLib "github.com/go-routeros/routeros/v3"
-	"github.com/go-routeros/routeros/v3/proto"
-
 	"github.com/jmrplens/cs-routeros-bouncer/internal/config"
 )
 
@@ -128,14 +125,7 @@ func TestRun_DeviceErrorNoReconnect(t *testing.T) {
 	mc := newMockConn()
 	c := newTestClient(mc)
 
-	// Simulate a !trap error from the RouterOS device.
-	devErr := &routerosLib.DeviceError{
-		Sentence: &proto.Sentence{
-			Word: "!trap",
-			Map:  map[string]string{"message": "failure: already have such entry"},
-		},
-	}
-	mc.pushError(devErr)
+	mc.pushError(newDuplicateDeviceError())
 
 	_, err := c.Run("/ip/firewall/address-list/add")
 	if err == nil {
@@ -656,19 +646,13 @@ func TestAddAddress_Error(t *testing.T) {
 
 // TestAddAddress_DuplicateUpdatesTimeout verifies that when Add returns
 // "already have such entry", AddAddress finds the existing entry and updates
-// its timeout instead of failing (fixes issue #14).
+// its timeout and comment instead of failing (fixes issue #14).
 func TestAddAddress_DuplicateUpdatesTimeout(t *testing.T) {
 	mc := newMockConn()
 	c := newTestClient(mc)
 
 	// 1. Add fails with "already have such entry" (DeviceError, no reconnect).
-	dupErr := &routerosLib.DeviceError{
-		Sentence: &proto.Sentence{
-			Word: "!trap",
-			Map:  map[string]string{"message": "failure: already have such entry"},
-		},
-	}
-	mc.pushError(dupErr)
+	mc.pushError(newDuplicateDeviceError())
 
 	// 2. FindAddress (Print) returns the existing entry.
 	mc.pushReply(reReply(map[string]string{
@@ -679,7 +663,7 @@ func TestAddAddress_DuplicateUpdatesTimeout(t *testing.T) {
 		"comment": "blocked",
 	}))
 
-	// 3. UpdateAddressTimeout (Set) succeeds.
+	// 3. Set updates timeout and comment.
 	mc.pushReply(emptyReply())
 
 	id, err := c.AddAddress("ip", "crowdsec", "1.2.3.4", "4h", "blocked")
@@ -692,18 +676,12 @@ func TestAddAddress_DuplicateUpdatesTimeout(t *testing.T) {
 }
 
 // TestAddAddress_DuplicateNoTimeout verifies that when a duplicate exists and
-// no timeout is provided, the existing entry is returned without updating.
+// no timeout or comment is provided, the existing entry is returned without updating.
 func TestAddAddress_DuplicateNoTimeout(t *testing.T) {
 	mc := newMockConn()
 	c := newTestClient(mc)
 
-	dupErr := &routerosLib.DeviceError{
-		Sentence: &proto.Sentence{
-			Word: "!trap",
-			Map:  map[string]string{"message": "failure: already have such entry"},
-		},
-	}
-	mc.pushError(dupErr)
+	mc.pushError(newDuplicateDeviceError())
 
 	// FindAddress returns existing entry.
 	mc.pushReply(reReply(map[string]string{
@@ -713,7 +691,8 @@ func TestAddAddress_DuplicateNoTimeout(t *testing.T) {
 		"comment": "test",
 	}))
 
-	id, err := c.AddAddress("ip", "crowdsec", "5.6.7.8", "", "test")
+	// No Set call expected since both timeout and comment are empty.
+	id, err := c.AddAddress("ip", "crowdsec", "5.6.7.8", "", "")
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
@@ -1386,13 +1365,7 @@ func TestBulkAddAddresses_FallbackAlreadyHaveIgnored(t *testing.T) {
 	mc.pushError(errors.New("fail"))
 
 	// Individual add returns "already have" as a DeviceError (no reconnect).
-	dupErr := &routerosLib.DeviceError{
-		Sentence: &proto.Sentence{
-			Word: "!trap",
-			Map:  map[string]string{"message": "failure: already have such entry"},
-		},
-	}
-	mc.pushError(dupErr)
+	mc.pushError(newDuplicateDeviceError())
 
 	// FindAddress (Print) returns the existing entry.
 	mc.pushReply(reReply(map[string]string{
@@ -1403,7 +1376,7 @@ func TestBulkAddAddresses_FallbackAlreadyHaveIgnored(t *testing.T) {
 		"comment": "test",
 	}))
 
-	// UpdateAddressTimeout (Set) succeeds.
+	// Set updates timeout and comment.
 	mc.pushReply(emptyReply())
 
 	added, err := c.BulkAddAddresses("ip", "list", entries)

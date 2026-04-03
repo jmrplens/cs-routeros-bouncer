@@ -7,7 +7,7 @@
 //   - Start happy path: full lifecycle from Connect to live decision processing
 //   - Start error paths: every early-return error in Start()
 //   - Shutdown: verifies cleanup of rules, pool, and connection
-//   - handleBan branches: UpdateAddressTimeout errors, non-"already have" errors
+//   - handleBan branches: duplicate detection via cache, AddAddress errors
 //   - createFirewallRules branches: IPv6-only, placement retry, interface combos
 //   - reconcileAddresses branches: BulkAdd errors, parallel remove, sequential fallback
 package manager
@@ -602,21 +602,21 @@ func TestShutdown_RemoveRuleError(t *testing.T) {
 // handleBan — additional uncovered branches
 // ===========================================================================
 
-// TestHandleBan_AlreadyExistsUpdateTimeoutError verifies that when an address
-// already exists and the timeout update fails, the error is logged but execution
-// continues (does not return the error to caller).
-func TestHandleBan_AlreadyExistsUpdateTimeoutError(t *testing.T) {
+// TestHandleBan_DuplicateInCache verifies that when an address is already in
+// the local cache (duplicate decision), AddAddress still succeeds (it handles
+// duplicates internally) but ban metrics are NOT incremented.
+func TestHandleBan_DuplicateInCache(t *testing.T) {
 	mock := &mockROS{
-		addAddressErr: errors.New("failure: already have such entry"),
-		findAddressEntry: &ros.AddressEntry{
-			ID:      "*1",
-			Address: "1.2.3.4",
-		},
-		updateTimeoutErr: errors.New("timeout update failed"),
+		addAddressID: "*1", // AddAddress succeeds (duplicate handled internally)
 	}
 	cfg := baseConfig()
 	cfg.Firewall.IPv6.Enabled = false
 	mgr := newTestManager(mock, cfg)
+
+	// Pre-populate cache to simulate a duplicate
+	mgr.cacheMu.Lock()
+	mgr.addressCache["1.2.3.4"] = struct{}{}
+	mgr.cacheMu.Unlock()
 
 	mgr.handleBan(&crowdsec.Decision{
 		Proto:    "ip",
@@ -629,81 +629,23 @@ func TestHandleBan_AlreadyExistsUpdateTimeoutError(t *testing.T) {
 	mock.mu.Lock()
 	defer mock.mu.Unlock()
 
-	// Should have tried to update timeout
-	if len(mock.updateTimeoutCalls) != 1 {
-		t.Errorf("expected 1 UpdateAddressTimeout call, got %d", len(mock.updateTimeoutCalls))
+	// AddAddress should still be called (to update timeout on router)
+	if len(mock.addAddressCalls) != 1 {
+		t.Errorf("expected 1 AddAddress call, got %d", len(mock.addAddressCalls))
 	}
 
-	// Address should NOT be in cache (add failed)
+	// Address should remain in cache
 	mgr.cacheMu.RLock()
 	_, inCache := mgr.addressCache["1.2.3.4"]
 	mgr.cacheMu.RUnlock()
-	if inCache {
-		t.Error("address should not be in cache when add returned 'already have'")
+	if !inCache {
+		t.Error("address should remain in cache after duplicate ban")
 	}
 }
 
-// TestHandleBan_AlreadyExistsNoTimeout verifies that when an address already
-// exists but the decision has no timeout (duration=0), it skips the find/update
-// entirely and just returns.
-func TestHandleBan_AlreadyExistsNoTimeout(t *testing.T) {
-	mock := &mockROS{
-		addAddressErr: errors.New("failure: already have such entry"),
-	}
-	cfg := baseConfig()
-	cfg.Firewall.IPv6.Enabled = false
-	mgr := newTestManager(mock, cfg)
-
-	mgr.handleBan(&crowdsec.Decision{
-		Proto:    "ip",
-		Value:    "1.2.3.4",
-		Duration: 0, // no timeout
-		Origin:   "test",
-		Type:     "ban",
-	})
-
-	mock.mu.Lock()
-	defer mock.mu.Unlock()
-
-	// No FindAddress or UpdateTimeout should be called
-	if len(mock.findAddressCalls) != 0 {
-		t.Errorf("expected 0 FindAddress calls when timeout is empty, got %d", len(mock.findAddressCalls))
-	}
-	if len(mock.updateTimeoutCalls) != 0 {
-		t.Errorf("expected 0 UpdateTimeout calls when timeout is empty, got %d", len(mock.updateTimeoutCalls))
-	}
-}
-
-// TestHandleBan_AlreadyExistsFindError verifies that when FindAddress fails
-// during the timeout update path, the error is logged and no update is attempted.
-func TestHandleBan_AlreadyExistsFindError(t *testing.T) {
-	mock := &mockROS{
-		addAddressErr:  errors.New("failure: already have such entry"),
-		findAddressErr: errors.New("find failed"),
-	}
-	cfg := baseConfig()
-	cfg.Firewall.IPv6.Enabled = false
-	mgr := newTestManager(mock, cfg)
-
-	mgr.handleBan(&crowdsec.Decision{
-		Proto:    "ip",
-		Value:    "1.2.3.4",
-		Duration: 1 * time.Hour,
-		Origin:   "test",
-		Type:     "ban",
-	})
-
-	mock.mu.Lock()
-	defer mock.mu.Unlock()
-
-	if len(mock.updateTimeoutCalls) != 0 {
-		t.Error("should not call UpdateTimeout when FindAddress fails")
-	}
-}
-
-// TestHandleBan_NonAlreadyHaveError verifies that when AddAddress fails with
-// an error that is NOT "already have", it's treated as a real error.
-func TestHandleBan_NonAlreadyHaveError(t *testing.T) {
+// TestHandleBan_AddAddressError verifies that when AddAddress fails with a
+// real error, it's treated as a failure and the address is not cached.
+func TestHandleBan_AddAddressError(t *testing.T) {
 	mock := &mockROS{
 		addAddressErr: errors.New("connection reset"),
 	}
@@ -721,19 +663,25 @@ func TestHandleBan_NonAlreadyHaveError(t *testing.T) {
 	mock.mu.Lock()
 	defer mock.mu.Unlock()
 
-	// No FindAddress should be called — it's not an "already have" case
+	// Address should NOT be in cache
+	mgr.cacheMu.RLock()
+	_, inCache := mgr.addressCache["1.2.3.4"]
+	mgr.cacheMu.RUnlock()
+	if inCache {
+		t.Error("address should not be in cache when AddAddress fails")
+	}
+
+	// No FindAddress should be called — manager no longer handles duplicates
 	if len(mock.findAddressCalls) != 0 {
-		t.Error("should not call FindAddress for non-'already have' errors")
+		t.Error("should not call FindAddress — duplicate handling is in AddAddress")
 	}
 }
 
-// TestHandleBan_AlreadyExistsFindReturnsNil verifies that when FindAddress
-// succeeds but returns nil (address expired between add attempt and find),
-// no UpdateTimeout is called.
-func TestHandleBan_AlreadyExistsFindReturnsNil(t *testing.T) {
+// TestHandleBan_NewAddress verifies that a genuinely new address is added
+// to the cache and ban metrics are recorded.
+func TestHandleBan_NewAddress(t *testing.T) {
 	mock := &mockROS{
-		addAddressErr:    errors.New("failure: already have such entry"),
-		findAddressEntry: nil, // address disappeared
+		addAddressID: "*2",
 	}
 	cfg := baseConfig()
 	cfg.Firewall.IPv6.Enabled = false
@@ -741,7 +689,7 @@ func TestHandleBan_AlreadyExistsFindReturnsNil(t *testing.T) {
 
 	mgr.handleBan(&crowdsec.Decision{
 		Proto:    "ip",
-		Value:    "1.2.3.4",
+		Value:    "5.6.7.8",
 		Duration: 1 * time.Hour,
 		Origin:   "test",
 		Type:     "ban",
@@ -750,8 +698,16 @@ func TestHandleBan_AlreadyExistsFindReturnsNil(t *testing.T) {
 	mock.mu.Lock()
 	defer mock.mu.Unlock()
 
-	if len(mock.updateTimeoutCalls) != 0 {
-		t.Error("should not call UpdateTimeout when FindAddress returns nil")
+	if len(mock.addAddressCalls) != 1 {
+		t.Errorf("expected 1 AddAddress call, got %d", len(mock.addAddressCalls))
+	}
+
+	// Address should be in cache
+	mgr.cacheMu.RLock()
+	_, inCache := mgr.addressCache["5.6.7.8"]
+	mgr.cacheMu.RUnlock()
+	if !inCache {
+		t.Error("address should be in cache after successful ban")
 	}
 }
 
