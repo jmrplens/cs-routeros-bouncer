@@ -193,7 +193,7 @@ func TestHandleHealthEndpoint(t *testing.T) {
 	srv := &Server{version: "test-v1"}
 	srv.connected.Store(true)
 
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/health", nil)
 	w := httptest.NewRecorder()
 
 	srv.handleHealth(w, req)
@@ -229,7 +229,7 @@ func TestHandleHealthDisconnected(t *testing.T) {
 	srv := &Server{version: "v0"}
 	srv.connected.Store(false)
 
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/health", nil)
 	w := httptest.NewRecorder()
 	srv.handleHealth(w, req)
 
