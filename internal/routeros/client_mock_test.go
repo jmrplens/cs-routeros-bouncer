@@ -10,6 +10,9 @@ import (
 	"sync"
 	"testing"
 
+	routerosLib "github.com/go-routeros/routeros/v3"
+	"github.com/go-routeros/routeros/v3/proto"
+
 	"github.com/jmrplens/cs-routeros-bouncer/internal/config"
 )
 
@@ -116,6 +119,56 @@ func TestRun_NilConnAutoConnects(t *testing.T) {
 	_, err := c.Run("/test")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// TestRun_DeviceErrorNoReconnect verifies that a DeviceError (e.g. "already
+// have such entry") is returned immediately without triggering a reconnect.
+func TestRun_DeviceErrorNoReconnect(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+
+	// Simulate a !trap error from the RouterOS device.
+	devErr := &routerosLib.DeviceError{
+		Sentence: &proto.Sentence{
+			Word: "!trap",
+			Map:  map[string]string{"message": "failure: already have such entry"},
+		},
+	}
+	mc.pushError(devErr)
+
+	_, err := c.Run("/ip/firewall/address-list/add")
+	if err == nil {
+		t.Fatal("expected device error to be returned")
+	}
+	if !strings.Contains(err.Error(), "already have such entry") {
+		t.Fatalf("expected 'already have such entry', got: %v", err)
+	}
+	// Connection should still be set (no reconnect happened).
+	if !c.IsConnected() {
+		t.Fatal("connection should remain active after device error")
+	}
+	// Only 1 RunArgs call (no retry).
+	if mc.callCount() != 1 {
+		t.Fatalf("expected 1 call (no retry), got %d", mc.callCount())
+	}
+}
+
+// TestRun_ConnectionErrorTriggersReconnect verifies that non-device errors
+// still trigger the reconnect+retry logic.
+func TestRun_ConnectionErrorTriggersReconnect(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+
+	mc.pushError(errors.New("connection reset by peer"))
+	mc.pushReply(emptyReply()) // retry after reconnect succeeds
+
+	_, err := c.Run("/test/cmd")
+	if err != nil {
+		t.Fatalf("expected success after reconnect, got: %v", err)
+	}
+	if mc.callCount() != 2 {
+		t.Fatalf("expected 2 calls (original + retry), got %d", mc.callCount())
 	}
 }
 
@@ -598,6 +651,74 @@ func TestAddAddress_Error(t *testing.T) {
 	_, err := c.AddAddress("ip", "list", "1.2.3.4", "", "test")
 	if err == nil || !strings.Contains(err.Error(), "add address 1.2.3.4") {
 		t.Fatalf("expected wrapped error, got: %v", err)
+	}
+}
+
+// TestAddAddress_DuplicateUpdatesTimeout verifies that when Add returns
+// "already have such entry", AddAddress finds the existing entry and updates
+// its timeout instead of failing (fixes issue #14).
+func TestAddAddress_DuplicateUpdatesTimeout(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+
+	// 1. Add fails with "already have such entry" (DeviceError, no reconnect).
+	dupErr := &routerosLib.DeviceError{
+		Sentence: &proto.Sentence{
+			Word: "!trap",
+			Map:  map[string]string{"message": "failure: already have such entry"},
+		},
+	}
+	mc.pushError(dupErr)
+
+	// 2. FindAddress (Print) returns the existing entry.
+	mc.pushReply(reReply(map[string]string{
+		".id":     "*AB",
+		"address": "1.2.3.4",
+		"list":    "crowdsec",
+		"timeout": "1h",
+		"comment": "blocked",
+	}))
+
+	// 3. UpdateAddressTimeout (Set) succeeds.
+	mc.pushReply(emptyReply())
+
+	id, err := c.AddAddress("ip", "crowdsec", "1.2.3.4", "4h", "blocked")
+	if err != nil {
+		t.Fatalf("expected no error on duplicate, got: %v", err)
+	}
+	if id != "*AB" {
+		t.Fatalf("expected existing id *AB, got %q", id)
+	}
+}
+
+// TestAddAddress_DuplicateNoTimeout verifies that when a duplicate exists and
+// no timeout is provided, the existing entry is returned without updating.
+func TestAddAddress_DuplicateNoTimeout(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+
+	dupErr := &routerosLib.DeviceError{
+		Sentence: &proto.Sentence{
+			Word: "!trap",
+			Map:  map[string]string{"message": "failure: already have such entry"},
+		},
+	}
+	mc.pushError(dupErr)
+
+	// FindAddress returns existing entry.
+	mc.pushReply(reReply(map[string]string{
+		".id":     "*CD",
+		"address": "5.6.7.8",
+		"list":    "crowdsec",
+		"comment": "test",
+	}))
+
+	id, err := c.AddAddress("ip", "crowdsec", "5.6.7.8", "", "test")
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if id != "*CD" {
+		t.Fatalf("expected existing id *CD, got %q", id)
 	}
 }
 
@@ -1259,22 +1380,39 @@ func TestBulkAddAddresses_FallbackAlreadyHaveIgnored(t *testing.T) {
 		{Address: "1.1.1.1", Timeout: "1h", Comment: "test"},
 	}
 
-	// Script fails
+	// Script fails (Print for run check + Add fails + reconnect retry fails)
 	mc.pushReply(emptyReply())
 	mc.pushError(errors.New("fail"))
 	mc.pushError(errors.New("fail"))
 
-	// Individual add returns "already have"
-	mc.pushError(errors.New("already have such entry"))
-	mc.pushError(errors.New("already have such entry"))
+	// Individual add returns "already have" as a DeviceError (no reconnect).
+	dupErr := &routerosLib.DeviceError{
+		Sentence: &proto.Sentence{
+			Word: "!trap",
+			Map:  map[string]string{"message": "failure: already have such entry"},
+		},
+	}
+	mc.pushError(dupErr)
+
+	// FindAddress (Print) returns the existing entry.
+	mc.pushReply(reReply(map[string]string{
+		".id":     "*EE",
+		"address": "1.1.1.1",
+		"list":    "list",
+		"timeout": "30m",
+		"comment": "test",
+	}))
+
+	// UpdateAddressTimeout (Set) succeeds.
+	mc.pushReply(emptyReply())
 
 	added, err := c.BulkAddAddresses("ip", "list", entries)
-	// No error because "already have" is silently ignored
+	// No error because "already have" is handled gracefully.
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if added != 0 {
-		t.Fatalf("expected 0 added (already exists), got %d", added)
+	if added != 1 {
+		t.Fatalf("expected 1 added (existing updated), got %d", added)
 	}
 }
 

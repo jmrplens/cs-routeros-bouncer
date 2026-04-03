@@ -2,6 +2,7 @@ package routeros
 
 import (
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -116,8 +117,20 @@ func (c *Client) ensureConnected() error {
 	return nil
 }
 
+// isDeviceError returns true when the error originated from the RouterOS
+// device itself (a !trap or !fatal sentence). These errors indicate that the
+// command was received and understood but rejected (e.g. "already have such
+// entry"), so the underlying connection is still healthy and a reconnect
+// would only make the problem worse.
+func isDeviceError(err error) bool {
+	var de *routeros.DeviceError
+	return errors.As(err, &de)
+}
+
 // Run executes a RouterOS API command and returns the reply.
-// Automatically reconnects on connection failure.
+// Automatically reconnects on connection failure. Device-level errors
+// (e.g. "already have such entry") are returned immediately without
+// triggering a reconnection, since the connection is still valid.
 func (c *Client) Run(args ...string) (*routeros.Reply, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -128,7 +141,13 @@ func (c *Client) Run(args ...string) (*routeros.Reply, error) {
 
 	reply, err := c.conn.RunArgs(args)
 	if err != nil {
-		// Try reconnect once
+		// Device errors mean the router understood the command but rejected it.
+		// The connection is fine — return the error without reconnecting.
+		if isDeviceError(err) {
+			return reply, err
+		}
+
+		// For connection/transport errors, try reconnect once.
 		c.logger.Warn().Err(err).Msg("RouterOS command failed, attempting reconnect")
 		_ = c.conn.Close()
 		c.conn = nil

@@ -7,6 +7,12 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// isDuplicateEntryError returns true when the error indicates that the
+// resource already exists on the RouterOS device ("already have such entry").
+func isDuplicateEntryError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "already have such entry")
+}
+
 // AddressEntry represents an entry in a MikroTik address list.
 type AddressEntry struct {
 	ID      string // MikroTik .id (e.g., "*1A3B")
@@ -71,6 +77,28 @@ func (c *Client) AddAddress(proto, list, address, timeout, comment string) (stri
 
 	id, err := c.Add(path, attrs)
 	if err != nil {
+		// If the address already exists, find it and update the timeout instead.
+		if isDuplicateEntryError(err) {
+			log.Debug().
+				Str("address", address).
+				Str("list", list).
+				Msg("address already exists, updating timeout")
+
+			existing, findErr := c.FindAddress(proto, list, address)
+			if findErr != nil {
+				return "", fmt.Errorf("add address %s to %s: duplicate entry and lookup failed: %w", address, list, findErr)
+			}
+			if existing == nil {
+				return "", fmt.Errorf("add address %s to %s: duplicate entry but could not find it", address, list)
+			}
+
+			if timeout != "" {
+				if updErr := c.UpdateAddressTimeout(proto, existing.ID, timeout); updErr != nil {
+					return "", fmt.Errorf("add address %s to %s: duplicate entry and timeout update failed: %w", address, list, updErr)
+				}
+			}
+			return existing.ID, nil
+		}
 		return "", fmt.Errorf("add address %s to %s: %w", address, list, err)
 	}
 
