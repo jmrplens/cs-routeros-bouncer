@@ -670,5 +670,5 @@ See [SECURITY.md](SECURITY.md) for the security policy and responsible disclosur
 
 - [CrowdSec](https://www.crowdsec.net/) — open-source collaborative security engine
 - [go-routeros](https://github.com/go-routeros/routeros) — Go library for the RouterOS API
-- [funkolab/cs-mikrotik-bouncer](https://github.com/funkolab/cs-mikrotik-bouncer) — original Python bouncer (archived)
-- [nvtkaszpir/cs-mikrotik-bouncer-alt](https://github.com/nvtkaszpir/cs-mikrotik-bouncer-alt) — alternative Python bouncer
+- [funkolab/cs-mikrotik-bouncer](https://github.com/funkolab/cs-mikrotik-bouncer) — original Go bouncer (archived)
+- [nvtkaszpir/cs-mikrotik-bouncer-alt](https://github.com/nvtkaszpir/cs-mikrotik-bouncer-alt) — alternative Go bouncer
