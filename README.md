@@ -37,7 +37,7 @@ Existing MikroTik bouncers have significant limitations that this project addres
 | Prometheus metrics | ❌ | ✅ | ✅ |
 | LAPI usage metrics (dropped traffic) | ❌ | ❌ | ✅ |
 | Health endpoint | ❌ | ❌ | ✅ |
-| Go (compiled, low resource usage) | ❌ (Python) | ❌ (Python) | ✅ |
+| Go (compiled, low resource usage) | ✅ | ✅ | ✅ |
 
 ## Requirements
 
