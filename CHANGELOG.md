@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.3.4] - 2026-04-04
 
 ### Added
 
@@ -36,7 +36,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Infinite reconnect loop on duplicate entries** — the bouncer no longer treats RouterOS device errors (like "already have such entry") as connection failures. Duplicate entries are now handled gracefully by finding and updating the existing entry's timeout and comment ([#14](https://github.com/jmrplens/cs-routeros-bouncer/issues/14))
+- **Docker health check fails when metrics are disabled** — the `/health` endpoint now always starts regardless of the `metrics.enabled` setting, so container health checks work out of the box ([#16](https://github.com/jmrplens/cs-routeros-bouncer/issues/16))
 - **Firewall rule placement** — iterate all chain positions when dynamic/builtin rules occupy top slots
+- **Incorrect language attribution in README** — fixed acknowledgments section that incorrectly described cs-mikrotik-bouncer and cs-mikrotik-bouncer-alt as Python projects when they are Go projects ([#15](https://github.com/jmrplens/cs-routeros-bouncer/issues/15))
+- **Health/metrics server startup** — the listener is now bound synchronously so address-in-use errors are caught immediately at startup instead of silently failing in a background goroutine
 - **Empty version in LAPI metadata** — added `go-cs-lib/version.Version` ldflags to Makefile, Dockerfile, and `.goreleaser.yaml`
 
 ### Changed
