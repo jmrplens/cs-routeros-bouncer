@@ -275,6 +275,26 @@ func TestNewServerCreatesInstance(t *testing.T) {
 	}
 }
 
+// waitForServer polls url until it gets an HTTP 200 or the timeout expires.
+func waitForServer(t *testing.T, url string) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		resp, err := http.DefaultClient.Do(req) //nolint:gosec // test-only localhost
+		cancel()
+		if err == nil {
+			_ = resp.Body.Close()
+			if resp.StatusCode == 200 {
+				return
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("server at %s did not become ready in time", url)
+}
+
 // TestServerStartAndShutdown verifies the full lifecycle of the metrics
 // server: start, verify it responds, and shut down gracefully.
 func TestServerStartAndShutdown(t *testing.T) {
@@ -288,6 +308,7 @@ func TestServerStartAndShutdown(t *testing.T) {
 	_ = ln.Close()
 
 	cfg := config.MetricsConfig{
+		Enabled:    true,
 		ListenAddr: "127.0.0.1",
 		ListenPort: port,
 	}
@@ -297,8 +318,8 @@ func TestServerStartAndShutdown(t *testing.T) {
 		t.Fatalf("Start() error: %v", err)
 	}
 
-	// Give server time to start
-	time.Sleep(50 * time.Millisecond)
+	base := fmt.Sprintf("http://127.0.0.1:%d", port)
+	waitForServer(t, base+"/health")
 
 	// doGet is a helper that performs a context-aware HTTP GET.
 	doGet := func(url string, client *http.Client) *http.Response {
@@ -318,8 +339,6 @@ func TestServerStartAndShutdown(t *testing.T) {
 		}
 		return resp
 	}
-
-	base := fmt.Sprintf("http://127.0.0.1:%d", port)
 
 	// Verify /health responds
 	resp := doGet(base+"/health", nil)
@@ -353,6 +372,68 @@ func TestServerStartAndShutdown(t *testing.T) {
 	}
 
 	// Graceful shutdown
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		t.Errorf("Shutdown() error: %v", err)
+	}
+}
+
+// TestServerHealthWithoutMetrics verifies that the /health endpoint works
+// even when metrics collection is disabled, which is required for Docker
+// health checks to pass regardless of the metrics.enabled setting.
+func TestServerHealthWithoutMetrics(t *testing.T) {
+	lc := net.ListenConfig{}
+	ln, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to find free port: %v", err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	_ = ln.Close()
+
+	cfg := config.MetricsConfig{
+		Enabled:    false,
+		ListenAddr: "127.0.0.1",
+		ListenPort: port,
+	}
+	srv := NewServer(cfg, "test")
+
+	if err := srv.Start(); err != nil {
+		t.Fatalf("Start() error: %v", err)
+	}
+
+	base := fmt.Sprintf("http://127.0.0.1:%d", port)
+	waitForServer(t, base+"/health")
+
+	doGet := func(url string) *http.Response {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			t.Fatalf("NewRequest(%s) error: %v", url, err)
+		}
+		resp, err := http.DefaultClient.Do(req) //nolint:gosec // test-only code with localhost URLs
+		if err != nil {
+			t.Fatalf("GET %s failed: %v", url, err)
+		}
+		return resp
+	}
+
+	// /health must work even without metrics
+	resp := doGet(base + "/health")
+	_ = resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Errorf("/health: expected 200, got %d", resp.StatusCode)
+	}
+
+	// /metrics should NOT be registered
+	resp = doGet(base + "/metrics")
+	_ = resp.Body.Close()
+	if resp.StatusCode != 404 {
+		t.Errorf("/metrics: expected 404 when disabled, got %d", resp.StatusCode)
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {

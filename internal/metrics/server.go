@@ -16,6 +16,8 @@ import (
 )
 
 // Server serves Prometheus metrics and a health endpoint.
+// The health endpoint is always registered so that container health checks
+// work regardless of whether Prometheus metrics collection is enabled.
 type Server struct {
 	httpServer *http.Server
 	version    string
@@ -23,21 +25,26 @@ type Server struct {
 }
 
 // NewServer creates a new metrics HTTP server.
+// When cfg.Enabled is true the /metrics endpoint is registered;
+// the /health endpoint is always available.
 func NewServer(cfg config.MetricsConfig, version string) *Server {
 	s := &Server{
 		version: version,
 	}
 
 	mux := http.NewServeMux()
-	mux.Handle("/metrics", promhttp.Handler())
 	mux.HandleFunc("/health", s.handleHealth)
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/" {
-			http.NotFound(w, r)
-			return
-		}
-		http.Redirect(w, r, "/metrics", http.StatusMovedPermanently)
-	})
+
+	if cfg.Enabled {
+		mux.Handle("/metrics", promhttp.Handler())
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/" {
+				http.NotFound(w, r)
+				return
+			}
+			http.Redirect(w, r, "/metrics", http.StatusMovedPermanently)
+		})
+	}
 
 	s.httpServer = &http.Server{
 		Addr:              net.JoinHostPort(cfg.ListenAddr, fmt.Sprintf("%d", cfg.ListenPort)),
@@ -53,14 +60,22 @@ func (s *Server) SetConnected(connected bool) {
 	s.connected.Store(connected)
 }
 
-// Start begins serving metrics. It returns immediately; the server runs in a goroutine.
+// Start begins serving the health (and optionally metrics) endpoint.
+// The listener is bound synchronously so that address-in-use errors are
+// returned to the caller. Serving itself runs in a background goroutine.
 func (s *Server) Start() error {
 	logger := log.With().Str("component", "metrics").Logger()
-	logger.Info().Str("addr", s.httpServer.Addr).Msg("starting metrics server")
+
+	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", s.httpServer.Addr)
+	if err != nil {
+		return fmt.Errorf("listen %s: %w", s.httpServer.Addr, err)
+	}
+
+	logger.Info().Str("addr", ln.Addr().String()).Msg("starting health/metrics server")
 
 	go func() {
-		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Error().Err(err).Msg("metrics server error")
+		if err := s.httpServer.Serve(ln); err != nil && err != http.ErrServerClosed {
+			logger.Error().Err(err).Msg("health/metrics server error")
 		}
 	}()
 
