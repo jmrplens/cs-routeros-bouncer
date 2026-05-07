@@ -55,6 +55,34 @@ func TestRun_ErrorReconnectsAndRetries(t *testing.T) {
 	}
 }
 
+// TestRun_DeviceErrorDoesNotReconnect verifies RouterOS trap/fatal replies are
+// returned to callers as command errors instead of being treated as broken
+// connections. Retrying those errors creates unnecessary API logins and repeats
+// commands such as duplicate address-list adds.
+func TestRun_DeviceErrorDoesNotReconnect(t *testing.T) {
+	mc := newMockConn()
+	c := &Client{
+		conn: mc,
+		dialFunc: func(_ config.MikroTikConfig) (RouterConn, error) {
+			t.Fatal("device errors should not trigger reconnect")
+			return nil, nil
+		},
+	}
+
+	mc.pushError(newDuplicateDeviceError())
+
+	_, err := c.Run("/ip/firewall/address-list/add")
+	if err == nil || !strings.Contains(err.Error(), "already have such entry") {
+		t.Fatalf("expected RouterOS device error, got: %v", err)
+	}
+	if mc.callCount() != 1 {
+		t.Fatalf("expected no retry for device error, got %d calls", mc.callCount())
+	}
+	if mc.closed {
+		t.Fatal("device error should not close the current connection")
+	}
+}
+
 // TestRun_ReconnectAlsoFails verifies error propagation when reconnect fails.
 func TestRun_ReconnectAlsoFails(t *testing.T) {
 	mc := newMockConn()
@@ -116,31 +144,6 @@ func TestRun_NilConnAutoConnects(t *testing.T) {
 	_, err := c.Run("/test")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-// TestRun_DeviceErrorNoReconnect verifies that a DeviceError (e.g. "already
-// have such entry") is returned immediately without triggering a reconnect.
-func TestRun_DeviceErrorNoReconnect(t *testing.T) {
-	mc := newMockConn()
-	c := newTestClient(mc)
-
-	mc.pushError(newDuplicateDeviceError())
-
-	_, err := c.Run("/ip/firewall/address-list/add")
-	if err == nil {
-		t.Fatal("expected device error to be returned")
-	}
-	if !strings.Contains(err.Error(), "already have such entry") {
-		t.Fatalf("expected 'already have such entry', got: %v", err)
-	}
-	// Connection should still be set (no reconnect happened).
-	if !c.IsConnected() {
-		t.Fatal("connection should remain active after device error")
-	}
-	// Only 1 RunArgs call (no retry).
-	if mc.callCount() != 1 {
-		t.Fatalf("expected 1 call (no retry), got %d", mc.callCount())
 	}
 }
 

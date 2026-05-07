@@ -460,33 +460,53 @@ func TestHandleBan_ZeroDurationNoTimeout(t *testing.T) {
 	}
 }
 
-// TestHandleBan_AlreadyExists_UpdateTimeout verifies that when the address is
-// already in the local cache (duplicate decision), AddAddress is still called
-// (to update timeout/comment on router) but the manager does not call
-// FindAddress or UpdateAddressTimeout directly (handled inside AddAddress).
-func TestHandleBan_AlreadyExists_UpdateTimeout(t *testing.T) {
-	mock := &mockROS{
-		addAddressID: "*5", // AddAddress succeeds (duplicate handled internally)
-	}
+// TestHandleBan_CacheHitSkipsRouterOS verifies live duplicate decisions for
+// addresses already discovered during reconciliation do not issue RouterOS API
+// writes. This keeps repeated stream entries from churning the router.
+func TestHandleBan_CacheHitSkipsRouterOS(t *testing.T) {
+	mock := &mockROS{addAddressID: "*1"}
 	mgr := newTestManager(mock, baseConfig())
-
-	// Pre-populate cache to simulate a duplicate
 	mgr.cacheMu.Lock()
 	mgr.addressCache["10.0.0.1"] = struct{}{}
 	mgr.cacheMu.Unlock()
 
+	mgr.handleBan(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1", Duration: time.Hour})
+
+	if len(mock.addAddressCalls) != 0 {
+		t.Fatalf("expected no AddAddress call for cached address, got %d", len(mock.addAddressCalls))
+	}
+	if len(mock.findAddressCalls) != 0 {
+		t.Fatalf("expected no FindAddress call for cached address, got %d", len(mock.findAddressCalls))
+	}
+	if len(mock.updateTimeoutCalls) != 0 {
+		t.Fatalf("expected no UpdateAddressTimeout call for cached address, got %d", len(mock.updateTimeoutCalls))
+	}
+}
+
+// TestHandleBan_AddAddressSuccessCachesEntry verifies that a new address added
+// through RouterOS is cached without manager-level duplicate lookup/update calls.
+func TestHandleBan_AddAddressSuccessCachesEntry(t *testing.T) {
+	mock := &mockROS{
+		addAddressID: "*5",
+	}
+	mgr := newTestManager(mock, baseConfig())
+
 	mgr.handleBan(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1", Duration: 7200 * time.Second})
 
-	// AddAddress should be called
 	if len(mock.addAddressCalls) != 1 {
 		t.Fatalf("expected 1 AddAddress call, got %d", len(mock.addAddressCalls))
 	}
-	// Manager should NOT call FindAddress/UpdateTimeout — that's now in AddAddress
 	if len(mock.findAddressCalls) != 0 {
 		t.Errorf("expected 0 FindAddress calls, got %d", len(mock.findAddressCalls))
 	}
 	if len(mock.updateTimeoutCalls) != 0 {
 		t.Errorf("expected 0 UpdateTimeout calls, got %d", len(mock.updateTimeoutCalls))
+	}
+	mgr.cacheMu.RLock()
+	_, inCache := mgr.addressCache["10.0.0.1"]
+	mgr.cacheMu.RUnlock()
+	if !inCache {
+		t.Error("address should be cached after a successful AddAddress call")
 	}
 }
 
@@ -506,11 +526,11 @@ func TestHandleBan_AlreadyExists_ZeroDuration(t *testing.T) {
 
 	mgr.handleBan(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1", Duration: 0})
 
-	if len(mock.addAddressCalls) != 1 {
-		t.Fatalf("expected 1 AddAddress call, got %d", len(mock.addAddressCalls))
+	if len(mock.addAddressCalls) != 0 {
+		t.Fatalf("expected 0 AddAddress calls for cached duplicate, got %d", len(mock.addAddressCalls))
 	}
 	if len(mock.findAddressCalls) != 0 {
-		t.Error("should not call FindAddress — duplicate handling is in AddAddress")
+		t.Error("should not call FindAddress for cached duplicate")
 	}
 }
 
@@ -599,7 +619,9 @@ func TestHandleUnban_InCache_FoundAndRemoved(t *testing.T) {
 		findAddressEntry: &ros.AddressEntry{ID: "*7", Address: "10.0.0.1"},
 	}
 	mgr := newTestManager(mock, baseConfig())
+	mgr.cacheMu.Lock()
 	mgr.addressCache["10.0.0.1"] = struct{}{}
+	mgr.cacheMu.Unlock()
 
 	mgr.handleUnban(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1"})
 
@@ -624,7 +646,9 @@ func TestHandleUnban_InCache_FoundAndRemoved(t *testing.T) {
 func TestHandleUnban_InCache_NotFoundOnRouter(t *testing.T) {
 	mock := &mockROS{findAddressEntry: nil}
 	mgr := newTestManager(mock, baseConfig())
+	mgr.cacheMu.Lock()
 	mgr.addressCache["10.0.0.1"] = struct{}{}
+	mgr.cacheMu.Unlock()
 
 	mgr.handleUnban(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1"})
 
@@ -646,7 +670,9 @@ func TestHandleUnban_InCache_NotFoundOnRouter(t *testing.T) {
 func TestHandleUnban_FindError(t *testing.T) {
 	mock := &mockROS{findAddressErr: errors.New("timeout")}
 	mgr := newTestManager(mock, baseConfig())
+	mgr.cacheMu.Lock()
 	mgr.addressCache["10.0.0.1"] = struct{}{}
+	mgr.cacheMu.Unlock()
 
 	mgr.handleUnban(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1"})
 
@@ -669,7 +695,9 @@ func TestHandleUnban_RemoveError(t *testing.T) {
 		removeAddressErr: errors.New("connection reset"),
 	}
 	mgr := newTestManager(mock, baseConfig())
+	mgr.cacheMu.Lock()
 	mgr.addressCache["10.0.0.1"] = struct{}{}
+	mgr.cacheMu.Unlock()
 
 	mgr.handleUnban(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1"})
 
@@ -1180,6 +1208,39 @@ func TestReconcileAddresses_PopulatesCache(t *testing.T) {
 	}
 	if !has2 {
 		t.Error("expected newly added address 10.0.0.2 in cache")
+	}
+}
+
+// TestReconcileAddresses_PurgesStaleCacheEntries verifies that reconciliation
+// removes local cache entries that are no longer present on the router.
+func TestReconcileAddresses_PurgesStaleCacheEntries(t *testing.T) {
+	mock := &mockROS{
+		listAddresses: []ros.AddressEntry{
+			{ID: "*1", Address: "10.0.0.1", Comment: "crowdsec-bouncer|existing"},
+		},
+	}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	mgr := newTestManager(mock, cfg)
+	mgr.cacheMu.Lock()
+	mgr.addressCache["10.0.0.1"] = struct{}{}
+	mgr.addressCache["10.0.0.99"] = struct{}{}
+	mgr.cacheMu.Unlock()
+
+	mgr.reconcileAddresses([]*crowdsec.Decision{
+		{Proto: "ip", Value: "10.0.0.1", Origin: "cscli"},
+	})
+
+	mgr.cacheMu.RLock()
+	_, hasCurrent := mgr.addressCache["10.0.0.1"]
+	_, hasStale := mgr.addressCache["10.0.0.99"]
+	mgr.cacheMu.RUnlock()
+
+	if !hasCurrent {
+		t.Error("expected current router address to stay in cache")
+	}
+	if hasStale {
+		t.Error("expected stale address to be purged from cache")
 	}
 }
 

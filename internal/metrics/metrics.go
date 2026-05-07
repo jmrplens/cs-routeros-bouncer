@@ -18,6 +18,11 @@ var activeDecisionCounts struct {
 	ipv6 atomic.Int64
 }
 
+var healthConnectedCallback struct {
+	mu sync.RWMutex
+	fn func(bool)
+}
+
 var (
 	decisionsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "crowdsec_bouncer_decisions_total",
@@ -404,6 +409,21 @@ func SetConnected(connected bool) {
 	} else {
 		routerosConnected.Set(0)
 	}
+
+	healthConnectedCallback.mu.RLock()
+	fn := healthConnectedCallback.fn
+	healthConnectedCallback.mu.RUnlock()
+	if fn != nil {
+		fn(connected)
+	}
+}
+
+// SetHealthConnectedCallback wires RouterOS connection changes to the health
+// endpoint owned by the application. Passing nil clears the callback.
+func SetHealthConnectedCallback(fn func(bool)) {
+	healthConnectedCallback.mu.Lock()
+	healthConnectedCallback.fn = fn
+	healthConnectedCallback.mu.Unlock()
 }
 
 // ObserveOperationDuration records the duration of an operation.

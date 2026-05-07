@@ -27,9 +27,12 @@ type Config struct {
 
 // CrowdSecConfig holds CrowdSec LAPI connection settings.
 type CrowdSecConfig struct {
-	APIURL                 string        `yaml:"api_url" mapstructure:"api_url"`
-	APIKey                 string        `yaml:"api_key" mapstructure:"api_key"`
-	UpdateFrequency        time.Duration `yaml:"update_frequency" mapstructure:"update_frequency"`
+	APIURL          string        `yaml:"api_url" mapstructure:"api_url"`
+	APIKey          string        `yaml:"api_key" mapstructure:"api_key"`
+	UpdateFrequency time.Duration `yaml:"update_frequency" mapstructure:"update_frequency"`
+	// ReconciliationInterval controls periodic full-state reconciliation.
+	// A zero value disables the periodic pass; non-zero values must be >= 1m.
+	ReconciliationInterval time.Duration `yaml:"reconciliation_interval" mapstructure:"reconciliation_interval"`
 	Origins                []string      `yaml:"origins" mapstructure:"origins"`
 	Scopes                 []string      `yaml:"scopes" mapstructure:"scopes"`
 	ScenariosContaining    []string      `yaml:"scenarios_containing" mapstructure:"scenarios_containing"`
@@ -135,6 +138,7 @@ func Load(configPath string) (*Config, error) {
 	// Defaults
 	v.SetDefault("crowdsec.api_url", "http://localhost:8080/")
 	v.SetDefault("crowdsec.update_frequency", "10s")
+	v.SetDefault("crowdsec.reconciliation_interval", "15m")
 	v.SetDefault("crowdsec.scopes", []string{"ip", "range"})
 	v.SetDefault("crowdsec.supported_decisions_types", []string{"ban"})
 	v.SetDefault("crowdsec.retry_initial_connect", true)
@@ -177,6 +181,7 @@ func Load(configPath string) (*Config, error) {
 		"crowdsec.api_url":                   "CROWDSEC_URL",
 		"crowdsec.api_key":                   "CROWDSEC_BOUNCER_API_KEY",
 		"crowdsec.update_frequency":          "CROWDSEC_UPDATE_FREQUENCY",
+		"crowdsec.reconciliation_interval":   "CROWDSEC_RECONCILIATION_INTERVAL",
 		"crowdsec.origins":                   "CROWDSEC_ORIGINS",
 		"crowdsec.scopes":                    "CROWDSEC_SCOPES",
 		"crowdsec.scenarios_containing":      "CROWDSEC_SCENARIOS_CONTAINING",
@@ -329,6 +334,12 @@ func (c *Config) Validate() error {
 		if c.Firewall.BlockOutput.Interface == "" && c.Firewall.BlockOutput.InterfaceList == "" {
 			return fmt.Errorf("firewall.block_output requires interface or interface_list when enabled")
 		}
+	}
+	if c.CrowdSec.ReconciliationInterval < 0 {
+		return fmt.Errorf("crowdsec.reconciliation_interval must be >= 0 (0 disables)")
+	}
+	if c.CrowdSec.ReconciliationInterval > 0 && c.CrowdSec.ReconciliationInterval < time.Minute {
+		return fmt.Errorf("crowdsec.reconciliation_interval must be >= 1m (0 disables)")
 	}
 
 	if c.Metrics.RouterOSPollInterval < 0 {

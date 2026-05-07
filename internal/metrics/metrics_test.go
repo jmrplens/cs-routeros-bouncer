@@ -256,6 +256,39 @@ func TestSetConnectedServer(t *testing.T) {
 	}
 }
 
+// TestSetConnectedUpdatesHealthEndpoint verifies that the package-level
+// connection setter updates the HTTP health endpoint as well as Prometheus.
+func TestSetConnectedUpdatesHealthEndpoint(t *testing.T) {
+	srv := NewServer(config.MetricsConfig{}, "test")
+	SetHealthConnectedCallback(srv.SetConnected)
+	t.Cleanup(func() { SetHealthConnectedCallback(nil) })
+	SetConnected(true)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/health", nil)
+	w := httptest.NewRecorder()
+	srv.handleHealth(w, req)
+
+	var body map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body["routeros_connected"] != true {
+		t.Errorf("expected true, got %v", body["routeros_connected"])
+	}
+
+	SetConnected(false)
+	req = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/health", nil)
+	w = httptest.NewRecorder()
+	srv.handleHealth(w, req)
+	body = map[string]interface{}{}
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body["routeros_connected"] != false {
+		t.Errorf("expected false, got %v", body["routeros_connected"])
+	}
+}
+
 // TestNewServerCreatesInstance verifies that NewServer returns a valid Server
 // with a configured HTTP server listening on the specified address and port.
 func TestNewServerCreatesInstance(t *testing.T) {

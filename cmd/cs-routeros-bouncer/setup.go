@@ -190,6 +190,7 @@ crowdsec:
   api_url: "http://localhost:8080/"
   api_key: ""          # Required: cscli bouncers add cs-routeros-bouncer
   update_frequency: "10s"
+  reconciliation_interval: "15m"
 
 mikrotik:
   address: "192.168.0.1:8728"

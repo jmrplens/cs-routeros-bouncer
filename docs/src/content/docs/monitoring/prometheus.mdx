@@ -19,7 +19,7 @@ Number of currently active (banned) decisions by protocol version. Updated in re
 |-------|--------|-------------|
 | `ip_type` | `ipv4`, `ipv6` | Protocol version |
 
-```promql
+```text
 # Total active decisions
 sum(crowdsec_bouncer_active_decisions)
 
@@ -39,7 +39,7 @@ Active decisions broken down by their source. Incremented/decremented in real ti
 |-------|--------|-------------|
 | `origin` | `crowdsec`, `cscli`, `CAPI`, `lists:*` | Source of the decision |
 
-```promql
+```text
 # Active decisions by origin
 crowdsec_bouncer_active_decisions_by_origin
 
@@ -55,7 +55,7 @@ crowdsec_bouncer_active_decisions_by_origin{origin="CAPI"}
 
 Total number of decisions processed since startup. Counts both bans (`action="ban"`) and unbans (`action="unban"`).
 
-```promql
+```text
 # Ban rate per minute by origin
 rate(crowdsec_bouncer_decisions_total{action="ban"}[5m]) * 60
 
@@ -71,7 +71,7 @@ sum(crowdsec_bouncer_decisions_total{action="unban"})
 
 Total errors by component (`lapi`, `routeros`, `stream`).
 
-```promql
+```text
 # Error rate across all components
 rate(crowdsec_bouncer_errors_total[5m])
 ```
@@ -92,7 +92,7 @@ Whether the bouncer has an active connection to RouterOS (`1` = connected, `0` =
 
 Duration of operations in seconds. Labels: `operation="add"`, `operation="remove"`, `operation="reconcile"`.
 
-```promql
+```text
 # p99 add operation latency
 histogram_quantile(0.99, rate(crowdsec_bouncer_operation_duration_seconds_bucket{operation="add"}[5m]))
 ```
@@ -101,9 +101,9 @@ histogram_quantile(0.99, rate(crowdsec_bouncer_operation_duration_seconds_bucket
 
 ### `crowdsec_bouncer_reconciliation_total`
 
-<Badge text="Counter" variant="success" /> <Badge text="Labels: status" variant="default" />
+<Badge text="Counter" variant="success" /> <Badge text="Labels: action" variant="default" />
 
-Total reconciliation runs. Labels: `status="added"`, `status="removed"`, `status="unchanged"`.
+Total reconciliation actions. Labels: `action="added"`, `action="removed"`, `action="unchanged"`. Periodic reconciliation increments `unchanged` when entries already match the active CrowdSec snapshot.
 
 ---
 
@@ -202,7 +202,7 @@ Cumulative packets dropped by firewall rules, broken down by protocol.
 |-------|--------|-------------|
 | `proto` | `ipv4`, `ipv6` | Protocol version |
 
-```promql
+```text
 # Dropped bytes rate by protocol
 rate(crowdsec_bouncer_dropped_bytes_by_proto[5m])
 
@@ -251,7 +251,7 @@ Cumulative packets processed by firewall rules, broken down by protocol.
 |-------|--------|-------------|
 | `proto` | `ipv4`, `ipv6` | Protocol version |
 
-```promql
+```text
 # Processed traffic rate by protocol
 rate(crowdsec_bouncer_processed_bytes_by_proto[5m])
 
@@ -297,7 +297,7 @@ CPU temperature in degrees Celsius.
 
 RouterOS uptime in seconds. Parsed from the MikroTik uptime string format (e.g. `1w2d3h4m5s`).
 
-```promql
+```text
 # Uptime in days
 crowdsec_bouncer_routeros_uptime_seconds / 86400
 ```
@@ -313,7 +313,7 @@ RouterOS system information as an info metric (value always 1). Labels expose th
 | `version` | `7.16.2` | RouterOS version |
 | `board_name` | `RB4011iGS+` | Hardware model |
 
-```promql
+```text
 # Memory usage percentage
 crowdsec_bouncer_routeros_memory_used_bytes / crowdsec_bouncer_routeros_memory_total_bytes * 100
 

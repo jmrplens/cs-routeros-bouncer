@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,6 +36,8 @@ type Stream struct {
 	cfg     config.CrowdSecConfig
 	logger  zerolog.Logger
 }
+
+const activeDecisionPageSize = 1000
 
 // NewStream creates a new CrowdSec stream client.
 func NewStream(cfg config.CrowdSecConfig, version string) *Stream {
@@ -91,6 +96,67 @@ func (s *Stream) APIClient() *apiclient.ApiClient {
 	return s.bouncer.Client()
 }
 
+// ActiveDecisions fetches a full snapshot of currently active CrowdSec
+// decisions using the same filters as the streaming bouncer.
+func (s *Stream) ActiveDecisions(ctx context.Context) ([]*Decision, error) {
+	client := s.bouncer.Client()
+	if client == nil {
+		return nil, fmt.Errorf("CrowdSec API client is not initialized")
+	}
+
+	var data models.GetDecisionsResponse
+	for offset := 0; ; offset += activeDecisionPageSize {
+		var page models.GetDecisionsResponse
+		req, err := client.PrepareRequest(ctx, http.MethodGet, s.activeDecisionListPath(client, activeDecisionPageSize, offset), nil)
+		if err != nil {
+			return nil, fmt.Errorf("preparing active CrowdSec decision request: %w", err)
+		}
+
+		_, err = client.Do(ctx, req, &page)
+		if err != nil {
+			return nil, fmt.Errorf("fetching active CrowdSec decisions: %w", err)
+		}
+
+		data = append(data, page...)
+		if len(page) < activeDecisionPageSize {
+			break
+		}
+	}
+
+	return parseDecisionBatch(data, true), nil
+}
+
+// activeDecisionListPath builds a filtered /decisions request for the periodic
+// reconciliation snapshot without using the delta-stream startup mode.
+func (s *Stream) activeDecisionListPath(client *apiclient.ApiClient, limit, offset int) string {
+	values := url.Values{}
+	values.Set("type", "ban")
+	values.Set("limit", strconv.Itoa(limit))
+	values.Set("offset", strconv.Itoa(offset))
+	if len(s.cfg.Scopes) > 0 {
+		values.Set("scopes", strings.Join(s.cfg.Scopes, ","))
+	} else {
+		values.Set("scopes", "ip,range")
+	}
+	if len(s.cfg.Origins) > 0 {
+		values.Set("origins", strings.Join(s.cfg.Origins, ","))
+	}
+	if len(s.cfg.ScenariosContaining) > 0 {
+		values.Set("scenarios_containing", strings.Join(s.cfg.ScenariosContaining, ","))
+	}
+	if len(s.cfg.ScenariosNotContaining) > 0 {
+		values.Set("scenarios_not_containing", strings.Join(s.cfg.ScenariosNotContaining, ","))
+	}
+
+	prefix := strings.Trim(client.URLPrefix, "/")
+	path := "/decisions"
+	if prefix != "" {
+		path = "/" + prefix + path
+	}
+
+	return fmt.Sprintf("%s?%s", path, values.Encode())
+}
+
 // Run starts the stream bouncer and returns channels for new and deleted decisions.
 // The banCh receives decisions to add, deleteCh receives decisions to remove.
 // The function blocks until ctx is canceled.
@@ -113,60 +179,59 @@ func (s *Stream) Run(ctx context.Context, banCh chan<- *Decision, deleteCh chan<
 			}
 
 			// Process new decisions (bans)
-			if decisions.New != nil {
-				for _, d := range decisions.New {
-					if d == nil || d.Value == nil || d.Type == nil || d.Duration == nil {
-						continue
-					}
+			for _, parsed := range parseDecisionBatch(decisions.New, true) {
+				s.logger.Debug().
+					Str("value", parsed.Value).
+					Str("proto", parsed.Proto).
+					Str("type", parsed.Type).
+					Str("origin", parsed.Origin).
+					Dur("duration", parsed.Duration).
+					Msg("new decision")
 
-					parsed := parseDecision(d)
-					if parsed == nil {
-						continue
-					}
-
-					s.logger.Debug().
-						Str("value", parsed.Value).
-						Str("proto", parsed.Proto).
-						Str("type", parsed.Type).
-						Str("origin", parsed.Origin).
-						Dur("duration", parsed.Duration).
-						Msg("new decision")
-
-					select {
-					case banCh <- parsed:
-					case <-ctx.Done():
-						return nil
-					}
+				select {
+				case banCh <- parsed:
+				case <-ctx.Done():
+					return nil
 				}
 			}
 
 			// Process deleted decisions (unbans)
-			if decisions.Deleted != nil {
-				for _, d := range decisions.Deleted {
-					if d == nil || d.Value == nil || d.Type == nil {
-						continue
-					}
+			for _, parsed := range parseDecisionBatch(decisions.Deleted, false) {
+				s.logger.Debug().
+					Str("value", parsed.Value).
+					Str("proto", parsed.Proto).
+					Str("origin", parsed.Origin).
+					Msg("deleted decision")
 
-					parsed := parseDecision(d)
-					if parsed == nil {
-						continue
-					}
-
-					s.logger.Debug().
-						Str("value", parsed.Value).
-						Str("proto", parsed.Proto).
-						Str("origin", parsed.Origin).
-						Msg("deleted decision")
-
-					select {
-					case deleteCh <- parsed:
-					case <-ctx.Done():
-						return nil
-					}
+				select {
+				case deleteCh <- parsed:
+				case <-ctx.Done():
+					return nil
 				}
 			}
 		}
 	}
+}
+
+// parseDecisionBatch converts an LAPI decision response into internal
+// decisions. New bans require a duration; deleted decisions do not always
+// include one, so callers choose that validation rule explicitly.
+func parseDecisionBatch(decisions models.GetDecisionsResponse, requireDuration bool) []*Decision {
+	parsed := make([]*Decision, 0, len(decisions))
+	for _, d := range decisions {
+		if d == nil {
+			continue
+		}
+		if requireDuration && d.Duration == nil {
+			continue
+		}
+		decision := parseDecision(d)
+		if decision == nil {
+			continue
+		}
+		parsed = append(parsed, decision)
+	}
+	return parsed
 }
 
 // parseDecision converts a CrowdSec SDK decision model to our internal Decision type.

@@ -345,6 +345,18 @@ collectLoop:
 
 	m.reconcileAddresses(filteredBans)
 
+	reconcileInterval := m.cfg.CrowdSec.ReconciliationInterval
+	var reconcileC <-chan time.Time
+	var reconcileTicker *time.Ticker
+	if reconcileInterval > 0 {
+		reconcileTicker = time.NewTicker(reconcileInterval)
+		defer reconcileTicker.Stop()
+		reconcileC = reconcileTicker.C
+		m.logger.Info().Dur("interval", reconcileInterval).Msg("periodic reconciliation enabled")
+	} else {
+		m.logger.Info().Msg("periodic reconciliation disabled")
+	}
+
 	m.logger.Info().Msg("reconciliation complete, processing live decisions")
 
 	// 7. Process live decision events (deltas)
@@ -362,8 +374,34 @@ collectLoop:
 
 		case d := <-deleteCh:
 			m.handleUnban(d)
+
+		case <-reconcileC:
+			m.reconcileActiveDecisions(ctx)
 		}
 	}
+}
+
+// reconcileActiveDecisions fetches a fresh active-decision snapshot from
+// CrowdSec and applies the normal address-list diff against RouterOS.
+func (m *Manager) reconcileActiveDecisions(ctx context.Context) {
+	if ctx.Err() != nil {
+		return
+	}
+
+	start := time.Now()
+	decisions, err := m.stream.ActiveDecisions(ctx)
+	if err != nil {
+		if ctx.Err() != nil {
+			return
+		}
+		m.logger.Error().Err(err).Msg("periodic reconciliation snapshot failed")
+		metrics.RecordError("reconcile")
+		return
+	}
+
+	m.logger.Info().Int("decisions", len(decisions)).Msg("periodic reconciliation snapshot fetched")
+	m.reconcileAddresses(decisions)
+	m.logger.Info().Dur("elapsed", time.Since(start)).Msg("periodic reconciliation complete")
 }
 
 // Shutdown removes all firewall rules created by this bouncer.
@@ -460,6 +498,22 @@ func (m *Manager) handleBan(d *crowdsec.Decision) {
 	}
 
 	listName := m.getAddressListName(d.Proto)
+	addr := rosClient.NormalizeAddress(d.Value, d.Proto)
+
+	m.cacheMu.RLock()
+	_, inCache := m.addressCache[addr]
+	m.cacheMu.RUnlock()
+	if inCache {
+		// The cache is intentionally authoritative between reconciliation passes
+		// to avoid repeating RouterOS writes for duplicate live decisions. If an
+		// entry disappears from RouterOS between passes, reconcileAddresses will
+		// purge the stale cache key and re-add it when the decision remains active.
+		m.logger.Debug().
+			Str("address", d.Value).
+			Str("list", listName).
+			Msg("address already in cache, skipping duplicate ban")
+		return
+	}
 
 	timeout := ""
 	if d.Duration > 0 {
@@ -467,12 +521,6 @@ func (m *Manager) handleBan(d *crowdsec.Decision) {
 	}
 
 	comment := buildAddressComment(m.commentPrefix(), d)
-
-	// Check if already cached locally (likely a duplicate decision).
-	addr := rosClient.NormalizeAddress(d.Value, d.Proto)
-	m.cacheMu.RLock()
-	_, alreadyCached := m.addressCache[addr]
-	m.cacheMu.RUnlock()
 
 	// AddAddress handles duplicates internally: if the address already exists
 	// on the router it finds the existing entry and updates its attributes,
@@ -489,12 +537,9 @@ func (m *Manager) handleBan(d *crowdsec.Decision) {
 	m.addressCache[addr] = struct{}{}
 	m.cacheMu.Unlock()
 
-	// Only record ban metrics for genuinely new entries, not duplicates.
-	if !alreadyCached {
-		metrics.RecordDecision("ban", metricsProto, d.Origin)
-		metrics.IncrActiveDecisions(metricsProto)
-		metrics.IncrActiveDecisionsByOrigin(d.Origin)
-	}
+	metrics.RecordDecision("ban", metricsProto, d.Origin)
+	metrics.IncrActiveDecisions(metricsProto)
+	metrics.IncrActiveDecisionsByOrigin(d.Origin)
 	metrics.ObserveOperationDuration("add", time.Since(start))
 
 	m.logger.Info().
@@ -611,10 +656,11 @@ func (m *Manager) resolveLogPrefix(ruleType string) string {
 	return m.cfg.Firewall.LogPrefix
 }
 
-// cleanupStaleRules removes firewall rules and address list entries left
-// from a previous run. It searches for the fixed ruleSignature embedded in
-// every bouncer-created comment, which reliably identifies all bouncer
-// resources regardless of the configured comment_prefix. This handles:
+// cleanupStaleRules removes firewall rules left from a previous run. It
+// searches for the fixed ruleSignature embedded in every bouncer-created rule
+// comment, which reliably identifies all bouncer rules regardless of the
+// configured comment_prefix. Address-list entries are reconciled separately
+// during startup and are not removed during shutdown. This handles:
 //   - Crash recovery (Shutdown was not called)
 //   - comment_prefix changes between restarts
 //   - Any other orphaned bouncer resources
@@ -1002,8 +1048,18 @@ func (m *Manager) reconcileAddresses(decisions []*crowdsec.Decision) {
 			currentMap[e.Address] = e
 		}
 
-		// Populate address cache with current router state
+		// Rebuild the cache slice for this protocol from the router snapshot.
+		// This evicts entries that expired or were removed outside the bouncer so
+		// a future live ban cannot be skipped because of stale local state.
 		m.cacheMu.Lock()
+		for addr := range m.addressCache {
+			if strings.Contains(addr, ":") != (proto == "ipv6") {
+				continue
+			}
+			if _, exists := currentMap[addr]; !exists {
+				delete(m.addressCache, addr)
+			}
+		}
 		for addr := range currentMap {
 			m.addressCache[addr] = struct{}{}
 		}

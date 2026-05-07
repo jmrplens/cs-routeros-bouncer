@@ -73,12 +73,13 @@ Pattern matching with `*` and `?` wildcards is supported.
 
 When the same IP appears in multiple decisions (e.g., different scenarios or origins), the bouncer handles this efficiently:
 
-1. **During bans**: Uses the optimistic-add pattern — tries to add and silently handles "already exists" errors
+1. **During bans**: Checks the in-memory cache first. If the address is already known to be present, the RouterOS API call is skipped.
 2. **During unbans**: Checks the in-memory cache first and only removes from MikroTik if the IP is actually present
-3. **On startup**: Decision collection pre-filters by deduplicating IPs before reconciliation
+3. **On startup and periodic reconciliation**: The decision collector deduplicates IPs before reconciliation
+4. **After cache misses**: If RouterOS still replies with `already have such entry`, the bouncer treats it as a device-level conflict, keeps the API session open, finds the existing entry, updates its timeout/comment, and records the address in cache. This write path only happens when the address was missing from the local cache.
 
 :::note
-Duplicate handling is transparent — the address list only ever contains one entry per IP regardless of how many decisions reference it. The last decision's timeout value is used for the address list entry.
+Duplicate handling is transparent — the address list only ever contains one entry per IP regardless of how many decisions reference it. Cached duplicate ban events do not refresh the RouterOS timeout during the same run; this avoids repeated RouterOS writes during stream churn. Periodic reconciliation repairs real drift by re-adding addresses that are still active in CrowdSec but missing on MikroTik.
 :::
 
 <LinkCard title="CrowdSec Configuration" description="Configure origins, scenarios, and LAPI connection settings." href="/cs-routeros-bouncer/configuration/crowdsec/" />

@@ -5,7 +5,12 @@ package crowdsec
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -74,6 +79,98 @@ func TestAPIClientNil(t *testing.T) {
 	s := newTestStream(mb)
 	if got := s.APIClient(); got != nil {
 		t.Errorf("expected nil, got %v", got)
+	}
+}
+
+// TestActiveDecisionsUsesDecisionListEndpoint verifies that periodic
+// reconciliation snapshots use the active-decision listing endpoint instead of
+// the delta stream's startup mode.
+func TestActiveDecisionsUsesDecisionListEndpoint(t *testing.T) {
+	var requestOffsets []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/decisions" {
+			t.Errorf("expected /v1/decisions path, got %s", r.URL.Path)
+		}
+		if strings.Contains(r.URL.RawQuery, "startup") {
+			t.Errorf("snapshot request should not use startup query: %s", r.URL.RawQuery)
+		}
+		query := r.URL.Query()
+		if query.Get("type") != "ban" {
+			t.Errorf("expected type=ban, got %q", query.Get("type"))
+		}
+		if query.Get("limit") != fmt.Sprintf("%d", activeDecisionPageSize) {
+			t.Errorf("expected paginated limit, got %q", query.Get("limit"))
+		}
+		if query.Get("scopes") != "ip,range" {
+			t.Errorf("expected scopes filter, got %q", query.Get("scopes"))
+		}
+		if query.Get("origins") != "crowdsec,CAPI" {
+			t.Errorf("expected origins filter, got %q", query.Get("origins"))
+		}
+		if query.Get("scenarios_containing") != "ssh" {
+			t.Errorf("expected scenarios_containing filter, got %q", query.Get("scenarios_containing"))
+		}
+		offset := query.Get("offset")
+		requestOffsets = append(requestOffsets, offset)
+
+		response := models.GetDecisionsResponse{}
+		switch offset {
+		case "0":
+			for i := 0; i < activeDecisionPageSize; i++ {
+				value := fmt.Sprintf("10.%d.%d.%d", i/65536, (i/256)%256, i%256)
+				response = append(response, &models.Decision{
+					Value:    strPtr(value),
+					Type:     strPtr("ban"),
+					Duration: strPtr("1h"),
+					Origin:   strPtr("crowdsec"),
+					Scenario: strPtr("ssh-bf"),
+				})
+			}
+		case fmt.Sprintf("%d", activeDecisionPageSize):
+			response = append(response,
+				&models.Decision{Value: strPtr("192.0.2.55"), Type: strPtr("ban"), Duration: strPtr("1h"), Origin: strPtr("crowdsec"), Scenario: strPtr("ssh-bf")},
+				&models.Decision{Value: strPtr("5.6.7.8"), Type: strPtr("captcha"), Duration: strPtr("1h")},
+			)
+		default:
+			t.Errorf("unexpected offset %q", offset)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	apiURL, err := url.Parse(server.URL + "/")
+	if err != nil {
+		t.Fatalf("parse server URL: %v", err)
+	}
+	client, err := apiclient.NewDefaultClient(apiURL, "v1", "test", server.Client())
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	mb := NewMockBouncer()
+	mb.APIClientVal = client
+	s := newTestStream(mb)
+	s.cfg.Scopes = []string{"ip", "range"}
+	s.cfg.Origins = []string{"crowdsec", "CAPI"}
+	s.cfg.ScenariosContaining = []string{"ssh"}
+
+	decisions, err := s.ActiveDecisions(context.Background())
+	if err != nil {
+		t.Fatalf("ActiveDecisions returned error: %v", err)
+	}
+	if len(requestOffsets) != 2 || requestOffsets[0] != "0" || requestOffsets[1] != fmt.Sprintf("%d", activeDecisionPageSize) {
+		t.Fatalf("expected two paginated requests, got offsets %v", requestOffsets)
+	}
+	if len(decisions) != activeDecisionPageSize+1 {
+		t.Fatalf("expected %d parsed ban decisions, got %d", activeDecisionPageSize+1, len(decisions))
+	}
+	last := decisions[len(decisions)-1]
+	if last.Value != "192.0.2.55" || last.Duration != time.Hour {
+		t.Fatalf("unexpected final decision: %+v", last)
 	}
 }
 

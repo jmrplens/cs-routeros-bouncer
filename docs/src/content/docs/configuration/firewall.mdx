@@ -417,7 +417,7 @@ The whitelist is useful when you have trusted monitoring systems, security scann
 :::
 
 :::note[Interaction with `connection_state`]
-When [`connection_state`](#firewallfilterconnection_state) is configured, it also applies to the whitelist accept rule. This means the accept rule will only match packets in the specified connection states. For most use cases this is fine, but be aware that whitelisted IPs in other connection states will fall through to subsequent rules.
+When `connection_state` is configured, it also applies to the whitelist accept rule. This means the accept rule will only match packets in the specified connection states. For most use cases, this is fine because the bouncer-managed drop/reject rule uses the same `connection_state` filter. If you have additional firewall rules below the bouncer-managed rules, whitelisted IPs in other connection states may still be evaluated by them.
 :::
 
 ---

@@ -37,9 +37,11 @@ The RouterOS API password.
 
 :::tip[Environment variables]
 For sensitive values like passwords, use environment variables instead of the config file:
+
 ```bash
 export MIKROTIK_PASS="your-secure-password"
 ```
+
 :::
 
 ## TLS
@@ -118,6 +120,7 @@ For small to medium deployments (≤ 5,000 IPs) the default `pool_size: 4` is op
 ```routeros
 /ip/service/set api max-sessions=1000
 ```
+
 :::
 
 :::note

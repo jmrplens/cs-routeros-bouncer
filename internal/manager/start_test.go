@@ -50,6 +50,12 @@ type mockStream struct {
 	// the real Run and should send decisions to banCh/deleteCh, then return
 	// when ctx is done. If nil, Run returns runErr immediately.
 	RunFunc func(ctx context.Context, banCh chan<- *crowdsec.Decision, deleteCh chan<- *crowdsec.Decision) error
+	// ActiveDecisionsFunc lets tests override the snapshot returned to periodic
+	// reconciliation.
+	ActiveDecisionsFunc func(ctx context.Context) ([]*crowdsec.Decision, error)
+	activeDecisions     []*crowdsec.Decision
+	activeErr           error
+	activeCalled        int
 }
 
 // Init implements StreamIface.Init, counting calls and returning the configured
@@ -76,6 +82,21 @@ func (s *mockStream) Run(ctx context.Context, banCh chan<- *crowdsec.Decision, d
 	return runErr
 }
 
+// ActiveDecisions implements CrowdSecStream.ActiveDecisions for startup tests.
+func (s *mockStream) ActiveDecisions(ctx context.Context) ([]*crowdsec.Decision, error) {
+	s.mu.Lock()
+	s.activeCalled++
+	fn := s.ActiveDecisionsFunc
+	decisions := s.activeDecisions
+	err := s.activeErr
+	s.mu.Unlock()
+
+	if fn != nil {
+		return fn(ctx)
+	}
+	return decisions, err
+}
+
 // APIClient implements StreamIface.APIClient and returns nil (not needed in
 // start tests).
 func (s *mockStream) APIClient() *apiclient.ApiClient {
@@ -93,6 +114,41 @@ func newTestManagerWithStream(mock *mockROS, stream *mockStream, cfg config.Conf
 		version:      "test",
 		ruleIDs:      make(map[string]string),
 		addressCache: make(map[string]struct{}),
+	}
+}
+
+// TestReconcileActiveDecisions_AddsMissingAddress verifies that periodic
+// reconciliation re-adds CrowdSec-active addresses missing from RouterOS.
+func TestReconcileActiveDecisions_AddsMissingAddress(t *testing.T) {
+	mock := &mockROS{bulkAddCount: 1}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	stream := &mockStream{
+		activeDecisions: []*crowdsec.Decision{
+			{Proto: "ip", Value: "1.2.3.4", Duration: time.Hour, Origin: "crowdsec", Type: "ban"},
+		},
+	}
+	mgr := newTestManagerWithStream(mock, stream, cfg)
+
+	mgr.reconcileActiveDecisions(context.Background())
+
+	stream.mu.Lock()
+	activeCalled := stream.activeCalled
+	stream.mu.Unlock()
+	if activeCalled != 1 {
+		t.Fatalf("expected ActiveDecisions to be called once, got %d", activeCalled)
+	}
+
+	mock.mu.Lock()
+	defer mock.mu.Unlock()
+	if len(mock.bulkAddCalls) != 1 {
+		t.Fatalf("expected one bulk add call, got %d", len(mock.bulkAddCalls))
+	}
+	if len(mock.bulkAddCalls[0].Entries) != 1 {
+		t.Fatalf("expected one bulk add entry, got %d: %+v", len(mock.bulkAddCalls[0].Entries), mock.bulkAddCalls)
+	}
+	if got := mock.bulkAddCalls[0].Entries[0].Address; got != "1.2.3.4" {
+		t.Errorf("expected 1.2.3.4 to be reconciled, got %s", got)
 	}
 }
 
@@ -603,12 +659,9 @@ func TestShutdown_RemoveRuleError(t *testing.T) {
 // ===========================================================================
 
 // TestHandleBan_DuplicateInCache verifies that when an address is already in
-// the local cache (duplicate decision), AddAddress still succeeds (it handles
-// duplicates internally) but ban metrics are NOT incremented.
+// the local cache (duplicate decision), RouterOS is not touched again.
 func TestHandleBan_DuplicateInCache(t *testing.T) {
-	mock := &mockROS{
-		addAddressID: "*1", // AddAddress succeeds (duplicate handled internally)
-	}
+	mock := &mockROS{}
 	cfg := baseConfig()
 	cfg.Firewall.IPv6.Enabled = false
 	mgr := newTestManager(mock, cfg)
@@ -629,9 +682,9 @@ func TestHandleBan_DuplicateInCache(t *testing.T) {
 	mock.mu.Lock()
 	defer mock.mu.Unlock()
 
-	// AddAddress should still be called (to update timeout on router)
-	if len(mock.addAddressCalls) != 1 {
-		t.Errorf("expected 1 AddAddress call, got %d", len(mock.addAddressCalls))
+	// AddAddress should not be called for cached duplicate decisions.
+	if len(mock.addAddressCalls) != 0 {
+		t.Errorf("expected 0 AddAddress calls, got %d", len(mock.addAddressCalls))
 	}
 
 	// Address should remain in cache
@@ -1035,7 +1088,6 @@ func TestReconcileAddresses_SequentialRemoveFallback(t *testing.T) {
 // TestReconcileAddresses_SequentialRemoveNoSuchItem verifies that "no such item"
 // errors during sequential remove are treated as success (expired items).
 func TestReconcileAddresses_SequentialRemoveNoSuchItem(t *testing.T) {
-	callCount := 0
 	mock := &mockROS{
 		listAddresses: []ros.AddressEntry{
 			{ID: "*1", Address: "10.0.0.1", Comment: "crowdsec-bouncer|old"},
@@ -1049,7 +1101,6 @@ func TestReconcileAddresses_SequentialRemoveNoSuchItem(t *testing.T) {
 
 	// Set error to "no such item"
 	mock.removeAddressErr = errors.New("no such item")
-	_ = callCount
 
 	mgr.reconcileAddresses(nil)
 
