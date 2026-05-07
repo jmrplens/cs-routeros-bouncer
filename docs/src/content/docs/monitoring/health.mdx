@@ -41,11 +41,23 @@ services:
   cs-routeros-bouncer:
     image: ghcr.io/jmrplens/cs-routeros-bouncer:latest
     healthcheck:
+      # Process liveness only; inspect routeros_connected for RouterOS state.
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:2112/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 15s
+```
+
+To restart the container when RouterOS connectivity is lost, inspect the JSON body instead:
+
+```yaml
+healthcheck:
+  test: ["CMD-SHELL", "wget -qO- http://localhost:2112/health | grep -q '\"routeros_connected\":true'"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 15s
 ```
 
   </TabItem>
@@ -64,6 +76,19 @@ readinessProbe:
   httpGet:
     path: /health
     port: 2112
+  initialDelaySeconds: 5
+  periodSeconds: 10
+```
+
+These probes confirm that the process and endpoint are responding. Use a custom exec probe if you want readiness to depend on RouterOS connectivity:
+
+```yaml
+readinessProbe:
+  exec:
+    command:
+      - sh
+      - -c
+      - wget -qO- http://localhost:2112/health | grep -q '"routeros_connected":true'
   initialDelaySeconds: 5
   periodSeconds: 10
 ```

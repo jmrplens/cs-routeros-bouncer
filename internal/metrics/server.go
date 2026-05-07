@@ -25,7 +25,9 @@ type Server struct {
 }
 
 // activeServer points to the latest health server so package-level metrics
-// updates can keep /health aligned with the Prometheus connection gauge.
+// updates can keep /health aligned with the Prometheus connection gauge. The
+// application creates a single metrics server; tests may replace this pointer
+// by constructing isolated Server instances.
 var activeServer atomic.Pointer[Server]
 
 // NewServer creates a new metrics HTTP server.

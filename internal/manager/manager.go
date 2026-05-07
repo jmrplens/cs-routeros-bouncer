@@ -1044,8 +1044,18 @@ func (m *Manager) reconcileAddresses(decisions []*crowdsec.Decision) {
 			currentMap[e.Address] = e
 		}
 
-		// Populate address cache with current router state
+		// Rebuild the cache slice for this protocol from the router snapshot.
+		// This evicts entries that expired or were removed outside the bouncer so
+		// a future live ban cannot be skipped because of stale local state.
 		m.cacheMu.Lock()
+		for addr := range m.addressCache {
+			if strings.Contains(addr, ":") != (proto == "ipv6") {
+				continue
+			}
+			if _, exists := currentMap[addr]; !exists {
+				delete(m.addressCache, addr)
+			}
+		}
 		for addr := range currentMap {
 			m.addressCache[addr] = struct{}{}
 		}

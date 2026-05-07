@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -99,30 +101,41 @@ func (s *Stream) ActiveDecisions(ctx context.Context) ([]*Decision, error) {
 		return nil, fmt.Errorf("CrowdSec API client is not initialized")
 	}
 
-	data, resp, err := client.Decisions.GetStream(ctx, s.activeDecisionStreamOpts())
-	if resp != nil && resp.Response != nil {
-		_ = resp.Response.Body.Close()
+	var data models.GetDecisionsResponse
+	req, err := client.PrepareRequest(ctx, http.MethodGet, s.activeDecisionListPath(client), nil)
+	if err != nil {
+		return nil, fmt.Errorf("preparing active CrowdSec decision request: %w", err)
 	}
+
+	_, err = client.Do(ctx, req, &data)
 	if err != nil {
 		return nil, fmt.Errorf("fetching active CrowdSec decisions: %w", err)
 	}
-	if data == nil {
-		return nil, nil
-	}
 
-	return parseDecisionBatch(data.New, true), nil
+	return parseDecisionBatch(data, true), nil
 }
 
-// activeDecisionStreamOpts builds a startup-style stream request so LAPI
-// returns the full active decision set with the same filters as live polling.
-func (s *Stream) activeDecisionStreamOpts() apiclient.DecisionsStreamOpts {
-	return apiclient.DecisionsStreamOpts{
-		Startup:                true,
-		Scopes:                 strings.Join(s.cfg.Scopes, ","),
-		ScenariosContaining:    strings.Join(s.cfg.ScenariosContaining, ","),
-		ScenariosNotContaining: strings.Join(s.cfg.ScenariosNotContaining, ","),
-		Origins:                strings.Join(s.cfg.Origins, ","),
+// activeDecisionListPath builds a filtered /decisions request for the periodic
+// reconciliation snapshot without using the delta-stream startup mode.
+func (s *Stream) activeDecisionListPath(client *apiclient.ApiClient) string {
+	values := url.Values{}
+	values.Set("type", "ban")
+	if len(s.cfg.Scopes) > 0 {
+		values.Set("scopes", strings.Join(s.cfg.Scopes, ","))
+	} else {
+		values.Set("scopes", "ip,range")
 	}
+	if len(s.cfg.Origins) > 0 {
+		values.Set("origins", strings.Join(s.cfg.Origins, ","))
+	}
+	if len(s.cfg.ScenariosContaining) > 0 {
+		values.Set("scenarios_containing", strings.Join(s.cfg.ScenariosContaining, ","))
+	}
+	if len(s.cfg.ScenariosNotContaining) > 0 {
+		values.Set("scenarios_not_containing", strings.Join(s.cfg.ScenariosNotContaining, ","))
+	}
+
+	return fmt.Sprintf("%s/decisions?%s", client.URLPrefix, values.Encode())
 }
 
 // Run starts the stream bouncer and returns channels for new and deleted decisions.

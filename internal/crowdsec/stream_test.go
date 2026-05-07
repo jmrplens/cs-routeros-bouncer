@@ -6,6 +6,10 @@ package crowdsec
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -74,6 +78,67 @@ func TestAPIClientNil(t *testing.T) {
 	s := newTestStream(mb)
 	if got := s.APIClient(); got != nil {
 		t.Errorf("expected nil, got %v", got)
+	}
+}
+
+// TestActiveDecisionsUsesDecisionListEndpoint verifies that periodic
+// reconciliation snapshots use the active-decision listing endpoint instead of
+// the delta stream's startup mode.
+func TestActiveDecisionsUsesDecisionListEndpoint(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/decisions" {
+			t.Errorf("expected /v1/decisions path, got %s", r.URL.Path)
+		}
+		if strings.Contains(r.URL.RawQuery, "startup") {
+			t.Errorf("snapshot request should not use startup query: %s", r.URL.RawQuery)
+		}
+		query := r.URL.Query()
+		if query.Get("type") != "ban" {
+			t.Errorf("expected type=ban, got %q", query.Get("type"))
+		}
+		if query.Get("scopes") != "ip,range" {
+			t.Errorf("expected scopes filter, got %q", query.Get("scopes"))
+		}
+		if query.Get("origins") != "crowdsec,CAPI" {
+			t.Errorf("expected origins filter, got %q", query.Get("origins"))
+		}
+		if query.Get("scenarios_containing") != "ssh" {
+			t.Errorf("expected scenarios_containing filter, got %q", query.Get("scenarios_containing"))
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[
+			{"value":"1.2.3.4","type":"ban","duration":"1h","origin":"crowdsec","scenario":"ssh-bf"},
+			{"value":"5.6.7.8","type":"captcha","duration":"1h"}
+		]`))
+	}))
+	defer server.Close()
+
+	apiURL, err := url.Parse(server.URL + "/")
+	if err != nil {
+		t.Fatalf("parse server URL: %v", err)
+	}
+	client, err := apiclient.NewDefaultClient(apiURL, "v1", "test", server.Client())
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	mb := NewMockBouncer()
+	mb.APIClientVal = client
+	s := newTestStream(mb)
+	s.cfg.Scopes = []string{"ip", "range"}
+	s.cfg.Origins = []string{"crowdsec", "CAPI"}
+	s.cfg.ScenariosContaining = []string{"ssh"}
+
+	decisions, err := s.ActiveDecisions(context.Background())
+	if err != nil {
+		t.Fatalf("ActiveDecisions returned error: %v", err)
+	}
+	if len(decisions) != 1 {
+		t.Fatalf("expected one parsed ban decision, got %d", len(decisions))
+	}
+	if decisions[0].Value != "1.2.3.4" || decisions[0].Duration != time.Hour {
+		t.Fatalf("unexpected decision: %+v", decisions[0])
 	}
 }
 

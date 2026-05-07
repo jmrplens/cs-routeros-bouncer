@@ -1087,7 +1087,6 @@ func TestReconcileAddresses_SequentialRemoveFallback(t *testing.T) {
 // TestReconcileAddresses_SequentialRemoveNoSuchItem verifies that "no such item"
 // errors during sequential remove are treated as success (expired items).
 func TestReconcileAddresses_SequentialRemoveNoSuchItem(t *testing.T) {
-	callCount := 0
 	mock := &mockROS{
 		listAddresses: []ros.AddressEntry{
 			{ID: "*1", Address: "10.0.0.1", Comment: "crowdsec-bouncer|old"},
@@ -1101,7 +1100,6 @@ func TestReconcileAddresses_SequentialRemoveNoSuchItem(t *testing.T) {
 
 	// Set error to "no such item"
 	mock.removeAddressErr = errors.New("no such item")
-	_ = callCount
 
 	mgr.reconcileAddresses(nil)
 
