@@ -46,13 +46,17 @@ fi
 # leave the config in an inconsistent state.
 
 _t9_write_config() {
+    local origins pool_size
+    origins=$(config_get_crowdsec_origins_json)
+    pool_size=$(config_get_mikrotik_pool_size)
+
     # Base config values from .env
     cat > "$_BOUNCER_CONFIG" <<YAML
 crowdsec:
   api_url: "${CROWDSEC_URL}"
   api_key: "${CROWDSEC_BOUNCER_API_KEY}"
   update_frequency: "10s"
-  origins: ["crowdsec", "cscli"]
+  origins: ${origins}
   scopes: ["ip", "range"]
   supported_decisions_types: ["ban"]
   retry_initial_connect: true
@@ -64,7 +68,7 @@ mikrotik:
   tls: false
   connection_timeout: "10s"
   command_timeout: "30s"
-  pool_size: 4
+  pool_size: ${pool_size}
 
 firewall:
   ipv4:

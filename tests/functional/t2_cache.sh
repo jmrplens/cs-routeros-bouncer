@@ -74,7 +74,7 @@ t2_2_live_ban() {
     local found=false
     for i in $(seq 1 12); do
         sleep 5
-        if ssh_list_addresses "${TEST_IPV4_LIST}" | grep -qF "$TEST_IP_BAN"; then
+        if ssh_address_exists "${TEST_IPV4_LIST}" "$TEST_IP_BAN"; then
             found=true; break
         fi
     done
@@ -95,7 +95,7 @@ t2_3_live_unban() {
     bouncer_running || skip_test "bouncer not running"
 
     # Ensure the test IP from T2.2 is present
-    if ! ssh_list_addresses "${TEST_IPV4_LIST}" | grep -qF "$TEST_IP_BAN"; then
+    if ! ssh_address_exists "${TEST_IPV4_LIST}" "$TEST_IP_BAN"; then
         skip_test "$TEST_IP_BAN not on router (T2.2 may have been skipped)"
     fi
 
@@ -105,7 +105,7 @@ t2_3_live_unban() {
     local removed=false
     for i in $(seq 1 12); do
         sleep 5
-        if ! ssh_list_addresses "${TEST_IPV4_LIST}" | grep -qF "$TEST_IP_BAN"; then
+        if ! ssh_address_exists "${TEST_IPV4_LIST}" "$TEST_IP_BAN"; then
             removed=true; break
         fi
     done
@@ -133,7 +133,7 @@ t2_4_expired_resilience() {
 
     local _found=false
     for _ in $(seq 1 8); do
-        if ssh_list_addresses "${TEST_IPV4_LIST}" | grep -qF "$TEST_IP_EXPIRE" 2>/dev/null; then
+        if ssh_address_exists "${TEST_IPV4_LIST}" "$TEST_IP_EXPIRE" 2>/dev/null; then
             _found=true; break
         fi
         sleep 5

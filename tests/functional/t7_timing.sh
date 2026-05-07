@@ -62,7 +62,7 @@ t7_2_ban_latency() {
     local found=false
     for _ in $(seq 1 20); do
         sleep 2
-        if ssh_list_addresses "${TEST_IPV4_LIST}" | grep -qF "$ip"; then
+        if ssh_address_exists "${TEST_IPV4_LIST}" "$ip"; then
             found=true; break
         fi
     done
@@ -104,7 +104,7 @@ t7_3_unban_latency() {
     local setup_ok=false
     for _ in $(seq 1 20); do
         sleep 3
-        if ssh_list_addresses "${TEST_IPV4_LIST}" | grep -qF "$ip"; then
+        if ssh_address_exists "${TEST_IPV4_LIST}" "$ip"; then
             setup_ok=true; break
         fi
     done
@@ -117,7 +117,7 @@ t7_3_unban_latency() {
     local removed=false
     for _ in $(seq 1 20); do
         sleep 2
-        if ! ssh_list_addresses "${TEST_IPV4_LIST}" | grep -qF "$ip"; then
+        if ! ssh_address_exists "${TEST_IPV4_LIST}" "$ip"; then
             removed=true; break
         fi
     done

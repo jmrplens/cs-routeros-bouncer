@@ -9,9 +9,10 @@
 # Prometheus /metrics endpoint.
 #
 # The suite is organized into 9 test groups (t1–t9), each in its own file.
-# Groups t1–t7 run with the default local-only decision set (~1,500 IPs).
-# Group t8 (CAPI) exercises the community blocklist (~25,000 IPs) and must
-# be explicitly enabled with --capi.
+# Groups t1–t7 validate the origins configured in the installed bouncer; this
+# may be local-only or include CAPI depending on /etc/cs-routeros-bouncer/config.yaml.
+# Group t8 temporarily enables CAPI if needed, exercises the community blocklist
+# (~28k IPs in May 2026), and must be explicitly enabled with --capi.
 # Group t9 tests advanced firewall configuration options (reject-with,
 # connection-state, log-prefix, passthrough, whitelist, etc.).
 #
@@ -26,7 +27,7 @@
 #   ./run_tests.sh                  # Run all test groups (except CAPI)
 #   ./run_tests.sh t1               # Run only group 1 (integrity)
 #   ./run_tests.sh t1 t2            # Run groups 1 and 2
-#   ./run_tests.sh --capi           # Include CAPI stress tests (~25k IPs)
+#   ./run_tests.sh --capi           # Include CAPI stress tests (~28k IPs)
 #   ./run_tests.sh --capi t8        # Run only CAPI group
 #   ./run_tests.sh --list           # List available test groups
 #
@@ -63,7 +64,7 @@ while [[ $# -gt 0 ]]; do
             echo "  t5  Edge cases (duplicates, rapid cycle, restart idempotency)"
             echo "  t6  CPU monitoring (steady-state, peak, recovery)"
             echo "  t7  Timing measurements (reconciliation, ban/unban latency)"
-            echo "  t8  CAPI stress test ~25k IPs (skipped unless --capi flag is set)"
+            echo "  t8  CAPI stress test ~28k IPs (skipped unless --capi flag is set)"
             echo "  t9  Advanced firewall config (reject-with, connection-state, log-prefix, passthrough, whitelist)"
             exit 0 ;;
         t[1-9]) RUN_GROUPS+=("$1"); shift ;;
@@ -118,7 +119,7 @@ fi
 
 echo -e "\n${BOLD}Running groups: ${RUN_GROUPS[*]}${NC}"
 if $ENABLE_CAPI; then
-    echo -e "${YELLOW}⚠  CAPI stress tests enabled (~25k IPs — may take several minutes)${NC}"
+    echo -e "${YELLOW}⚠  CAPI stress tests enabled (~28k IPs — may take several minutes)${NC}"
 fi
 
 # ─── Run selected groups ───────────────────────────────────────────────────

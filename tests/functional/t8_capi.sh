@@ -1,13 +1,13 @@
 # shellcheck shell=bash
 # =============================================================================
-# T8: CAPI Stress Test — ~25,000 IPs (Community Blocklist)
+# T8: CAPI Stress Test — ~28,000 IPs (Community Blocklist)
 # =============================================================================
 # Tests bouncer behaviour with ALL origins including CAPI (community
 # blocklist). This is gated behind the --capi flag because it takes
 # several minutes and significantly loads the router.
 #
 # Config change: origins: ["crowdsec", "cscli", "CAPI"]
-# Expected IPs: ~25,000 (varies with community list size)
+# Expected IPs: ~28,000 (varies with community list size)
 #
 # Prerequisites:
 #   - CrowdSec enrolled in CAPI with community blocklist available
@@ -16,16 +16,16 @@
 #   - All standard helpers: bouncer_*, ssh_*, lapi_*, snmp_available
 #
 # Coverage:
-#   T8.1  Full reconciliation of ~25k CAPI IPs
+#   T8.1  Full reconciliation of ~28k CAPI IPs
 #   T8.2  CPU peak during CAPI reconciliation
 #   T8.3  IP completeness: LAPI total vs router total (IPv4+IPv6)
 #   T8.4  IPv6 parity: LAPI IPv6 count vs router IPv6 list
-#   T8.5  Restart idempotency with ~25k entries
-#   T8.6  Single unban latency with 25k-entry cache
-#   T8.7  Steady-state CPU with 25k entries loaded
-#   T8.8  Restore to local-only origins (mass CAPI removal / cleanup)
+#   T8.5  Restart idempotency with ~28k entries
+#   T8.6  Single unban latency with 28k-entry cache
+#   T8.7  Steady-state CPU with ~28k entries loaded
+#   T8.8  Restore original origins (mass CAPI removal only for local-only configs)
 #
-# IMPORTANT: T8.8 always restores the config to local-only at the end.
+# IMPORTANT: T8.8 restores the origins present before T8 started.
 # =============================================================================
 
 # Config path and origin presets used by set_origins() / restore_local_origins().
@@ -33,11 +33,12 @@ readonly BOUNCER_CONFIG="/etc/cs-routeros-bouncer/config.yaml"
 readonly CAPI_ORIGINS='["crowdsec", "cscli", "CAPI"]'
 # shellcheck disable=SC2089
 readonly LOCAL_ORIGINS='["crowdsec", "cscli"]'
+ORIGINAL_ORIGINS="$(config_get_crowdsec_origins_json)"
+readonly ORIGINAL_ORIGINS
 
-# Safety trap: always restore local-only origins on exit/interrupt so the
-# production config is never left in CAPI mode after an interrupted test run.
+# Safety trap: always restore the origins that were active before T8 started.
 # shellcheck disable=SC2090,SC2089
-trap 'set_origins "$LOCAL_ORIGINS" 2>/dev/null' EXIT INT TERM
+trap 'set_origins "$ORIGINAL_ORIGINS" 2>/dev/null' EXIT INT TERM
 
 # ---- Helpers for config switching ----
 set_origins() {
@@ -50,9 +51,13 @@ restore_local_origins() {
     set_origins "$LOCAL_ORIGINS"
 }
 
+restore_original_origins() {
+    set_origins "$ORIGINAL_ORIGINS"
+}
+
 # ---- Tests ----
 
-# T8.1 — Full reconciliation with ALL origins (~25k IPs)
+# T8.1 — Full reconciliation with ALL origins (~28k IPs)
 # Enables CAPI origins, clears address lists, and runs a full reconciliation.
 # Checks for bulk errors (EOF, connection reset, message too large) in logs.
 # Pass: router receives ≥50 % of LAPI total and no bulk errors.
@@ -97,7 +102,7 @@ t8_1_full_reconciliation_capi() {
     fi
     log "CAPI T8.1 PASS: $total_count IPs in ${elapsed}s"
 }
-run_test "T8.1 CAPI full reconciliation (~25k IPs)" t8_1_full_reconciliation_capi
+run_test "T8.1 CAPI full reconciliation (~28k IPs)" t8_1_full_reconciliation_capi
 
 # T8.2 — CPU peak during CAPI reconciliation
 # Samples CPU 12 × 5 s (60 s window) immediately after T8.1's reconciliation.
@@ -161,8 +166,8 @@ t8_4_ipv6_parity() {
 }
 run_test "T8.4 CAPI IPv6 parity" t8_4_ipv6_parity
 
-# T8.5 — Restart idempotency with ~25k entries
-# Restarts bouncer with ~25k addresses already on the router and verifies
+# T8.5 — Restart idempotency with ~28k entries
+# Restarts bouncer with ~28k addresses already on the router and verifies
 # the count is preserved after reconciliation.
 # Pass: address count difference ≤ 50 before/after restart.
 t8_5_restart_idempotency() {
@@ -195,9 +200,9 @@ t8_5_restart_idempotency() {
 }
 run_test "T8.5 CAPI restart idempotency" t8_5_restart_idempotency
 
-# T8.6 — Unban latency with large cache (~25k entries)
+# T8.6 — Unban latency with large cache (~28k entries)
 # Adds a single test IP, waits for it to appear, then unbans and measures
-# removal latency while the bouncer's internal cache holds ~25k entries.
+# removal latency while the bouncer's internal cache holds ~28k entries.
 # Pass: informational (warns if >30 s but does not hard-fail).
 t8_6_unban_latency_large() {
     bouncer_running || skip_test "bouncer not running"
@@ -209,7 +214,7 @@ t8_6_unban_latency_large() {
     lapi_add_decision "$ip" "5m" "capi-unban-test"
     sleep 20  # wait for add
 
-    if ! ssh_list_addresses "${TEST_IPV4_LIST}" | grep -qF "$ip"; then
+    if ! ssh_address_exists "${TEST_IPV4_LIST}" "$ip"; then
         lapi_remove_decision "$ip"
         skip_test "Test IP not on router after 20s — cannot measure unban latency"
     fi
@@ -220,7 +225,7 @@ t8_6_unban_latency_large() {
     local removed=false
     for _ in $(seq 1 15); do
         sleep 2
-        if ! ssh_list_addresses "${TEST_IPV4_LIST}" | grep -qF "$ip"; then
+        if ! ssh_address_exists "${TEST_IPV4_LIST}" "$ip"; then
             removed=true; break
         fi
     done
@@ -236,7 +241,7 @@ t8_6_unban_latency_large() {
 }
 run_test "T8.6 CAPI unban latency (large cache)" t8_6_unban_latency_large
 
-# T8.7 — Steady-state CPU with ~25k entries loaded
+# T8.7 — Steady-state CPU with ~28k entries loaded
 # Waits 2 minutes for activity to settle, then samples CPU 4 × 5 s (20 s).
 # Pass: average CPU ≤ 30 %.
 t8_7_steady_state_cpu() {
@@ -258,18 +263,18 @@ t8_7_steady_state_cpu() {
 }
 run_test "T8.7 CAPI steady-state CPU" t8_7_steady_state_cpu
 
-# T8.8 — Restore to local-only origins (cleanup / mass removal)
-# Switches config back to LOCAL_ORIGINS (no CAPI), restarts bouncer, and
-# waits for reconciliation to remove ~23k CAPI-only entries.
-# Pass: final router count matches LAPI local-only count (within ±20).
+# T8.8 — Restore original origins (cleanup / mass removal when needed)
+# Switches config back to the origins that were active before T8 started,
+# restarts bouncer, and waits for reconciliation.
+# Pass: final router count matches LAPI for the restored origins (within ±20).
 # NOTE: This test always runs last to leave the system in its original state.
 t8_8_restore_local() {
     local count_before; count_before=$(ssh_count_addresses "${TEST_IPV4_LIST}")
     log "Current count: $count_before"
 
-    log "Restoring local-only config..."
+    log "Restoring original origins: $ORIGINAL_ORIGINS"
     bouncer_stop; sleep 2
-    restore_local_origins
+    restore_original_origins
 
     local start_ts; start_ts=$(date +%s)
     bouncer_start
@@ -293,4 +298,4 @@ t8_8_restore_local() {
     fi
     log "T8.8 PASS: restored to $count_after local IPs in ${elapsed}s"
 }
-run_test "T8.8 Restore to local-only (mass removal)" t8_8_restore_local
+run_test "T8.8 Restore original origins" t8_8_restore_local
