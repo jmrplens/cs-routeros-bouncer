@@ -4,8 +4,12 @@ on:
   push:
     branches: [main]
     paths:
-      - "docs/**"
-      - ".github/workflows/docs.yml"
+      - "docs/astro.config.mjs"
+      - "docs/package.json"
+      - "docs/pnpm-lock.yaml"
+      - "docs/public/**"
+      - "docs/src/**"
+      - "docs/tsconfig.json"
   workflow_dispatch:
 
 permissions:
