@@ -5,11 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.4.0]
 
 ### Added
 
 - **Periodic reconciliation** — active CrowdSec decisions are reconciled against MikroTik address lists every `crowdsec.reconciliation_interval` (default `15m`, `0` disables, minimum `1m`) so router-side timeout or manual drift is repaired without waiting for a restart
+- **Extended static analysis** — `make analyze` now includes `modernize` and `gosec`, and the documentation workspace now runs Astro type checks, ESLint, Prettier, build validation, and HTML validation through pnpm
 
 ### Fixed
 
@@ -19,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Release preparation** — active version references, issue templates, build examples, metric examples, and version-sensitive tests now point at `1.4.0`; the `v1.4.0` tag is intentionally left for the release merge
+- **Tooling and dependencies** — Go tooling now targets the project `go.mod` version (`1.26.3`) via `GOTOOLCHAIN`, and the documentation stack has been refreshed to the Astro 6 / Starlight 0.39 / TypeScript 6 / pnpm 10 generation
+- **Go lint policy** — golangci-lint rules have been tightened with `nilnil`, stale exclusions were removed, and not-found RouterOS paths now use explicit errors instead of `nil, nil` results
+- **GitHub Pages deployment** — docs publishing now runs only when Astro documentation inputs change, avoiding unrelated Pages deploys
 - **Documentation** — clarified that reconciliation can temporarily raise Router CPU when it performs add/remove work. Sustained high RouterOS CPU after reconciliation is not expected from address-list entries simply remaining in memory
 - **Benchmarks** — refreshed RB5009/RouterOS 7.22.1 CAPI measurements: ~28,700 decisions reconcile in ~58s wall-clock with ~35–36s of RouterOS bulk work, and no-drift periodic reconciliation settles around ~3–4s
 - **Systemd unit** — setup now installs `TimeoutStopSec=90` to avoid killing graceful shutdown during large-list churn
