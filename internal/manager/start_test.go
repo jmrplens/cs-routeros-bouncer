@@ -603,11 +603,10 @@ func TestShutdown_RemoveRuleError(t *testing.T) {
 // ===========================================================================
 
 // TestHandleBan_DuplicateInCache verifies that when an address is already in
-// the local cache (duplicate decision), AddAddress still succeeds (it handles
-// duplicates internally) but ban metrics are NOT incremented.
+// the local cache (duplicate decision), RouterOS is not touched again.
 func TestHandleBan_DuplicateInCache(t *testing.T) {
 	mock := &mockROS{
-		addAddressID: "*1", // AddAddress succeeds (duplicate handled internally)
+		addAddressID: "*1",
 	}
 	cfg := baseConfig()
 	cfg.Firewall.IPv6.Enabled = false
@@ -629,9 +628,9 @@ func TestHandleBan_DuplicateInCache(t *testing.T) {
 	mock.mu.Lock()
 	defer mock.mu.Unlock()
 
-	// AddAddress should still be called (to update timeout on router)
-	if len(mock.addAddressCalls) != 1 {
-		t.Errorf("expected 1 AddAddress call, got %d", len(mock.addAddressCalls))
+	// AddAddress should not be called for cached duplicate decisions.
+	if len(mock.addAddressCalls) != 0 {
+		t.Errorf("expected 0 AddAddress calls, got %d", len(mock.addAddressCalls))
 	}
 
 	// Address should remain in cache

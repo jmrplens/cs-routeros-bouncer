@@ -10,6 +10,9 @@ import (
 	"sync"
 	"testing"
 
+	gorouteros "github.com/go-routeros/routeros/v3"
+	"github.com/go-routeros/routeros/v3/proto"
+
 	"github.com/jmrplens/cs-routeros-bouncer/internal/config"
 )
 
@@ -52,6 +55,36 @@ func TestRun_ErrorReconnectsAndRetries(t *testing.T) {
 	// Expect 2 RunArgs calls (original + retry after reconnect).
 	if mc.callCount() != 2 {
 		t.Fatalf("expected 2 calls, got %d", mc.callCount())
+	}
+}
+
+// TestRun_DeviceErrorDoesNotReconnect verifies RouterOS trap/fatal replies are
+// returned to callers as command errors instead of being treated as broken
+// connections. Retrying those errors creates unnecessary API logins and repeats
+// commands such as duplicate address-list adds.
+func TestRun_DeviceErrorDoesNotReconnect(t *testing.T) {
+	mc := newMockConn()
+	c := &Client{
+		conn: mc,
+		dialFunc: func(_ config.MikroTikConfig) (RouterConn, error) {
+			t.Fatal("device errors should not trigger reconnect")
+			return nil, nil
+		},
+	}
+
+	mc.pushError(&gorouteros.DeviceError{Sentence: &proto.Sentence{Map: map[string]string{
+		"message": "failure: already have such entry",
+	}}})
+
+	_, err := c.Run("/ip/firewall/address-list/add")
+	if err == nil || !strings.Contains(err.Error(), "already have such entry") {
+		t.Fatalf("expected RouterOS device error, got: %v", err)
+	}
+	if mc.callCount() != 1 {
+		t.Fatalf("expected no retry for device error, got %d calls", mc.callCount())
+	}
+	if mc.closed {
+		t.Fatal("device error should not close the current connection")
 	}
 }
 

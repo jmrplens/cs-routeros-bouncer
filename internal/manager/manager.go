@@ -460,6 +460,18 @@ func (m *Manager) handleBan(d *crowdsec.Decision) {
 	}
 
 	listName := m.getAddressListName(d.Proto)
+	addr := rosClient.NormalizeAddress(d.Value, d.Proto)
+
+	m.cacheMu.RLock()
+	_, inCache := m.addressCache[addr]
+	m.cacheMu.RUnlock()
+	if inCache {
+		m.logger.Debug().
+			Str("address", d.Value).
+			Str("list", listName).
+			Msg("address already in cache, skipping duplicate ban")
+		return
+	}
 
 	timeout := ""
 	if d.Duration > 0 {
@@ -467,12 +479,6 @@ func (m *Manager) handleBan(d *crowdsec.Decision) {
 	}
 
 	comment := buildAddressComment(m.commentPrefix(), d)
-
-	// Check if already cached locally (likely a duplicate decision).
-	addr := rosClient.NormalizeAddress(d.Value, d.Proto)
-	m.cacheMu.RLock()
-	_, alreadyCached := m.addressCache[addr]
-	m.cacheMu.RUnlock()
 
 	// AddAddress handles duplicates internally: if the address already exists
 	// on the router it finds the existing entry and updates its attributes,
@@ -489,12 +495,9 @@ func (m *Manager) handleBan(d *crowdsec.Decision) {
 	m.addressCache[addr] = struct{}{}
 	m.cacheMu.Unlock()
 
-	// Only record ban metrics for genuinely new entries, not duplicates.
-	if !alreadyCached {
-		metrics.RecordDecision("ban", metricsProto, d.Origin)
-		metrics.IncrActiveDecisions(metricsProto)
-		metrics.IncrActiveDecisionsByOrigin(d.Origin)
-	}
+	metrics.RecordDecision("ban", metricsProto, d.Origin)
+	metrics.IncrActiveDecisions(metricsProto)
+	metrics.IncrActiveDecisionsByOrigin(d.Origin)
 	metrics.ObserveOperationDuration("add", time.Since(start))
 
 	m.logger.Info().
@@ -611,10 +614,11 @@ func (m *Manager) resolveLogPrefix(ruleType string) string {
 	return m.cfg.Firewall.LogPrefix
 }
 
-// cleanupStaleRules removes firewall rules and address list entries left
-// from a previous run. It searches for the fixed ruleSignature embedded in
-// every bouncer-created comment, which reliably identifies all bouncer
-// resources regardless of the configured comment_prefix. This handles:
+// cleanupStaleRules removes firewall rules left from a previous run. It
+// searches for the fixed ruleSignature embedded in every bouncer-created rule
+// comment, which reliably identifies all bouncer rules regardless of the
+// configured comment_prefix. Address-list entries are reconciled separately
+// during startup and are not removed during shutdown. This handles:
 //   - Crash recovery (Shutdown was not called)
 //   - comment_prefix changes between restarts
 //   - Any other orphaned bouncer resources
