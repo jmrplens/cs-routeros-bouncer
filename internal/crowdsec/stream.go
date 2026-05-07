@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -35,6 +36,8 @@ type Stream struct {
 	cfg     config.CrowdSecConfig
 	logger  zerolog.Logger
 }
+
+const activeDecisionPageSize = 1000
 
 // NewStream creates a new CrowdSec stream client.
 func NewStream(cfg config.CrowdSecConfig, version string) *Stream {
@@ -102,14 +105,22 @@ func (s *Stream) ActiveDecisions(ctx context.Context) ([]*Decision, error) {
 	}
 
 	var data models.GetDecisionsResponse
-	req, err := client.PrepareRequest(ctx, http.MethodGet, s.activeDecisionListPath(client), nil)
-	if err != nil {
-		return nil, fmt.Errorf("preparing active CrowdSec decision request: %w", err)
-	}
+	for offset := 0; ; offset += activeDecisionPageSize {
+		var page models.GetDecisionsResponse
+		req, err := client.PrepareRequest(ctx, http.MethodGet, s.activeDecisionListPath(client, activeDecisionPageSize, offset), nil)
+		if err != nil {
+			return nil, fmt.Errorf("preparing active CrowdSec decision request: %w", err)
+		}
 
-	_, err = client.Do(ctx, req, &data)
-	if err != nil {
-		return nil, fmt.Errorf("fetching active CrowdSec decisions: %w", err)
+		_, err = client.Do(ctx, req, &page)
+		if err != nil {
+			return nil, fmt.Errorf("fetching active CrowdSec decisions: %w", err)
+		}
+
+		data = append(data, page...)
+		if len(page) < activeDecisionPageSize {
+			break
+		}
 	}
 
 	return parseDecisionBatch(data, true), nil
@@ -117,9 +128,11 @@ func (s *Stream) ActiveDecisions(ctx context.Context) ([]*Decision, error) {
 
 // activeDecisionListPath builds a filtered /decisions request for the periodic
 // reconciliation snapshot without using the delta-stream startup mode.
-func (s *Stream) activeDecisionListPath(client *apiclient.ApiClient) string {
+func (s *Stream) activeDecisionListPath(client *apiclient.ApiClient, limit, offset int) string {
 	values := url.Values{}
 	values.Set("type", "ban")
+	values.Set("limit", strconv.Itoa(limit))
+	values.Set("offset", strconv.Itoa(offset))
 	if len(s.cfg.Scopes) > 0 {
 		values.Set("scopes", strings.Join(s.cfg.Scopes, ","))
 	} else {
@@ -135,7 +148,13 @@ func (s *Stream) activeDecisionListPath(client *apiclient.ApiClient) string {
 		values.Set("scenarios_not_containing", strings.Join(s.cfg.ScenariosNotContaining, ","))
 	}
 
-	return fmt.Sprintf("%s/decisions?%s", client.URLPrefix, values.Encode())
+	prefix := strings.Trim(client.URLPrefix, "/")
+	path := "/decisions"
+	if prefix != "" {
+		path = "/" + prefix + path
+	}
+
+	return fmt.Sprintf("%s?%s", path, values.Encode())
 }
 
 // Run starts the stream bouncer and returns channels for new and deleted decisions.
@@ -200,7 +219,7 @@ func (s *Stream) Run(ctx context.Context, banCh chan<- *Decision, deleteCh chan<
 func parseDecisionBatch(decisions models.GetDecisionsResponse, requireDuration bool) []*Decision {
 	parsed := make([]*Decision, 0, len(decisions))
 	for _, d := range decisions {
-		if d == nil || d.Value == nil || d.Type == nil {
+		if d == nil {
 			continue
 		}
 		if requireDuration && d.Duration == nil {

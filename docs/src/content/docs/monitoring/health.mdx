@@ -17,11 +17,13 @@ Default: `http://localhost:2112/health`
 
 ## Response format
 
+The `version` value represents the running release.
+
 ```json
 {
   "status": "ok",
   "routeros_connected": true,
-  "version": "v1.3.4"
+  "version": "<current version>"
 }
 ```
 
@@ -30,6 +32,8 @@ Default: `http://localhost:2112/health`
 | Code | Status | Meaning |
 |------|--------|---------|
 | `200` | <Badge text="OK" variant="success" /> | Health endpoint responded; inspect `routeros_connected` for RouterOS state |
+
+A timeout, connection refused error, or other TCP connection failure means the process or listener is unreachable. Monitoring systems should treat those connection failures as process-down signals; the `/health` endpoint itself returns `200` when reachable.
 
 ## Integration examples
 
@@ -53,7 +57,7 @@ To restart the container when RouterOS connectivity is lost, inspect the JSON bo
 
 ```yaml
 healthcheck:
-  test: ["CMD-SHELL", "wget -qO- http://localhost:2112/health | grep -q '\"routeros_connected\":true'"]
+  test: ["CMD-SHELL", "wget -qO- http://localhost:2112/health | grep -q '\"routeros_connected\":[[:space:]]*true'"]
   interval: 30s
   timeout: 10s
   retries: 3
@@ -88,7 +92,7 @@ readinessProbe:
     command:
       - sh
       - -c
-      - wget -qO- http://localhost:2112/health | grep -q '"routeros_connected":true'
+      - wget -qO- http://localhost:2112/health | grep -q '"routeros_connected":[[:space:]]*true'
   initialDelaySeconds: 5
   periodSeconds: 10
 ```

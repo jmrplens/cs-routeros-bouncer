@@ -260,6 +260,8 @@ func TestSetConnectedServer(t *testing.T) {
 // connection setter updates the HTTP health endpoint as well as Prometheus.
 func TestSetConnectedUpdatesHealthEndpoint(t *testing.T) {
 	srv := NewServer(config.MetricsConfig{}, "test")
+	SetHealthConnectedCallback(srv.SetConnected)
+	t.Cleanup(func() { SetHealthConnectedCallback(nil) })
 	SetConnected(true)
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/health", nil)
@@ -275,6 +277,7 @@ func TestSetConnectedUpdatesHealthEndpoint(t *testing.T) {
 	}
 
 	SetConnected(false)
+	req = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/health", nil)
 	w = httptest.NewRecorder()
 	srv.handleHealth(w, req)
 	body = map[string]interface{}{}

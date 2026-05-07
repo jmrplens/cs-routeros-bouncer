@@ -504,6 +504,10 @@ func (m *Manager) handleBan(d *crowdsec.Decision) {
 	_, inCache := m.addressCache[addr]
 	m.cacheMu.RUnlock()
 	if inCache {
+		// The cache is intentionally authoritative between reconciliation passes
+		// to avoid repeating RouterOS writes for duplicate live decisions. If an
+		// entry disappears from RouterOS between passes, reconcileAddresses will
+		// purge the stale cache key and re-add it when the decision remains active.
 		m.logger.Debug().
 			Str("address", d.Value).
 			Str("list", listName).

@@ -561,6 +561,8 @@ func TestValidateReconciliationIntervalMinimum(t *testing.T) {
 	cfg.CrowdSec.ReconciliationInterval = 30 * time.Second
 	if err := cfg.Validate(); err == nil {
 		t.Error("expected error for reconciliation interval below 1m")
+	} else if !strings.Contains(err.Error(), "reconciliation_interval") {
+		t.Errorf("expected reconciliation_interval error, got %v", err)
 	}
 
 	cfg.CrowdSec.ReconciliationInterval = time.Minute
@@ -576,6 +578,8 @@ func TestValidateReconciliationIntervalNegative(t *testing.T) {
 	cfg.CrowdSec.ReconciliationInterval = -time.Second
 	if err := cfg.Validate(); err == nil {
 		t.Error("expected error for negative reconciliation interval")
+	} else if !strings.Contains(err.Error(), "reconciliation_interval") {
+		t.Errorf("expected reconciliation_interval error, got %v", err)
 	}
 }
 

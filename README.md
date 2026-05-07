@@ -221,7 +221,7 @@ Fine-tuning options for decision filtering, TLS, performance, firewall customiza
 | Config Key | Env Variable | Default | Description |
 |---|---|---|---|
 | `crowdsec.update_frequency` | `CROWDSEC_UPDATE_FREQUENCY` | `10s` | Poll interval for decision updates |
-| `crowdsec.reconciliation_interval` | `CROWDSEC_RECONCILIATION_INTERVAL` | `15m` | Periodic address-list reconciliation interval (`0` = disabled, minimum `1m`) |
+| `crowdsec.reconciliation_interval` | `CROWDSEC_RECONCILIATION_INTERVAL` | `15m` | Periodic address-list reconciliation interval (`0` to disable; minimum `1m` when enabled) |
 | `crowdsec.lapi_metrics_interval` | `CROWDSEC_LAPI_METRICS_INTERVAL` | `15m` | LAPI usage metrics interval: active decisions, dropped traffic (`0` = disabled) |
 | `crowdsec.origins` | `CROWDSEC_ORIGINS` | `[]` (all) | Filter by origin (`["crowdsec","cscli"]` = local only) |
 | `crowdsec.scopes` | `CROWDSEC_SCOPES` | `["ip","range"]` | Decision scopes to process |
@@ -607,7 +607,7 @@ The dashboard provides real-time visibility into the bouncer's operation:
 
 - Large community blocklists (CAPI) can contain 20,000+ IPs — initial reconciliation processes them all
 - Use `crowdsec.origins: ["crowdsec", "cscli"]` to sync only local decisions
-- The large full-sync cost is paid at startup; periodic reconciliation is usually light when there is no drift, and cached duplicates skip RouterOS entirely
+- The large full-sync cost is paid at startup; periodic reconciliation is configurable via `crowdsec.reconciliation_interval` (default `15m`) and is usually light when there is no drift, while cached duplicates skip RouterOS entirely
 - Sustained high RouterOS CPU after reconciliation is not normal. Check logs for repeated `already have such entry` or reconnect messages, and verify you are running a version where RouterOS device errors do not trigger reconnects.
 
 </details>

@@ -187,11 +187,14 @@ This is expected during initial reconciliation with large address lists.
    ```
 
 2. Schedule bouncer restarts during low-traffic periods
-3. CPU impact is temporary — only while reconciliation is actively adding or removing entries
+
+:::note[CPU impact is temporary]
+CPU impact is temporary — only while reconciliation is actively adding or removing entries.
+:::
 
 ### Sustained high RouterOS CPU after startup
 
-:::danger[Router CPU stays high after reconciliation]
+:::caution[Router CPU stays high after reconciliation]
 This is not expected from address-list entries simply remaining on the router. The bouncer should be mostly idle between CrowdSec stream updates and periodic reconciliation runs.
 :::
 
@@ -201,13 +204,17 @@ Check for repeated RouterOS API churn:
 journalctl -u cs-routeros-bouncer --since "30 min ago" | grep -E "already have such entry|attempting reconnect|RouterOS command failed"
 ```
 
-Expected behavior:
+Signs of correct behavior (what to look for):
+
+<Steps>
 
 1. Cached duplicate ban decisions are skipped without touching RouterOS
 2. RouterOS `already have such entry` device errors do not trigger reconnects
 3. Router CPU returns near normal idle/traffic levels after reconciliation finishes
 
-If you still see repeated duplicate errors and reconnect attempts, upgrade to a build that includes the RouterOS device-error handling and cache fast-path fixes.
+</Steps>
+
+If you still see repeated duplicate errors and reconnect attempts, upgrade to the first release whose [changelog](https://github.com/jmrplens/cs-routeros-bouncer/blob/main/CHANGELOG.md#unreleased) includes the RouterOS device-error handling and cache fast-path fixes. Until that release is cut, build from a commit that contains that changelog entry.
 
 ## Logging and debugging
 

@@ -99,6 +99,7 @@ func main() {
 	// Always start the health/metrics server so the /health endpoint is
 	// available for container health checks even when metrics are disabled.
 	metricsSrv := metrics.NewServer(cfg.Metrics, config.Version)
+	metrics.SetHealthConnectedCallback(metricsSrv.SetConnected)
 	if err := metricsSrv.Start(); err != nil {
 		cancel()
 		log.Fatal().Err(err).Msg("failed to start health/metrics server") //nolint:gocritic // exitAfterDefer: intentional early exit before goroutines start

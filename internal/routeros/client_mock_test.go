@@ -10,9 +10,6 @@ import (
 	"sync"
 	"testing"
 
-	gorouteros "github.com/go-routeros/routeros/v3"
-	"github.com/go-routeros/routeros/v3/proto"
-
 	"github.com/jmrplens/cs-routeros-bouncer/internal/config"
 )
 
@@ -72,9 +69,7 @@ func TestRun_DeviceErrorDoesNotReconnect(t *testing.T) {
 		},
 	}
 
-	mc.pushError(&gorouteros.DeviceError{Sentence: &proto.Sentence{Map: map[string]string{
-		"message": "failure: already have such entry",
-	}}})
+	mc.pushError(newDuplicateDeviceError())
 
 	_, err := c.Run("/ip/firewall/address-list/add")
 	if err == nil || !strings.Contains(err.Error(), "already have such entry") {
@@ -149,31 +144,6 @@ func TestRun_NilConnAutoConnects(t *testing.T) {
 	_, err := c.Run("/test")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-// TestRun_DeviceErrorNoReconnect verifies that a DeviceError (e.g. "already
-// have such entry") is returned immediately without triggering a reconnect.
-func TestRun_DeviceErrorNoReconnect(t *testing.T) {
-	mc := newMockConn()
-	c := newTestClient(mc)
-
-	mc.pushError(newDuplicateDeviceError())
-
-	_, err := c.Run("/ip/firewall/address-list/add")
-	if err == nil {
-		t.Fatal("expected device error to be returned")
-	}
-	if !strings.Contains(err.Error(), "already have such entry") {
-		t.Fatalf("expected 'already have such entry', got: %v", err)
-	}
-	// Connection should still be set (no reconnect happened).
-	if !c.IsConnected() {
-		t.Fatal("connection should remain active after device error")
-	}
-	// Only 1 RunArgs call (no retry).
-	if mc.callCount() != 1 {
-		t.Fatalf("expected 1 call (no retry), got %d", mc.callCount())
 	}
 }
 

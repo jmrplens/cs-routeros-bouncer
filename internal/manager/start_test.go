@@ -144,6 +144,9 @@ func TestReconcileActiveDecisions_AddsMissingAddress(t *testing.T) {
 	if len(mock.bulkAddCalls) != 1 {
 		t.Fatalf("expected one bulk add call, got %d", len(mock.bulkAddCalls))
 	}
+	if len(mock.bulkAddCalls[0].Entries) != 1 {
+		t.Fatalf("expected one bulk add entry, got %d: %+v", len(mock.bulkAddCalls[0].Entries), mock.bulkAddCalls)
+	}
 	if got := mock.bulkAddCalls[0].Entries[0].Address; got != "1.2.3.4" {
 		t.Errorf("expected 1.2.3.4 to be reconciled, got %s", got)
 	}
@@ -658,9 +661,7 @@ func TestShutdown_RemoveRuleError(t *testing.T) {
 // TestHandleBan_DuplicateInCache verifies that when an address is already in
 // the local cache (duplicate decision), RouterOS is not touched again.
 func TestHandleBan_DuplicateInCache(t *testing.T) {
-	mock := &mockROS{
-		addAddressID: "*1",
-	}
+	mock := &mockROS{}
 	cfg := baseConfig()
 	cfg.Firewall.IPv6.Enabled = false
 	mgr := newTestManager(mock, cfg)

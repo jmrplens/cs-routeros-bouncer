@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Periodic reconciliation** — active CrowdSec decisions are reconciled against MikroTik address lists every `crowdsec.reconciliation_interval` (default `15m`, `0` disables, minimum `1m`) so router-side timeout/manual drift is repaired without waiting for a restart
+- **Periodic reconciliation** — active CrowdSec decisions are reconciled against MikroTik address lists every `crowdsec.reconciliation_interval` (default `15m`, `0` disables, minimum `1m`) so router-side timeout or manual drift is repaired without waiting for a restart
 
 ### Fixed
 
@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Documentation** — clarified that reconciliation can temporarily raise Router CPU when it performs add/remove work, while sustained high RouterOS CPU after reconciliation is not expected from address-list entries simply remaining in memory
+- **Documentation** — clarified that reconciliation can temporarily raise Router CPU when it performs add/remove work. Sustained high RouterOS CPU after reconciliation is not expected from address-list entries simply remaining in memory
 
 ## [1.3.4] - 2026-04-04
 

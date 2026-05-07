@@ -54,6 +54,8 @@ Lower values provide faster response but increase LAPI load. `10s` is a good bal
 
 How often to fetch a full active-decision snapshot from LAPI and reconcile it with MikroTik address-list membership. This repairs drift when an address-list entry is removed manually or expires on the router while CrowdSec still considers the decision active.
 
+`crowdsec.reconciliation_interval` / `CROWDSEC_RECONCILIATION_INTERVAL` uses Go duration format, such as `1m`, `15m`, or `1h`.
+
 Set to `0` to disable periodic reconciliation. Any non-zero value must be at least `1m`.
 
 ```yaml

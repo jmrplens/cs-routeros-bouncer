@@ -5,7 +5,7 @@ description: How the bouncer keeps MikroTik address-list membership synchronized
 
 import { Steps, LinkCard, CardGrid } from '@astrojs/starlight/components';
 
-How the bouncer keeps address-list membership synchronized with CrowdSec decisions.
+How the bouncer keeps MikroTik address-list membership synchronized with CrowdSec decisions.
 
 ## The reconciliation problem
 
@@ -16,7 +16,7 @@ When the bouncer starts (or restarts), or during the periodic reconciliation int
 - IPs may have expired or been removed manually on MikroTik while still active in CrowdSec
 - Previous bouncer entries may still exist from a prior run
 
-By default, reconciliation runs at startup and then every `15m`. Configure `crowdsec.reconciliation_interval` to change this cadence, set it to `0` to disable periodic reconciliation, or use any non-zero value of `1m` or higher.
+By default, reconciliation runs at startup and then every `15m`. Configure `crowdsec.reconciliation_interval` to change this cadence. Set it to `0` to disable periodic reconciliation; values below `1m` are rejected at startup, so use `0` to disable or a duration of `1m` or greater to enable.
 
 ## Reconciliation process
 
@@ -52,7 +52,7 @@ Measured on a MikroTik RB5009UG+S+ (ARM64, 4 cores @ 1400 MHz, 1 GB RAM):
 | IPs/second (delete) | ~168 | ~168 |
 
 :::note[Router CPU]
-Router CPU spikes are expected during reconciliation because the bouncer is adding or removing many address-list entries. After reconciliation, RouterOS CPU should settle back near normal idle/traffic levels; sustained high CPU usually indicates repeated API writes/reconnects or unrelated router workload, not the address-list entries simply existing in memory.
+Router CPU spikes are expected during reconciliation because the bouncer is adding or removing many address-list entries. After reconciliation, RouterOS CPU should settle back near normal idle/traffic levels. Sustained high CPU usually indicates repeated API writes/reconnects or unrelated router workload, not the address-list entries simply existing in memory.
 :::
 
 Periodic reconciliation is usually light: when there is no drift, it lists current address-list entries, compares them with the active CrowdSec snapshot, updates counters, and performs no add/remove writes.

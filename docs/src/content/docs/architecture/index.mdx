@@ -135,7 +135,7 @@ Firewall rules reference these lists by name, which is more efficient and avoids
 
 ### Diff-based reconciliation
 
-On startup, the bouncer performs a diff between CrowdSec's active decisions and MikroTik's current address list state:
+On startup, and then periodically at `crowdsec.reconciliation_interval`, the bouncer performs a diff between CrowdSec's active decisions and MikroTik's current address list state:
 
 1. Fetch all active decisions from CrowdSec
 2. Fetch all entries in the address list from MikroTik
@@ -143,4 +143,4 @@ On startup, the bouncer performs a diff between CrowdSec's active decisions and 
 4. Add missing entries (in CrowdSec but not in MikroTik)
 5. Remove stale entries (in MikroTik but not in CrowdSec)
 
-This ensures perfect synchronization regardless of how the bouncer was stopped or what happened while it was offline.
+This keeps membership synchronized regardless of how the bouncer was stopped, what happened while it was offline, or whether RouterOS-side entries expired while CrowdSec still considered them active.
