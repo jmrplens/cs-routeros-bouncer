@@ -96,6 +96,29 @@ func TestLogrusAdapterInfo(t *testing.T) {
 	}
 }
 
+// TestLogrusAdapterMultiArgFormatting verifies logrus-style formatting for
+// multi-argument non-format methods.
+func TestLogrusAdapterMultiArgFormatting(t *testing.T) {
+	var buf bytes.Buffer
+	zl := zerolog.New(&buf).Level(zerolog.InfoLevel)
+	adapter := NewLogrusAdapter(zl)
+
+	adapter.Info("count=", 2)
+	if output := buf.String(); !strings.Contains(output, "count=2") {
+		t.Errorf("expected 'count=2' in output, got: %s", output)
+	}
+
+	buf.Reset()
+	adapter.Println("hello", "world")
+	output := buf.String()
+	if !strings.Contains(output, "hello world") {
+		t.Errorf("expected 'hello world' in output, got: %s", output)
+	}
+	if strings.Contains(output, "hello world\\n") {
+		t.Errorf("expected trimmed println message, got: %s", output)
+	}
+}
+
 // TestLogrusAdapterWarningf verifies the Warningf alias for Warnf.
 func TestLogrusAdapterWarningf(t *testing.T) {
 	var buf bytes.Buffer

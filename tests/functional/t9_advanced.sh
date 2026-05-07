@@ -50,6 +50,26 @@ _t9_write_config() {
     origins=$(config_get_crowdsec_origins_json)
     pool_size=$(config_get_mikrotik_pool_size)
 
+    if ! python3 - "$origins" <<'PY'
+import json
+import sys
+
+try:
+    origins = json.loads(sys.argv[1])
+except Exception:
+    sys.exit(1)
+if not isinstance(origins, list) or not origins or not all(isinstance(origin, str) and origin for origin in origins):
+    sys.exit(1)
+PY
+    then
+      echo "FAIL: invalid crowdsec origins from config_get_crowdsec_origins_json: $origins" >&2
+      return 1
+    fi
+    if ! [[ "$pool_size" =~ ^[1-9][0-9]*$ ]]; then
+      echo "FAIL: invalid mikrotik pool_size from config_get_mikrotik_pool_size: $pool_size" >&2
+      return 1
+    fi
+
     # Base config values from .env
     cat > "$_BOUNCER_CONFIG" <<YAML
 crowdsec:

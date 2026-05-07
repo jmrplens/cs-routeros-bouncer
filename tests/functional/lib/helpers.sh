@@ -232,7 +232,9 @@ ssh_address_exists() {
     local path="/ip/firewall/address-list"
     [[ "$list" == *"6-"* ]] && path="/ipv6/firewall/address-list"
     local count
-    count=$(ssh_cmd "${path}/print count-only where list=$list address=$address" 2>/dev/null)
+    if ! count=$(ssh_cmd "${path}/print count-only where list=$list address=$address" 2>/dev/null); then
+        return 2
+    fi
     [[ "${count:-0}" -gt 0 ]]
 }
 
@@ -493,7 +495,11 @@ config_path = sys.argv[1]
 try:
     with open(config_path, "r", encoding="utf-8") as config_file:
         config = yaml.safe_load(config_file) or {}
-    print(int(((config.get("mikrotik") or {}).get("pool_size")) or 4))
+    pool_val = (config.get("mikrotik") or {}).get("pool_size")
+    if pool_val is None:
+        print(4)
+    else:
+        print(int(pool_val))
 except Exception:
     print(4)
 PY

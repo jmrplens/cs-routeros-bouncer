@@ -49,7 +49,7 @@ body:
     attributes:
       label: Use cases
       description: How would this feature be used? Provide concrete examples.
-      value: |
+      placeholder: |
         1.
         2.
 

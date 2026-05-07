@@ -12,7 +12,7 @@
 # Groups t1–t7 validate the origins configured in the installed bouncer; this
 # may be local-only or include CAPI depending on /etc/cs-routeros-bouncer/config.yaml.
 # Group t8 temporarily enables CAPI if needed, exercises the community blocklist
-# (~28k IPs in May 2026), and must be explicitly enabled with --capi.
+# (~28k IPs), and must be explicitly enabled with --capi.
 # Group t9 tests advanced firewall configuration options (reject-with,
 # connection-state, log-prefix, passthrough, whitelist, etc.).
 #

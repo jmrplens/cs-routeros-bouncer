@@ -39,7 +39,7 @@ export default defineConfig({
 	site: "https://jmrplens.github.io/cs-routeros-bouncer",
 	base: "/cs-routeros-bouncer",
 	markdown: {
-		rehypePlugins: [[rehypeMermaid, { strategy: "img-svg" }]],
+		rehypePlugins: [[rehypeMermaid, { strategy: "img-svg", dark: true }]],
 	},
 	integrations: [
 		routerosLanguage(),

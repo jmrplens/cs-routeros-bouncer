@@ -11,6 +11,7 @@
 	--brand-primary: 63, 81, 181; /* #3F51B5 — CrowdSec indigo */
 	--brand-accent: 0, 150, 136; /* #009688 — teal (RouterOS) */
 	--brand-dark: 26, 35, 126; /* #1A237E — deep indigo */
+	--z-skip-link: 9999;
 
 	/* Starlight overrides — dark mode (Starlight :root = dark default)
      Gray scale: light → dark to match Starlight semantics
@@ -153,11 +154,7 @@ th {
 			rgba(var(--brand-primary), 0.06) 0%,
 			transparent 60%
 		),
-		linear-gradient(
-			225deg,
-			rgba(var(--brand-accent), 0.04) 0%,
-			transparent 50%
-		);
+		linear-gradient(225deg, rgba(var(--brand-accent), 0.04) 0%, transparent 50%);
 	border-radius: var(--sl-border-radius);
 	padding-block: 2rem;
 }
@@ -169,11 +166,7 @@ th {
 			rgba(var(--brand-primary), 0.12) 0%,
 			transparent 60%
 		),
-		linear-gradient(
-			225deg,
-			rgba(var(--brand-accent), 0.08) 0%,
-			transparent 50%
-		);
+		linear-gradient(225deg, rgba(var(--brand-accent), 0.08) 0%, transparent 50%);
 }
 
 /* Hero CTA buttons */
@@ -259,10 +252,10 @@ pre {
 	position: fixed;
 	top: 1rem;
 	left: 1rem;
-	z-index: 9999;
+	z-index: var(--z-skip-link);
 	padding: 0.75rem 1.25rem;
 	background: rgb(var(--brand-primary));
-	color: var(--sl-color-white);
+	color: #ffffff;
 	font-weight: 600;
 	border-radius: var(--sl-border-radius);
 }
@@ -337,10 +330,6 @@ pre {
 	margin-block: 1rem;
 }
 
-:root[data-theme="dark"] .rehype-mermaid svg {
-	filter: invert(0.88) hue-rotate(180deg);
-}
-
 /* ------------------------------------------------------------------
    16. BADGES & INLINE-CODE
    ------------------------------------------------------------------ */
@@ -397,8 +386,14 @@ pre {
 	opacity: 0;
 	transition: opacity 0.15s ease;
 }
-.sl-markdown-content :is(h2, h3, h4):hover .anchor-link {
+.sl-markdown-content :is(h2, h3, h4):hover .anchor-link,
+.sl-markdown-content :is(h2, h3, h4):focus-within .anchor-link,
+.sl-markdown-content :is(h2, h3, h4) .anchor-link:focus,
+.sl-markdown-content :is(h2, h3, h4) .anchor-link:focus-visible {
 	opacity: 0.6;
+}
+.sl-markdown-content :is(h2, h3, h4) .anchor-link:focus-visible {
+	opacity: 1;
 }
 
 /* ------------------------------------------------------------------
@@ -430,7 +425,6 @@ pre {
 	display: block;
 	overflow-x: auto;
 	overflow-y: hidden;
-	-webkit-overflow-scrolling: touch;
 	border-collapse: separate;
 	border-spacing: 0;
 	border-radius: var(--sl-border-radius);
@@ -481,10 +475,12 @@ pre {
 		opacity 0.2s ease,
 		background 0.2s ease;
 }
-.expressive-code:hover .copy {
+.expressive-code:hover .copy,
+.expressive-code:focus-within .copy {
 	opacity: 0.7;
 }
-.expressive-code .copy:hover {
+.expressive-code .copy:hover,
+.expressive-code .copy:focus-visible {
 	opacity: 1;
 	background: rgba(var(--brand-primary), 0.15);
 }
@@ -537,11 +533,14 @@ pre {
 	font-size: 0.8rem;
 	color: var(--sl-color-gray-3);
 }
+.flow-step__arrow {
+	display: none;
+}
 
 /* Arrow between steps (desktop) */
 @media (min-width: 48rem) {
-	.flow-step + .flow-step::before {
-		content: "→";
+	.flow-step + .flow-step .flow-step__arrow {
+		display: block;
 		position: absolute;
 		left: -1.125rem;
 		top: 50%;

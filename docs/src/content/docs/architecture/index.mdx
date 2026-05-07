@@ -122,7 +122,7 @@ This is significantly faster than the "check-first" approach (~400 ms per IP), w
 
 ### Connection pool
 
-The bouncer maintains a configurable pool of persistent RouterOS API connections. During reconciliation, work is distributed across the pool using the generic `ParallelExec` helper; on an RB5009 with `pool_size: 10`, full CAPI bulk-add work for ~28,700 entries completed in ~35–36 s.
+The bouncer maintains a configurable pool of persistent RouterOS API connections. During reconciliation, work is distributed across the pool using the generic `ParallelExec` helper; on an RB5009 with `pool_size: 10`, full RouterOS bulk-add work for ~28,700 CAPI-origin entries completed in ~35–36 s.
 
 ### Script-based bulk add
 

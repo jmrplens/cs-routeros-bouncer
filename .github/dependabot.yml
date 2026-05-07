@@ -118,9 +118,21 @@ updates:
 
   # Docker Compose files live at the root and under docker/
   - package-ecosystem: "docker-compose"
-    directories:
-      - "/"
-      - "/docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Europe/Madrid"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "docker"
+
+  - package-ecosystem: "docker-compose"
+    directory: "/docker"
     schedule:
       interval: "weekly"
       day: "monday"

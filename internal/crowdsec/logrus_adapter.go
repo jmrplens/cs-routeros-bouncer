@@ -4,6 +4,9 @@
 package crowdsec
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/rs/zerolog"
 	"github.com/sirupsen/logrus"
 )
@@ -61,71 +64,75 @@ func (a *zerologAdapter) Panicf(format string, args ...any) {
 }
 
 func (a *zerologAdapter) Debug(args ...any) {
-	a.zl.Debug().Msgf("%v", args...)
+	a.zl.Debug().Msg(fmt.Sprint(args...))
 }
 
 func (a *zerologAdapter) Info(args ...any) {
-	a.zl.Info().Msgf("%v", args...)
+	a.zl.Info().Msg(fmt.Sprint(args...))
 }
 
 func (a *zerologAdapter) Warn(args ...any) {
-	a.zl.Warn().Msgf("%v", args...)
+	a.zl.Warn().Msg(fmt.Sprint(args...))
 }
 
 func (a *zerologAdapter) Warning(args ...any) {
-	a.zl.Warn().Msgf("%v", args...)
+	a.zl.Warn().Msg(fmt.Sprint(args...))
 }
 
 func (a *zerologAdapter) Error(args ...any) {
-	a.zl.Error().Msgf("%v", args...)
+	a.zl.Error().Msg(fmt.Sprint(args...))
 }
 
 func (a *zerologAdapter) Fatal(args ...any) {
-	a.zl.Fatal().Msgf("%v", args...)
+	a.zl.Fatal().Msg(fmt.Sprint(args...))
 }
 
 func (a *zerologAdapter) Panic(args ...any) {
-	a.zl.Panic().Msgf("%v", args...)
+	a.zl.Panic().Msg(fmt.Sprint(args...))
 }
 
 func (a *zerologAdapter) Debugln(args ...any) {
-	a.zl.Debug().Msgf("%v", args...)
+	a.zl.Debug().Msg(logrusLine(args...))
 }
 
 func (a *zerologAdapter) Infoln(args ...any) {
-	a.zl.Info().Msgf("%v", args...)
+	a.zl.Info().Msg(logrusLine(args...))
 }
 
 func (a *zerologAdapter) Warnln(args ...any) {
-	a.zl.Warn().Msgf("%v", args...)
+	a.zl.Warn().Msg(logrusLine(args...))
 }
 
 func (a *zerologAdapter) Warningln(args ...any) {
-	a.zl.Warn().Msgf("%v", args...)
+	a.zl.Warn().Msg(logrusLine(args...))
 }
 
 func (a *zerologAdapter) Errorln(args ...any) {
-	a.zl.Error().Msgf("%v", args...)
+	a.zl.Error().Msg(logrusLine(args...))
 }
 
 func (a *zerologAdapter) Fatalln(args ...any) {
-	a.zl.Fatal().Msgf("%v", args...)
+	a.zl.Fatal().Msg(logrusLine(args...))
 }
 
 func (a *zerologAdapter) Panicln(args ...any) {
-	a.zl.Panic().Msgf("%v", args...)
+	a.zl.Panic().Msg(logrusLine(args...))
 }
 
 func (a *zerologAdapter) Print(args ...any) {
-	a.zl.Info().Msgf("%v", args...)
+	a.zl.Info().Msg(fmt.Sprint(args...))
 }
 
 func (a *zerologAdapter) Printf(format string, args ...any) {
-	a.zl.Info().Msgf(format, args...)
+	a.zl.Info().Msg(fmt.Sprintf(format, args...))
 }
 
 func (a *zerologAdapter) Println(args ...any) {
-	a.zl.Info().Msgf("%v", args...)
+	a.zl.Info().Msg(logrusLine(args...))
+}
+
+func logrusLine(args ...any) string {
+	return strings.TrimSuffix(fmt.Sprintln(args...), "\n")
 }
 
 // asLogrus creates a minimal logrus.Logger that writes to zerolog.

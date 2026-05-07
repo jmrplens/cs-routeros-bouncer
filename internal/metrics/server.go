@@ -89,13 +89,20 @@ func (s *Server) Shutdown(ctx context.Context) error {
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
 	resp := map[string]any{
 		"status":             "ok",
 		"routeros_connected": s.connected.Load(),
 		"version":            s.version,
 	}
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
+	payload, err := json.Marshal(resp)
+	if err != nil {
 		log.Error().Err(err).Msg("failed to encode health response")
+		http.Error(w, "failed to encode health response", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if _, writeErr := w.Write(append(payload, '\n')); writeErr != nil {
+		log.Error().Err(writeErr).Msg("failed to write health response")
 	}
 }

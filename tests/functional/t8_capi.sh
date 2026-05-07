@@ -34,11 +34,26 @@ readonly CAPI_ORIGINS='["crowdsec", "cscli", "CAPI"]'
 # shellcheck disable=SC2089
 readonly LOCAL_ORIGINS='["crowdsec", "cscli"]'
 ORIGINAL_ORIGINS="$(config_get_crowdsec_origins_json)"
+if ! python3 - "$ORIGINAL_ORIGINS" <<'PY'
+import json
+import sys
+
+try:
+    origins = json.loads(sys.argv[1])
+except Exception:
+    sys.exit(1)
+if not isinstance(origins, list) or not origins or not all(isinstance(origin, str) and origin for origin in origins):
+    sys.exit(1)
+PY
+then
+    echo "FAIL: could not read valid original CrowdSec origins from config" >&2
+    exit 1
+fi
 readonly ORIGINAL_ORIGINS
 
 # Safety trap: always restore the origins that were active before T8 started.
 # shellcheck disable=SC2090,SC2089
-trap 'set_origins "$ORIGINAL_ORIGINS" 2>/dev/null' EXIT INT TERM
+trap 'set_origins "$ORIGINAL_ORIGINS" 2>/dev/null' EXIT
 
 # ---- Helpers for config switching ----
 set_origins() {

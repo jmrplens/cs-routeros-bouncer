@@ -18,7 +18,7 @@ body:
       options:
         - label: I have searched [existing issues](https://github.com/jmrplens/cs-routeros-bouncer/issues?q=is%3Aissue) and this bug has not been reported.
           required: true
-        - label: I have read the [README](https://github.com/jmrplens/cs-routeros-bouncer#readme) and [troubleshooting guide](https://github.com/jmrplens/cs-routeros-bouncer/blob/main/docs/src/content/docs/troubleshooting.mdx).
+        - label: I have read the [README](https://github.com/jmrplens/cs-routeros-bouncer#readme) and [troubleshooting guide](https://jmrplens.github.io/cs-routeros-bouncer/troubleshooting/).
           required: true
 
   - type: input

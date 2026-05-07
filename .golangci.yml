@@ -189,7 +189,6 @@ linters:
           - wastedassign
           - fatcontext
           - nilnil
-          - thelper
 
 output:
   formats:

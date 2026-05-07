@@ -207,6 +207,13 @@ t3_6_batch_remove() {
         fi
     done
     log "$on_router/${#test_ips[@]} test IPs on router"
+    if (( on_router == 0 )); then
+        for ip in "${test_ips[@]}"; do
+            lapi_remove_decision "$ip"
+        done
+        echo "FAIL: no batch-remove test IPs reached the router"
+        return 1
+    fi
 
     # Remove from LAPI
     for ip in "${test_ips[@]}"; do

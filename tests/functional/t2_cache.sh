@@ -95,8 +95,24 @@ t2_3_live_unban() {
     bouncer_running || skip_test "bouncer not running"
 
     # Ensure the test IP from T2.2 is present
-    if ! ssh_address_exists "${TEST_IPV4_LIST}" "$TEST_IP_BAN"; then
-        skip_test "$TEST_IP_BAN not on router (T2.2 may have been skipped)"
+    local present=false rc=1
+    for i in $(seq 1 3); do
+        if ssh_address_exists "${TEST_IPV4_LIST}" "$TEST_IP_BAN"; then
+            present=true
+            break
+        fi
+        rc=$?
+        if (( rc == 2 )); then
+            warn "SSH check failed for $TEST_IP_BAN (attempt $i/3)"
+        fi
+        sleep 2
+    done
+    if ! $present; then
+        if (( rc == 1 )); then
+            skip_test "$TEST_IP_BAN not on router (T2.2 may have been skipped)"
+        fi
+        echo "FAIL: could not verify $TEST_IP_BAN on router after SSH retries"
+        return 1
     fi
 
     lapi_remove_decision "$TEST_IP_BAN"

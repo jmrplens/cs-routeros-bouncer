@@ -14,7 +14,6 @@ builds:
       - CGO_ENABLED=0
     flags:
       - -trimpath
-      - -buildmode=pie
     goos:
       - linux
       - darwin
@@ -31,6 +30,17 @@ builds:
     goarm:
       - "6"
       - "7"
+    overrides:
+      - goos: linux
+        goarch: amd64
+        flags:
+          - -trimpath
+          - -buildmode=pie
+      - goos: linux
+        goarch: arm64
+        flags:
+          - -trimpath
+          - -buildmode=pie
     ignore:
       # Windows: only amd64 and arm64
       - goos: windows
