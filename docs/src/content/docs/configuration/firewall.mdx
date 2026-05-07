@@ -3,7 +3,7 @@ title: Firewall
 description: IPv4/IPv6 blocking, firewall rule creation, and output blocking configuration.
 ---
 
-import { Badge } from '@astrojs/starlight/components';
+import { Badge } from "@astrojs/starlight/components";
 
 Settings for IPv4/IPv6 blocking, firewall rule creation, and output blocking.
 
@@ -226,16 +226,16 @@ Each option below shows the bouncer YAML configuration and the equivalent Router
 
 Customize the ICMP response type when `deny_action` is `reject`. Only valid when `deny_action: "reject"`.
 
-| Value | Description |
-|---|---|
-| `icmp-network-unreachable` | Network is unreachable |
-| `icmp-host-unreachable` | Host is unreachable |
-| `icmp-port-unreachable` | Port is unreachable |
-| `icmp-protocol-unreachable` | Protocol is unreachable |
-| `icmp-network-prohibited` | Network administratively prohibited |
-| `icmp-host-prohibited` | Host administratively prohibited |
-| `icmp-admin-prohibited` | Communication administratively prohibited |
-| `tcp-reset` | Send TCP RST (recommended for TCP-heavy services) |
+| Value                       | Description                                       |
+| --------------------------- | ------------------------------------------------- |
+| `icmp-network-unreachable`  | Network is unreachable                            |
+| `icmp-host-unreachable`     | Host is unreachable                               |
+| `icmp-port-unreachable`     | Port is unreachable                               |
+| `icmp-protocol-unreachable` | Protocol is unreachable                           |
+| `icmp-network-prohibited`   | Network administratively prohibited               |
+| `icmp-host-prohibited`      | Host administratively prohibited                  |
+| `icmp-admin-prohibited`     | Communication administratively prohibited         |
+| `tcp-reset`                 | Send TCP RST (recommended for TCP-heavy services) |
 
 **Bouncer configuration:**
 
@@ -270,13 +270,13 @@ Use `tcp-reset` if you mainly want to reject TCP connections (SSH brute-force, w
 
 Add a `connection-state` matcher to filter rules. This restricts rule matching to specific connection states, allowing established/related connections to pass through even if the source IP is banned.
 
-| State | Description |
-|---|---|
-| `new` | A new connection (first packet of a flow) |
-| `established` | Part of an already established connection |
-| `related` | Related to an existing connection (e.g., FTP data channel) |
-| `invalid` | Cannot be identified or does not have any known state |
-| `untracked` | Packet is untracked (bypassing connection tracking) |
+| State         | Description                                                |
+| ------------- | ---------------------------------------------------------- |
+| `new`         | A new connection (first packet of a flow)                  |
+| `established` | Part of an already established connection                  |
+| `related`     | Related to an existing connection (e.g., FTP data channel) |
+| `invalid`     | Cannot be identified or does not have any known state      |
+| `untracked`   | Packet is untracked (bypassing connection tracking)        |
 
 :::caution
 This option only applies to **filter** rules. RAW rules do not support connection-state matching because raw operates before connection tracking.
@@ -319,24 +319,24 @@ Override the global `log_prefix` for specific rule types. This allows differenti
 
 **Resolution order:** per-type prefix → global `firewall.log_prefix`.
 
-| Rule type | Config key | Env var |
-|---|---|---|
-| Filter input rules | `firewall.filter.log_prefix` | `FIREWALL_FILTER_LOG_PREFIX` |
-| Raw input rules | `firewall.raw.log_prefix` | `FIREWALL_RAW_LOG_PREFIX` |
-| Output rules | `firewall.block_output.log_prefix` | `FIREWALL_OUTPUT_LOG_PREFIX` |
+| Rule type          | Config key                         | Env var                      |
+| ------------------ | ---------------------------------- | ---------------------------- |
+| Filter input rules | `firewall.filter.log_prefix`       | `FIREWALL_FILTER_LOG_PREFIX` |
+| Raw input rules    | `firewall.raw.log_prefix`          | `FIREWALL_RAW_LOG_PREFIX`    |
+| Output rules       | `firewall.block_output.log_prefix` | `FIREWALL_OUTPUT_LOG_PREFIX` |
 
 **Bouncer configuration:**
 
 ```yaml
 firewall:
   log: true
-  log_prefix: "crowdsec"       # global default
+  log_prefix: "crowdsec" # global default
   filter:
-    log_prefix: "cs-filter"    # overrides global for filter rules
+    log_prefix: "cs-filter" # overrides global for filter rules
   raw:
-    log_prefix: "cs-raw"       # overrides global for raw rules
+    log_prefix: "cs-raw" # overrides global for raw rules
   block_output:
-    log_prefix: "cs-output"    # overrides global for output rules
+    log_prefix: "cs-output" # overrides global for output rules
 ```
 
 **Equivalent RouterOS commands:**

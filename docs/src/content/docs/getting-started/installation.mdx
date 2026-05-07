@@ -3,7 +3,7 @@ title: Installation
 description: Deploy cs-routeros-bouncer using Docker, systemd, or build from source.
 ---
 
-import { Steps, Tabs, TabItem, LinkCard } from '@astrojs/starlight/components';
+import { Steps, Tabs, TabItem, LinkCard } from "@astrojs/starlight/components";
 
 cs-routeros-bouncer supports multiple deployment methods. Choose the one that best fits your infrastructure.
 
@@ -21,7 +21,7 @@ services:
     container_name: cs-routeros-bouncer
     restart: unless-stopped
     ports:
-      - "2112:2112"  # Prometheus metrics (optional)
+      - "2112:2112" # Prometheus metrics (optional)
     environment:
       CROWDSEC_URL: "http://crowdsec:8080/"
       CROWDSEC_BOUNCER_API_KEY: "your-bouncer-api-key"
@@ -88,10 +88,10 @@ All configuration options can be set via environment variables. See the [Configu
 
 The `setup` subcommand accepts optional flags:
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `-bin` | `/usr/local/bin/cs-routeros-bouncer` | Installation path for the binary |
-| `-config-dir` | `/etc/cs-routeros-bouncer` | Directory for configuration files |
+| Flag          | Default                              | Description                       |
+| ------------- | ------------------------------------ | --------------------------------- |
+| `-bin`        | `/usr/local/bin/cs-routeros-bouncer` | Installation path for the binary  |
+| `-config-dir` | `/etc/cs-routeros-bouncer`           | Directory for configuration files |
 
 ### Manual setup
 

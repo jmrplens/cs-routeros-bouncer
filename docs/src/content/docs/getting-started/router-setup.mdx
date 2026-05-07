@@ -3,7 +3,7 @@ title: Router Setup
 description: MikroTik RouterOS configuration required for cs-routeros-bouncer.
 ---
 
-import { Steps, Badge, LinkCard } from '@astrojs/starlight/components';
+import { Steps, Badge, LinkCard } from "@astrojs/starlight/components";
 
 This guide covers the MikroTik RouterOS configuration required for cs-routeros-bouncer.
 
@@ -56,12 +56,12 @@ Create a dedicated user with minimal permissions:
 
 ### Required policies
 
-| Policy | Why |
-|--------|-----|
-| `read` | Read firewall rules and address lists |
-| `write` | Create/modify/delete firewall rules and address lists |
-| `api` | Access the RouterOS API |
-| `sensitive` | Required for some API operations |
+| Policy      | Why                                                   |
+| ----------- | ----------------------------------------------------- |
+| `read`      | Read firewall rules and address lists                 |
+| `write`     | Create/modify/delete firewall rules and address lists |
+| `api`       | Access the RouterOS API                               |
+| `sensitive` | Required for some API operations                      |
 
 ### Denied policies
 
@@ -107,7 +107,7 @@ For TLS connections:
    mikrotik:
      address: "192.168.0.1:8729"
      tls: true
-     tls_insecure: false  # Set to true only for self-signed certs (disables cert verification — avoid in production)
+     tls_insecure: false # Set to true only for self-signed certs (disables cert verification — avoid in production)
    ```
 
 </Steps>

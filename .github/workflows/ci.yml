@@ -141,12 +141,9 @@ jobs:
       - name: Install documentation dependencies
         working-directory: docs
         run: pnpm install --frozen-lockfile
-      - name: Check documentation
+      - name: Analyze documentation
         working-directory: docs
-        run: pnpm check
-      - name: Build documentation
-        working-directory: docs
-        run: pnpm build
+        run: pnpm analyze
 
   test:
     name: Tests

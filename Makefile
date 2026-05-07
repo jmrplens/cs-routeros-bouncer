@@ -29,7 +29,7 @@ LDFLAGS := -s -w -X $(MODULE)/internal/config.Version=$(VERSION) \
 .PHONY: help all build build-all build-linux-amd64 build-linux-arm64 build-darwin-amd64 build-darwin-arm64 build-windows-amd64 \
 	run test test-short test-race test-integration test-docker coverage \
 	fmt goimports goimports-check gofmt-check vet modernize modernize-fix golangci-lint gosec staticcheck govulncheck actionlint mdlint mdlint-fix \
-        lint analyze install-tools docs-install docs-check docs-build docs-preview docs-analyze \
+		lint analyze install-tools docs-install docs-check docs-lint docs-format-check docs-format docs-build docs-html-validate docs-preview docs-analyze \
         clean install uninstall docker-build docker-push release-snapshot
 
 ## help: show available make targets
@@ -154,7 +154,7 @@ mdlint-fix:
 lint: vet staticcheck golangci-lint
 
 ## analyze: run full static analysis suite
-analyze: gofmt-check goimports-check vet modernize golangci-lint gosec staticcheck govulncheck actionlint mdlint docs-check
+analyze: gofmt-check goimports-check vet modernize golangci-lint gosec staticcheck govulncheck actionlint mdlint docs-analyze
 
 ## install-tools: install Go analysis tools pinned to CI versions
 install-tools:
@@ -174,16 +174,33 @@ docs-install:
 docs-check:
 	pnpm --dir docs check
 
+## docs-lint: run ESLint for the documentation site
+docs-lint:
+	pnpm --dir docs lint
+
+## docs-format-check: verify documentation formatting
+docs-format-check:
+	pnpm --dir docs format:check
+
+## docs-format: format documentation sources
+docs-format:
+	pnpm --dir docs format
+
 ## docs-build: build the documentation site
 docs-build:
 	pnpm --dir docs build
+
+## docs-html-validate: validate generated documentation HTML
+docs-html-validate: docs-build
+	pnpm --dir docs html:validate
 
 ## docs-preview: preview the built documentation site
 docs-preview:
 	pnpm --dir docs preview
 
 ## docs-analyze: run all documentation checks
-docs-analyze: docs-check docs-build mdlint
+docs-analyze:
+	pnpm --dir docs analyze
 
 ## clean: remove generated build and coverage artifacts
 clean:

@@ -3,7 +3,7 @@ title: Quick Start
 description: Get cs-routeros-bouncer running in 5 minutes.
 ---
 
-import { Steps, Tabs, TabItem, LinkCard, CardGrid } from '@astrojs/starlight/components';
+import { Steps, LinkCard, CardGrid } from "@astrojs/starlight/components";
 
 <Steps>
 
@@ -36,45 +36,46 @@ import { Steps, Tabs, TabItem, LinkCard, CardGrid } from '@astrojs/starlight/com
 
 3. **Deploy the bouncer**
 
-   <Tabs>
-     <TabItem label="Docker Compose" icon="seti:docker">
-       ```yaml
-       services:
-         cs-routeros-bouncer:
-           image: ghcr.io/jmrplens/cs-routeros-bouncer:latest
-           container_name: cs-routeros-bouncer
-           restart: unless-stopped
-           ports:
-             - "2112:2112"  # Prometheus metrics (optional)
-           environment:
-             CROWDSEC_URL: "http://crowdsec:8080/"
-             CROWDSEC_BOUNCER_API_KEY: "your-bouncer-api-key"
-             MIKROTIK_HOST: "192.168.0.1:8728"
-             MIKROTIK_USER: "crowdsec"
-             MIKROTIK_PASS: "your-password"
-       ```
+   Choose one deployment method.
 
-       ```bash
-       docker compose up -d
-       ```
-     </TabItem>
-     <TabItem label="Binary + systemd" icon="linux">
-       ```bash
-       # Download (replace with your architecture: amd64, arm64, armv7)
-       wget https://github.com/jmrplens/cs-routeros-bouncer/releases/latest/download/cs-routeros-bouncer_linux_amd64.tar.gz
-       tar xzf cs-routeros-bouncer_linux_amd64.tar.gz
+   **Docker Compose**
 
-       # Automated install
-       sudo ./cs-routeros-bouncer setup
+   ```yaml
+   services:
+     cs-routeros-bouncer:
+       image: ghcr.io/jmrplens/cs-routeros-bouncer:latest
+       container_name: cs-routeros-bouncer
+       restart: unless-stopped
+       ports:
+         - "2112:2112" # Prometheus metrics (optional)
+       environment:
+         CROWDSEC_URL: "http://crowdsec:8080/"
+         CROWDSEC_BOUNCER_API_KEY: "your-bouncer-api-key"
+         MIKROTIK_HOST: "192.168.0.1:8728"
+         MIKROTIK_USER: "crowdsec"
+         MIKROTIK_PASS: "your-password"
+   ```
 
-       # Edit configuration
-       sudo nano /etc/cs-routeros-bouncer/cs-routeros-bouncer.yaml
+   ```bash
+   docker compose up -d
+   ```
 
-       # Restart after editing config
-       sudo systemctl restart cs-routeros-bouncer
-       ```
-     </TabItem>
-   </Tabs>
+   **Binary + systemd**
+
+   ```bash
+   # Download (replace with your architecture: amd64, arm64, armv7)
+   wget https://github.com/jmrplens/cs-routeros-bouncer/releases/latest/download/cs-routeros-bouncer_linux_amd64.tar.gz
+   tar xzf cs-routeros-bouncer_linux_amd64.tar.gz
+
+   # Automated install
+   sudo ./cs-routeros-bouncer setup
+
+   # Edit configuration
+   sudo nano /etc/cs-routeros-bouncer/cs-routeros-bouncer.yaml
+
+   # Restart after editing config
+   sudo systemctl restart cs-routeros-bouncer
+   ```
 
 4. **Verify it's working**
 

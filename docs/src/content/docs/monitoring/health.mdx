@@ -3,7 +3,7 @@ title: Health Endpoint
 description: HTTP health check endpoint for monitoring bouncer status.
 ---
 
-import { Tabs, TabItem, Badge } from '@astrojs/starlight/components';
+import { Tabs, TabItem, Badge } from "@astrojs/starlight/components";
 
 The bouncer always provides a health check endpoint. Prometheus metrics can be disabled, but `/health` remains available for Docker, systemd, Kubernetes, and external uptime checks.
 
@@ -29,8 +29,8 @@ The `version` value represents the running release.
 
 ## HTTP status codes
 
-| Code | Status | Meaning |
-|------|--------|---------|
+| Code  | Status                                | Meaning                                                                    |
+| ----- | ------------------------------------- | -------------------------------------------------------------------------- |
 | `200` | <Badge text="OK" variant="success" /> | Health endpoint responded; inspect `routeros_connected` for RouterOS state |
 
 A timeout, connection refused error, or other TCP connection failure means the process or listener is unreachable. Monitoring systems should treat those connection failures as process-down signals; the `/health` endpoint itself returns `200` when reachable.
@@ -57,7 +57,11 @@ To restart the container when RouterOS connectivity is lost, inspect the JSON bo
 
 ```yaml
 healthcheck:
-  test: ["CMD-SHELL", "wget -qO- http://localhost:2112/health | grep -q '\"routeros_connected\":[[:space:]]*true'"]
+  test:
+    [
+      "CMD-SHELL",
+      'wget -qO- http://localhost:2112/health | grep -q ''"routeros_connected":[[:space:]]*true''',
+    ]
   interval: 30s
   timeout: 10s
   retries: 3

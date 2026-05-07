@@ -30,11 +30,14 @@ docs/
 
 ## Commands
 
-| Command          | Action                                      |
-| :--------------- | :------------------------------------------ |
-| `pnpm install`   | Install dependencies                        |
-| `pnpm dev`       | Start dev server at `localhost:4321`         |
-| `pnpm build`     | Build production site to `./dist/`           |
-| `pnpm preview`   | Preview build locally before deploying       |
+| Command        | Action                                 |
+| :------------- | :------------------------------------- |
+| `pnpm install` | Install dependencies                   |
+| `pnpm dev`     | Start dev server at `localhost:4321`   |
+| `pnpm analyze` | Run all docs checks                    |
+| `pnpm lint`    | Run ESLint                             |
+| `pnpm format`  | Format docs sources                    |
+| `pnpm build`   | Build production site to `./dist/`     |
+| `pnpm preview` | Preview build locally before deploying |
 
 > **Note:** First install requires `pnpm approve-builds` to approve esbuild/sharp post-install scripts, and Playwright's Chromium browser (`npx playwright install chromium`).

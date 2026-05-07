@@ -3,7 +3,7 @@ title: Building
 description: How to build, test, and lint the bouncer from source.
 ---
 
-import { Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import { Steps, Tabs, TabItem } from "@astrojs/starlight/components";
 
 ## Prerequisites
 
@@ -137,11 +137,11 @@ The project uses `.golangci.yml` for linter configuration.
 
 ## CI/CD
 
-| Workflow | Trigger | Purpose |
-|----------|---------|---------|
-| `test.yml` | Push, PR | Run tests and linting |
-| `release.yml` | Tag push | Build binaries, Docker images, create GitHub release |
-| `docker.yml` | Push to main | Build and push Docker image to GHCR |
+| Workflow      | Trigger      | Purpose                                              |
+| ------------- | ------------ | ---------------------------------------------------- |
+| `test.yml`    | Push, PR     | Run tests and linting                                |
+| `release.yml` | Tag push     | Build binaries, Docker images, create GitHub release |
+| `docker.yml`  | Push to main | Build and push Docker image to GHCR                  |
 
 ### Release process
 
