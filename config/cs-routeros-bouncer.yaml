@@ -16,6 +16,9 @@ crowdsec:
   # Advanced CrowdSec parameters (defaults work for most setups)
   # ────────────────────────────────────────────────────────────────────────────
   update_frequency: "10s"
+  # How often to repair drift between active CrowdSec decisions and RouterOS
+  # address lists (0 to disable, minimum non-zero value: 1m)
+  reconciliation_interval: "15m"
   # Filter decisions by origin (empty = all decisions)
   # Use ["crowdsec", "cscli"] for local-only mode (no community blocklists)
   origins: []

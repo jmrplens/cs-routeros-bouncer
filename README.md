@@ -11,7 +11,7 @@ A [CrowdSec](https://www.crowdsec.net/) remediation component (bouncer) for [Mik
 
 - **Zero manual router configuration** — auto-creates and auto-removes firewall filter/raw rules on start/stop
 - **Individual IP management** — adds on ban, removes on unban (no bulk re-upload, no duplicates)
-- **State reconciliation** — on start/restart, syncs CrowdSec decisions with MikroTik state (adds missing, removes stale)
+- **State reconciliation** — on start/restart and periodically, syncs CrowdSec decisions with MikroTik state (adds missing, removes stale)
 - **High-performance sync** — connection pool, script-based bulk add, in-memory cache (~1,500 IPs in ~9 s, ~25,000 IPs in ~2 min 50 s)
 - **Graceful shutdown** — removes firewall rules on stop (address list entries expire via MikroTik timeout)
 - **IPv4 + IPv6** — independently toggleable
@@ -221,6 +221,7 @@ Fine-tuning options for decision filtering, TLS, performance, firewall customiza
 | Config Key | Env Variable | Default | Description |
 |---|---|---|---|
 | `crowdsec.update_frequency` | `CROWDSEC_UPDATE_FREQUENCY` | `10s` | Poll interval for decision updates |
+| `crowdsec.reconciliation_interval` | `CROWDSEC_RECONCILIATION_INTERVAL` | `15m` | Periodic address-list reconciliation interval (`0` = disabled, minimum `1m`) |
 | `crowdsec.lapi_metrics_interval` | `CROWDSEC_LAPI_METRICS_INTERVAL` | `15m` | LAPI usage metrics interval: active decisions, dropped traffic (`0` = disabled) |
 | `crowdsec.origins` | `CROWDSEC_ORIGINS` | `[]` (all) | Filter by origin (`["crowdsec","cscli"]` = local only) |
 | `crowdsec.scopes` | `CROWDSEC_SCOPES` | `["ip","range"]` | Decision scopes to process |
@@ -395,9 +396,10 @@ mikrotik:
 
 ### Runtime
 
-- **Ban**: Adds IP to the MikroTik address list with the CrowdSec ban duration as timeout (~1–3 ms)
+- **Ban**: Checks the in-memory cache first. New addresses are added to the MikroTik address list with the CrowdSec ban duration as timeout (~1–3 ms); cached duplicate ban events skip the RouterOS API entirely.
 - **Unban**: Checks in-memory cache first — if IP not present, skips API call entirely; otherwise finds and removes the IP immediately
-- Uses an optimistic-add pattern (~1–3 ms per IP vs ~400 ms with lookup-first)
+- **Periodic reconciliation**: Every `crowdsec.reconciliation_interval` (default `15m`), fetches active CrowdSec decisions and repairs address-list drift. Set it to `0` to disable; values below `1m` are rejected.
+- Uses an optimistic-add pattern for cache misses (~1–3 ms per IP vs ~400 ms with lookup-first)
 
 ### Shutdown (SIGTERM / SIGINT)
 
@@ -421,6 +423,8 @@ Rules are placed at the **top** of the chain by default (`rule_placement: top`) 
 ### Performance
 
 Tested on a **MikroTik RB5009UG+S+** (ARM64, 4 cores @ 1400 MHz, 1 GB RAM, RouterOS 7.21.3) with the bouncer running on a separate Linux host connected via the RouterOS API (plaintext, port 8728).
+
+Router CPU can spike during startup reconciliation because the bouncer is intentionally adding or removing many address-list entries. Sustained high RouterOS CPU after reconciliation is not expected from simply keeping entries in memory; it usually points to repeated RouterOS API writes/reconnects, duplicate-decision churn, or unrelated router workload.
 
 The bouncer uses a **connection pool** (4 parallel API connections), **script-based bulk add** (chunks of 100 entries), and an **in-memory address cache** for O(1) lookups during unban operations.
 
@@ -449,7 +453,8 @@ The bouncer uses a **connection pool** (4 parallel API connections), **script-ba
 | Operation | Typical latency | Notes |
 |-----------|----------------|-------|
 | Ban (add IP) | **~1–3 ms** | Optimistic-add, no lookup needed |
-| Ban (duplicate IP, new duration) | **~5–8 ms** | Detects "already have" → updates timeout to new duration |
+| Ban (cached duplicate IP) | **< 1 ms** | Address already known in cache → skip RouterOS API call entirely |
+| Ban (router duplicate after cache miss) | **~5–8 ms** | Detects "already have" → finds and updates existing entry without reconnecting |
 | Unban (remove IP) | **~7 s** end-to-end | Includes LAPI polling interval (15 s max). API call itself ~2 ms |
 | Unban cache fast-path | **< 1 ms** | IP not in cache → skip API call entirely |
 
@@ -460,25 +465,22 @@ The bouncer uses a **connection pool** (4 parallel API connections), **script-ba
 | Firewall rules created | 4 rules in ~2 s |
 | Bouncer memory (steady state) | ~30 MB |
 | Bouncer CPU (steady state) | < 1% |
-| Router CPU (steady state, local-only) | 8–11% |
-| Router CPU (steady state, local + CAPI) | 15–20% |
+| Router CPU (steady state, after reconciliation) | typically 0–2% observed; traffic and firewall config dependent |
 
 > **Note:** All benchmarks measured on a real RB5009UG+S+ with production traffic. Router CPU includes
-> SNMP monitoring (10 s interval) and normal network forwarding. Individual add/remove operations are
-> typically **1–3 ms per IP** (median). Occasional latency spikes (p95 up to ~50 ms) are caused by
-> RouterOS internal scheduling on large address lists.
+> SNMP monitoring (10 s interval), normal network forwarding, and any active firewall workload. Individual
+> add/remove operations are typically **1–3 ms per IP** (median). Occasional latency spikes (p95 up to
+> ~50 ms) are caused by RouterOS internal scheduling on large address lists.
 
 ---
 
 ### Duplicate IP handling
 
-When CrowdSec sends a new ban decision for an IP that already exists in the MikroTik address list (e.g., a 24-hour ban is replaced by a 7-day ban), the bouncer handles it automatically:
+When CrowdSec sends a ban decision for an IP that is already known to be present on the router, the bouncer returns from the in-memory cache fast-path and does not write to RouterOS again. This avoids RouterOS management/API churn during repeated stream updates.
 
-1. **Optimistic add** — attempts to add the address to RouterOS
-2. **Conflict detection** — RouterOS returns an "already have" error
-3. **Timeout update** — the bouncer finds the existing entry and updates its timeout to the new duration
+If the local cache is cold or out of sync and RouterOS replies with `already have such entry`, the bouncer treats that as a RouterOS device error, not a connection failure. It keeps the API connection open, finds the existing address-list entry, and updates its timeout/comment without creating a duplicate.
 
-This ensures the most recent ban duration always takes effect, without creating duplicate entries. The operation typically takes ~5–8 ms (find + update).
+The address list only ever contains one entry per IP. Cached duplicate decisions do not refresh the RouterOS timeout during the same run; startup and periodic reconciliation restore membership by adding missing entries and removing stale ones.
 
 ---
 
@@ -605,7 +607,8 @@ The dashboard provides real-time visibility into the bouncer's operation:
 
 - Large community blocklists (CAPI) can contain 20,000+ IPs — initial reconciliation processes them all
 - Use `crowdsec.origins: ["crowdsec", "cscli"]` to sync only local decisions
-- This is a one-time cost at startup; runtime processing is ~1ms per IP
+- The large full-sync cost is paid at startup; periodic reconciliation is usually light when there is no drift, and cached duplicates skip RouterOS entirely
+- Sustained high RouterOS CPU after reconciliation is not normal. Check logs for repeated `already have such entry` or reconnect messages, and verify you are running a version where RouterOS device errors do not trigger reconnects.
 
 </details>
 

@@ -21,6 +21,9 @@ type CrowdSecStream interface {
 	// deleted decisions to deleteCh. It blocks until ctx is canceled.
 	Run(ctx context.Context, banCh chan<- *crowdsec.Decision, deleteCh chan<- *crowdsec.Decision) error
 
+	// ActiveDecisions fetches the current active decisions snapshot from LAPI.
+	ActiveDecisions(ctx context.Context) ([]*crowdsec.Decision, error)
+
 	// APIClient returns the underlying LAPI client for metrics reporting.
 	// Must be called after Init().
 	APIClient() *apiclient.ApiClient

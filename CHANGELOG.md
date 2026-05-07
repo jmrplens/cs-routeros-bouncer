@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Periodic reconciliation** — active CrowdSec decisions are reconciled against MikroTik address lists every `crowdsec.reconciliation_interval` (default `15m`, `0` disables, minimum `1m`) so router-side timeout/manual drift is repaired without waiting for a restart
+
+### Fixed
+
+- **Sustained RouterOS CPU/API churn on duplicate ban decisions** — cached duplicate bans now skip RouterOS API writes entirely, and RouterOS device errors continue to be treated as command conflicts rather than transport failures. This prevents repeated duplicate add attempts and reconnect churn during steady-state operation ([#22](https://github.com/jmrplens/cs-routeros-bouncer/issues/22))
+
+### Changed
+
+- **Documentation** — clarified that startup reconciliation can temporarily raise Router CPU, while sustained high RouterOS CPU after reconciliation is not expected from address-list entries simply remaining in memory
+
 ## [1.3.4] - 2026-04-04
 
 ### Added
@@ -88,4 +102,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Mass removal** (parallel, 4 connections): ~105 removes/s (~23,500 IPs in ~3 min 45 s)
 - **Restart with existing entries**: ~10 s for 25,000 IPs (diff-only, no bulk needed)
 - Router CPU peak during reconciliation: 14% (local), 23% (CAPI 25k)
-- Steady-state router CPU: 8–11% (local-only), 15–20% (with CAPI)
+- Steady-state router CPU in the original benchmark environment: 8–11% (local-only), 15–20% (with CAPI)

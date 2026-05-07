@@ -24,6 +24,8 @@ type Server struct {
 	connected  atomic.Bool
 }
 
+var activeServer atomic.Pointer[Server]
+
 // NewServer creates a new metrics HTTP server.
 // When cfg.Enabled is true the /metrics endpoint is registered;
 // the /health endpoint is always available.
@@ -31,6 +33,7 @@ func NewServer(cfg config.MetricsConfig, version string) *Server {
 	s := &Server{
 		version: version,
 	}
+	activeServer.Store(s)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.handleHealth)
@@ -58,6 +61,12 @@ func NewServer(cfg config.MetricsConfig, version string) *Server {
 // SetConnected updates the connection status used by the health endpoint.
 func (s *Server) SetConnected(connected bool) {
 	s.connected.Store(connected)
+}
+
+func setHealthConnected(connected bool) {
+	if s := activeServer.Load(); s != nil {
+		s.SetConnected(connected)
+	}
 }
 
 // Start begins serving the health (and optionally metrics) endpoint.

@@ -60,6 +60,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.CrowdSec.UpdateFrequency.String() != "10s" {
 		t.Errorf("expected update_frequency '10s', got '%s'", cfg.CrowdSec.UpdateFrequency)
 	}
+	if cfg.CrowdSec.ReconciliationInterval != 15*time.Minute {
+		t.Errorf("expected reconciliation_interval '15m', got '%s'", cfg.CrowdSec.ReconciliationInterval)
+	}
 	if !cfg.CrowdSec.RetryInitialConnect {
 		t.Error("expected retry_initial_connect true by default")
 	}
@@ -522,6 +525,49 @@ func TestLapiMetricsIntervalEnvOverride(t *testing.T) {
 	if cfg.CrowdSec.LapiMetricsInterval.String() != want {
 		t.Errorf("expected LapiMetricsInterval=%s, got %s",
 			want, cfg.CrowdSec.LapiMetricsInterval)
+	}
+}
+
+func TestReconciliationIntervalEnvOverride(t *testing.T) {
+	setMinimalEnv(t)
+	t.Setenv("CROWDSEC_RECONCILIATION_INTERVAL", "5m")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.CrowdSec.ReconciliationInterval != 5*time.Minute {
+		t.Errorf("expected reconciliation_interval 5m, got %s", cfg.CrowdSec.ReconciliationInterval)
+	}
+}
+
+func TestValidateReconciliationIntervalZeroDisables(t *testing.T) {
+	cfg := validCfg()
+	cfg.CrowdSec.ReconciliationInterval = 0
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("zero should be valid (disables reconciliation): %v", err)
+	}
+}
+
+func TestValidateReconciliationIntervalMinimum(t *testing.T) {
+	cfg := validCfg()
+	cfg.CrowdSec.ReconciliationInterval = 30 * time.Second
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error for reconciliation interval below 1m")
+	}
+
+	cfg.CrowdSec.ReconciliationInterval = time.Minute
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("1m should be valid: %v", err)
+	}
+}
+
+func TestValidateReconciliationIntervalNegative(t *testing.T) {
+	cfg := validCfg()
+	cfg.CrowdSec.ReconciliationInterval = -time.Second
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error for negative reconciliation interval")
 	}
 }
 

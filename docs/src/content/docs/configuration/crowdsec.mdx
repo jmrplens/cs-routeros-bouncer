@@ -48,6 +48,19 @@ How often to poll LAPI for new or expired decisions. Uses Go duration format (e.
 Lower values provide faster response but increase LAPI load. `10s` is a good balance for most setups.
 :::
 
+### `crowdsec.reconciliation_interval` <Badge text="Optional" variant="note" />
+
+**Env:** `CROWDSEC_RECONCILIATION_INTERVAL` · **Default:** `15m`
+
+How often to fetch a full active-decision snapshot from LAPI and reconcile it with MikroTik address-list membership. This repairs drift when an address-list entry is removed manually or expires on the router while CrowdSec still considers the decision active.
+
+Set to `0` to disable periodic reconciliation. Any non-zero value must be at least `1m`.
+
+```yaml
+crowdsec:
+  reconciliation_interval: "15m"
+```
+
 ### `crowdsec.lapi_metrics_interval` <Badge text="Optional" variant="note" />
 
 **Env:** `CROWDSEC_LAPI_METRICS_INTERVAL` · **Default:** `15m`

@@ -59,6 +59,7 @@ Fine-tuning options for decision filtering, TLS, performance, firewall customiza
 | Config Key | Env Variable | Default | Description |
 |---|---|---|---|
 | `crowdsec.update_frequency` | `CROWDSEC_UPDATE_FREQUENCY` | `10s` | Poll interval |
+| `crowdsec.reconciliation_interval` | `CROWDSEC_RECONCILIATION_INTERVAL` | `15m` | Periodic address-list reconciliation (`0` = disabled, minimum `1m`) |
 | `crowdsec.lapi_metrics_interval` | `CROWDSEC_LAPI_METRICS_INTERVAL` | `15m` | Usage metrics reporting interval (`0` = disabled) |
 | `crowdsec.origins` | `CROWDSEC_ORIGINS` | `[]` (all) | Filter by origin |
 | `crowdsec.scopes` | `CROWDSEC_SCOPES` | `["ip","range"]` | Decision scopes |

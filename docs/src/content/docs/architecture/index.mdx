@@ -63,10 +63,17 @@ sequenceDiagram
     loop Every update_frequency
         CS->>B: New/deleted decisions
         alt Ban decision
-            B->>MT: Add IP to address list
+            B->>B: Check address cache
+            B->>MT: Add IP if missing
         else Unban decision
-            B->>MT: Remove IP from address list
+            B->>B: Check address cache
+            B->>MT: Remove IP if present
         end
+    end
+
+    loop Every reconciliation_interval
+        B->>CS: Fetch active decisions snapshot
+        B->>MT: Reconcile address-list drift
     end
 
     Note over B: Shutdown (SIGTERM)
@@ -91,12 +98,13 @@ Examples:
 
 This allows the bouncer to precisely identify and manage its own resources without affecting user-created rules.
 
-### Optimistic-add pattern
+### Cache-first optimistic add
 
-When adding an IP to the address list, the bouncer uses an "optimistic-add" approach:
+When processing a ban decision, the bouncer first checks its in-memory address cache:
 
-1. Try to add the IP directly (~1–3 ms)
-2. If RouterOS returns "already have such entry", silently succeed
+1. If the address is already in cache, the RouterOS API call is skipped entirely.
+2. If the address is not in cache, try to add it directly (~1–3 ms).
+3. If RouterOS returns `already have such entry`, treat it as a device-level conflict, keep the connection open, find the existing entry, and update its timeout/comment.
 
 This is significantly faster than the "check-first" approach (~400 ms per IP), which would require listing all entries first.
 
@@ -113,6 +121,7 @@ For initial reconciliation, the bouncer generates RouterOS scripts that add entr
 An in-memory map (`map[string]struct{}` with `sync.RWMutex`) tracks all addresses currently on the router. This provides:
 
 - **O(1) unban lookups**: When an IP is unbanned, the cache is checked first. If the IP is not in the cache (e.g., already expired on the router), the API call is skipped entirely.
+- **O(1) duplicate-ban fast path**: Repeated ban events for addresses already known to be on the router return immediately without creating RouterOS management/API churn.
 - **Pre-filtering during startup**: Deletes received during initial decision collection are pre-filtered against incoming bans to avoid unnecessary work.
 
 ### Single named address lists

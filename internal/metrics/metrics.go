@@ -404,6 +404,7 @@ func SetConnected(connected bool) {
 	} else {
 		routerosConnected.Set(0)
 	}
+	setHealthConnected(connected)
 }
 
 // ObserveOperationDuration records the duration of an operation.

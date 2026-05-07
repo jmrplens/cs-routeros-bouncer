@@ -345,6 +345,18 @@ collectLoop:
 
 	m.reconcileAddresses(filteredBans)
 
+	reconcileInterval := m.cfg.CrowdSec.ReconciliationInterval
+	var reconcileC <-chan time.Time
+	var reconcileTicker *time.Ticker
+	if reconcileInterval > 0 {
+		reconcileTicker = time.NewTicker(reconcileInterval)
+		defer reconcileTicker.Stop()
+		reconcileC = reconcileTicker.C
+		m.logger.Info().Dur("interval", reconcileInterval).Msg("periodic reconciliation enabled")
+	} else {
+		m.logger.Info().Msg("periodic reconciliation disabled")
+	}
+
 	m.logger.Info().Msg("reconciliation complete, processing live decisions")
 
 	// 7. Process live decision events (deltas)
@@ -362,8 +374,32 @@ collectLoop:
 
 		case d := <-deleteCh:
 			m.handleUnban(d)
+
+		case <-reconcileC:
+			m.reconcileActiveDecisions(ctx)
 		}
 	}
+}
+
+func (m *Manager) reconcileActiveDecisions(ctx context.Context) {
+	if ctx.Err() != nil {
+		return
+	}
+
+	start := time.Now()
+	decisions, err := m.stream.ActiveDecisions(ctx)
+	if err != nil {
+		if ctx.Err() != nil {
+			return
+		}
+		m.logger.Error().Err(err).Msg("periodic reconciliation snapshot failed")
+		metrics.RecordError("reconcile")
+		return
+	}
+
+	m.logger.Info().Int("decisions", len(decisions)).Msg("periodic reconciliation snapshot fetched")
+	m.reconcileAddresses(decisions)
+	m.logger.Info().Dur("elapsed", time.Since(start)).Msg("periodic reconciliation complete")
 }
 
 // Shutdown removes all firewall rules created by this bouncer.

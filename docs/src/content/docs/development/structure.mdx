@@ -16,41 +16,48 @@ import { FileTree } from '@astrojs/starlight/components';
   - config/
     - config.go Configuration struct and loading
     - config_test.go
-    - defaults.go Default values
+    - doc.go Package documentation
   - crowdsec/
-    - client.go CrowdSec LAPI client
-    - client_test.go
-    - decisions.go Decision processing
+    - bouncer_iface.go CrowdSec bouncer interface
+    - crowdsec_test.go
+    - doc.go Package documentation
+    - logrus_adapter.go Logrus-to-zerolog adapter
+    - logrus_adapter_test.go
+    - mock_bouncer_test.go
     - stream.go Streaming mode
+    - stream_test.go
   - manager/
+    - crowdsec_iface.go CrowdSec stream interface
+    - doc.go Package documentation
     - manager.go Central orchestrator
     - manager_test.go
-    - reconcile.go Reconciliation logic
+    - mock_test.go
+    - routeros_iface.go RouterOS client interface
+    - start_test.go Startup and reconciliation tests
   - metrics/
+    - doc.go Package documentation
+    - lapi/ CrowdSec LAPI usage metrics
     - metrics.go Prometheus metric definitions
     - metrics_test.go
-    - health.go Health endpoint handler
-    - routeros_collector.go RouterOS system metrics collector
     - server.go HTTP server for /metrics and /health
   - routeros/
+    - addresslist.go Address list operations
+    - bulk.go Bulk script operations
     - client.go RouterOS API client
-    - client_test.go
-    - addresses.go Address list operations
+    - client_mock_test.go
+    - conn_iface.go RouterOS connection interface
+    - doc.go Package documentation
     - firewall.go Firewall rule operations
-    - firewall_test.go
+    - mock_conn_test.go
     - pool.go Connection pool
-    - system.go System info queries (CPU, memory, temp)
+    - routeros_test.go
 - docs/ Documentation (Starlight)
-- docs-legacy/ Original MkDocs docs (archive)
+- local/docs-legacy/ Original MkDocs docs (archive)
 - grafana/
-  - cs-routeros-bouncer.json Grafana dashboard
-- .github/
-  - workflows/ CI/CD workflows
-- .golangci.yml Linter configuration
-- config.example.yml Example configuration
+  - dashboard.json Grafana dashboard
+- config/ Example configuration files
 - Dockerfile Docker build
 - go.mod Go module definition
-- go.sum Dependency checksums
 - LICENSE MIT License
 - README.md Project readme
 

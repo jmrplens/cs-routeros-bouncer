@@ -49,7 +49,11 @@ type mockStream struct {
 	// RunFunc is called by Run() if set. It receives the same arguments as
 	// the real Run and should send decisions to banCh/deleteCh, then return
 	// when ctx is done. If nil, Run returns runErr immediately.
-	RunFunc func(ctx context.Context, banCh chan<- *crowdsec.Decision, deleteCh chan<- *crowdsec.Decision) error
+	RunFunc             func(ctx context.Context, banCh chan<- *crowdsec.Decision, deleteCh chan<- *crowdsec.Decision) error
+	ActiveDecisionsFunc func(ctx context.Context) ([]*crowdsec.Decision, error)
+	activeDecisions     []*crowdsec.Decision
+	activeErr           error
+	activeCalled        int
 }
 
 // Init implements StreamIface.Init, counting calls and returning the configured
@@ -76,6 +80,20 @@ func (s *mockStream) Run(ctx context.Context, banCh chan<- *crowdsec.Decision, d
 	return runErr
 }
 
+func (s *mockStream) ActiveDecisions(ctx context.Context) ([]*crowdsec.Decision, error) {
+	s.mu.Lock()
+	s.activeCalled++
+	fn := s.ActiveDecisionsFunc
+	decisions := s.activeDecisions
+	err := s.activeErr
+	s.mu.Unlock()
+
+	if fn != nil {
+		return fn(ctx)
+	}
+	return decisions, err
+}
+
 // APIClient implements StreamIface.APIClient and returns nil (not needed in
 // start tests).
 func (s *mockStream) APIClient() *apiclient.ApiClient {
@@ -93,6 +111,36 @@ func newTestManagerWithStream(mock *mockROS, stream *mockStream, cfg config.Conf
 		version:      "test",
 		ruleIDs:      make(map[string]string),
 		addressCache: make(map[string]struct{}),
+	}
+}
+
+func TestReconcileActiveDecisions_AddsMissingAddress(t *testing.T) {
+	mock := &mockROS{bulkAddCount: 1}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	stream := &mockStream{
+		activeDecisions: []*crowdsec.Decision{
+			{Proto: "ip", Value: "1.2.3.4", Duration: time.Hour, Origin: "crowdsec", Type: "ban"},
+		},
+	}
+	mgr := newTestManagerWithStream(mock, stream, cfg)
+
+	mgr.reconcileActiveDecisions(context.Background())
+
+	stream.mu.Lock()
+	activeCalled := stream.activeCalled
+	stream.mu.Unlock()
+	if activeCalled != 1 {
+		t.Fatalf("expected ActiveDecisions to be called once, got %d", activeCalled)
+	}
+
+	mock.mu.Lock()
+	defer mock.mu.Unlock()
+	if len(mock.bulkAddCalls) != 1 {
+		t.Fatalf("expected one bulk add call, got %d", len(mock.bulkAddCalls))
+	}
+	if got := mock.bulkAddCalls[0].Entries[0].Address; got != "1.2.3.4" {
+		t.Errorf("expected 1.2.3.4 to be reconciled, got %s", got)
 	}
 }
 
