@@ -3,6 +3,7 @@
 package integration
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"testing"
@@ -195,6 +196,9 @@ func TestRouterOSIntegration(t *testing.T) {
 	t.Run("VerifyFirewallRulesRemoved", func(t *testing.T) {
 		for _, r := range rules {
 			entry, err := client.FindFirewallRuleByComment(r.proto, r.table, comment)
+			if err != nil && !errors.Is(err, routeros.ErrNotFound) {
+				t.Errorf("failed to verify %s/%s firewall rule removal: %v", r.proto, r.table, err)
+			}
 			if err == nil && entry != nil {
 				t.Errorf("expected %s/%s firewall rule with comment %q to be removed, but found id=%s", r.proto, r.table, comment, entry.ID)
 			}

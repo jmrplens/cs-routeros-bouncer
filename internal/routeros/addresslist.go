@@ -1,6 +1,7 @@
 package routeros
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -37,7 +38,7 @@ func addressListPath(proto string) string {
 
 // NormalizeAddress prepares an address for MikroTik.
 // For IPv6 single addresses, appends /128 if no prefix length is present.
-func NormalizeAddress(address string, proto string) string {
+func NormalizeAddress(address, proto string) string {
 	if proto == "ipv6" && !strings.Contains(address, "/") {
 		return address + "/128"
 	}
@@ -80,11 +81,11 @@ func (c *Client) AddAddress(proto, list, address, timeout, comment string) (stri
 		// If the address already exists, find it and update its attributes.
 		if isDuplicateEntryError(err) {
 			existing, findErr := c.FindAddress(proto, list, address)
+			if errors.Is(findErr, ErrNotFound) {
+				return "", fmt.Errorf("add address %s to %s: duplicate entry but could not find it", address, list)
+			}
 			if findErr != nil {
 				return "", fmt.Errorf("add address %s to %s: duplicate entry and lookup failed: %w", address, list, findErr)
-			}
-			if existing == nil {
-				return "", fmt.Errorf("add address %s to %s: duplicate entry but could not find it", address, list)
 			}
 
 			updateAttrs := make(map[string]string)
@@ -158,7 +159,7 @@ func (c *Client) ListAddresses(proto, list, commentPrefix string) ([]AddressEntr
 	return entries, nil
 }
 
-// FindAddress finds a specific address in a list. Returns nil if not found.
+// FindAddress finds a specific address in a list.
 func (c *Client) FindAddress(proto, list, address string) (*AddressEntry, error) {
 	address = NormalizeAddress(address, proto)
 	path := addressListPath(proto)
@@ -167,12 +168,11 @@ func (c *Client) FindAddress(proto, list, address string) (*AddressEntry, error)
 	proplist := []string{".id", "address", "list", "timeout", "comment"}
 
 	result, err := c.Find(path, query, proplist)
+	if errors.Is(err, ErrNotFound) {
+		return nil, ErrNotFound
+	}
 	if err != nil {
 		return nil, fmt.Errorf("find address %s in %s: %w", address, list, err)
-	}
-
-	if result == nil {
-		return nil, nil
 	}
 
 	return &AddressEntry{

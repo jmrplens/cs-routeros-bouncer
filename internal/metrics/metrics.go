@@ -1,7 +1,8 @@
 package metrics
 
 import (
-	"fmt"
+	"maps"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -241,9 +242,7 @@ func GetActiveDecisionsByOrigin() map[string]int64 {
 	originDecisionsMu.RLock()
 	defer originDecisionsMu.RUnlock()
 	result := make(map[string]int64, len(originDecisions))
-	for k, v := range originDecisions {
-		result[k] = v
-	}
+	maps.Copy(result, originDecisions)
 	return result
 }
 
@@ -549,7 +548,7 @@ func SetConfigInfo(p ConfigParams) {
 		{"CrowdSec", "TLS Enabled", b(p.CrowdSecTLS)},
 		{"MikroTik", "Address", p.MikroTikAddress},
 		{"MikroTik", "TLS Enabled", b(p.MikroTikTLS)},
-		{"MikroTik", "Connection Pool Size", fmt.Sprintf("%d", p.MikroTikPoolSize)},
+		{"MikroTik", "Connection Pool Size", strconv.Itoa(p.MikroTikPoolSize)},
 		{"MikroTik", "Connection Timeout", p.MikroTikConnTimeout},
 		{"MikroTik", "Command Timeout", p.MikroTikCmdTimeout},
 		{"Firewall", "IPv4 Enabled", b(p.FWIPv4Enabled)},
@@ -569,7 +568,7 @@ func SetConfigInfo(p ConfigParams) {
 		{"Logging", "Format", p.LogFormat},
 		{"Metrics", "Enabled", b(p.MetricsEnabled)},
 		{"Metrics", "Listen Address", p.MetricsListenAddr},
-		{"Metrics", "Listen Port", fmt.Sprintf("%d", p.MetricsListenPort)},
+		{"Metrics", "Listen Port", strconv.Itoa(p.MetricsListenPort)},
 		{"Metrics", "RouterOS Poll Interval", p.MetricsPollInterval},
 		{"Metrics", "Track Processed", b(p.MetricsTrackProcessed)},
 	}

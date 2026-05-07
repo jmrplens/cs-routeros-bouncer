@@ -19,7 +19,7 @@ func NewLogrusAdapter(zl zerolog.Logger) logrus.FieldLogger {
 	return &zerologAdapter{zl: zl}
 }
 
-func (a *zerologAdapter) WithField(key string, value interface{}) *logrus.Entry {
+func (a *zerologAdapter) WithField(key string, value any) *logrus.Entry {
 	// Return a logrus entry that will use our adapter as logger
 	return logrus.NewEntry(a.asLogrus()).WithField(key, value)
 }
@@ -32,99 +32,99 @@ func (a *zerologAdapter) WithError(err error) *logrus.Entry {
 	return logrus.NewEntry(a.asLogrus()).WithError(err)
 }
 
-func (a *zerologAdapter) Debugf(format string, args ...interface{}) {
+func (a *zerologAdapter) Debugf(format string, args ...any) {
 	a.zl.Debug().Msgf(format, args...)
 }
 
-func (a *zerologAdapter) Infof(format string, args ...interface{}) {
+func (a *zerologAdapter) Infof(format string, args ...any) {
 	a.zl.Info().Msgf(format, args...)
 }
 
-func (a *zerologAdapter) Warnf(format string, args ...interface{}) {
+func (a *zerologAdapter) Warnf(format string, args ...any) {
 	a.zl.Warn().Msgf(format, args...)
 }
 
-func (a *zerologAdapter) Warningf(format string, args ...interface{}) {
+func (a *zerologAdapter) Warningf(format string, args ...any) {
 	a.zl.Warn().Msgf(format, args...)
 }
 
-func (a *zerologAdapter) Errorf(format string, args ...interface{}) {
+func (a *zerologAdapter) Errorf(format string, args ...any) {
 	a.zl.Error().Msgf(format, args...)
 }
 
-func (a *zerologAdapter) Fatalf(format string, args ...interface{}) {
+func (a *zerologAdapter) Fatalf(format string, args ...any) {
 	a.zl.Fatal().Msgf(format, args...)
 }
 
-func (a *zerologAdapter) Panicf(format string, args ...interface{}) {
+func (a *zerologAdapter) Panicf(format string, args ...any) {
 	a.zl.Panic().Msgf(format, args...)
 }
 
-func (a *zerologAdapter) Debug(args ...interface{}) {
+func (a *zerologAdapter) Debug(args ...any) {
 	a.zl.Debug().Msgf("%v", args...)
 }
 
-func (a *zerologAdapter) Info(args ...interface{}) {
+func (a *zerologAdapter) Info(args ...any) {
 	a.zl.Info().Msgf("%v", args...)
 }
 
-func (a *zerologAdapter) Warn(args ...interface{}) {
+func (a *zerologAdapter) Warn(args ...any) {
 	a.zl.Warn().Msgf("%v", args...)
 }
 
-func (a *zerologAdapter) Warning(args ...interface{}) {
+func (a *zerologAdapter) Warning(args ...any) {
 	a.zl.Warn().Msgf("%v", args...)
 }
 
-func (a *zerologAdapter) Error(args ...interface{}) {
+func (a *zerologAdapter) Error(args ...any) {
 	a.zl.Error().Msgf("%v", args...)
 }
 
-func (a *zerologAdapter) Fatal(args ...interface{}) {
+func (a *zerologAdapter) Fatal(args ...any) {
 	a.zl.Fatal().Msgf("%v", args...)
 }
 
-func (a *zerologAdapter) Panic(args ...interface{}) {
+func (a *zerologAdapter) Panic(args ...any) {
 	a.zl.Panic().Msgf("%v", args...)
 }
 
-func (a *zerologAdapter) Debugln(args ...interface{}) {
+func (a *zerologAdapter) Debugln(args ...any) {
 	a.zl.Debug().Msgf("%v", args...)
 }
 
-func (a *zerologAdapter) Infoln(args ...interface{}) {
+func (a *zerologAdapter) Infoln(args ...any) {
 	a.zl.Info().Msgf("%v", args...)
 }
 
-func (a *zerologAdapter) Warnln(args ...interface{}) {
+func (a *zerologAdapter) Warnln(args ...any) {
 	a.zl.Warn().Msgf("%v", args...)
 }
 
-func (a *zerologAdapter) Warningln(args ...interface{}) {
+func (a *zerologAdapter) Warningln(args ...any) {
 	a.zl.Warn().Msgf("%v", args...)
 }
 
-func (a *zerologAdapter) Errorln(args ...interface{}) {
+func (a *zerologAdapter) Errorln(args ...any) {
 	a.zl.Error().Msgf("%v", args...)
 }
 
-func (a *zerologAdapter) Fatalln(args ...interface{}) {
+func (a *zerologAdapter) Fatalln(args ...any) {
 	a.zl.Fatal().Msgf("%v", args...)
 }
 
-func (a *zerologAdapter) Panicln(args ...interface{}) {
+func (a *zerologAdapter) Panicln(args ...any) {
 	a.zl.Panic().Msgf("%v", args...)
 }
 
-func (a *zerologAdapter) Print(args ...interface{}) {
+func (a *zerologAdapter) Print(args ...any) {
 	a.zl.Info().Msgf("%v", args...)
 }
 
-func (a *zerologAdapter) Printf(format string, args ...interface{}) {
+func (a *zerologAdapter) Printf(format string, args ...any) {
 	a.zl.Info().Msgf(format, args...)
 }
 
-func (a *zerologAdapter) Println(args ...interface{}) {
+func (a *zerologAdapter) Println(args ...any) {
 	a.zl.Info().Msgf("%v", args...)
 }
 

@@ -1,6 +1,7 @@
 package routeros
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -28,10 +29,7 @@ func (c *Client) BulkAddAddresses(proto, list string, entries []BulkEntry) (adde
 
 	total := 0
 	for start := 0; start < len(entries); start += bulkChunkSize {
-		end := start + bulkChunkSize
-		if end > len(entries) {
-			end = len(entries)
-		}
+		end := min(start+bulkChunkSize, len(entries))
 		chunk := entries[start:end]
 
 		script := buildBulkAddScript(proto, list, chunk)
@@ -102,8 +100,11 @@ func buildBulkAddScript(proto, list string, entries []BulkEntry) string {
 // Returns the number of addresses added (parsed from script output).
 func (c *Client) runBulkScript(source string) (int, error) {
 	// Remove any existing script with same name
-	existing, _ := c.Find("/system/script", []string{"?name=" + bulkScriptName}, []string{".id"})
-	if existing != nil {
+	existing, err := c.Find("/system/script", []string{"?name=" + bulkScriptName}, []string{".id"})
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		return 0, fmt.Errorf("find existing bulk script: %w", err)
+	}
+	if err == nil {
 		_ = c.Remove("/system/script", existing[".id"])
 	}
 

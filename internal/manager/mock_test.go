@@ -27,10 +27,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
+
 	"github.com/jmrplens/cs-routeros-bouncer/internal/config"
 	"github.com/jmrplens/cs-routeros-bouncer/internal/crowdsec"
 	ros "github.com/jmrplens/cs-routeros-bouncer/internal/routeros"
-	"github.com/rs/zerolog"
 )
 
 // ---------------------------------------------------------------------------

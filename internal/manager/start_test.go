@@ -24,10 +24,11 @@ import (
 
 	"github.com/crowdsecurity/crowdsec/pkg/apiclient"
 
+	"github.com/rs/zerolog"
+
 	"github.com/jmrplens/cs-routeros-bouncer/internal/config"
 	"github.com/jmrplens/cs-routeros-bouncer/internal/crowdsec"
 	ros "github.com/jmrplens/cs-routeros-bouncer/internal/routeros"
-	"github.com/rs/zerolog"
 )
 
 // ===========================================================================
@@ -276,10 +277,10 @@ func TestStart_ConnectError(t *testing.T) {
 func TestStart_ConnectRetrySuccess(t *testing.T) {
 	setTestRetryTimings(t, 10*time.Millisecond, 1*time.Second)
 
-	var callCount int32
+	var callCount atomic.Int32
 	mock := &mockROS{
 		connectFunc: func() error {
-			n := atomic.AddInt32(&callCount, 1)
+			n := callCount.Add(1)
 			if n < 3 {
 				return errors.New("connection refused")
 			}
@@ -309,8 +310,8 @@ func TestStart_ConnectRetrySuccess(t *testing.T) {
 	if err := <-errCh; err != nil {
 		t.Fatalf("Start should succeed after retry, got: %v", err)
 	}
-	if atomic.LoadInt32(&callCount) < 3 {
-		t.Errorf("expected at least 3 connect calls, got %d", atomic.LoadInt32(&callCount))
+	if callCount.Load() < 3 {
+		t.Errorf("expected at least 3 connect calls, got %d", callCount.Load())
 	}
 }
 

@@ -1,0 +1,54 @@
+name: Enhancement
+description: Suggest an improvement to existing functionality
+title: "[Enhancement]: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: checkboxes
+    id: prereqs
+    attributes:
+      label: Prerequisites
+      options:
+        - label: I have searched [existing issues](https://github.com/jmrplens/cs-routeros-bouncer/issues?q=is%3Aissue) and this enhancement has not been proposed.
+          required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Brief description of the improvement.
+    validations:
+      required: true
+
+  - type: textarea
+    id: current
+    attributes:
+      label: Current behavior
+      description: How does the existing feature work today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed enhancement
+      description: How should it work after the improvement?
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: Why is this improvement needed? What is the impact?
+
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Implementation notes
+      description: Technical notes, suggested approach, files to modify, etc.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Related issues, performance metrics, user feedback, etc.

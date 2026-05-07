@@ -2,15 +2,17 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"time"
 
-	"github.com/jmrplens/cs-routeros-bouncer/internal/config"
-	rosClient "github.com/jmrplens/cs-routeros-bouncer/internal/routeros"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
+
+	"github.com/jmrplens/cs-routeros-bouncer/internal/config"
+	rosClient "github.com/jmrplens/cs-routeros-bouncer/internal/routeros"
 )
 
 func main() {
@@ -56,8 +58,11 @@ func main() {
 		return err
 	})
 
-	entry, _ := client.FindAddress("ip", "crowdsec-banned", "198.51.100.1")
-	if entry != nil {
+	entry, findErr := client.FindAddress("ip", "crowdsec-banned", "198.51.100.1")
+	if findErr != nil && !errors.Is(findErr, rosClient.ErrNotFound) {
+		log.Warn().Err(findErr).Msg("failed to find IPv4 entry before removal benchmark")
+	}
+	if findErr == nil && entry != nil {
 		bench("Remove IPv4 by .id", func() error {
 			return client.RemoveAddress("ip", entry.ID)
 		})
@@ -68,8 +73,11 @@ func main() {
 		return err
 	})
 
-	entry6, _ := client.FindAddress("ipv6", "crowdsec6-banned", "2001:db8::1/128")
-	if entry6 != nil {
+	entry6, findErr := client.FindAddress("ipv6", "crowdsec6-banned", "2001:db8::1/128")
+	if findErr != nil && !errors.Is(findErr, rosClient.ErrNotFound) {
+		log.Warn().Err(findErr).Msg("failed to find IPv6 entry before removal benchmark")
+	}
+	if findErr == nil && entry6 != nil {
 		bench("Remove IPv6 by .id", func() error {
 			return client.RemoveAddress("ipv6", entry6.ID)
 		})
@@ -154,15 +162,15 @@ func main() {
 	for _, n := range sizes {
 		label := fmt.Sprintf("Add %d IPv4 (sequential)", n)
 		start := time.Now()
-		errors := 0
+		failureCount := 0
 		for i := 1; i <= n; i++ {
 			addr := fmt.Sprintf("198.51.%d.%d", i/256, i%256)
 			if _, err := client.AddAddress("ip", "crowdsec-banned", addr, "1m", "batch"); err != nil {
-				errors++
+				failureCount++
 			}
 		}
 		elapsed := time.Since(start)
-		fmt.Printf("  %-35s %8s  (%s/ip, errors=%d)\n", label, elapsed.Round(time.Millisecond), (elapsed / time.Duration(n)).Round(time.Millisecond), errors)
+		fmt.Printf("  %-35s %8s  (%s/ip, errors=%d)\n", label, elapsed.Round(time.Millisecond), (elapsed / time.Duration(n)).Round(time.Millisecond), failureCount)
 
 		start2 := time.Now()
 		entries, _ := client.ListAddresses("ip", "crowdsec-banned", "")

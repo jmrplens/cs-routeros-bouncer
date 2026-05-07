@@ -319,15 +319,15 @@ func TestFind_ReturnsFirst(t *testing.T) {
 	}
 }
 
-// TestFind_ReturnsNilWhenEmpty verifies Find returns nil when no results.
-func TestFind_ReturnsNilWhenEmpty(t *testing.T) {
+// TestFind_ReturnsErrNotFoundWhenEmpty verifies Find returns ErrNotFound when no results.
+func TestFind_ReturnsErrNotFoundWhenEmpty(t *testing.T) {
 	mc := newMockConn()
 	c := newTestClient(mc)
 	mc.pushReply(emptyReply())
 
 	result, err := c.Find("/path", nil, nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 	if result != nil {
 		t.Fatalf("expected nil, got %v", result)
@@ -807,15 +807,15 @@ func TestFindAddress_Found(t *testing.T) {
 	}
 }
 
-// TestFindAddress_NotFound verifies FindAddress returns nil.
+// TestFindAddress_NotFound verifies FindAddress returns ErrNotFound.
 func TestFindAddress_NotFound(t *testing.T) {
 	mc := newMockConn()
 	c := newTestClient(mc)
 	mc.pushReply(emptyReply())
 
 	entry, err := c.FindAddress("ip", "blocked", "10.0.0.99")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 	if entry != nil {
 		t.Fatalf("expected nil, got %+v", entry)
@@ -1222,15 +1222,15 @@ func TestFindFirewallRuleByComment_Found(t *testing.T) {
 	}
 }
 
-// TestFindFirewallRuleByComment_NotFound verifies nil return.
+// TestFindFirewallRuleByComment_NotFound verifies ErrNotFound return.
 func TestFindFirewallRuleByComment_NotFound(t *testing.T) {
 	mc := newMockConn()
 	c := newTestClient(mc)
 	mc.pushReply(emptyReply())
 
 	entry, err := c.FindFirewallRuleByComment("ip", "filter", "nonexistent")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 	if entry != nil {
 		t.Fatalf("expected nil, got %+v", entry)

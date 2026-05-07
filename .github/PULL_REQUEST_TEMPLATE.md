@@ -2,7 +2,7 @@
 
 <!-- Brief description of the changes. Link any related issues. -->
 
-Fixes #
+Related to #
 
 ## Type of change
 
@@ -10,6 +10,8 @@ Fixes #
 - [ ] ✨ New feature (non-breaking change that adds functionality)
 - [ ] 💥 Breaking change (fix or feature that would cause existing functionality to change)
 - [ ] 📖 Documentation update
+- [ ] 🔒 Security / dependency update
+- [ ] 🧪 Tests / tooling / CI
 - [ ] 🧹 Refactoring / code cleanup
 - [ ] ⚡ Performance improvement
 
@@ -23,8 +25,9 @@ Fixes #
 
 <!-- Describe how you tested your changes -->
 
-- [ ] Unit tests pass (`make test`)
-- [ ] Lint passes (`make lint`)
+- [ ] Unit tests pass (`make test-short` or `make test`)
+- [ ] Static analysis passes (`make analyze` or equivalent CI jobs)
+- [ ] Documentation checks pass (`make docs-analyze` if docs changed)
 - [ ] Tested against a real MikroTik router (if applicable)
 - [ ] Docker image builds (`make docker-build`)
 
@@ -41,4 +44,5 @@ Fixes #
 - [ ] I have added tests for my changes (if applicable)
 - [ ] I have updated the documentation (if applicable)
 - [ ] I have updated CHANGELOG.md (if applicable)
+- [ ] I have updated release/configuration files when behavior changed
 - [ ] My changes do not introduce new warnings

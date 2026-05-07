@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -50,7 +51,7 @@ WantedBy=multi-user.target
 // runSetup installs the bouncer as a systemd service.
 func runSetup(binDst, configDir string) error {
 	if os.Getuid() != 0 {
-		return fmt.Errorf("setup must be run as root")
+		return errors.New("setup must be run as root")
 	}
 
 	binSrc, err := os.Executable()
@@ -66,18 +67,19 @@ func runSetup(binDst, configDir string) error {
 
 	// 1. Copy binary
 	fmt.Printf("→ Installing binary to %s ...\n", binDst)
-	if err := copyFile(binSrc, binDst, 0o755); err != nil {
-		return fmt.Errorf("failed to copy binary: %w", err)
+	if copyErr := copyFile(binSrc, binDst, 0o755); copyErr != nil {
+		return fmt.Errorf("failed to copy binary: %w", copyErr)
 	}
 
 	// 2. Create config directory and example config
-	if err := os.MkdirAll(configDir, 0o750); err != nil {
-		return fmt.Errorf("failed to create config dir: %w", err)
+	if mkdirErr := os.MkdirAll(configDir, 0o750); mkdirErr != nil {
+		return fmt.Errorf("failed to create config dir: %w", mkdirErr)
 	}
-	if _, err := os.Stat(configFile); os.IsNotExist(err) {
+	if _, statErr := os.Stat(configFile); os.IsNotExist(statErr) {
 		fmt.Printf("→ Creating example config at %s ...\n", configFile)
-		if err := os.WriteFile(configFile, []byte(exampleConfig()), 0o640); err != nil { //nolint:gosec // config must be group-readable
-			return fmt.Errorf("failed to write config: %w", err)
+		// #nosec G306 -- config must be group-readable by service operators.
+		if writeErr := os.WriteFile(configFile, []byte(exampleConfig()), 0o640); writeErr != nil {
+			return fmt.Errorf("failed to write config: %w", writeErr)
 		}
 		fmt.Println("  ⚠ Edit the config file to set your CrowdSec API key and MikroTik credentials.")
 	} else {
@@ -87,22 +89,23 @@ func runSetup(binDst, configDir string) error {
 	// 3. Write systemd unit
 	fmt.Printf("→ Creating systemd service at %s ...\n", defaultServicePath)
 	unit := fmt.Sprintf(serviceTemplate, binDst, configFile)
-	if err := os.WriteFile(defaultServicePath, []byte(unit), 0o644); err != nil { //nolint:gosec // systemd units must be world-readable
-		return fmt.Errorf("failed to write service file: %w", err)
+	// #nosec G306 -- systemd units must be world-readable.
+	if writeErr := os.WriteFile(defaultServicePath, []byte(unit), 0o644); writeErr != nil {
+		return fmt.Errorf("failed to write service file: %w", writeErr)
 	}
 
 	// 4. Reload, enable, start
 	fmt.Println("→ Reloading systemd daemon ...")
-	if err := systemctl("daemon-reload"); err != nil {
-		return err
+	if systemctlErr := systemctl("daemon-reload"); systemctlErr != nil {
+		return systemctlErr
 	}
 	fmt.Printf("→ Enabling %s ...\n", serviceName)
-	if err := systemctl("enable", serviceName); err != nil {
-		return err
+	if systemctlErr := systemctl("enable", serviceName); systemctlErr != nil {
+		return systemctlErr
 	}
 	fmt.Printf("→ Starting %s ...\n", serviceName)
-	if err := systemctl("start", serviceName); err != nil {
-		return err
+	if systemctlErr := systemctl("start", serviceName); systemctlErr != nil {
+		return systemctlErr
 	}
 
 	fmt.Println()
@@ -117,7 +120,7 @@ func runSetup(binDst, configDir string) error {
 // runUninstall stops and removes the systemd service and binary.
 func runUninstall(binDst string, removeConfig bool) error {
 	if os.Getuid() != 0 {
-		return fmt.Errorf("uninstall must be run as root")
+		return errors.New("uninstall must be run as root")
 	}
 
 	fmt.Printf("→ Stopping %s ...\n", serviceName)
@@ -152,7 +155,8 @@ func runUninstall(binDst string, removeConfig bool) error {
 func systemctl(args ...string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "systemctl", args...) //nolint:gosec // args are controlled by caller
+	// #nosec G204 -- systemctl arguments are controlled by setup/uninstall callers.
+	cmd := exec.CommandContext(ctx, "systemctl", args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
@@ -163,20 +167,22 @@ func systemctl(args ...string) error {
 
 // copyFile copies a file from src to dst with the given permissions.
 func copyFile(src, dst string, mode os.FileMode) error {
-	in, err := os.Open(src) //nolint:gosec // src is a controlled path from setup logic
+	// #nosec G304 -- setup runs as root and copies between resolved install paths.
+	in, err := os.Open(src)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = in.Close() }()
 
-	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode) //nolint:gosec // dst is controlled
+	// #nosec G304 -- setup runs as root and writes to the selected install path.
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = out.Close() }()
 
-	if _, err := io.Copy(out, in); err != nil {
-		return err
+	if _, copyErr := io.Copy(out, in); copyErr != nil {
+		return copyErr
 	}
 	return out.Close()
 }

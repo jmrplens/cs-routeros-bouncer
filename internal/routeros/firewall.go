@@ -1,6 +1,7 @@
 package routeros
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -283,7 +284,6 @@ func (c *Client) ListFirewallRulesBySignature(proto, mode, signature string) ([]
 }
 
 // FindFirewallRuleByComment finds a firewall rule by its exact comment.
-// Returns nil if not found.
 func (c *Client) FindFirewallRuleByComment(proto, mode, comment string) (*RuleEntry, error) {
 	path := firewallPath(proto, mode)
 
@@ -291,11 +291,10 @@ func (c *Client) FindFirewallRuleByComment(proto, mode, comment string) (*RuleEn
 
 	result, err := c.Find(path, query, ruleProplist)
 	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil, ErrNotFound
+		}
 		return nil, fmt.Errorf("find %s/%s rule by comment %q: %w", proto, mode, comment, err)
-	}
-
-	if result == nil {
-		return nil, nil
 	}
 
 	return &RuleEntry{

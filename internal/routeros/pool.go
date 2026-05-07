@@ -39,7 +39,7 @@ func (p *Pool) Connect() error {
 	if p.newClient == nil {
 		p.newClient = NewClient
 	}
-	for i := 0; i < p.size; i++ {
+	for i := range p.size {
 		c := p.newClient(p.cfg)
 		if c == nil {
 			p.Close()
@@ -87,10 +87,7 @@ func ParallelExec[T any](pool *Pool, items []T, fn func(c *Client, item T) error
 		return nil
 	}
 
-	workers := pool.Size()
-	if workers > len(items) {
-		workers = len(items)
-	}
+	workers := min(pool.Size(), len(items))
 
 	work := make(chan T, len(items))
 	for _, item := range items {
@@ -102,10 +99,8 @@ func ParallelExec[T any](pool *Pool, items []T, fn func(c *Client, item T) error
 	var errs []error
 	var wg sync.WaitGroup
 
-	for i := 0; i < workers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range workers {
+		wg.Go(func() {
 			c := pool.Get()
 			defer pool.Put(c)
 			for item := range work {
@@ -115,7 +110,7 @@ func ParallelExec[T any](pool *Pool, items []T, fn func(c *Client, item T) error
 					mu.Unlock()
 				}
 			}
-		}()
+		})
 	}
 
 	wg.Wait()

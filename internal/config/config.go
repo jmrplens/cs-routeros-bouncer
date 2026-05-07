@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -275,34 +276,34 @@ func Load(configPath string) (*Config, error) {
 // Validate checks that all required configuration fields are set.
 func (c *Config) Validate() error {
 	if c.CrowdSec.APIKey == "" {
-		return fmt.Errorf("crowdsec.api_key is required")
+		return errors.New("crowdsec.api_key is required")
 	}
 	if c.CrowdSec.APIURL == "" {
-		return fmt.Errorf("crowdsec.api_url is required")
+		return errors.New("crowdsec.api_url is required")
 	}
 	if c.MikroTik.Address == "" {
-		return fmt.Errorf("mikrotik.address is required")
+		return errors.New("mikrotik.address is required")
 	}
 	if c.MikroTik.Username == "" {
-		return fmt.Errorf("mikrotik.username is required")
+		return errors.New("mikrotik.username is required")
 	}
 	if c.MikroTik.Password == "" {
-		return fmt.Errorf("mikrotik.password is required")
+		return errors.New("mikrotik.password is required")
 	}
 	if c.MikroTik.PoolSize < 1 || c.MikroTik.PoolSize > 20 {
 		return fmt.Errorf("mikrotik.pool_size must be between 1 and 20, got %d", c.MikroTik.PoolSize)
 	}
 	if !c.Firewall.IPv4.Enabled && !c.Firewall.IPv6.Enabled {
-		return fmt.Errorf("at least one of firewall.ipv4 or firewall.ipv6 must be enabled")
+		return errors.New("at least one of firewall.ipv4 or firewall.ipv6 must be enabled")
 	}
 	if !c.Firewall.Filter.Enabled && !c.Firewall.Raw.Enabled {
-		return fmt.Errorf("at least one of firewall.filter or firewall.raw must be enabled")
+		return errors.New("at least one of firewall.filter or firewall.raw must be enabled")
 	}
 	if c.Firewall.DenyAction != "drop" && c.Firewall.DenyAction != "reject" {
 		return fmt.Errorf("firewall.deny_action must be 'drop' or 'reject', got '%s'", c.Firewall.DenyAction)
 	}
 	if c.Firewall.RejectWith != "" && c.Firewall.DenyAction != "reject" {
-		return fmt.Errorf("firewall.reject_with requires deny_action='reject'")
+		return errors.New("firewall.reject_with requires deny_action='reject'")
 	}
 	if c.Firewall.RejectWith != "" {
 		valid := map[string]bool{
@@ -324,7 +325,7 @@ func (c *Config) Validate() error {
 			"established": true, "related": true, "new": true,
 			"invalid": true, "untracked": true,
 		}
-		for _, s := range strings.Split(c.Firewall.Filter.ConnectionState, ",") {
+		for s := range strings.SplitSeq(c.Firewall.Filter.ConnectionState, ",") {
 			if !valid[strings.TrimSpace(s)] {
 				return fmt.Errorf("firewall.filter.connection_state invalid value '%s'", s)
 			}
@@ -332,18 +333,18 @@ func (c *Config) Validate() error {
 	}
 	if c.Firewall.BlockOutput.Enabled {
 		if c.Firewall.BlockOutput.Interface == "" && c.Firewall.BlockOutput.InterfaceList == "" {
-			return fmt.Errorf("firewall.block_output requires interface or interface_list when enabled")
+			return errors.New("firewall.block_output requires interface or interface_list when enabled")
 		}
 	}
 	if c.CrowdSec.ReconciliationInterval < 0 {
-		return fmt.Errorf("crowdsec.reconciliation_interval must be >= 0 (0 disables)")
+		return errors.New("crowdsec.reconciliation_interval must be >= 0 (0 disables)")
 	}
 	if c.CrowdSec.ReconciliationInterval > 0 && c.CrowdSec.ReconciliationInterval < time.Minute {
-		return fmt.Errorf("crowdsec.reconciliation_interval must be >= 1m (0 disables)")
+		return errors.New("crowdsec.reconciliation_interval must be >= 1m (0 disables)")
 	}
 
 	if c.Metrics.RouterOSPollInterval < 0 {
-		return fmt.Errorf("metrics.routeros_poll_interval must be >= 0 (0 disables)")
+		return errors.New("metrics.routeros_poll_interval must be >= 0 (0 disables)")
 	}
 
 	return nil

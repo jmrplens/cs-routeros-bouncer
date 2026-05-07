@@ -100,9 +100,9 @@ func main() {
 	// available for container health checks even when metrics are disabled.
 	metricsSrv := metrics.NewServer(cfg.Metrics, config.Version)
 	metrics.SetHealthConnectedCallback(metricsSrv.SetConnected)
-	if err := metricsSrv.Start(); err != nil {
+	if startMetricsErr := metricsSrv.Start(); startMetricsErr != nil {
 		cancel()
-		log.Fatal().Err(err).Msg("failed to start health/metrics server") //nolint:gocritic // exitAfterDefer: intentional early exit before goroutines start
+		log.Fatal().Err(startMetricsErr).Msg("failed to start health/metrics server") //nolint:gocritic // exitAfterDefer: intentional early exit before goroutines start
 	}
 
 	go func() {
@@ -120,8 +120,8 @@ func main() {
 	// Shutdown health/metrics server
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
-	if err := metricsSrv.Shutdown(shutdownCtx); err != nil {
-		log.Error().Err(err).Msg("error shutting down health/metrics server")
+	if shutdownErr := metricsSrv.Shutdown(shutdownCtx); shutdownErr != nil {
+		log.Error().Err(shutdownErr).Msg("error shutting down health/metrics server")
 	}
 
 	if startErr != nil {

@@ -2,6 +2,7 @@ package manager
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -140,10 +141,7 @@ func (m *Manager) Start(ctx context.Context) error {
 	poolSize := m.cfg.MikroTik.PoolSize
 	if maxSessions := m.ros.GetAPIMaxSessions(); maxSessions > 0 {
 		// Reserve 1 session for the main client + external tools
-		limit := maxSessions - 2
-		if limit < 1 {
-			limit = 1
-		}
+		limit := max(maxSessions-2, 1)
 		if poolSize > limit {
 			m.logger.Info().
 				Int("configured", m.cfg.MikroTik.PoolSize).
@@ -161,9 +159,9 @@ func (m *Manager) Start(ctx context.Context) error {
 		m.pool = nil
 	}
 
-	identity, err := m.ros.GetIdentity()
-	if err != nil {
-		m.logger.Warn().Err(err).Msg("could not retrieve RouterOS identity")
+	identity, identityErr := m.ros.GetIdentity()
+	if identityErr != nil {
+		m.logger.Warn().Err(identityErr).Msg("could not retrieve RouterOS identity")
 		metrics.SetInfo(m.version, "unknown")
 	} else {
 		m.logger.Info().Str("identity", identity).Msg("connected to RouterOS")
@@ -225,16 +223,16 @@ func (m *Manager) Start(ctx context.Context) error {
 		logrusAdapter := crowdsec.NewLogrusAdapter(m.logger)
 
 		metricsLogger := log.With().Str("component", "lapi-metrics").Logger()
-		lapiProvider, err := lapi.NewProvider(apiClient, m.cfg.CrowdSec.LapiMetricsInterval, logrusAdapter, metricsLogger)
-		if err != nil {
-			m.logger.Warn().Err(err).Msg("failed to initialize LAPI metrics, continuing without metrics reporting")
+		lapiProvider, providerErr := lapi.NewProvider(apiClient, m.cfg.CrowdSec.LapiMetricsInterval, logrusAdapter, metricsLogger)
+		if providerErr != nil {
+			m.logger.Warn().Err(providerErr).Msg("failed to initialize LAPI metrics, continuing without metrics reporting")
 		} else {
 			// Register firewall counter collector so LAPI metrics include
 			// dropped bytes/packets from MikroTik firewall rules.
 			lapiProvider.SetCounterCollector(func() {
-				fc, err := m.ros.GetFirewallCounters(m.commentPrefix() + ":")
-				if err != nil {
-					m.logger.Debug().Err(err).Msg("failed to collect firewall counters for LAPI metrics")
+				fc, countersErr := m.ros.GetFirewallCounters(m.commentPrefix() + ":")
+				if countersErr != nil {
+					m.logger.Debug().Err(countersErr).Msg("failed to collect firewall counters for LAPI metrics")
 					return
 				}
 				// Dropped: only drop/reject rule counters.
@@ -254,8 +252,8 @@ func (m *Manager) Start(ctx context.Context) error {
 
 			m.logger.Info().Dur("interval", m.cfg.CrowdSec.LapiMetricsInterval).Msg("LAPI usage metrics reporting enabled")
 			go func() {
-				if err := lapiProvider.Run(ctx); err != nil {
-					m.logger.Warn().Err(err).Msg("LAPI metrics provider stopped")
+				if runErr := lapiProvider.Run(ctx); runErr != nil {
+					m.logger.Warn().Err(runErr).Msg("LAPI metrics provider stopped")
 				}
 			}()
 		}
@@ -276,8 +274,8 @@ func (m *Manager) Start(ctx context.Context) error {
 
 	errCh := make(chan error, 1)
 	go func() {
-		if err := m.stream.Run(ctx, banCh, deleteCh); err != nil {
-			errCh <- err
+		if streamErr := m.stream.Run(ctx, banCh, deleteCh); streamErr != nil {
+			errCh <- streamErr
 		}
 	}()
 
@@ -306,8 +304,8 @@ collectLoop:
 		select {
 		case <-ctx.Done():
 			return nil
-		case err := <-errCh:
-			return fmt.Errorf("CrowdSec stream error: %w", err)
+		case streamErr := <-errCh:
+			return fmt.Errorf("CrowdSec stream error: %w", streamErr)
 		case d := <-banCh:
 			initialBans = append(initialBans, d)
 			resetIdleTimer()
@@ -366,8 +364,8 @@ collectLoop:
 			m.logger.Info().Msg("shutting down manager")
 			return nil
 
-		case err := <-errCh:
-			return fmt.Errorf("CrowdSec stream error: %w", err)
+		case streamErr := <-errCh:
+			return fmt.Errorf("CrowdSec stream error: %w", streamErr)
 
 		case d := <-banCh:
 			m.handleBan(d)
@@ -590,6 +588,17 @@ func (m *Manager) handleUnban(d *crowdsec.Decision) {
 
 	// Find the address in MikroTik
 	entry, err := m.ros.FindAddress(d.Proto, listName, d.Value)
+	if errors.Is(err, rosClient.ErrNotFound) {
+		// Remove from cache — it expired on MikroTik
+		m.cacheMu.Lock()
+		delete(m.addressCache, addr)
+		m.cacheMu.Unlock()
+
+		m.logger.Debug().
+			Str("address", d.Value).
+			Msg("address not found in MikroTik (already expired?)")
+		return
+	}
 	if err != nil {
 		m.logger.Error().Err(err).
 			Str("address", d.Value).
@@ -597,9 +606,7 @@ func (m *Manager) handleUnban(d *crowdsec.Decision) {
 		metrics.RecordError("find")
 		return
 	}
-
 	if entry == nil {
-		// Remove from cache — it expired on MikroTik
 		m.cacheMu.Lock()
 		delete(m.addressCache, addr)
 		m.cacheMu.Unlock()
@@ -611,8 +618,8 @@ func (m *Manager) handleUnban(d *crowdsec.Decision) {
 	}
 
 	// Remove the address
-	if err := m.ros.RemoveAddress(d.Proto, entry.ID); err != nil {
-		m.logger.Error().Err(err).
+	if removeErr := m.ros.RemoveAddress(d.Proto, entry.ID); removeErr != nil {
+		m.logger.Error().Err(removeErr).
 			Str("address", d.Value).
 			Str("id", entry.ID).
 			Msg("error removing address from MikroTik")
@@ -679,8 +686,8 @@ func (m *Manager) cleanupStaleRules() {
 				continue
 			}
 			for _, r := range rules {
-				if err := m.ros.RemoveFirewallRule(proto, mode, r.ID); err != nil {
-					m.logger.Warn().Err(err).
+				if removeErr := m.ros.RemoveFirewallRule(proto, mode, r.ID); removeErr != nil {
+					m.logger.Warn().Err(removeErr).
 						Str("comment", r.Comment).Str("id", r.ID).
 						Msg("failed to remove stale firewall rule")
 				} else {
@@ -691,9 +698,7 @@ func (m *Manager) cleanupStaleRules() {
 				}
 			}
 		}
-
 	}
-
 	if removed > 0 {
 		m.logger.Info().Int("count", removed).Msg("stale bouncer resources cleanup complete")
 	}
@@ -900,12 +905,12 @@ func (m *Manager) applyInputRuleOptions(rule *rosClient.FirewallRule) {
 func (m *Manager) ensureFirewallRule(proto, mode string, rule rosClient.FirewallRule) error {
 	// Check if rule already exists
 	existing, err := m.ros.FindFirewallRuleByComment(proto, mode, rule.Comment)
-	if err != nil {
+	if err != nil && !errors.Is(err, rosClient.ErrNotFound) {
 		metrics.RecordError("firewall")
 		return fmt.Errorf("checking existing rule %q: %w", rule.Comment, err)
 	}
 
-	if existing != nil {
+	if err == nil && existing != nil {
 		m.logger.Debug().
 			Str("comment", rule.Comment).
 			Str("id", existing.ID).
@@ -934,10 +939,10 @@ func (m *Manager) ensureFirewallRule(proto, mode string, rule rosClient.Firewall
 // total traffic evaluated by the bouncer, analogous to iptables JUMP counters.
 func (m *Manager) ensureCountingRule(proto, mode string, rule rosClient.FirewallRule, beforeComment string) error {
 	existing, err := m.ros.FindFirewallRuleByComment(proto, mode, rule.Comment)
-	if err != nil {
+	if err != nil && !errors.Is(err, rosClient.ErrNotFound) {
 		return fmt.Errorf("checking counting rule %q: %w", rule.Comment, err)
 	}
-	if existing != nil {
+	if err == nil && existing != nil {
 		m.ruleMu.Lock()
 		m.ruleIDs[rule.Comment] = existing.ID
 		m.ruleMu.Unlock()
@@ -946,10 +951,10 @@ func (m *Manager) ensureCountingRule(proto, mode string, rule rosClient.Firewall
 
 	// Find the target rule to position before it
 	target, err := m.ros.FindFirewallRuleByComment(proto, mode, beforeComment)
-	if err != nil {
+	if err != nil && !errors.Is(err, rosClient.ErrNotFound) {
 		return fmt.Errorf("finding target rule %q for counting placement: %w", beforeComment, err)
 	}
-	if target != nil {
+	if err == nil && target != nil {
 		rule.PlaceBefore = target.ID
 	} else {
 		m.logger.Warn().
@@ -1108,7 +1113,7 @@ func (m *Manager) reconcileAddresses(decisions []*crowdsec.Decision) {
 			}
 			m.cacheMu.Unlock()
 
-			for i := 0; i < added; i++ {
+			for range added {
 				metrics.RecordDecision("ban", metricsProto, "reconcile")
 			}
 			metrics.ObserveOperationDuration("bulk_add", time.Since(addStart))
@@ -1141,14 +1146,14 @@ func (m *Manager) reconcileAddresses(decisions []*crowdsec.Decision) {
 			} else {
 				// Fallback to sequential
 				for _, entry := range toRemove {
-					err := m.ros.RemoveAddress(proto, entry.ID)
+					removeErr := m.ros.RemoveAddress(proto, entry.ID)
 					switch {
-					case err == nil:
+					case removeErr == nil:
 						removed++
-					case strings.Contains(err.Error(), "no such item"):
+					case strings.Contains(removeErr.Error(), "no such item"):
 						removed++ // expired items count as removed
 					default:
-						m.logger.Error().Err(err).Str("address", entry.Address).Msg("reconcile: error removing address")
+						m.logger.Error().Err(removeErr).Str("address", entry.Address).Msg("reconcile: error removing address")
 						metrics.RecordError("remove")
 					}
 				}
@@ -1161,7 +1166,7 @@ func (m *Manager) reconcileAddresses(decisions []*crowdsec.Decision) {
 			}
 			m.cacheMu.Unlock()
 
-			for i := 0; i < removed; i++ {
+			for range removed {
 				metrics.RecordDecision("unban", metricsProto, "reconcile")
 			}
 			metrics.ObserveOperationDuration("bulk_remove", time.Since(removeStart))
@@ -1172,10 +1177,7 @@ func (m *Manager) reconcileAddresses(decisions []*crowdsec.Decision) {
 				Msg("bulk remove complete")
 		}
 
-		unchanged := len(shouldExist) - added
-		if unchanged < 0 {
-			unchanged = 0
-		}
+		unchanged := max(len(shouldExist)-added, 0)
 
 		metrics.RecordReconciliation("added", added)
 		metrics.RecordReconciliation("removed", removed)

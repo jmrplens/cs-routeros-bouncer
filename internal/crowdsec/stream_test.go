@@ -116,20 +116,20 @@ func TestActiveDecisionsUsesDecisionListEndpoint(t *testing.T) {
 		response := models.GetDecisionsResponse{}
 		switch offset {
 		case "0":
-			for i := 0; i < activeDecisionPageSize; i++ {
+			for i := range activeDecisionPageSize {
 				value := fmt.Sprintf("10.%d.%d.%d", i/65536, (i/256)%256, i%256)
 				response = append(response, &models.Decision{
-					Value:    strPtr(value),
-					Type:     strPtr("ban"),
-					Duration: strPtr("1h"),
-					Origin:   strPtr("crowdsec"),
-					Scenario: strPtr("ssh-bf"),
+					Value:    new(value),
+					Type:     new("ban"),
+					Duration: new("1h"),
+					Origin:   new("crowdsec"),
+					Scenario: new("ssh-bf"),
 				})
 			}
 		case fmt.Sprintf("%d", activeDecisionPageSize):
 			response = append(response,
-				&models.Decision{Value: strPtr("192.0.2.55"), Type: strPtr("ban"), Duration: strPtr("1h"), Origin: strPtr("crowdsec"), Scenario: strPtr("ssh-bf")},
-				&models.Decision{Value: strPtr("5.6.7.8"), Type: strPtr("captcha"), Duration: strPtr("1h")},
+				&models.Decision{Value: new("192.0.2.55"), Type: new("ban"), Duration: new("1h"), Origin: new("crowdsec"), Scenario: new("ssh-bf")},
+				&models.Decision{Value: new("5.6.7.8"), Type: new("captcha"), Duration: new("1h")},
 			)
 		default:
 			t.Errorf("unexpected offset %q", offset)
@@ -185,7 +185,6 @@ func TestRunNewBanDecisions(t *testing.T) {
 	banCh := make(chan *Decision, 10)
 	deleteCh := make(chan *Decision, 10)
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- s.Run(ctx, banCh, deleteCh) }()
@@ -194,11 +193,11 @@ func TestRunNewBanDecisions(t *testing.T) {
 	mb.DecisionCh <- &models.DecisionsStreamResponse{
 		New: models.GetDecisionsResponse{
 			{
-				Value:    strPtr("1.2.3.4"),
-				Type:     strPtr("ban"),
-				Duration: strPtr("4h"),
-				Origin:   strPtr("crowdsec"),
-				Scenario: strPtr("http-probing"),
+				Value:    new("1.2.3.4"),
+				Type:     new("ban"),
+				Duration: new("4h"),
+				Origin:   new("crowdsec"),
+				Scenario: new("http-probing"),
 			},
 		},
 	}
@@ -235,7 +234,6 @@ func TestRunDeleteDecisions(t *testing.T) {
 	banCh := make(chan *Decision, 10)
 	deleteCh := make(chan *Decision, 10)
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- s.Run(ctx, banCh, deleteCh) }()
@@ -243,10 +241,10 @@ func TestRunDeleteDecisions(t *testing.T) {
 	mb.DecisionCh <- &models.DecisionsStreamResponse{
 		Deleted: models.GetDecisionsResponse{
 			{
-				Value:    strPtr("10.0.0.1"),
-				Type:     strPtr("ban"),
-				Duration: strPtr("1h"),
-				Origin:   strPtr("cscli"),
+				Value:    new("10.0.0.1"),
+				Type:     new("ban"),
+				Duration: new("1h"),
+				Origin:   new("cscli"),
 			},
 		},
 	}
@@ -282,16 +280,16 @@ func TestRunNilDecisionFieldsSkipped(t *testing.T) {
 	mb.DecisionCh <- &models.DecisionsStreamResponse{
 		New: models.GetDecisionsResponse{
 			nil, // nil decision
-			{Value: nil, Type: strPtr("ban"), Duration: strPtr("1h")},      // nil Value
-			{Value: strPtr("1.1.1.1"), Type: nil, Duration: strPtr("1h")},  // nil Type
-			{Value: strPtr("1.1.1.1"), Type: strPtr("ban"), Duration: nil}, // nil Duration
+			{Value: nil, Type: new("ban"), Duration: new("1h")},      // nil Value
+			{Value: new("1.1.1.1"), Type: nil, Duration: new("1h")},  // nil Type
+			{Value: new("1.1.1.1"), Type: new("ban"), Duration: nil}, // nil Duration
 		},
 	}
 
 	// Send a valid decision so we know processing reached it.
 	mb.DecisionCh <- &models.DecisionsStreamResponse{
 		New: models.GetDecisionsResponse{
-			{Value: strPtr("9.9.9.9"), Type: strPtr("ban"), Duration: strPtr("1h")},
+			{Value: new("9.9.9.9"), Type: new("ban"), Duration: new("1h")},
 		},
 	}
 
@@ -324,13 +322,13 @@ func TestRunNonBanTypeSkipped(t *testing.T) {
 	// Captcha type should be skipped.
 	mb.DecisionCh <- &models.DecisionsStreamResponse{
 		New: models.GetDecisionsResponse{
-			{Value: strPtr("1.1.1.1"), Type: strPtr("captcha"), Duration: strPtr("1h")},
+			{Value: new("1.1.1.1"), Type: new("captcha"), Duration: new("1h")},
 		},
 	}
 	// Follow with a valid ban to confirm we're still processing.
 	mb.DecisionCh <- &models.DecisionsStreamResponse{
 		New: models.GetDecisionsResponse{
-			{Value: strPtr("2.2.2.2"), Type: strPtr("ban"), Duration: strPtr("1h")},
+			{Value: new("2.2.2.2"), Type: new("ban"), Duration: new("1h")},
 		},
 	}
 
@@ -355,8 +353,7 @@ func TestRunChannelClosed(t *testing.T) {
 
 	banCh := make(chan *Decision, 10)
 	deleteCh := make(chan *Decision, 10)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- s.Run(ctx, banCh, deleteCh) }()
@@ -420,10 +417,10 @@ func TestRunIPv6Decision(t *testing.T) {
 	mb.DecisionCh <- &models.DecisionsStreamResponse{
 		New: models.GetDecisionsResponse{
 			{
-				Value:    strPtr("2001:db8::1"),
-				Type:     strPtr("ban"),
-				Duration: strPtr("2h"),
-				Origin:   strPtr("CAPI"),
+				Value:    new("2001:db8::1"),
+				Type:     new("ban"),
+				Duration: new("2h"),
+				Origin:   new("CAPI"),
 			},
 		},
 	}
@@ -460,9 +457,9 @@ func TestRunCIDRRange(t *testing.T) {
 	mb.DecisionCh <- &models.DecisionsStreamResponse{
 		New: models.GetDecisionsResponse{
 			{
-				Value:    strPtr("10.0.0.0/24"),
-				Type:     strPtr("ban"),
-				Duration: strPtr("1h"),
+				Value:    new("10.0.0.0/24"),
+				Type:     new("ban"),
+				Duration: new("1h"),
 			},
 		},
 	}
@@ -496,10 +493,10 @@ func TestRunMixedNewAndDeleted(t *testing.T) {
 
 	mb.DecisionCh <- &models.DecisionsStreamResponse{
 		New: models.GetDecisionsResponse{
-			{Value: strPtr("5.5.5.5"), Type: strPtr("ban"), Duration: strPtr("1h")},
+			{Value: new("5.5.5.5"), Type: new("ban"), Duration: new("1h")},
 		},
 		Deleted: models.GetDecisionsResponse{
-			{Value: strPtr("6.6.6.6"), Type: strPtr("ban"), Duration: strPtr("1h")},
+			{Value: new("6.6.6.6"), Type: new("ban"), Duration: new("1h")},
 		},
 	}
 
@@ -545,7 +542,7 @@ func TestRunEmptyDecisionBatch(t *testing.T) {
 	// Follow with a valid ban to confirm processing continues.
 	mb.DecisionCh <- &models.DecisionsStreamResponse{
 		New: models.GetDecisionsResponse{
-			{Value: strPtr("7.7.7.7"), Type: strPtr("ban"), Duration: strPtr("1h")},
+			{Value: new("7.7.7.7"), Type: new("ban"), Duration: new("1h")},
 		},
 	}
 
@@ -578,16 +575,16 @@ func TestRunDeletedNilFields(t *testing.T) {
 
 	mb.DecisionCh <- &models.DecisionsStreamResponse{
 		Deleted: models.GetDecisionsResponse{
-			nil,                                   // nil decision
-			{Value: nil, Type: strPtr("ban")},     // nil Value
-			{Value: strPtr("1.1.1.1"), Type: nil}, // nil Type
+			nil,                                // nil decision
+			{Value: nil, Type: new("ban")},     // nil Value
+			{Value: new("1.1.1.1"), Type: nil}, // nil Type
 		},
 	}
 
 	// Follow with valid delete to confirm processing continues.
 	mb.DecisionCh <- &models.DecisionsStreamResponse{
 		Deleted: models.GetDecisionsResponse{
-			{Value: strPtr("8.8.8.8"), Type: strPtr("ban"), Duration: strPtr("1h")},
+			{Value: new("8.8.8.8"), Type: new("ban"), Duration: new("1h")},
 		},
 	}
 
@@ -621,7 +618,7 @@ func TestRunBanDuringContextCancel(t *testing.T) {
 	// Send a decision — Run will try to write to banCh but it's unbuffered.
 	mb.DecisionCh <- &models.DecisionsStreamResponse{
 		New: models.GetDecisionsResponse{
-			{Value: strPtr("3.3.3.3"), Type: strPtr("ban"), Duration: strPtr("1h")},
+			{Value: new("3.3.3.3"), Type: new("ban"), Duration: new("1h")},
 		},
 	}
 
@@ -654,7 +651,7 @@ func TestRunDeleteDuringContextCancel(t *testing.T) {
 
 	mb.DecisionCh <- &models.DecisionsStreamResponse{
 		Deleted: models.GetDecisionsResponse{
-			{Value: strPtr("4.4.4.4"), Type: strPtr("ban"), Duration: strPtr("1h")},
+			{Value: new("4.4.4.4"), Type: new("ban"), Duration: new("1h")},
 		},
 	}
 

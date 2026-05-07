@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -27,6 +28,10 @@ type Client struct {
 	// a mock RouterConn without touching the network.
 	dialFunc func(cfg config.MikroTikConfig) (RouterConn, error)
 }
+
+// ErrNotFound reports that a RouterOS query completed successfully but did not
+// return any matching resource.
+var ErrNotFound = errors.New("routeros resource not found")
 
 // NewClient creates a new RouterOS API client.
 func NewClient(cfg config.MikroTikConfig) *Client {
@@ -152,8 +157,8 @@ func (c *Client) Run(args ...string) (*routeros.Reply, error) {
 		_ = c.conn.Close()
 		c.conn = nil
 
-		if err := c.ensureConnected(); err != nil {
-			return nil, fmt.Errorf("reconnect failed: %w", err)
+		if reconnectErr := c.ensureConnected(); reconnectErr != nil {
+			return nil, fmt.Errorf("reconnect failed: %w", reconnectErr)
 		}
 
 		reply, err = c.conn.RunArgs(args)
@@ -188,7 +193,7 @@ func (c *Client) Add(path string, attrs map[string]string) (string, error) {
 }
 
 // Set modifies an existing resource identified by its `.id`.
-func (c *Client) Set(path string, id string, attrs map[string]string) error {
+func (c *Client) Set(path, id string, attrs map[string]string) error {
 	args := make([]string, 0, 2+len(attrs))
 	args = append(args, path+"/set", "=numbers="+id)
 	for k, v := range attrs {
@@ -204,7 +209,7 @@ func (c *Client) Set(path string, id string, attrs map[string]string) error {
 }
 
 // Remove deletes a resource identified by its `.id`.
-func (c *Client) Remove(path string, id string) error {
+func (c *Client) Remove(path, id string) error {
 	_, err := c.Run(path+"/remove", "=numbers="+id)
 	if err != nil {
 		return fmt.Errorf("remove %s %s: %w", path, id, err)
@@ -214,19 +219,12 @@ func (c *Client) Remove(path string, id string) error {
 }
 
 // Print lists resources at the given path with optional query filters and property selection.
-func (c *Client) Print(path string, query []string, proplist []string) ([]map[string]string, error) {
+func (c *Client) Print(path string, query, proplist []string) ([]map[string]string, error) {
 	args := []string{path + "/print"}
 
 	// Add property list
 	if len(proplist) > 0 {
-		props := ""
-		for i, p := range proplist {
-			if i > 0 {
-				props += ","
-			}
-			props += p
-		}
-		args = append(args, "=.proplist="+props)
+		args = append(args, "=.proplist="+strings.Join(proplist, ","))
 	}
 
 	// Add query filters
@@ -245,15 +243,15 @@ func (c *Client) Print(path string, query []string, proplist []string) ([]map[st
 	return results, nil
 }
 
-// Find returns the first resource matching the query, or nil if not found.
-func (c *Client) Find(path string, query []string, proplist []string) (map[string]string, error) {
+// Find returns the first resource matching the query.
+func (c *Client) Find(path string, query, proplist []string) (map[string]string, error) {
 	results, err := c.Print(path, query, proplist)
 	if err != nil {
 		return nil, err
 	}
 
 	if len(results) == 0 {
-		return nil, nil
+		return nil, ErrNotFound
 	}
 
 	return results[0], nil
@@ -271,11 +269,11 @@ func (c *Client) Ping() error {
 // GetIdentity returns the router identity name.
 func (c *Client) GetIdentity() (string, error) {
 	result, err := c.Find("/system/identity", nil, []string{"name"})
+	if errors.Is(err, ErrNotFound) {
+		return "", errors.New("no identity found")
+	}
 	if err != nil {
 		return "", err
-	}
-	if result == nil {
-		return "", fmt.Errorf("no identity found")
 	}
 	return result["name"], nil
 }
@@ -288,22 +286,22 @@ func (c *Client) GetAPIMaxSessions() int {
 		serviceName = "api-ssl"
 	}
 	result, err := c.Find("/ip/service", []string{"?name=" + serviceName}, []string{"max-sessions"})
-	if err != nil {
-		c.logger.Warn().Err(err).Msg("could not query API max-sessions")
+	if errors.Is(err, ErrNotFound) {
 		return 0
 	}
-	if result == nil {
+	if err != nil {
+		c.logger.Warn().Err(err).Msg("could not query API max-sessions")
 		return 0
 	}
 	val, ok := result["max-sessions"]
 	if !ok || val == "" {
 		return 0
 	}
-	var n int
-	if _, err := fmt.Sscanf(val, "%d", &n); err != nil {
+	maxSessions, parseErr := strconv.Atoi(val)
+	if parseErr != nil {
 		return 0
 	}
-	return n
+	return maxSessions
 }
 
 // SystemResources holds CPU and memory information from RouterOS.
@@ -322,11 +320,11 @@ func (c *Client) GetSystemResources() (*SystemResources, error) {
 		"cpu-load", "free-memory", "total-memory",
 		"uptime", "version", "board-name",
 	})
+	if errors.Is(err, ErrNotFound) {
+		return nil, errors.New("empty response from /system/resource/print")
+	}
 	if err != nil {
 		return nil, fmt.Errorf("querying system resources: %w", err)
-	}
-	if result == nil {
-		return nil, fmt.Errorf("empty response from /system/resource/print")
 	}
 
 	sr := &SystemResources{}
