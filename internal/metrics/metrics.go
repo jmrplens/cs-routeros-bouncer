@@ -241,9 +241,7 @@ func SetActiveDecisionsByOrigin(origin string, count int64) {
 func GetActiveDecisionsByOrigin() map[string]int64 {
 	originDecisionsMu.RLock()
 	defer originDecisionsMu.RUnlock()
-	result := make(map[string]int64, len(originDecisions))
-	maps.Copy(result, originDecisions)
-	return result
+	return maps.Clone(originDecisions)
 }
 
 // IncrActiveDecisionsByOrigin increments the active count for a given origin.

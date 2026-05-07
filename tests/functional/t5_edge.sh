@@ -148,8 +148,12 @@ t5_4_restart_idempotency() {
     # All counts should be within ±10 of each other
     local min=${counts[0]} max=${counts[0]}
     for c in "${counts[@]}"; do
-        (( c < min )) && min=$c
-        (( c > max )) && max=$c
+        if (( c < min )); then
+            min=$c
+        fi
+        if (( c > max )); then
+            max=$c
+        fi
     done
     local spread=$(( max - min ))
     if (( spread > 10 )); then

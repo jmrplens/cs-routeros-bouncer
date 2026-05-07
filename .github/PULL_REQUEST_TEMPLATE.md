@@ -2,7 +2,8 @@
 
 <!-- Brief description of the changes. Link any related issues. -->
 
-Related to #
+Fixes # (closes the issue automatically)
+Related to # (links without closing)
 
 ## Type of change
 

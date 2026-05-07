@@ -43,7 +43,7 @@ import (
 // mock is safe for concurrent use (e.g. reconcileAddresses iterates protos
 // sequentially but could be extended to parallel in the future).
 type mockROS struct {
-	mu sync.Mutex
+	mu sync.RWMutex
 
 	// Return values — set these before calling the method under test.
 	connectErr       error
@@ -161,7 +161,11 @@ func (m *mockROS) Close() {
 
 // GetAPIMaxSessions implements RouterOSClient.GetAPIMaxSessions and returns the
 // configured maxSessions value.
-func (m *mockROS) GetAPIMaxSessions() int { return m.maxSessions }
+func (m *mockROS) GetAPIMaxSessions() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.maxSessions
+}
 
 // GetIdentity implements RouterOSClient.GetIdentity and returns the configured
 // identity name and error.

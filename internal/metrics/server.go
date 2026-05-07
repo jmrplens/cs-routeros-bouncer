@@ -3,6 +3,7 @@ package metrics
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -75,7 +76,7 @@ func (s *Server) Start() error {
 	logger.Info().Str("addr", ln.Addr().String()).Msg("starting health/metrics server")
 
 	go func() {
-		if serveErr := s.httpServer.Serve(ln); serveErr != nil && serveErr != http.ErrServerClosed {
+		if serveErr := s.httpServer.Serve(ln); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
 			logger.Error().Err(serveErr).Msg("health/metrics server error")
 		}
 	}()

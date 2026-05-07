@@ -631,9 +631,9 @@ func TestFirewallRuleWantTopDetection(t *testing.T) {
 	}
 }
 
-// TestFirewallRuleInInterfaceFields verifies that input interface fields
-// are correctly stored on the FirewallRule struct.
-func TestFirewallRuleInInterfaceFields(t *testing.T) {
+// TestFirewallRuleInputFields verifies that input rule fields are correctly
+// stored on the FirewallRule struct.
+func TestFirewallRuleInputFields(t *testing.T) {
 	rule := FirewallRule{
 		Chain:           "input",
 		Action:          "drop",

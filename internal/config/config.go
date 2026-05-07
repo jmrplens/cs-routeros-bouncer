@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -280,6 +281,13 @@ func (c *Config) Validate() error {
 	}
 	if c.CrowdSec.APIURL == "" {
 		return errors.New("crowdsec.api_url is required")
+	}
+	parsedAPIURL, err := url.ParseRequestURI(c.CrowdSec.APIURL)
+	if err != nil {
+		return fmt.Errorf("crowdsec.api_url is invalid: %w", err)
+	}
+	if parsedAPIURL.Scheme == "" || parsedAPIURL.Host == "" {
+		return fmt.Errorf("crowdsec.api_url must include scheme and host, got %q", c.CrowdSec.APIURL)
 	}
 	if c.MikroTik.Address == "" {
 		return errors.New("mikrotik.address is required")

@@ -105,7 +105,9 @@ func (c *Client) runBulkScript(source string) (int, error) {
 		return 0, fmt.Errorf("find existing bulk script: %w", err)
 	}
 	if err == nil {
-		_ = c.Remove("/system/script", existing[".id"])
+		if removeErr := c.Remove("/system/script", existing[".id"]); removeErr != nil {
+			return 0, fmt.Errorf("remove existing bulk script: %w", removeErr)
+		}
 	}
 
 	// Create script

@@ -29,8 +29,8 @@ LDFLAGS := -s -w -X $(MODULE)/internal/config.Version=$(VERSION) \
 .PHONY: help all build build-all build-linux-amd64 build-linux-arm64 build-darwin-amd64 build-darwin-arm64 build-windows-amd64 \
 	run test test-short test-race test-integration test-docker coverage \
 	fmt goimports goimports-check gofmt-check vet modernize modernize-fix golangci-lint gosec staticcheck govulncheck actionlint mdlint mdlint-fix \
-		lint analyze install-tools docs-install docs-check docs-lint docs-format-check docs-format docs-build docs-html-validate docs-preview docs-analyze \
-        clean install uninstall docker-build docker-push release-snapshot
+	lint analyze install-tools docs-install docs-check docs-lint docs-format-check docs-format docs-build docs-html-validate docs-preview docs-analyze \
+	clean install uninstall docker-build docker-push release-snapshot
 
 ## help: show available make targets
 help:

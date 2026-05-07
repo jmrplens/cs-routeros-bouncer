@@ -16,6 +16,7 @@ body:
     attributes:
       label: Summary
       description: Brief description of the improvement.
+      placeholder: "e.g., One-line improvement summary"
     validations:
       required: true
 

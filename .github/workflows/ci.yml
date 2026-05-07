@@ -189,7 +189,7 @@ jobs:
 
   build:
     name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
-    needs: [go-analysis, shellcheck, vulncheck, test, docs, workflows, markdown]
+    needs: [go-format, go-analysis, shellcheck, vulncheck, test, docs, workflows, markdown]
     runs-on: ubuntu-latest
     strategy:
       matrix:

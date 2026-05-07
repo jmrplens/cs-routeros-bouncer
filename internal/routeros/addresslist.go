@@ -82,7 +82,7 @@ func (c *Client) AddAddress(proto, list, address, timeout, comment string) (stri
 		if isDuplicateEntryError(err) {
 			existing, findErr := c.FindAddress(proto, list, address)
 			if errors.Is(findErr, ErrNotFound) {
-				return "", fmt.Errorf("add address %s to %s: duplicate entry but could not find it", address, list)
+				return "", fmt.Errorf("add address %s to %s: %w", address, list, ErrDuplicateReportedButNotFound)
 			}
 			if findErr != nil {
 				return "", fmt.Errorf("add address %s to %s: duplicate entry and lookup failed: %w", address, list, findErr)

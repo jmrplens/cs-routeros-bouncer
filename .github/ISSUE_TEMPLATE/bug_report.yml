@@ -50,6 +50,7 @@ body:
     id: crowdsec-version
     attributes:
       label: CrowdSec version
+      description: Output of `cscli version`.
       placeholder: "1.7.7"
 
   - type: dropdown

@@ -96,9 +96,9 @@ func TestLogrusAdapterInfo(t *testing.T) {
 	}
 }
 
-// TestLogrusAdapterMultiArgFormatting verifies logrus-style formatting for
-// multi-argument non-format methods.
-func TestLogrusAdapterMultiArgFormatting(t *testing.T) {
+// TestLogrusAdapterInfoMultiArgFormatting verifies logrus-style formatting for
+// multi-argument Info calls.
+func TestLogrusAdapterInfoMultiArgFormatting(t *testing.T) {
 	var buf bytes.Buffer
 	zl := zerolog.New(&buf).Level(zerolog.InfoLevel)
 	adapter := NewLogrusAdapter(zl)
@@ -107,13 +107,22 @@ func TestLogrusAdapterMultiArgFormatting(t *testing.T) {
 	if output := buf.String(); !strings.Contains(output, "count=2") {
 		t.Errorf("expected 'count=2' in output, got: %s", output)
 	}
+}
 
-	buf.Reset()
+// TestLogrusAdapterPrintlnTrimming verifies that Println output does not keep
+// the trailing newline added by fmt.Sprintln.
+func TestLogrusAdapterPrintlnTrimming(t *testing.T) {
+	var buf bytes.Buffer
+	zl := zerolog.New(&buf).Level(zerolog.InfoLevel)
+	adapter := NewLogrusAdapter(zl)
+
 	adapter.Println("hello", "world")
 	output := buf.String()
 	if !strings.Contains(output, "hello world") {
 		t.Errorf("expected 'hello world' in output, got: %s", output)
 	}
+	// Zerolog JSON-escapes a real newline as the two-character sequence \n.
+	// This assertion checks that Println trimming removed that encoded newline.
 	if strings.Contains(output, "hello world\\n") {
 		t.Errorf("expected trimmed println message, got: %s", output)
 	}
@@ -185,6 +194,27 @@ func TestLogrusAdapterWithField(t *testing.T) {
 	entry := adapter.WithField("key", "value")
 	if entry == nil {
 		t.Fatal("expected non-nil logrus.Entry from WithField")
+	}
+}
+
+// TestLogrusAdapterWithFieldDebugPreservesLevel verifies that logrus entries
+// created from the adapter keep their log level and fields when forwarded.
+func TestLogrusAdapterWithFieldDebugPreservesLevel(t *testing.T) {
+	var buf bytes.Buffer
+	zl := zerolog.New(&buf).Level(zerolog.DebugLevel)
+	adapter := NewLogrusAdapter(zl)
+
+	adapter.WithField("key", "value").Debug("debug with field")
+
+	output := buf.String()
+	if !strings.Contains(output, `"level":"debug"`) {
+		t.Errorf("expected debug level in output, got: %s", output)
+	}
+	if !strings.Contains(output, `"key":"value"`) {
+		t.Errorf("expected field in output, got: %s", output)
+	}
+	if !strings.Contains(output, "debug with field") {
+		t.Errorf("expected message in output, got: %s", output)
 	}
 }
 

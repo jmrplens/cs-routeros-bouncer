@@ -4,6 +4,10 @@
  * and prepends an announcement/info banner.
  */
 import Default from "@astrojs/starlight/components/Header.astro";
+
+type Props = Record<string, unknown>;
+
+const props = Astro.props as Props;
 ---
 
 <div class="announcement-bar" role="note" aria-label="Project announcement">
@@ -14,7 +18,7 @@ import Default from "@astrojs/starlight/components/Header.astro";
 	</p>
 </div>
 
-<Default {...Astro.props}><slot /></Default>
+<Default {...props}><slot /></Default>
 
 <style>
 	.announcement-bar {

@@ -607,6 +607,8 @@ func (m *Manager) handleUnban(d *crowdsec.Decision) {
 		return
 	}
 	if entry == nil {
+		// Defensive guard for RouterOSClient implementations that violate the
+		// FindAddress contract and return (nil, nil).
 		m.cacheMu.Lock()
 		delete(m.addressCache, addr)
 		m.cacheMu.Unlock()

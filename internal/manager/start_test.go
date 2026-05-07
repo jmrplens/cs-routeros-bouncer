@@ -310,8 +310,9 @@ func TestStart_ConnectRetrySuccess(t *testing.T) {
 	if err := <-errCh; err != nil {
 		t.Fatalf("Start should succeed after retry, got: %v", err)
 	}
-	if callCount.Load() < 3 {
-		t.Errorf("expected at least 3 connect calls, got %d", callCount.Load())
+	count := callCount.Load()
+	if count < 3 {
+		t.Errorf("expected at least 3 connect calls, got %d", count)
 	}
 }
 

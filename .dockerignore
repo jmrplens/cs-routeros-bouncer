@@ -1,18 +1,29 @@
+# VCS metadata and GitHub automation
 .git
 .github
+
+# Environment files
 .env
+
+# IDE/editor configs
 .vscode
 
+# Build artifacts
 bin
 dist
 coverage.out
 coverage.html
 
+# Documentation output and dependencies
 docs/.astro
 docs/dist
 docs/node_modules
+node_modules
+
+# Local dev files and generated sites
 local
 site
 
+# Logs/temp files
 *.log
 *.tmp

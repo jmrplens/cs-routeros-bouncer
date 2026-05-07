@@ -170,7 +170,7 @@ func main() {
 			}
 		}
 		elapsed := time.Since(start)
-		fmt.Printf("  %-35s %8s  (%s/ip, errors=%d)\n", label, elapsed.Round(time.Millisecond), (elapsed / time.Duration(n)).Round(time.Millisecond), failureCount)
+		fmt.Printf("  %-35s %8s  (%s/ip, failures=%d)\n", label, elapsed.Round(time.Millisecond), (elapsed / time.Duration(n)).Round(time.Millisecond), failureCount)
 
 		start2 := time.Now()
 		entries, _ := client.ListAddresses("ip", "crowdsec-banned", "")

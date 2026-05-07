@@ -5,7 +5,9 @@ package crowdsec
 
 import (
 	"fmt"
+	"io"
 	"strings"
+	"sync"
 
 	"github.com/rs/zerolog"
 	"github.com/sirupsen/logrus"
@@ -14,7 +16,9 @@ import (
 // zerologAdapter adapts zerolog.Logger to logrus.FieldLogger interface.
 // This is needed because go-cs-bouncer's MetricsProvider requires logrus.
 type zerologAdapter struct {
-	zl zerolog.Logger
+	zl         zerolog.Logger
+	logrusOnce sync.Once
+	logrus     *logrus.Logger
 }
 
 // NewLogrusAdapter creates a logrus.FieldLogger that delegates to zerolog.
@@ -138,10 +142,61 @@ func logrusLine(args ...any) string {
 // asLogrus creates a minimal logrus.Logger that writes to zerolog.
 // Used internally for WithField/WithFields/WithError which need a *logrus.Logger.
 func (a *zerologAdapter) asLogrus() *logrus.Logger {
-	l := logrus.New()
-	l.SetOutput(zerologWriter{zl: a.zl})
-	l.SetFormatter(&logrus.TextFormatter{DisableTimestamp: true})
-	return l
+	a.logrusOnce.Do(func() {
+		l := logrus.New()
+		l.SetOutput(io.Discard)
+		l.SetLevel(logrus.TraceLevel)
+		l.AddHook(zerologHook{zl: a.zl})
+		a.logrus = l
+	})
+	return a.logrus
+}
+
+type zerologHook struct {
+	zl zerolog.Logger
+}
+
+func (h zerologHook) Levels() []logrus.Level {
+	return logrus.AllLevels
+}
+
+func (h zerologHook) Fire(entry *logrus.Entry) error {
+	event := h.zl.WithLevel(logrusToZerologLevel(entry.Level))
+	if event == nil {
+		return nil
+	}
+	for key, value := range entry.Data {
+		if key == logrus.ErrorKey {
+			if err, ok := value.(error); ok {
+				event = event.Err(err)
+				continue
+			}
+		}
+		event = event.Interface(key, value)
+	}
+	event.Msg(entry.Message)
+	return nil
+}
+
+func logrusToZerologLevel(level logrus.Level) zerolog.Level {
+	switch level {
+	case logrus.PanicLevel:
+		return zerolog.PanicLevel
+	case logrus.FatalLevel:
+		return zerolog.FatalLevel
+	case logrus.ErrorLevel:
+		return zerolog.ErrorLevel
+	case logrus.WarnLevel:
+		return zerolog.WarnLevel
+	case logrus.InfoLevel:
+		return zerolog.InfoLevel
+	case logrus.DebugLevel:
+		return zerolog.DebugLevel
+	case logrus.TraceLevel:
+		return zerolog.TraceLevel
+	default:
+		return zerolog.InfoLevel
+	}
 }
 
 // zerologWriter routes logrus output to zerolog.

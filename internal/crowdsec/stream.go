@@ -166,7 +166,11 @@ func (s *Stream) Run(ctx context.Context, banCh, deleteCh chan<- *Decision) erro
 
 	go func() {
 		if err := s.bouncer.Run(ctx); err != nil {
-			s.logger.Debug().Err(err).Msg("CrowdSec bouncer run loop stopped")
+			if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
+				s.logger.Debug().Err(err).Msg("CrowdSec bouncer run loop stopped")
+				return
+			}
+			s.logger.Error().Err(err).Msg("CrowdSec bouncer run loop stopped unexpectedly")
 		}
 	}()
 

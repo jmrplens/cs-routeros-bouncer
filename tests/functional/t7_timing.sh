@@ -60,7 +60,7 @@ t7_2_ban_latency() {
     lapi_add_decision "$ip" "5m" "latency-test"
 
     local found=false
-    for _ in $(seq 1 20); do
+    for (( attempt = 1; attempt <= 20; attempt++ )); do
         sleep 2
         if ssh_address_exists "${TEST_IPV4_LIST}" "$ip"; then
             found=true; break
@@ -102,7 +102,7 @@ t7_3_unban_latency() {
     lapi_add_decision "$ip" "10m" "unban-latency-test"
 
     local setup_ok=false
-    for _ in $(seq 1 20); do
+    for (( attempt = 1; attempt <= 20; attempt++ )); do
         sleep 3
         if ssh_address_exists "${TEST_IPV4_LIST}" "$ip"; then
             setup_ok=true; break
@@ -115,7 +115,7 @@ t7_3_unban_latency() {
     lapi_remove_decision "$ip"
 
     local removed=false
-    for _ in $(seq 1 20); do
+    for (( attempt = 1; attempt <= 20; attempt++ )); do
         sleep 2
         if ! ssh_address_exists "${TEST_IPV4_LIST}" "$ip"; then
             removed=true; break

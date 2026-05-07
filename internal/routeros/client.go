@@ -33,6 +33,10 @@ type Client struct {
 // return any matching resource.
 var ErrNotFound = errors.New("routeros resource not found")
 
+// ErrDuplicateReportedButNotFound reports that RouterOS rejected a create as a
+// duplicate, but the follow-up lookup could not find the existing resource.
+var ErrDuplicateReportedButNotFound = errors.New("routeros reported duplicate entry but lookup returned not found")
+
 // NewClient creates a new RouterOS API client.
 func NewClient(cfg config.MikroTikConfig) *Client {
 	return &Client{
@@ -270,7 +274,7 @@ func (c *Client) Ping() error {
 func (c *Client) GetIdentity() (string, error) {
 	result, err := c.Find("/system/identity", nil, []string{"name"})
 	if errors.Is(err, ErrNotFound) {
-		return "", errors.New("no identity found")
+		return "", fmt.Errorf("no identity found: %w", err)
 	}
 	if err != nil {
 		return "", err
@@ -287,6 +291,7 @@ func (c *Client) GetAPIMaxSessions() int {
 	}
 	result, err := c.Find("/ip/service", []string{"?name=" + serviceName}, []string{"max-sessions"})
 	if errors.Is(err, ErrNotFound) {
+		c.logger.Debug().Str("service", serviceName).Msg("API service max-sessions not found")
 		return 0
 	}
 	if err != nil {
@@ -321,7 +326,7 @@ func (c *Client) GetSystemResources() (*SystemResources, error) {
 		"uptime", "version", "board-name",
 	})
 	if errors.Is(err, ErrNotFound) {
-		return nil, errors.New("empty response from /system/resource/print")
+		return nil, fmt.Errorf("empty response from /system/resource/print: %w", err)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("querying system resources: %w", err)

@@ -5,12 +5,26 @@ import rehypeMermaid from "rehype-mermaid";
 import fs from "node:fs";
 
 // Load RouterOS TextMate grammar for syntax highlighting
-const routerosGrammar = JSON.parse(
-	fs.readFileSync(
-		new URL("./src/languages/routeros.tmLanguage.json", import.meta.url),
-		"utf-8",
-	),
+const routerosGrammarURL = new URL(
+	"./src/languages/routeros.tmLanguage.json",
+	import.meta.url,
 );
+
+/** @returns {Record<string, unknown>} */
+function loadRouterOSGrammar() {
+	try {
+		return JSON.parse(fs.readFileSync(routerosGrammarURL, "utf-8"));
+	} catch (error) {
+		throw new Error(
+			`Failed to load RouterOS TextMate grammar from ${routerosGrammarURL}`,
+			{
+				cause: error,
+			},
+		);
+	}
+}
+
+const routerosGrammar = loadRouterOSGrammar();
 
 /** @returns {import('astro').AstroIntegration} */
 function routerosLanguage() {
@@ -24,6 +38,7 @@ function routerosLanguage() {
 							langs: [
 								{
 									...routerosGrammar,
+									// Keep these explicit aliases even if the grammar provides its own names.
 									aliases: ["routeros", "mikrotik", "rsc"],
 								},
 							],
@@ -111,6 +126,32 @@ export default defineConfig({
 						name: "theme-color",
 						content: "#3F51B5",
 					},
+				},
+				{
+					tag: "script",
+					content: `(() => {
+	const syncMermaidPictures = () => {
+		const isDark = document.documentElement.dataset.theme === "dark";
+		document
+			.querySelectorAll('picture source[id^="mermaid-dark-"]')
+			.forEach((source) => {
+				source.setAttribute("media", isDark ? "all" : "not all");
+			});
+	};
+
+	new MutationObserver(syncMermaidPictures).observe(document.documentElement, {
+		attributes: true,
+		attributeFilter: ["data-theme"],
+	});
+
+	if (document.readyState === "loading") {
+		document.addEventListener("DOMContentLoaded", syncMermaidPictures, {
+			once: true,
+		});
+	} else {
+		syncMermaidPictures();
+	}
+})();`,
 				},
 				{
 					tag: "script",

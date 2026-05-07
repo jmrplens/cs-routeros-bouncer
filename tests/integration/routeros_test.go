@@ -199,6 +199,9 @@ func TestRouterOSIntegration(t *testing.T) {
 			if err != nil && !errors.Is(err, routeros.ErrNotFound) {
 				t.Errorf("failed to verify %s/%s firewall rule removal: %v", r.proto, r.table, err)
 			}
+			if errors.Is(err, routeros.ErrNotFound) && entry != nil {
+				t.Errorf("inconsistent %s/%s firewall rule removal result: ErrNotFound with non-nil entry id=%s", r.proto, r.table, entry.ID)
+			}
 			if err == nil && entry != nil {
 				t.Errorf("expected %s/%s firewall rule with comment %q to be removed, but found id=%s", r.proto, r.table, comment, entry.ID)
 			}

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/jmrplens/cs-routeros-bouncer/internal/config"
@@ -98,15 +99,15 @@ func runSetup(binDst, configDir string) error {
 	// 4. Reload, enable, start
 	fmt.Println("→ Reloading systemd daemon ...")
 	if systemctlErr := systemctl("daemon-reload"); systemctlErr != nil {
-		return systemctlErr
+		return fmt.Errorf("reload systemd daemon: %w", systemctlErr)
 	}
 	fmt.Printf("→ Enabling %s ...\n", serviceName)
 	if systemctlErr := systemctl("enable", serviceName); systemctlErr != nil {
-		return systemctlErr
+		return fmt.Errorf("enable %s: %w", serviceName, systemctlErr)
 	}
 	fmt.Printf("→ Starting %s ...\n", serviceName)
 	if systemctlErr := systemctl("start", serviceName); systemctlErr != nil {
-		return systemctlErr
+		return fmt.Errorf("start %s: %w", serviceName, systemctlErr)
 	}
 
 	fmt.Println()
@@ -161,7 +162,10 @@ func systemctl(args ...string) error {
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("systemctl %v failed: %s", args, stderr.String())
+		if stderrText := strings.TrimSpace(stderr.String()); stderrText != "" {
+			return fmt.Errorf("systemctl %v failed: %s: %w", args, stderrText, err)
+		}
+		return fmt.Errorf("systemctl %v failed: %w", args, err)
 	}
 	return nil
 }
