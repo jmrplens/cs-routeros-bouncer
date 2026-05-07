@@ -180,10 +180,12 @@ This is expected during initial reconciliation with large address lists.
 **To reduce impact:**
 
 1. Filter synced decisions with `origins`:
+
    ```yaml
    crowdsec:
      origins: ["crowdsec", "cscli"]
    ```
+
 2. Schedule bouncer restarts during low-traffic periods
 3. CPU impact is temporary — only while reconciliation is actively adding or removing entries
 

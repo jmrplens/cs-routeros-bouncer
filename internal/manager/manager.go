@@ -381,6 +381,8 @@ collectLoop:
 	}
 }
 
+// reconcileActiveDecisions fetches a fresh active-decision snapshot from
+// CrowdSec and applies the normal address-list diff against RouterOS.
 func (m *Manager) reconcileActiveDecisions(ctx context.Context) {
 	if ctx.Err() != nil {
 		return

@@ -256,6 +256,8 @@ func TestSetConnectedServer(t *testing.T) {
 	}
 }
 
+// TestSetConnectedUpdatesHealthEndpoint verifies that the package-level
+// connection setter updates the HTTP health endpoint as well as Prometheus.
 func TestSetConnectedUpdatesHealthEndpoint(t *testing.T) {
 	srv := NewServer(config.MetricsConfig{}, "test")
 	SetConnected(true)

@@ -27,9 +27,11 @@ type Config struct {
 
 // CrowdSecConfig holds CrowdSec LAPI connection settings.
 type CrowdSecConfig struct {
-	APIURL                 string        `yaml:"api_url" mapstructure:"api_url"`
-	APIKey                 string        `yaml:"api_key" mapstructure:"api_key"`
-	UpdateFrequency        time.Duration `yaml:"update_frequency" mapstructure:"update_frequency"`
+	APIURL          string        `yaml:"api_url" mapstructure:"api_url"`
+	APIKey          string        `yaml:"api_key" mapstructure:"api_key"`
+	UpdateFrequency time.Duration `yaml:"update_frequency" mapstructure:"update_frequency"`
+	// ReconciliationInterval controls periodic full-state reconciliation.
+	// A zero value disables the periodic pass; non-zero values must be >= 1m.
 	ReconciliationInterval time.Duration `yaml:"reconciliation_interval" mapstructure:"reconciliation_interval"`
 	Origins                []string      `yaml:"origins" mapstructure:"origins"`
 	Scopes                 []string      `yaml:"scopes" mapstructure:"scopes"`

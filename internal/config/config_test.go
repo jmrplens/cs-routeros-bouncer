@@ -528,6 +528,8 @@ func TestLapiMetricsIntervalEnvOverride(t *testing.T) {
 	}
 }
 
+// TestReconciliationIntervalEnvOverride verifies the environment override for
+// periodic reconciliation cadence.
 func TestReconciliationIntervalEnvOverride(t *testing.T) {
 	setMinimalEnv(t)
 	t.Setenv("CROWDSEC_RECONCILIATION_INTERVAL", "5m")
@@ -542,6 +544,8 @@ func TestReconciliationIntervalEnvOverride(t *testing.T) {
 	}
 }
 
+// TestValidateReconciliationIntervalZeroDisables verifies that 0 is accepted
+// as the documented way to disable periodic reconciliation.
 func TestValidateReconciliationIntervalZeroDisables(t *testing.T) {
 	cfg := validCfg()
 	cfg.CrowdSec.ReconciliationInterval = 0
@@ -550,6 +554,8 @@ func TestValidateReconciliationIntervalZeroDisables(t *testing.T) {
 	}
 }
 
+// TestValidateReconciliationIntervalMinimum verifies the minimum non-zero
+// periodic reconciliation interval.
 func TestValidateReconciliationIntervalMinimum(t *testing.T) {
 	cfg := validCfg()
 	cfg.CrowdSec.ReconciliationInterval = 30 * time.Second
@@ -563,6 +569,8 @@ func TestValidateReconciliationIntervalMinimum(t *testing.T) {
 	}
 }
 
+// TestValidateReconciliationIntervalNegative verifies that negative intervals
+// are rejected.
 func TestValidateReconciliationIntervalNegative(t *testing.T) {
 	cfg := validCfg()
 	cfg.CrowdSec.ReconciliationInterval = -time.Second

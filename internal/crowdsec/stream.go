@@ -113,6 +113,8 @@ func (s *Stream) ActiveDecisions(ctx context.Context) ([]*Decision, error) {
 	return parseDecisionBatch(data.New, true), nil
 }
 
+// activeDecisionStreamOpts builds a startup-style stream request so LAPI
+// returns the full active decision set with the same filters as live polling.
 func (s *Stream) activeDecisionStreamOpts() apiclient.DecisionsStreamOpts {
 	return apiclient.DecisionsStreamOpts{
 		Startup:                true,
@@ -179,6 +181,9 @@ func (s *Stream) Run(ctx context.Context, banCh chan<- *Decision, deleteCh chan<
 	}
 }
 
+// parseDecisionBatch converts an LAPI decision response into internal
+// decisions. New bans require a duration; deleted decisions do not always
+// include one, so callers choose that validation rule explicitly.
 func parseDecisionBatch(decisions models.GetDecisionsResponse, requireDuration bool) []*Decision {
 	parsed := make([]*Decision, 0, len(decisions))
 	for _, d := range decisions {

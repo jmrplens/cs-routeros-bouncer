@@ -410,7 +410,7 @@ mikrotik:
 
 The bouncer creates rules with descriptive comments for identification:
 
-```
+```text
 ;;; crowdsec-bouncer:filter-input-input-v4 @cs-routeros-bouncer
 chain=input action=drop src-address-list=crowdsec-banned
 
@@ -424,7 +424,7 @@ Rules are placed at the **top** of the chain by default (`rule_placement: top`) 
 
 Tested on a **MikroTik RB5009UG+S+** (ARM64, 4 cores @ 1400 MHz, 1 GB RAM, RouterOS 7.21.3) with the bouncer running on a separate Linux host connected via the RouterOS API (plaintext, port 8728).
 
-Router CPU can spike during startup reconciliation because the bouncer is intentionally adding or removing many address-list entries. Sustained high RouterOS CPU after reconciliation is not expected from simply keeping entries in memory; it usually points to repeated RouterOS API writes/reconnects, duplicate-decision churn, or unrelated router workload.
+Router CPU can spike during reconciliation, especially at startup or whenever real drift requires add/remove work. Sustained high RouterOS CPU after reconciliation is not expected from simply keeping entries in memory; it usually points to repeated RouterOS API writes/reconnects, duplicate-decision churn, or unrelated router workload.
 
 The bouncer uses a **connection pool** (4 parallel API connections), **script-based bulk add** (chunks of 100 entries), and an **in-memory address cache** for O(1) lookups during unban operations.
 

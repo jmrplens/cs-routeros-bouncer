@@ -24,6 +24,8 @@ type Server struct {
 	connected  atomic.Bool
 }
 
+// activeServer points to the latest health server so package-level metrics
+// updates can keep /health aligned with the Prometheus connection gauge.
 var activeServer atomic.Pointer[Server]
 
 // NewServer creates a new metrics HTTP server.
@@ -63,6 +65,8 @@ func (s *Server) SetConnected(connected bool) {
 	s.connected.Store(connected)
 }
 
+// setHealthConnected mirrors RouterOS connection state into the active health
+// endpoint when a server has been created.
 func setHealthConnected(connected bool) {
 	if s := activeServer.Load(); s != nil {
 		s.SetConnected(connected)

@@ -49,7 +49,9 @@ type mockStream struct {
 	// RunFunc is called by Run() if set. It receives the same arguments as
 	// the real Run and should send decisions to banCh/deleteCh, then return
 	// when ctx is done. If nil, Run returns runErr immediately.
-	RunFunc             func(ctx context.Context, banCh chan<- *crowdsec.Decision, deleteCh chan<- *crowdsec.Decision) error
+	RunFunc func(ctx context.Context, banCh chan<- *crowdsec.Decision, deleteCh chan<- *crowdsec.Decision) error
+	// ActiveDecisionsFunc lets tests override the snapshot returned to periodic
+	// reconciliation.
 	ActiveDecisionsFunc func(ctx context.Context) ([]*crowdsec.Decision, error)
 	activeDecisions     []*crowdsec.Decision
 	activeErr           error
@@ -80,6 +82,7 @@ func (s *mockStream) Run(ctx context.Context, banCh chan<- *crowdsec.Decision, d
 	return runErr
 }
 
+// ActiveDecisions implements CrowdSecStream.ActiveDecisions for startup tests.
 func (s *mockStream) ActiveDecisions(ctx context.Context) ([]*crowdsec.Decision, error) {
 	s.mu.Lock()
 	s.activeCalled++
@@ -114,6 +117,8 @@ func newTestManagerWithStream(mock *mockROS, stream *mockStream, cfg config.Conf
 	}
 }
 
+// TestReconcileActiveDecisions_AddsMissingAddress verifies that periodic
+// reconciliation re-adds CrowdSec-active addresses missing from RouterOS.
 func TestReconcileActiveDecisions_AddsMissingAddress(t *testing.T) {
 	mock := &mockROS{bulkAddCount: 1}
 	cfg := baseConfig()

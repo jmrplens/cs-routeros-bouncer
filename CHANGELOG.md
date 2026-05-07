@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Documentation** — clarified that startup reconciliation can temporarily raise Router CPU, while sustained high RouterOS CPU after reconciliation is not expected from address-list entries simply remaining in memory
+- **Documentation** — clarified that reconciliation can temporarily raise Router CPU when it performs add/remove work, while sustained high RouterOS CPU after reconciliation is not expected from address-list entries simply remaining in memory
 
 ## [1.3.4] - 2026-04-04
 

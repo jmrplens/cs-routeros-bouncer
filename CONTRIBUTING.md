@@ -6,7 +6,7 @@ Thank you for your interest in contributing! This guide will help you get starte
 
 ### Prerequisites
 
-- **Go 1.25+** — [Download](https://go.dev/dl/)
+- **Go 1.26.2+** — [Download](https://go.dev/dl/)
 - **golangci-lint** — `go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest`
 - **Docker** (optional) — for container builds and testing
 - **MikroTik router** (optional) — for integration testing
@@ -23,7 +23,7 @@ make test
 
 ### Project Structure
 
-```
+```text
 cmd/cs-routeros-bouncer/    # CLI entrypoint
 internal/
   config/                   # Configuration loading and validation
@@ -49,7 +49,7 @@ tests/integration/          # Integration tests
 
 We follow [Conventional Commits](https://www.conventionalcommits.org/):
 
-```
+```text
 feat: add support for address list timeout override
 fix: handle RouterOS connection timeout during reconciliation
 docs: update configuration reference for block_output
