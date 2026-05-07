@@ -125,6 +125,7 @@ Type=simple
 ExecStart=/usr/local/bin/cs-routeros-bouncer -c /etc/cs-routeros-bouncer/cs-routeros-bouncer.yaml
 Restart=on-failure
 RestartSec=10
+TimeoutStopSec=90
 
 [Install]
 WantedBy=multi-user.target

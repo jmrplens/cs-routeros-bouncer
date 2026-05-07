@@ -35,6 +35,7 @@ Type=simple
 ExecStart=%s -c %s
 Restart=on-failure
 RestartSec=10
+TimeoutStopSec=90
 LimitNOFILE=65536
 
 # Hardening

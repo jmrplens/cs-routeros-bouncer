@@ -172,10 +172,10 @@ This is expected during initial reconciliation with large address lists.
 
 **Performance benchmarks:**
 
-| List size               | Time        | CPU peak |
-| ----------------------- | ----------- | -------- |
-| ~1,500 IPs (local)      | ~9 s        | ~14%     |
-| ~25,000 IPs (full CAPI) | ~2 min 50 s | ~23%     |
+| List size               | Time                                          | CPU peak          |
+| ----------------------- | --------------------------------------------- | ----------------- |
+| ~28,700 IPs (full CAPI) | ~58 s wall-clock; ~35–36 s RouterOS bulk work | ~39% observed     |
+| No-drift periodic check | ~3–4 s                                        | Returns near idle |
 
 **To reduce impact:**
 
