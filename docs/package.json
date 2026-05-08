@@ -17,8 +17,8 @@
     "playwright:install": "playwright install --with-deps chromium"
   },
   "dependencies": {
-    "@astrojs/starlight": "^0.39.0",
-    "astro": "^6.3.0",
+    "@astrojs/starlight": "^0.39.1",
+    "astro": "^6.3.1",
     "rehype-mermaid": "^3.0.0",
     "sharp": "^0.34.5"
   },
