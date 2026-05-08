@@ -27,20 +27,20 @@ A [CrowdSec](https://www.crowdsec.net/) remediation component (bouncer) for [Mik
 
 Existing MikroTik bouncers have significant limitations that this project addresses:
 
-| Feature | funkolab (archived) | nvtkaszpir-alt | **cs-routeros-bouncer** |
-|---------|:---:|:---:|:---:|
-| Auto-create firewall rules | ❌ | ❌ | ✅ |
-| Individual IP add/remove | ✅ | ❌ (bulk re-upload) | ✅ |
-| No duplicate IPs | ✅ | ❌ | ✅ |
-| State reconciliation on restart | ❌ | ❌ | ✅ |
-| Remove rules on shutdown | ❌ | ❌ | ✅ |
-| IPv6 support | ✅ | ✅ | ✅ |
-| Output blocking | ❌ | ✅ | ✅ |
-| Origin filtering (local-only mode) | ❌ | ❌ | ✅ |
-| Prometheus metrics | ❌ | ✅ | ✅ |
-| LAPI usage metrics (dropped traffic) | ❌ | ❌ | ✅ |
-| Health endpoint | ❌ | ❌ | ✅ |
-| Go (compiled, low resource usage) | ✅ | ✅ | ✅ |
+| Feature                              | funkolab (archived) |   nvtkaszpir-alt    | **cs-routeros-bouncer** |
+| ------------------------------------ | :-----------------: | :-----------------: | :---------------------: |
+| Auto-create firewall rules           |         ❌          |         ❌          |           ✅            |
+| Individual IP add/remove             |         ✅          | ❌ (bulk re-upload) |           ✅            |
+| No duplicate IPs                     |         ✅          |         ❌          |           ✅            |
+| State reconciliation on restart      |         ❌          |         ❌          |           ✅            |
+| Remove rules on shutdown             |         ❌          |         ❌          |           ✅            |
+| IPv6 support                         |         ✅          |         ✅          |           ✅            |
+| Output blocking                      |         ❌          |         ✅          |           ✅            |
+| Origin filtering (local-only mode)   |         ❌          |         ❌          |           ✅            |
+| Prometheus metrics                   |         ❌          |         ✅          |           ✅            |
+| LAPI usage metrics (dropped traffic) |         ❌          |         ❌          |           ✅            |
+| Health endpoint                      |         ❌          |         ❌          |           ✅            |
+| Go (compiled, low resource usage)    |         ✅          |         ✅          |           ✅            |
 
 ## Requirements
 
@@ -84,7 +84,7 @@ services:
     container_name: cs-routeros-bouncer
     restart: unless-stopped
     ports:
-      - "2112:2112"  # Prometheus metrics (optional)
+      - "2112:2112" # Prometheus metrics (optional)
     environment:
       CROWDSEC_URL: "http://crowdsec:8080/"
       CROWDSEC_BOUNCER_API_KEY: "your-bouncer-api-key"
@@ -123,10 +123,10 @@ sudo systemctl restart cs-routeros-bouncer
 
 The `setup` subcommand accepts optional flags:
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `-bin` | `/usr/local/bin/cs-routeros-bouncer` | Installation path for the binary |
-| `-config-dir` | `/etc/cs-routeros-bouncer` | Directory for configuration files |
+| Flag          | Default                              | Description                       |
+| ------------- | ------------------------------------ | --------------------------------- |
+| `-bin`        | `/usr/local/bin/cs-routeros-bouncer` | Installation path for the binary  |
+| `-config-dir` | `/etc/cs-routeros-bouncer`           | Directory for configuration files |
 
 To uninstall:
 
@@ -201,19 +201,19 @@ See [`config/cs-routeros-bouncer.yaml`](config/cs-routeros-bouncer.yaml) for the
 
 The essential settings to get the bouncer running. Most deployments only need these.
 
-| Config Key | Env Variable | Default | Description |
-|---|---|---|---|
-| `crowdsec.api_url` | `CROWDSEC_URL` | `http://localhost:8080/` | CrowdSec LAPI URL |
-| `crowdsec.api_key` | `CROWDSEC_BOUNCER_API_KEY` | *(required)* | Bouncer API key |
-| `mikrotik.address` | `MIKROTIK_HOST` | `192.168.0.1:8728` | RouterOS API address (`host:port`) |
-| `mikrotik.username` | `MIKROTIK_USER` | `crowdsec` | API username |
-| `mikrotik.password` | `MIKROTIK_PASS` | *(required)* | API password |
-| `firewall.ipv4.enabled` | `FIREWALL_IPV4_ENABLED` | `true` | Enable IPv4 blocking |
-| `firewall.ipv6.enabled` | `FIREWALL_IPV6_ENABLED` | `true` | Enable IPv6 blocking |
-| `firewall.filter.enabled` | `FIREWALL_FILTER_ENABLED` | `true` | Create filter firewall rules |
-| `firewall.raw.enabled` | `FIREWALL_RAW_ENABLED` | `true` | Create raw/prerouting rules |
-| `firewall.deny_action` | `FIREWALL_DENY_ACTION` | `drop` | Action: `drop` or `reject` |
-| `logging.level` | `LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
+| Config Key                | Env Variable               | Default                  | Description                                 |
+| ------------------------- | -------------------------- | ------------------------ | ------------------------------------------- |
+| `crowdsec.api_url`        | `CROWDSEC_URL`             | `http://localhost:8080/` | CrowdSec LAPI URL                           |
+| `crowdsec.api_key`        | `CROWDSEC_BOUNCER_API_KEY` | _(required)_             | Bouncer API key                             |
+| `mikrotik.address`        | `MIKROTIK_HOST`            | `192.168.0.1:8728`       | RouterOS API address (`host:port`)          |
+| `mikrotik.username`       | `MIKROTIK_USER`            | `crowdsec`               | API username                                |
+| `mikrotik.password`       | `MIKROTIK_PASS`            | _(required)_             | API password                                |
+| `firewall.ipv4.enabled`   | `FIREWALL_IPV4_ENABLED`    | `true`                   | Enable IPv4 blocking                        |
+| `firewall.ipv6.enabled`   | `FIREWALL_IPV6_ENABLED`    | `true`                   | Enable IPv6 blocking                        |
+| `firewall.filter.enabled` | `FIREWALL_FILTER_ENABLED`  | `true`                   | Create filter firewall rules                |
+| `firewall.raw.enabled`    | `FIREWALL_RAW_ENABLED`     | `true`                   | Create raw/prerouting rules                 |
+| `firewall.deny_action`    | `FIREWALL_DENY_ACTION`     | `drop`                   | Action: `drop` or `reject`                  |
+| `logging.level`           | `LOG_LEVEL`                | `info`                   | Log level: `debug`, `info`, `warn`, `error` |
 
 ### Advanced parameters
 
@@ -222,34 +222,34 @@ Fine-tuning options for decision filtering, TLS, performance, firewall customiza
 <details>
 <summary><b>CrowdSec — polling, filtering & TLS</b></summary>
 
-| Config Key | Env Variable | Default | Description |
-|---|---|---|---|
-| `crowdsec.update_frequency` | `CROWDSEC_UPDATE_FREQUENCY` | `10s` | Poll interval for decision updates |
-| `crowdsec.reconciliation_interval` | `CROWDSEC_RECONCILIATION_INTERVAL` | `15m` | Periodic address-list reconciliation interval (`0` to disable; minimum `1m` when enabled) |
-| `crowdsec.lapi_metrics_interval` | `CROWDSEC_LAPI_METRICS_INTERVAL` | `15m` | LAPI usage metrics interval: active decisions, dropped traffic (`0` = disabled) |
-| `crowdsec.origins` | `CROWDSEC_ORIGINS` | `[]` (all) | Filter by origin (`["crowdsec","cscli"]` = local only) |
-| `crowdsec.scopes` | `CROWDSEC_SCOPES` | `["ip","range"]` | Decision scopes to process |
-| `crowdsec.supported_decisions_types` | `CROWDSEC_DECISIONS_TYPES` | `["ban"]` | Decision types to process (only `ban` is implemented — see [details](docs/configuration/crowdsec.md#crowdsecsupported_decisions_types)) |
-| `crowdsec.scenarios_containing` | `CROWDSEC_SCENARIOS_CONTAINING` | `[]` | Only process decisions matching these scenarios |
-| `crowdsec.scenarios_not_containing` | `CROWDSEC_SCENARIOS_NOT_CONTAINING` | `[]` | Exclude decisions matching these scenarios |
-| `crowdsec.retry_initial_connect` | `CROWDSEC_RETRY_INITIAL_CONNECT` | `true` | Retry LAPI connection on startup failure |
-| `crowdsec.insecure_skip_verify` | `CROWDSEC_INSECURE_SKIP_VERIFY` | `false` | Skip TLS certificate verification for LAPI |
-| `crowdsec.cert_path` | `CROWDSEC_CERT_PATH` | | TLS client certificate path |
-| `crowdsec.key_path` | `CROWDSEC_KEY_PATH` | | TLS client key path |
-| `crowdsec.ca_cert_path` | `CROWDSEC_CA_CERT_PATH` | | TLS CA certificate path |
+| Config Key                           | Env Variable                        | Default          | Description                                                                                                                             |
+| ------------------------------------ | ----------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `crowdsec.update_frequency`          | `CROWDSEC_UPDATE_FREQUENCY`         | `10s`            | Poll interval for decision updates                                                                                                      |
+| `crowdsec.reconciliation_interval`   | `CROWDSEC_RECONCILIATION_INTERVAL`  | `15m`            | Periodic address-list reconciliation interval (`0` to disable; minimum `1m` when enabled)                                               |
+| `crowdsec.lapi_metrics_interval`     | `CROWDSEC_LAPI_METRICS_INTERVAL`    | `15m`            | LAPI usage metrics interval: active decisions, dropped traffic (`0` = disabled)                                                         |
+| `crowdsec.origins`                   | `CROWDSEC_ORIGINS`                  | `[]` (all)       | Filter by origin (`["crowdsec","cscli"]` = local only)                                                                                  |
+| `crowdsec.scopes`                    | `CROWDSEC_SCOPES`                   | `["ip","range"]` | Decision scopes to process                                                                                                              |
+| `crowdsec.supported_decisions_types` | `CROWDSEC_DECISIONS_TYPES`          | `["ban"]`        | Decision types to process (only `ban` is implemented — see [details](docs/configuration/crowdsec.md#crowdsecsupported_decisions_types)) |
+| `crowdsec.scenarios_containing`      | `CROWDSEC_SCENARIOS_CONTAINING`     | `[]`             | Only process decisions matching these scenarios                                                                                         |
+| `crowdsec.scenarios_not_containing`  | `CROWDSEC_SCENARIOS_NOT_CONTAINING` | `[]`             | Exclude decisions matching these scenarios                                                                                              |
+| `crowdsec.retry_initial_connect`     | `CROWDSEC_RETRY_INITIAL_CONNECT`    | `true`           | Retry LAPI connection on startup failure                                                                                                |
+| `crowdsec.insecure_skip_verify`      | `CROWDSEC_INSECURE_SKIP_VERIFY`     | `false`          | Skip TLS certificate verification for LAPI                                                                                              |
+| `crowdsec.cert_path`                 | `CROWDSEC_CERT_PATH`                |                  | TLS client certificate path                                                                                                             |
+| `crowdsec.key_path`                  | `CROWDSEC_KEY_PATH`                 |                  | TLS client key path                                                                                                                     |
+| `crowdsec.ca_cert_path`              | `CROWDSEC_CA_CERT_PATH`             |                  | TLS CA certificate path                                                                                                                 |
 
 </details>
 
 <details>
 <summary><b>MikroTik — TLS & performance</b></summary>
 
-| Config Key | Env Variable | Default | Description |
-|---|---|---|---|
-| `mikrotik.tls` | `MIKROTIK_TLS` | `false` | Use TLS (port 8729) |
-| `mikrotik.tls_insecure` | `MIKROTIK_TLS_INSECURE` | `false` | Skip TLS certificate verification for RouterOS |
-| `mikrotik.connection_timeout` | `MIKROTIK_CONN_TIMEOUT` | `10s` | Connection timeout |
-| `mikrotik.command_timeout` | `MIKROTIK_CMD_TIMEOUT` | `30s` | Command execution timeout |
-| `mikrotik.pool_size` | `MIKROTIK_POOL_SIZE` | `4` | Number of parallel API connections for bulk operations (1–20) |
+| Config Key                    | Env Variable            | Default | Description                                                   |
+| ----------------------------- | ----------------------- | ------- | ------------------------------------------------------------- |
+| `mikrotik.tls`                | `MIKROTIK_TLS`          | `false` | Use TLS (port 8729)                                           |
+| `mikrotik.tls_insecure`       | `MIKROTIK_TLS_INSECURE` | `false` | Skip TLS certificate verification for RouterOS                |
+| `mikrotik.connection_timeout` | `MIKROTIK_CONN_TIMEOUT` | `10s`   | Connection timeout                                            |
+| `mikrotik.command_timeout`    | `MIKROTIK_CMD_TIMEOUT`  | `30s`   | Command execution timeout                                     |
+| `mikrotik.pool_size`          | `MIKROTIK_POOL_SIZE`    | `4`     | Number of parallel API connections for bulk operations (1–20) |
 
 > **Auto-capping:** On startup the bouncer queries the router's `max-sessions` for the API service and automatically reduces `pool_size` if it would exceed the router limit. To check or change the limit on your router:
 >
@@ -266,46 +266,61 @@ Fine-tuning options for decision filtering, TLS, performance, firewall customiza
 <details>
 <summary><b>Firewall — rules, interfaces & logging</b></summary>
 
-| Config Key | Env Variable | Default | Description |
-|---|---|---|---|
-| `firewall.ipv4.address_list` | `FIREWALL_IPV4_ADDRESS_LIST` | `crowdsec-banned` | IPv4 address list name in MikroTik |
-| `firewall.ipv6.address_list` | `FIREWALL_IPV6_ADDRESS_LIST` | `crowdsec6-banned` | IPv6 address list name in MikroTik |
-| `firewall.filter.chains` | `FIREWALL_FILTER_CHAINS` | `["input"]` | Chains for filter rules |
-| `firewall.raw.chains` | `FIREWALL_RAW_CHAINS` | `["prerouting"]` | Chains for raw rules |
-| `firewall.rule_placement` | `FIREWALL_RULE_PLACEMENT` | `top` | Placement: `top` or `bottom` |
-| `firewall.comment_prefix` | `FIREWALL_COMMENT_PREFIX` | `crowdsec-bouncer` | Comment prefix for managed resources |
-| `firewall.log` | `FIREWALL_LOG` | `false` | Enable RouterOS logging on firewall rules |
-| `firewall.log_prefix` | `FIREWALL_LOG_PREFIX` | `crowdsec-bouncer` | Global prefix for RouterOS log entries |
-| `firewall.reject_with` | `FIREWALL_REJECT_WITH` | | Reject type when `deny_action=reject` (e.g. `tcp-reset`, `icmp-admin-prohibited`) |
-| `firewall.filter.log_prefix` | `FIREWALL_FILTER_LOG_PREFIX` | | Override global log prefix for filter rules |
-| `firewall.filter.connection_state` | `FIREWALL_FILTER_CONNECTION_STATE` | | Connection-state matcher for filter rules (e.g. `new`, `new,invalid`) |
-| `firewall.raw.log_prefix` | `FIREWALL_RAW_LOG_PREFIX` | | Override global log prefix for raw rules |
-| `firewall.block_input.interface` | `FIREWALL_INPUT_INTERFACE` | | Restrict input/raw rules to this interface (empty = all) |
-| `firewall.block_input.interface_list` | `FIREWALL_INPUT_INTERFACE_LIST` | | Restrict input/raw rules to this interface list (empty = all) |
-| `firewall.block_input.whitelist` | `FIREWALL_INPUT_WHITELIST` | | Address-list name for input whitelist (accept rule before drop) |
-| `firewall.block_output.enabled` | `FIREWALL_BLOCK_OUTPUT` | `false` | Block outbound traffic to banned IPs |
-| `firewall.block_output.interface` | `FIREWALL_OUTPUT_INTERFACE` | | WAN interface for output rules |
-| `firewall.block_output.interface_list` | `FIREWALL_OUTPUT_INTERFACE_LIST` | | WAN interface list for output rules |
-| `firewall.block_output.log_prefix` | `FIREWALL_OUTPUT_LOG_PREFIX` | | Override global log prefix for output rules |
-| `firewall.block_output.passthrough_v4` | `FIREWALL_OUTPUT_PASSTHROUGH_V4` | | IPv4 client IP to bypass output blocking (`src-address=!IP`) |
-| `firewall.block_output.passthrough_v4_list` | `FIREWALL_OUTPUT_PASSTHROUGH_V4_LIST` | | IPv4 address-list to bypass output blocking (precedence over IP) |
-| `firewall.block_output.passthrough_v6` | `FIREWALL_OUTPUT_PASSTHROUGH_V6` | | IPv6 client IP to bypass output blocking |
-| `firewall.block_output.passthrough_v6_list` | `FIREWALL_OUTPUT_PASSTHROUGH_V6_LIST` | | IPv6 address-list to bypass output blocking (precedence over IP) |
+`firewall.rule_placement` accepts either a simple string such as `"top"` or `"bottom"`, or an object with `strategy` and related fields. Object form also supports table-specific `filter` and `raw` overrides. IPv4 and IPv6 can define YAML-only `rule_placement` overrides under `firewall.ipv4` and `firewall.ipv6`; those protocol overrides can also contain their own `filter` and `raw` entries. Unspecified fields inherit from the global placement.
+
+| Config Key                                  | Env Variable                                | Default            | Description                                                                                                                                                                                                                               |
+| ------------------------------------------- | ------------------------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `firewall.ipv4.address_list`                | `FIREWALL_IPV4_ADDRESS_LIST`                | `crowdsec-banned`  | IPv4 address list name in MikroTik                                                                                                                                                                                                        |
+| `firewall.ipv6.address_list`                | `FIREWALL_IPV6_ADDRESS_LIST`                | `crowdsec6-banned` | IPv6 address list name in MikroTik                                                                                                                                                                                                        |
+| `firewall.filter.chains`                    | `FIREWALL_FILTER_CHAINS`                    | `["input"]`        | Chains for filter rules                                                                                                                                                                                                                   |
+| `firewall.raw.chains`                       | `FIREWALL_RAW_CHAINS`                       | `["prerouting"]`   | Chains for raw rules                                                                                                                                                                                                                      |
+| `firewall.rule_placement`                   | `FIREWALL_RULE_PLACEMENT`                   | `top`              | Simple string shorthand for global placement                                                                                                                                                                                              |
+| `firewall.rule_placement.strategy`          | `FIREWALL_RULE_PLACEMENT_STRATEGY`          | `top`              | Object-form global strategy: `top`, `bottom`, `position`, `before_comment`, or `after_comment`                                                                                                                                            |
+| `firewall.rule_placement.comment`           | `FIREWALL_RULE_PLACEMENT_COMMENT`           |                    | Anchor comment for comment-based placement                                                                                                                                                                                                |
+| `firewall.rule_placement.comment_match`     | `FIREWALL_RULE_PLACEMENT_COMMENT_MATCH`     | `exact`            | Comment match mode: `exact` or `contains`                                                                                                                                                                                                 |
+| `firewall.rule_placement.position`          | `FIREWALL_RULE_PLACEMENT_POSITION`          |                    | Required zero-based RouterOS position when strategy is `position`                                                                                                                                                                         |
+| `firewall.rule_placement.fallback`          | `FIREWALL_RULE_PLACEMENT_FALLBACK`          | `top`              | Fallback for comment strategies: `top` or `bottom`                                                                                                                                                                                        |
+| `firewall.rule_placement.filter`            | YAML only                                   |                    | Filter-table override; inherits unspecified fields from global placement                                                                                                                                                                  |
+| `firewall.rule_placement.raw`               | YAML only                                   |                    | Raw-table override; inherits unspecified fields from global placement                                                                                                                                                                     |
+| `firewall.ipv4.rule_placement`              | YAML only                                   |                    | IPv4-only placement override; inherits unspecified fields from global placement                                                                                                                                                           |
+| `firewall.ipv4.rule_placement.filter`       | YAML only                                   |                    | IPv4 filter-table override; inherits from global and IPv4 placement                                                                                                                                                                       |
+| `firewall.ipv4.rule_placement.raw`          | YAML only                                   |                    | IPv4 raw-table override; inherits from global and IPv4 placement                                                                                                                                                                          |
+| `firewall.ipv6.rule_placement`              | YAML only                                   |                    | IPv6-only placement override; inherits unspecified fields from global placement                                                                                                                                                           |
+| `firewall.ipv6.rule_placement.filter`       | YAML only                                   |                    | IPv6 filter-table override; inherits from global and IPv6 placement                                                                                                                                                                       |
+| `firewall.ipv6.rule_placement.raw`          | YAML only                                   |                    | IPv6 raw-table override; inherits from global and IPv6 placement                                                                                                                                                                          |
+| `firewall.comment_prefix`                   | `FIREWALL_COMMENT_PREFIX`                   | `crowdsec-bouncer` | Comment prefix for managed resources                                                                                                                                                                                                      |
+| `firewall.log`                              | `FIREWALL_LOG`                              | `false`            | Enable RouterOS logging on firewall rules                                                                                                                                                                                                 |
+| `firewall.log_prefix`                       | `FIREWALL_LOG_PREFIX`                       | `crowdsec-bouncer` | Global prefix for RouterOS log entries                                                                                                                                                                                                    |
+| `firewall.reject_with`                      | `FIREWALL_REJECT_WITH`                      |                    | Reject type when `deny_action=reject`: `icmp-network-unreachable`, `icmp-host-unreachable`, `icmp-port-unreachable`, `icmp-protocol-unreachable`, `icmp-network-prohibited`, `icmp-host-prohibited`, `icmp-admin-prohibited`, `tcp-reset` |
+| `firewall.filter.log_prefix`                | `FIREWALL_FILTER_LOG_PREFIX`                |                    | Override global log prefix for filter rules                                                                                                                                                                                               |
+| `firewall.filter.connection_state`          | `FIREWALL_FILTER_CONNECTION_STATE`          |                    | Comma-separated states: `new`, `established`, `related`, `invalid`, `untracked`; lowercase only, no negation                                                                                                                              |
+| `firewall.raw.log_prefix`                   | `FIREWALL_RAW_LOG_PREFIX`                   |                    | Override global log prefix for raw rules                                                                                                                                                                                                  |
+| `firewall.block_input.interface`            | `FIREWALL_BLOCK_INPUT_INTERFACE`            |                    | Restrict input/raw rules to this interface (empty = all)                                                                                                                                                                                  |
+| `firewall.block_input.interface_list`       | `FIREWALL_BLOCK_INPUT_INTERFACE_LIST`       |                    | Restrict input/raw rules to this interface list (empty = all)                                                                                                                                                                             |
+| `firewall.block_input.whitelist`            | `FIREWALL_BLOCK_INPUT_WHITELIST`            |                    | Address-list name for input whitelist (accept rule before drop)                                                                                                                                                                           |
+| `firewall.block_output.enabled`             | `FIREWALL_BLOCK_OUTPUT`                     | `false`            | Block outbound traffic to banned IPs                                                                                                                                                                                                      |
+| `firewall.block_output.interface`           | `FIREWALL_BLOCK_OUTPUT_INTERFACE`           |                    | WAN interface for output rules                                                                                                                                                                                                            |
+| `firewall.block_output.interface_list`      | `FIREWALL_BLOCK_OUTPUT_INTERFACE_LIST`      |                    | WAN interface list for output rules                                                                                                                                                                                                       |
+| `firewall.block_output.log_prefix`          | `FIREWALL_BLOCK_OUTPUT_LOG_PREFIX`          |                    | Override global log prefix for output rules                                                                                                                                                                                               |
+| `firewall.block_output.passthrough_v4`      | `FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V4`      |                    | IPv4 client IP to bypass output blocking (`src-address=!IP`)                                                                                                                                                                              |
+| `firewall.block_output.passthrough_v4_list` | `FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V4_LIST` |                    | IPv4 address-list to bypass output blocking (precedence over IP)                                                                                                                                                                          |
+| `firewall.block_output.passthrough_v6`      | `FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V6`      |                    | IPv6 client IP to bypass output blocking                                                                                                                                                                                                  |
+| `firewall.block_output.passthrough_v6_list` | `FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V6_LIST` |                    | IPv6 address-list to bypass output blocking (precedence over IP)                                                                                                                                                                          |
 
 </details>
 
 <details>
 <summary><b>Logging & Metrics — format, file output & Prometheus</b></summary>
 
-| Config Key | Env Variable | Default | Description |
-|---|---|---|---|
-| `logging.format` | `LOG_FORMAT` | `text` | Log format: `text` or `json` |
-| `logging.file` | `LOG_FILE` | | Log to file (empty = stdout only) |
-| `metrics.enabled` | `METRICS_ENABLED` | `false` | Enable Prometheus `/metrics` endpoint |
-| `metrics.listen_addr` | `METRICS_ADDR` | `0.0.0.0` | Metrics server listen address |
-| `metrics.listen_port` | `METRICS_PORT` | `2112` | Metrics server listen port |
-| `metrics.routeros_poll_interval` | `METRICS_ROUTEROS_POLL_INTERVAL` | `30s` | RouterOS system metrics poll interval (0 to disable) |
-| `metrics.track_processed` | `METRICS_TRACK_PROCESSED` | `true` | Track processed (non-blocked) traffic via passthrough counting rules |
+| Config Key                       | Env Variable                     | Default   | Description                                                          |
+| -------------------------------- | -------------------------------- | --------- | -------------------------------------------------------------------- |
+| `logging.format`                 | `LOG_FORMAT`                     | `text`    | Log format: `text` or `json`                                         |
+| `logging.file`                   | `LOG_FILE`                       |           | Log to file (empty = stdout only)                                    |
+| `metrics.enabled`                | `METRICS_ENABLED`                | `false`   | Enable Prometheus `/metrics` endpoint                                |
+| `metrics.listen_addr`            | `METRICS_ADDR`                   | `0.0.0.0` | Metrics server listen address                                        |
+| `metrics.listen_port`            | `METRICS_PORT`                   | `2112`    | Metrics server listen port                                           |
+| `metrics.routeros_poll_interval` | `METRICS_ROUTEROS_POLL_INTERVAL` | `30s`     | RouterOS system metrics poll interval (0 to disable)                 |
+| `metrics.track_processed`        | `METRICS_TRACK_PROCESSED`        | `true`    | Track processed (non-blocked) traffic via passthrough counting rules |
 
 </details>
 
@@ -422,7 +437,54 @@ chain=input action=drop src-address-list=crowdsec-banned
 chain=prerouting action=drop src-address-list=crowdsec-banned
 ```
 
-Rules are placed at the **top** of the chain by default (`rule_placement: top`) to ensure they are evaluated first. If dynamic/built-in rules occupy the top positions (e.g., RouterOS fasttrack counters), the bouncer iterates through subsequent positions until it finds one where the rule can be placed.
+Rules are placed at the **top** of the RouterOS firewall menu by default (`rule_placement: top`) to ensure they are evaluated early. If dynamic/built-in rules occupy the top positions (e.g., RouterOS fasttrack counters), the bouncer iterates through subsequent positions until it finds one where the managed block can be placed.
+
+You can also place the managed rule block after or before an existing rule comment, or at a zero-based RouterOS position:
+
+| Strategy         | Behavior                                                                                                                                                       |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `top`            | Move before the first usable non-bouncer rule; if RouterOS refuses the position, the bouncer retries lower positions                                           |
+| `bottom`         | Append at the end of the RouterOS firewall menu                                                                                                                |
+| `position`       | Insert at the required zero-based RouterOS `print` position, before the rule currently shown at that index; out-of-range positions append at bottom and ignore `fallback` |
+| `before_comment` | Insert before the first matching non-bouncer rule comment                                                                                                      |
+| `after_comment`  | Insert after the first matching non-bouncer rule comment                                                                                                       |
+
+```yaml
+firewall:
+  rule_placement:
+    strategy: "after_comment"
+    comment: "drop invalid"
+    comment_match: "contains"
+    fallback: "top"
+    raw:
+      strategy: "top"
+```
+
+For numeric placement, `position` is required and follows RouterOS `print` numbering. Out-of-range positions, such as `position: 15` when only 10 existing non-bouncer rules are present, append directly at the bottom without fallback or retry. The bouncer retries lower positions only when RouterOS rejects the move before an existing dynamic/built-in rule.
+
+Comment placement uses `comment_match: "exact"` by default. Use `contains` for a case-sensitive literal substring match. Missing anchors use `fallback` (`top` by default, or `bottom`). Table-specific `filter` and `raw` overrides inherit unspecified fields from the global placement. Protocol-specific `firewall.ipv4.rule_placement` and `firewall.ipv6.rule_placement` overrides can refine the global settings for one address family, including protocol-local `filter` and `raw` overrides.
+
+Placement precedence is: global placement, global `filter`/`raw` override, protocol override, then protocol `filter`/`raw` override.
+
+```yaml
+firewall:
+  rule_placement:
+    strategy: "top"
+  ipv4:
+    rule_placement:
+      strategy: "before_comment"
+      comment: "IPv4 production anchor"
+      fallback: "bottom"
+  ipv6:
+    rule_placement:
+      strategy: "bottom"
+      filter:
+        strategy: "after_comment"
+        comment: "IPv6 filter anchor"
+      raw:
+        strategy: "position"
+        position: 4
+```
 
 ### Performance
 
@@ -434,40 +496,40 @@ The bouncer uses a configurable **connection pool** (default 4 parallel API conn
 
 #### Initial reconciliation (cold start, empty router)
 
-| Scenario | IPs synced | Time | Throughput | Router CPU peak |
-|----------|-----------|------|------------|-----------------|
-| Local + CAPI community | **28,686** (28,269 IPv4 + 417 IPv6) | **~58 s** test wall-clock; **~36 s** RouterOS bulk work | ~500 IPs/s wall-clock; ~790 IPs/s bulk add | 39% observed |
+| Scenario               | IPs synced                          | Time                                                    | Throughput                                 | Router CPU peak |
+| ---------------------- | ----------------------------------- | ------------------------------------------------------- | ------------------------------------------ | --------------- |
+| Local + CAPI community | **28,686** (28,269 IPv4 + 417 IPv6) | **~58 s** test wall-clock; **~36 s** RouterOS bulk work | ~500 IPs/s wall-clock; ~790 IPs/s bulk add | 39% observed    |
 
 #### Restart with existing entries on router
 
-| Scenario | Existing IPs | Time | Notes |
-|----------|-------------|------|-------|
-| Restart, all IPs already present | **~28,700** | **~75–77 s** functional wall-clock | Includes service restart, rule cleanup, list scan, and reconciliation wait |
-| Periodic reconciliation, no drift | **~28,700** | **~3–4 s** internal reconciliation | Performs list/read/diff only, no add/remove writes |
+| Scenario                          | Existing IPs | Time                               | Notes                                                                      |
+| --------------------------------- | ------------ | ---------------------------------- | -------------------------------------------------------------------------- |
+| Restart, all IPs already present  | **~28,700**  | **~75–77 s** functional wall-clock | Includes service restart, rule cleanup, list scan, and reconciliation wait |
+| Periodic reconciliation, no drift | **~28,700**  | **~3–4 s** internal reconciliation | Performs list/read/diff only, no add/remove writes                         |
 
 #### Mass removal (switching from CAPI to local-only)
 
-| Removed | Remaining | Time | Throughput | Router CPU peak |
-|---------|-----------|------|------------|-----------------|
+| Removed                             | Remaining           | Time                            | Throughput     | Router CPU peak                     |
+| ----------------------------------- | ------------------- | ------------------------------- | -------------- | ----------------------------------- |
 | **26,810** (26,396 IPv4 + 414 IPv6) | 1,873 IPv4 + 3 IPv6 | **~77 s** RouterOS removal work | ~348 removes/s | ~30–39% observed during large churn |
 
 #### Live operation (individual ban/unban)
 
-| Operation | Typical latency | Notes |
-|-----------|----------------|-------|
-| Ban (add IP) | **~1–3 ms** | Optimistic-add, no lookup needed |
-| Ban (cached duplicate IP) | **< 1 ms** | Address already known in cache → skip RouterOS API call entirely |
-| Ban (router duplicate after cache miss) | **~5–8 ms** | Detects "already have" → finds and updates existing entry without reconnecting |
-| Unban (remove IP) | **~7 s** end-to-end | Includes LAPI polling interval (15 s max). API call itself ~2 ms |
-| Unban cache fast-path | **< 1 ms** | IP not in cache → skip API call entirely |
+| Operation                               | Typical latency     | Notes                                                                          |
+| --------------------------------------- | ------------------- | ------------------------------------------------------------------------------ |
+| Ban (add IP)                            | **~1–3 ms**         | Optimistic-add, no lookup needed                                               |
+| Ban (cached duplicate IP)               | **< 1 ms**          | Address already known in cache → skip RouterOS API call entirely               |
+| Ban (router duplicate after cache miss) | **~5–8 ms**         | Detects "already have" → finds and updates existing entry without reconnecting |
+| Unban (remove IP)                       | **~7 s** end-to-end | Includes LAPI polling interval (15 s max). API call itself ~2 ms               |
+| Unban cache fast-path                   | **< 1 ms**          | IP not in cache → skip API call entirely                                       |
 
 #### Resource usage
 
-| Metric | Value |
-|--------|-------|
-| Firewall rules created | 4 rules in ~2 s |
-| Bouncer memory (steady state) | ~30 MB |
-| Bouncer CPU (steady state) | < 1% |
+| Metric                                          | Value                                                          |
+| ----------------------------------------------- | -------------------------------------------------------------- |
+| Firewall rules created                          | 4 rules in ~2 s                                                |
+| Bouncer memory (steady state)                   | ~30 MB                                                         |
+| Bouncer CPU (steady state)                      | < 1%                                                           |
 | Router CPU (steady state, after reconciliation) | typically 0–2% observed; traffic and firewall config dependent |
 
 > **Note:** All benchmarks measured on a real RB5009UG+S+ with production traffic. Router CPU includes
@@ -500,29 +562,29 @@ curl http://localhost:2112/health
 
 Enable with `metrics.enabled: true`. Available at `http://localhost:2112/metrics`.
 
-| Metric | Type | Description |
-|--------|------|-------------|
-| `crowdsec_bouncer_info` | Gauge | Build info (version, RouterOS identity) |
-| `crowdsec_bouncer_start_time_seconds` | Gauge | Unix timestamp of bouncer startup |
-| `crowdsec_bouncer_active_decisions` | Gauge | Active decisions by protocol (`ipv4`/`ipv6`) |
-| `crowdsec_bouncer_active_decisions_by_origin` | Gauge | Active decisions by CrowdSec origin (`crowdsec`/`cscli`/`CAPI`) |
-| `crowdsec_bouncer_decisions_total` | Counter | Total decisions processed (action, protocol, origin) |
-| `crowdsec_bouncer_errors_total` | Counter | Total errors by type (`api`/`routeros`/`reconcile`) |
-| `crowdsec_bouncer_operation_duration_seconds` | Histogram | Operation latency (`add`/`remove`/`reconcile`) |
-| `crowdsec_bouncer_routeros_connected` | Gauge | RouterOS connection status (1/0) |
-| `crowdsec_bouncer_routeros_cpu_load` | Gauge | RouterOS CPU load percentage (0–100) |
-| `crowdsec_bouncer_routeros_memory_used_bytes` | Gauge | RouterOS used memory in bytes |
-| `crowdsec_bouncer_routeros_memory_total_bytes` | Gauge | RouterOS total memory in bytes |
-| `crowdsec_bouncer_routeros_cpu_temperature_celsius` | Gauge | RouterOS CPU temperature (°C) |
-| `crowdsec_bouncer_reconciliation_total` | Counter | Total reconciliation actions (`added`/`removed`) |
-| `crowdsec_bouncer_dropped_bytes_total` | Gauge | Cumulative bytes dropped by firewall rules |
-| `crowdsec_bouncer_dropped_packets_total` | Gauge | Cumulative packets dropped by firewall rules |
-| `crowdsec_bouncer_dropped_bytes_by_proto` | Gauge | Dropped bytes by protocol (`ipv4`/`ipv6`) |
-| `crowdsec_bouncer_dropped_packets_by_proto` | Gauge | Dropped packets by protocol |
-| `crowdsec_bouncer_processed_bytes_total` | Gauge | Cumulative bytes processed (evaluated) by firewall rules |
-| `crowdsec_bouncer_processed_packets_total` | Gauge | Cumulative packets processed by firewall rules |
-| `crowdsec_bouncer_processed_bytes_by_proto` | Gauge | Processed bytes by protocol (`ipv4`/`ipv6`) |
-| `crowdsec_bouncer_processed_packets_by_proto` | Gauge | Processed packets by protocol |
+| Metric                                              | Type      | Description                                                     |
+| --------------------------------------------------- | --------- | --------------------------------------------------------------- |
+| `crowdsec_bouncer_info`                             | Gauge     | Build info (version, RouterOS identity)                         |
+| `crowdsec_bouncer_start_time_seconds`               | Gauge     | Unix timestamp of bouncer startup                               |
+| `crowdsec_bouncer_active_decisions`                 | Gauge     | Active decisions by protocol (`ipv4`/`ipv6`)                    |
+| `crowdsec_bouncer_active_decisions_by_origin`       | Gauge     | Active decisions by CrowdSec origin (`crowdsec`/`cscli`/`CAPI`) |
+| `crowdsec_bouncer_decisions_total`                  | Counter   | Total decisions processed (action, protocol, origin)            |
+| `crowdsec_bouncer_errors_total`                     | Counter   | Total errors by type (`api`/`routeros`/`reconcile`)             |
+| `crowdsec_bouncer_operation_duration_seconds`       | Histogram | Operation latency (`add`/`remove`/`reconcile`)                  |
+| `crowdsec_bouncer_routeros_connected`               | Gauge     | RouterOS connection status (1/0)                                |
+| `crowdsec_bouncer_routeros_cpu_load`                | Gauge     | RouterOS CPU load percentage (0–100)                            |
+| `crowdsec_bouncer_routeros_memory_used_bytes`       | Gauge     | RouterOS used memory in bytes                                   |
+| `crowdsec_bouncer_routeros_memory_total_bytes`      | Gauge     | RouterOS total memory in bytes                                  |
+| `crowdsec_bouncer_routeros_cpu_temperature_celsius` | Gauge     | RouterOS CPU temperature (°C)                                   |
+| `crowdsec_bouncer_reconciliation_total`             | Counter   | Total reconciliation actions (`added`/`removed`)                |
+| `crowdsec_bouncer_dropped_bytes_total`              | Gauge     | Cumulative bytes dropped by firewall rules                      |
+| `crowdsec_bouncer_dropped_packets_total`            | Gauge     | Cumulative packets dropped by firewall rules                    |
+| `crowdsec_bouncer_dropped_bytes_by_proto`           | Gauge     | Dropped bytes by protocol (`ipv4`/`ipv6`)                       |
+| `crowdsec_bouncer_dropped_packets_by_proto`         | Gauge     | Dropped packets by protocol                                     |
+| `crowdsec_bouncer_processed_bytes_total`            | Gauge     | Cumulative bytes processed (evaluated) by firewall rules        |
+| `crowdsec_bouncer_processed_packets_total`          | Gauge     | Cumulative packets processed by firewall rules                  |
+| `crowdsec_bouncer_processed_bytes_by_proto`         | Gauge     | Processed bytes by protocol (`ipv4`/`ipv6`)                     |
+| `crowdsec_bouncer_processed_packets_by_proto`       | Gauge     | Processed packets by protocol                                   |
 
 > **Note:** `dropped_bytes_total` and `dropped_packets_total` use the `_total` suffix despite being Gauges. This is because they reflect cumulative counters read from RouterOS — the bouncer sets (not increments) the value each cycle, making Gauge the correct instrument type. The `_total` suffix is retained for semantic clarity.
 
@@ -560,17 +622,17 @@ The dashboard provides real-time visibility into the bouncer's operation:
 
 **Dashboard panels (27 panels in 8 rows):**
 
-| Row | Panels |
-|-----|--------|
-| **Overview** | RouterOS Connected, Active Decisions (IPv4/IPv6/Total), Uptime, Bouncer Info |
-| **Active Decisions** | Active Decisions Over Time, IPv4/IPv6 Ratio |
-| **Decision Processing** | Decisions Processed (Rate), Cumulative Decisions |
-| **Performance & Operations** | Operation Latency (p50/p95/p99), Operation Rate |
-| **Errors & Reconciliation** | Error Rate, Total Errors, RouterOS Connection, Last Reconciliation, Reconciliation Duration |
-| **Dropped Traffic** | Dropped Bytes, Dropped Packets, Dropped Traffic Rate, Dropped Traffic (Cumulative) |
-| **Processed Traffic** | Processed Traffic Rate (Bytes/s, Packets/s), Drop Rate % |
-| **Decisions by Origin** | Active Decisions by Origin, Decisions by Origin (Rate), Cumulative Decisions by Origin |
-| **Process Resources** | Memory Usage, CPU Usage, Goroutines & File Descriptors |
+| Row                          | Panels                                                                                      |
+| ---------------------------- | ------------------------------------------------------------------------------------------- |
+| **Overview**                 | RouterOS Connected, Active Decisions (IPv4/IPv6/Total), Uptime, Bouncer Info                |
+| **Active Decisions**         | Active Decisions Over Time, IPv4/IPv6 Ratio                                                 |
+| **Decision Processing**      | Decisions Processed (Rate), Cumulative Decisions                                            |
+| **Performance & Operations** | Operation Latency (p50/p95/p99), Operation Rate                                             |
+| **Errors & Reconciliation**  | Error Rate, Total Errors, RouterOS Connection, Last Reconciliation, Reconciliation Duration |
+| **Dropped Traffic**          | Dropped Bytes, Dropped Packets, Dropped Traffic Rate, Dropped Traffic (Cumulative)          |
+| **Processed Traffic**        | Processed Traffic Rate (Bytes/s, Packets/s), Drop Rate %                                    |
+| **Decisions by Origin**      | Active Decisions by Origin, Decisions by Origin (Rate), Cumulative Decisions by Origin      |
+| **Process Resources**        | Memory Usage, CPU Usage, Goroutines & File Descriptors                                      |
 
 ---
 
@@ -587,11 +649,16 @@ The dashboard provides real-time visibility into the bouncer's operation:
 </details>
 
 <details>
-<summary><b>Firewall rules not at the top of the chain</b></summary>
+<summary><b>Firewall rules are not in the expected position</b></summary>
 
-- RouterOS dynamic/built-in rules (e.g., fasttrack counters) cannot be moved — the bouncer iterates through positions until it finds one where the rule can be placed
+- RouterOS dynamic/built-in rules (e.g., fasttrack counters) cannot be moved. With `top` or `position`, the bouncer iterates through lower positions until it finds one where the managed block can be placed
 - Verify with: `/ip/firewall/filter/print` on the router
-- Ensure `firewall.rule_placement: "top"` is set in your config
+- For comment placement, verify the anchor comment and `comment_match`; matching is case-sensitive
+- Check logs for placement fallback messages:
+  - systemd: `journalctl -u cs-routeros-bouncer -f | grep -i placement`
+  - Docker: `docker logs cs-routeros-bouncer | grep -i placement`
+  - Standalone: check the file configured by `logging.file`, or stdout if no log file is configured
+- Ensure `firewall.rule_placement: "top"` is set, or use structured placement with `strategy: "position"`, `before_comment`, or `after_comment`. Also check any YAML-only `firewall.ipv4.rule_placement` or `firewall.ipv6.rule_placement` override.
 
 </details>
 
@@ -652,16 +719,16 @@ tests/functional/run_tests.sh --capi
 tests/functional/run_tests.sh --list
 ```
 
-| Group | Tests | Description |
-|-------|-------|-------------|
-| `t1`  | 7     | Data integrity — IP completeness, format, comments |
-| `t2`  | 6     | Cache consistency — live ban/unban, expiry, fast-path |
-| `t3`  | 6     | Bulk operations — reconciliation, partial sync, orphans |
-| `t4`  | 3     | Connection pool — establishment, shutdown |
-| `t5`  | 6     | Edge cases — duplicates, rapid cycle, restart idempotency |
-| `t6`  | 3     | CPU monitoring — steady-state, peak, recovery |
-| `t7`  | 5     | Timing — reconciliation time, ban/unban latency |
-| `t8`  | 8     | CAPI stress ~28k IPs (requires `--capi`) |
+| Group | Tests | Description                                                                                  |
+| ----- | ----- | -------------------------------------------------------------------------------------------- |
+| `t1`  | 7     | Data integrity — IP completeness, format, comments                                           |
+| `t2`  | 6     | Cache consistency — live ban/unban, expiry, fast-path                                        |
+| `t3`  | 6     | Bulk operations — reconciliation, partial sync, orphans                                      |
+| `t4`  | 3     | Connection pool — establishment, shutdown                                                    |
+| `t5`  | 6     | Edge cases — duplicates, rapid cycle, restart idempotency                                    |
+| `t6`  | 3     | CPU monitoring — steady-state, peak, recovery                                                |
+| `t7`  | 5     | Timing — reconciliation time, ban/unban latency                                              |
+| `t8`  | 8     | CAPI stress ~28k IPs (requires `--capi`)                                                     |
 | `t9`  | 12    | Advanced firewall config — reject-with, connection-state, log-prefix, whitelist, passthrough |
 
 ## Security

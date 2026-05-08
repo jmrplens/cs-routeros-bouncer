@@ -206,6 +206,41 @@ func (c *Client) moveRule(path, ruleID, beforeID string) error {
 	return err
 }
 
+// MoveFirewallRule moves ruleID before beforeID in one RouterOS firewall menu.
+//
+// proto selects the firewall family, typically "ip" or "ipv6"; mode selects
+// the RouterOS firewall menu such as "filter", "raw", "nat", or "mangle".
+// ruleID and beforeID must be RouterOS rule identifiers, for example "*1A" or
+// a numeric ID accepted by RouterOS, and both IDs must belong to the same
+// proto/mode menu. The operation changes rule order on the router. It returns
+// an error when an ID is invalid, RouterOS rejects a cross-menu move, the
+// connection fails, or the move command itself fails.
+func (c *Client) MoveFirewallRule(proto, mode, ruleID, beforeID string) error {
+	path := firewallPath(proto, mode)
+	log.Info().
+		Str("proto", proto).
+		Str("mode", mode).
+		Str("rule_id", ruleID).
+		Str("before_id", beforeID).
+		Msg("moving firewall rule")
+	if err := c.moveRule(path, ruleID, beforeID); err != nil {
+		log.Error().Err(err).
+			Str("proto", proto).
+			Str("mode", mode).
+			Str("rule_id", ruleID).
+			Str("before_id", beforeID).
+			Msg("failed to move firewall rule")
+		return fmt.Errorf("move %s/%s firewall rule %s before %s: %w", proto, mode, ruleID, beforeID, err)
+	}
+	log.Info().
+		Str("proto", proto).
+		Str("mode", mode).
+		Str("rule_id", ruleID).
+		Str("before_id", beforeID).
+		Msg("firewall rule moved")
+	return nil
+}
+
 // RemoveFirewallRule removes a firewall rule by its .id.
 func (c *Client) RemoveFirewallRule(proto, mode, id string) error {
 	path := firewallPath(proto, mode)

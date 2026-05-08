@@ -427,7 +427,7 @@ func TestNewStreamWithTLS(t *testing.T) {
 		KeyPath:         "/etc/ssl/key.pem",
 		CACertPath:      "/etc/ssl/ca.pem",
 	}
-	s := NewStream(cfg, "1.4.0")
+	s := NewStream(cfg, "1.4.1")
 	if s == nil {
 		t.Fatal("expected non-nil stream")
 	}
@@ -453,7 +453,7 @@ func TestNewStreamWithInsecureSkipVerify(t *testing.T) {
 		UpdateFrequency:    10 * time.Second,
 		InsecureSkipVerify: true,
 	}
-	s := NewStream(cfg, "1.4.0")
+	s := NewStream(cfg, "1.4.1")
 	if s == nil {
 		t.Fatal("expected non-nil stream")
 	}
@@ -471,7 +471,7 @@ func TestNewStreamInsecureSkipVerifyFalse(t *testing.T) {
 		UpdateFrequency:    10 * time.Second,
 		InsecureSkipVerify: false,
 	}
-	s := NewStream(cfg, "1.4.0")
+	s := NewStream(cfg, "1.4.1")
 	if s == nil {
 		t.Fatal("expected non-nil stream")
 	}

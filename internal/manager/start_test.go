@@ -928,14 +928,17 @@ func TestCreateFirewallRules_RawChains(t *testing.T) {
 }
 
 // TestCreateFirewallRules_PlacementTop verifies that when rule_placement is
-// "top", the PlaceBefore field is set to "0".
+// "top", the created block is moved before the first existing rule.
 func TestCreateFirewallRules_PlacementTop(t *testing.T) {
-	mock := &mockROS{addRuleID: "*1"}
+	mock := &mockROS{
+		addRuleID:               "*1",
+		listFirewallRulesResult: []ros.RuleEntry{{ID: "*U1", Comment: "user rule"}},
+	}
 	cfg := baseConfig()
 	cfg.Firewall.IPv6.Enabled = false
 	cfg.Firewall.Filter.Enabled = true
 	cfg.Firewall.Filter.Chains = []string{"forward"}
-	cfg.Firewall.RulePlacement = "top"
+	cfg.Firewall.RulePlacement = config.RulePlacementConfig{Strategy: config.RulePlacementTop}
 	mgr := newTestManager(mock, cfg)
 
 	if err := mgr.createFirewallRules(); err != nil {
@@ -945,8 +948,13 @@ func TestCreateFirewallRules_PlacementTop(t *testing.T) {
 	mock.mu.Lock()
 	defer mock.mu.Unlock()
 
-	if mock.addRuleCalls[0].Rule.PlaceBefore != "0" {
-		t.Errorf("expected PlaceBefore=0 for top placement, got %s", mock.addRuleCalls[0].Rule.PlaceBefore)
+	if len(mock.moveRuleCalls) == 0 {
+		t.Fatal("expected top placement to move the created block")
+	}
+	for i, call := range mock.moveRuleCalls {
+		if call.BeforeID != "*U1" {
+			t.Errorf("move call %d: expected block moved before *U1, got %s", i, call.BeforeID)
+		}
 	}
 }
 
@@ -1948,14 +1956,14 @@ func TestProcessLiveDecisionsRunsPeriodicReconciliation(t *testing.T) {
 	}
 }
 
-// TestOutputRuleTopPlacement verifies output-blocking rules honor top placement.
+// TestOutputRuleNoInlinePlacement verifies output rules are positioned by block placement.
 func TestOutputRuleTopPlacement(t *testing.T) {
 	cfg := baseConfig()
-	cfg.Firewall.RulePlacement = "top"
+	cfg.Firewall.RulePlacement = config.RulePlacementConfig{Strategy: config.RulePlacementTop}
 	mgr := newTestManager(&mockROS{}, cfg)
 
 	rule := mgr.outputRule("ip", "crowdsec-banned")
-	if rule.PlaceBefore != "0" {
-		t.Fatalf("expected output rule PlaceBefore=0, got %q", rule.PlaceBefore)
+	if rule.PlaceBefore != "" {
+		t.Fatalf("expected output rule PlaceBefore to be empty, got %q", rule.PlaceBefore)
 	}
 }

@@ -39,7 +39,8 @@ __debug_bin*
 config/test.yaml
 
 # Local development files (not committed)
-/local/
+local/
+plan/
 
 # MkDocs build output
 /site/

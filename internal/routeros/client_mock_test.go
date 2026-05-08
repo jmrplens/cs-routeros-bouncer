@@ -1103,6 +1103,80 @@ func TestMoveRule_Success(t *testing.T) {
 	}
 }
 
+// TestMoveFirewallRule_Success verifies the exported move helper used by manager.
+func TestMoveFirewallRule_Success(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+	mc.pushReply(emptyReply())
+
+	if err := c.MoveFirewallRule("ip", "filter", "*R1", "*R0"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	args := mc.lastArgs()
+	if args[0] != "/ip/firewall/filter/move" {
+		t.Fatalf("expected move command, got: %s", args[0])
+	}
+	if args[1] != "=numbers=*R1" || args[2] != "=destination=*R0" {
+		t.Fatalf("unexpected move args: %v", args)
+	}
+}
+
+// TestMoveFirewallRule_Error verifies exported move errors are wrapped with context.
+func TestMoveFirewallRule_Error(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+	mc.pushError(errors.New("cannot move"))
+	mc.pushError(errors.New("cannot move after reconnect"))
+
+	err := c.MoveFirewallRule("ip", "filter", "*R1", "*R0")
+	if err == nil || !strings.Contains(err.Error(), "move") {
+		t.Fatalf("expected wrapped move error, got: %v", err)
+	}
+}
+
+// TestMoveFirewallRule_Variants verifies command paths for supported firewall
+// families and menus and confirms variant move errors propagate.
+func TestMoveFirewallRule_Variants(t *testing.T) {
+	tests := []struct {
+		name     string
+		proto    string
+		mode     string
+		wantPath string
+	}{
+		{name: "ipv6 filter", proto: "ipv6", mode: "filter", wantPath: "/ipv6/firewall/filter/move"},
+		{name: "ip raw", proto: "ip", mode: "raw", wantPath: "/ip/firewall/raw/move"},
+		{name: "ip nat", proto: "ip", mode: "nat", wantPath: "/ip/firewall/nat/move"},
+		{name: "ip mangle", proto: "ip", mode: "mangle", wantPath: "/ip/firewall/mangle/move"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mc := newMockConn()
+			c := newTestClient(mc)
+			mc.pushReply(emptyReply())
+
+			if err := c.MoveFirewallRule(tt.proto, tt.mode, "*R1", "*R0"); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			args := mc.lastArgs()
+			if args[0] != tt.wantPath {
+				t.Fatalf("expected %s, got: %s", tt.wantPath, args[0])
+			}
+			if args[1] != "=numbers=*R1" || args[2] != "=destination=*R0" {
+				t.Fatalf("unexpected move args: %v", args)
+			}
+		})
+	}
+
+	t.Run("variant error", func(t *testing.T) {
+		mc := newMockConn()
+		c := newTestClient(mc)
+		mc.pushError(errors.New("raw move failed"))
+		if err := c.MoveFirewallRule("ip", "raw", "*R1", "*R0"); err == nil || !strings.Contains(err.Error(), "move") {
+			t.Fatalf("expected raw move error, got: %v", err)
+		}
+	})
+}
+
 // TestMoveRule_Error verifies move error propagation.
 func TestMoveRule_Error(t *testing.T) {
 	mc := newMockConn()

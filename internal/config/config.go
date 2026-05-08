@@ -3,11 +3,14 @@ package config
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/spf13/viper"
 )
@@ -65,24 +68,338 @@ type MikroTikConfig struct {
 
 // FirewallConfig holds firewall rule management settings.
 type FirewallConfig struct {
-	IPv4          ProtoConfig       `yaml:"ipv4" mapstructure:"ipv4"`
-	IPv6          ProtoConfig       `yaml:"ipv6" mapstructure:"ipv6"`
-	Filter        FilterConfig      `yaml:"filter" mapstructure:"filter"`
-	Raw           RawConfig         `yaml:"raw" mapstructure:"raw"`
-	DenyAction    string            `yaml:"deny_action" mapstructure:"deny_action"`
-	RejectWith    string            `yaml:"reject_with" mapstructure:"reject_with"`
-	BlockInput    BlockInputConfig  `yaml:"block_input" mapstructure:"block_input"`
-	BlockOutput   BlockOutputConfig `yaml:"block_output" mapstructure:"block_output"`
-	RulePlacement string            `yaml:"rule_placement" mapstructure:"rule_placement"`
-	CommentPrefix string            `yaml:"comment_prefix" mapstructure:"comment_prefix"`
-	Log           bool              `yaml:"log" mapstructure:"log"`
-	LogPrefix     string            `yaml:"log_prefix" mapstructure:"log_prefix"`
+	IPv4          ProtoConfig         `yaml:"ipv4" mapstructure:"ipv4"`
+	IPv6          ProtoConfig         `yaml:"ipv6" mapstructure:"ipv6"`
+	Filter        FilterConfig        `yaml:"filter" mapstructure:"filter"`
+	Raw           RawConfig           `yaml:"raw" mapstructure:"raw"`
+	DenyAction    string              `yaml:"deny_action" mapstructure:"deny_action"`
+	RejectWith    string              `yaml:"reject_with" mapstructure:"reject_with"`
+	BlockInput    BlockInputConfig    `yaml:"block_input" mapstructure:"block_input"`
+	BlockOutput   BlockOutputConfig   `yaml:"block_output" mapstructure:"block_output"`
+	RulePlacement RulePlacementConfig `yaml:"rule_placement" mapstructure:"rule_placement"`
+	CommentPrefix string              `yaml:"comment_prefix" mapstructure:"comment_prefix"`
+	Log           bool                `yaml:"log" mapstructure:"log"`
+	LogPrefix     string              `yaml:"log_prefix" mapstructure:"log_prefix"`
+}
+
+const (
+	RulePlacementTop           = "top"
+	RulePlacementBottom        = "bottom"
+	RulePlacementBeforeComment = "before_comment"
+	RulePlacementAfterComment  = "after_comment"
+	RulePlacementPosition      = "position"
+
+	RulePlacementMatchExact    = "exact"
+	RulePlacementMatchContains = "contains"
+
+	rulePlacementConfigPath   = "firewall.rule_placement"
+	rulePlacementFilterSuffix = ".filter"
+	rulePlacementPositionPath = rulePlacementConfigPath + ".position"
+	rulePlacementRawSuffix    = ".raw"
+)
+
+// RulePlacementConfig controls where bouncer-managed RouterOS firewall rules
+// are placed. It accepts both the legacy string form ("top"/"bottom") and a
+// structured object with strategy-specific settings.
+type RulePlacementConfig struct {
+	Strategy     string               `yaml:"strategy" mapstructure:"strategy"`
+	Comment      string               `yaml:"comment" mapstructure:"comment"`
+	CommentMatch string               `yaml:"comment_match" mapstructure:"comment_match"`
+	Position     *int                 `yaml:"position" mapstructure:"position"`
+	Fallback     string               `yaml:"fallback" mapstructure:"fallback"`
+	Filter       *RulePlacementConfig `yaml:"filter" mapstructure:"filter"`
+	Raw          *RulePlacementConfig `yaml:"raw" mapstructure:"raw"`
+}
+
+// UnmarshalMapstructure lets Viper decode rule_placement from either a legacy
+// scalar string or a structured map.
+func (p *RulePlacementConfig) UnmarshalMapstructure(input any) error {
+	parsed, err := parseRulePlacementConfigAt(rulePlacementConfigPath, input, false)
+	if err != nil {
+		return err
+	}
+	*p = parsed
+	return nil
+}
+
+// RulePlacementFor returns the effective placement for one protocol and table,
+// applying global, table-specific, protocol-specific, and protocol-table
+// overrides in that order.
+func (f *FirewallConfig) RulePlacementFor(proto, mode string) RulePlacementConfig {
+	if f == nil {
+		return RulePlacementConfig{}
+	}
+	placement := f.RulePlacement.ForMode(mode)
+	protocolPlacement := f.rulePlacementForProto(proto)
+	if protocolPlacement == nil {
+		return placement
+	}
+	placement = mergeRulePlacement(placement, protocolPlacement.withoutTableOverrides())
+	var tableOverride *RulePlacementConfig
+	switch mode {
+	case "filter":
+		tableOverride = protocolPlacement.Filter
+	case "raw":
+		tableOverride = protocolPlacement.Raw
+	}
+	if tableOverride != nil {
+		placement = mergeRulePlacement(placement, tableOverride.withoutTableOverrides())
+	}
+	return placement
+}
+
+// RulePlacementString returns a concise non-sensitive summary of global and
+// protocol-specific placement settings for logs and metrics.
+func (f *FirewallConfig) RulePlacementString() string {
+	if f == nil {
+		return RulePlacementTop
+	}
+	summary := f.RulePlacement.String()
+	if f.IPv4.RulePlacement != nil {
+		ipv4Placement := f.RulePlacementFor("ip", "")
+		summary += ",ipv4=" + ipv4Placement.summary()
+		if f.IPv4.RulePlacement.Filter != nil {
+			ipv4FilterPlacement := f.RulePlacementFor("ip", "filter")
+			summary += ",ipv4.filter=" + ipv4FilterPlacement.summary()
+		}
+		if f.IPv4.RulePlacement.Raw != nil {
+			ipv4RawPlacement := f.RulePlacementFor("ip", "raw")
+			summary += ",ipv4.raw=" + ipv4RawPlacement.summary()
+		}
+	}
+	if f.IPv6.RulePlacement != nil {
+		ipv6Placement := f.RulePlacementFor("ipv6", "")
+		summary += ",ipv6=" + ipv6Placement.summary()
+		if f.IPv6.RulePlacement.Filter != nil {
+			ipv6FilterPlacement := f.RulePlacementFor("ipv6", "filter")
+			summary += ",ipv6.filter=" + ipv6FilterPlacement.summary()
+		}
+		if f.IPv6.RulePlacement.Raw != nil {
+			ipv6RawPlacement := f.RulePlacementFor("ipv6", "raw")
+			summary += ",ipv6.raw=" + ipv6RawPlacement.summary()
+		}
+	}
+	return summary
+}
+
+func (f *FirewallConfig) rulePlacementForProto(proto string) *RulePlacementConfig {
+	if f == nil {
+		return nil
+	}
+	switch proto {
+	case "ip", "ipv4":
+		return f.IPv4.RulePlacement
+	case "ipv6":
+		return f.IPv6.RulePlacement
+	default:
+		return nil
+	}
+}
+
+// ForMode returns the placement settings for one RouterOS firewall table,
+// merging optional table-specific overrides with the global settings.
+func (p *RulePlacementConfig) ForMode(mode string) RulePlacementConfig {
+	if p == nil {
+		return RulePlacementConfig{}
+	}
+	base := p.withoutTableOverrides()
+	var override *RulePlacementConfig
+	switch mode {
+	case "filter":
+		override = p.Filter
+	case "raw":
+		override = p.Raw
+	}
+	if override == nil {
+		return base
+	}
+	return mergeRulePlacement(base, override.withoutTableOverrides())
+}
+
+// String returns a concise non-sensitive representation for logs and metrics.
+func (p *RulePlacementConfig) String() string {
+	if p == nil {
+		return RulePlacementTop
+	}
+	base := p.withoutTableOverrides()
+	summary := base.summary()
+	if p.Filter != nil {
+		filterPlacement := mergeRulePlacement(base, p.Filter.withoutTableOverrides())
+		summary += ",filter=" + filterPlacement.summary()
+	}
+	if p.Raw != nil {
+		rawPlacement := mergeRulePlacement(base, p.Raw.withoutTableOverrides())
+		summary += ",raw=" + rawPlacement.summary()
+	}
+	return summary
+}
+
+func (p *RulePlacementConfig) summary() string {
+	if p == nil {
+		return RulePlacementTop
+	}
+	strategy := p.Strategy
+	if strategy == "" {
+		strategy = RulePlacementTop
+	}
+	summary := strategy
+	switch strategy {
+	case RulePlacementBeforeComment, RulePlacementAfterComment:
+		if p.Comment != "" {
+			summary += ":" + p.Comment
+		}
+	case RulePlacementPosition:
+		position := 0
+		if p.Position != nil {
+			position = *p.Position
+		}
+		summary += ":" + strconv.Itoa(position)
+	}
+	return summary
+}
+
+func (p *RulePlacementConfig) withoutTableOverrides() RulePlacementConfig {
+	if p == nil {
+		return RulePlacementConfig{}
+	}
+	placement := *p
+	placement.Filter = nil
+	placement.Raw = nil
+	return placement
+}
+
+func mergeRulePlacement(base, override RulePlacementConfig) RulePlacementConfig {
+	if override.Strategy != "" {
+		base.Strategy = override.Strategy
+	}
+	if override.Comment != "" {
+		base.Comment = override.Comment
+	}
+	if override.CommentMatch != "" {
+		base.CommentMatch = override.CommentMatch
+	}
+	if override.Position != nil {
+		base.Position = override.Position
+	}
+	if override.Fallback != "" {
+		base.Fallback = override.Fallback
+	}
+	return base
+}
+
+func defaultStructuredRulePlacement() RulePlacementConfig {
+	return RulePlacementConfig{
+		Strategy:     RulePlacementTop,
+		CommentMatch: RulePlacementMatchExact,
+		Fallback:     RulePlacementTop,
+	}
+}
+
+func parseRulePlacementConfig(input any) (RulePlacementConfig, error) {
+	return parseRulePlacementConfigAt(rulePlacementConfigPath, input, true)
+}
+
+func parseRulePlacementConfigAt(path string, input any, withDefaults bool) (RulePlacementConfig, error) {
+	switch value := input.(type) {
+	case nil:
+		return RulePlacementConfig{}, nil
+	case string:
+		return rulePlacementFromString(value, withDefaults), nil
+	case RulePlacementConfig:
+		return value, nil
+	case map[string]any:
+		return rulePlacementFromMap(path, value, withDefaults)
+	case map[any]any:
+		converted := make(map[string]any, len(value))
+		for key, item := range value {
+			converted[fmt.Sprint(key)] = item
+		}
+		return rulePlacementFromMap(path, converted, withDefaults)
+	default:
+		return RulePlacementConfig{}, fmt.Errorf("%s must be a string or object, got %T", path, input)
+	}
+}
+
+func rulePlacementFromString(value string, withDefaults bool) RulePlacementConfig {
+	placement := RulePlacementConfig{}
+	if withDefaults {
+		placement = defaultStructuredRulePlacement()
+	}
+	placement.Strategy = strings.ToLower(strings.TrimSpace(value))
+	return placement
+}
+
+func rulePlacementFromMap(path string, values map[string]any, withDefaults bool) (RulePlacementConfig, error) {
+	placement := RulePlacementConfig{}
+	if withDefaults {
+		placement = defaultStructuredRulePlacement()
+	}
+	for key, value := range values {
+		switch key {
+		case "strategy":
+			placement.Strategy = strings.ToLower(strings.TrimSpace(fmt.Sprint(value)))
+		case "comment":
+			placement.Comment = fmt.Sprint(value)
+		case "comment_match":
+			placement.CommentMatch = strings.ToLower(strings.TrimSpace(fmt.Sprint(value)))
+		case "fallback":
+			placement.Fallback = strings.ToLower(strings.TrimSpace(fmt.Sprint(value)))
+		case "position":
+			position, err := rulePlacementPosition(value)
+			if err != nil {
+				return RulePlacementConfig{}, err
+			}
+			placement.Position = &position
+		case "filter":
+			parsed, err := parseRulePlacementConfigAt(path+rulePlacementFilterSuffix, value, false)
+			if err != nil {
+				return RulePlacementConfig{}, err
+			}
+			placement.Filter = &parsed
+		case "raw":
+			parsed, err := parseRulePlacementConfigAt(path+rulePlacementRawSuffix, value, false)
+			if err != nil {
+				return RulePlacementConfig{}, err
+			}
+			placement.Raw = &parsed
+		default:
+			return RulePlacementConfig{}, fmt.Errorf("%s: unknown key %q", path, key)
+		}
+	}
+	return placement, nil
+}
+
+func rulePlacementPosition(value any) (int, error) {
+	switch typed := value.(type) {
+	case int:
+		return typed, nil
+	case int64:
+		return int(typed), nil
+	case float64:
+		if typed != math.Trunc(typed) {
+			return 0, fmt.Errorf("%s must be an integer, got %v", rulePlacementPositionPath, typed)
+		}
+		return int(typed), nil
+	case string:
+		position, err := strconv.Atoi(strings.TrimSpace(typed))
+		if err != nil {
+			return 0, fmt.Errorf("%s must be an integer: %w", rulePlacementPositionPath, err)
+		}
+		return position, nil
+	default:
+		position, err := strconv.Atoi(fmt.Sprint(value))
+		if err != nil {
+			return 0, fmt.Errorf("%s must be an integer: %w", rulePlacementPositionPath, err)
+		}
+		return position, nil
+	}
 }
 
 // ProtoConfig holds per-protocol (IPv4/IPv6) settings.
 type ProtoConfig struct {
-	Enabled     bool   `yaml:"enabled" mapstructure:"enabled"`
-	AddressList string `yaml:"address_list" mapstructure:"address_list"`
+	Enabled       bool                 `yaml:"enabled" mapstructure:"enabled"`
+	AddressList   string               `yaml:"address_list" mapstructure:"address_list"`
+	RulePlacement *RulePlacementConfig `yaml:"rule_placement" mapstructure:"rule_placement"`
 }
 
 // FilterConfig holds filter-specific rule settings.
@@ -166,7 +483,7 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("firewall.deny_action", "drop")
 	v.SetDefault("firewall.reject_with", "")
 	v.SetDefault("firewall.block_output.enabled", false)
-	v.SetDefault("firewall.rule_placement", "top")
+	v.SetDefault(rulePlacementConfigPath, "top")
 	v.SetDefault("firewall.comment_prefix", "crowdsec-bouncer")
 	v.SetDefault("firewall.log", false)
 	v.SetDefault("firewall.log_prefix", "crowdsec-bouncer")
@@ -208,34 +525,28 @@ func Load(configPath string) (*Config, error) {
 		"mikrotik.command_timeout":    "MIKROTIK_CMD_TIMEOUT",
 		"mikrotik.pool_size":          "MIKROTIK_POOL_SIZE",
 		// Firewall
-		"firewall.ipv4.enabled":                     "FIREWALL_IPV4_ENABLED",
-		"firewall.ipv4.address_list":                "FIREWALL_IPV4_ADDRESS_LIST",
-		"firewall.ipv6.enabled":                     "FIREWALL_IPV6_ENABLED",
-		"firewall.ipv6.address_list":                "FIREWALL_IPV6_ADDRESS_LIST",
-		"firewall.filter.enabled":                   "FIREWALL_FILTER_ENABLED",
-		"firewall.filter.chains":                    "FIREWALL_FILTER_CHAINS",
-		"firewall.raw.enabled":                      "FIREWALL_RAW_ENABLED",
-		"firewall.raw.chains":                       "FIREWALL_RAW_CHAINS",
-		"firewall.deny_action":                      "FIREWALL_DENY_ACTION",
-		"firewall.reject_with":                      "FIREWALL_REJECT_WITH",
-		"firewall.rule_placement":                   "FIREWALL_RULE_PLACEMENT",
-		"firewall.comment_prefix":                   "FIREWALL_COMMENT_PREFIX",
-		"firewall.log":                              "FIREWALL_LOG",
-		"firewall.log_prefix":                       "FIREWALL_LOG_PREFIX",
-		"firewall.filter.log_prefix":                "FIREWALL_FILTER_LOG_PREFIX",
-		"firewall.filter.connection_state":          "FIREWALL_FILTER_CONNECTION_STATE",
-		"firewall.raw.log_prefix":                   "FIREWALL_RAW_LOG_PREFIX",
-		"firewall.block_input.interface":            "FIREWALL_INPUT_INTERFACE",
-		"firewall.block_input.interface_list":       "FIREWALL_INPUT_INTERFACE_LIST",
-		"firewall.block_input.whitelist":            "FIREWALL_INPUT_WHITELIST",
-		"firewall.block_output.enabled":             "FIREWALL_BLOCK_OUTPUT",
-		"firewall.block_output.interface":           "FIREWALL_OUTPUT_INTERFACE",
-		"firewall.block_output.interface_list":      "FIREWALL_OUTPUT_INTERFACE_LIST",
-		"firewall.block_output.log_prefix":          "FIREWALL_OUTPUT_LOG_PREFIX",
-		"firewall.block_output.passthrough_v4":      "FIREWALL_OUTPUT_PASSTHROUGH_V4",
-		"firewall.block_output.passthrough_v4_list": "FIREWALL_OUTPUT_PASSTHROUGH_V4_LIST",
-		"firewall.block_output.passthrough_v6":      "FIREWALL_OUTPUT_PASSTHROUGH_V6",
-		"firewall.block_output.passthrough_v6_list": "FIREWALL_OUTPUT_PASSTHROUGH_V6_LIST",
+		"firewall.ipv4.enabled":                    "FIREWALL_IPV4_ENABLED",
+		"firewall.ipv4.address_list":               "FIREWALL_IPV4_ADDRESS_LIST",
+		"firewall.ipv6.enabled":                    "FIREWALL_IPV6_ENABLED",
+		"firewall.ipv6.address_list":               "FIREWALL_IPV6_ADDRESS_LIST",
+		"firewall.filter.enabled":                  "FIREWALL_FILTER_ENABLED",
+		"firewall.filter.chains":                   "FIREWALL_FILTER_CHAINS",
+		"firewall.raw.enabled":                     "FIREWALL_RAW_ENABLED",
+		"firewall.raw.chains":                      "FIREWALL_RAW_CHAINS",
+		"firewall.deny_action":                     "FIREWALL_DENY_ACTION",
+		"firewall.reject_with":                     "FIREWALL_REJECT_WITH",
+		rulePlacementConfigPath:                    "FIREWALL_RULE_PLACEMENT",
+		rulePlacementConfigPath + ".comment":       "FIREWALL_RULE_PLACEMENT_COMMENT",
+		rulePlacementConfigPath + ".comment_match": "FIREWALL_RULE_PLACEMENT_COMMENT_MATCH",
+		rulePlacementPositionPath:                  "FIREWALL_RULE_PLACEMENT_POSITION",
+		rulePlacementConfigPath + ".fallback":      "FIREWALL_RULE_PLACEMENT_FALLBACK",
+		"firewall.comment_prefix":                  "FIREWALL_COMMENT_PREFIX",
+		"firewall.log":                             "FIREWALL_LOG",
+		"firewall.log_prefix":                      "FIREWALL_LOG_PREFIX",
+		"firewall.filter.log_prefix":               "FIREWALL_FILTER_LOG_PREFIX",
+		"firewall.filter.connection_state":         "FIREWALL_FILTER_CONNECTION_STATE",
+		"firewall.raw.log_prefix":                  "FIREWALL_RAW_LOG_PREFIX",
+		"firewall.block_output.enabled":            "FIREWALL_BLOCK_OUTPUT",
 		// Logging
 		"logging.level":  "LOG_LEVEL",
 		"logging.format": "LOG_FORMAT",
@@ -251,6 +562,17 @@ func Load(configPath string) (*Config, error) {
 	for key, env := range envBindings {
 		_ = v.BindEnv(key, env)
 	}
+	bindEnvAliases(v, rulePlacementConfigPath+".strategy", "FIREWALL_RULE_PLACEMENT_STRATEGY")
+	bindEnvAliases(v, "firewall.block_input.interface", "FIREWALL_BLOCK_INPUT_INTERFACE", "FIREWALL_INPUT_INTERFACE")
+	bindEnvAliases(v, "firewall.block_input.interface_list", "FIREWALL_BLOCK_INPUT_INTERFACE_LIST", "FIREWALL_INPUT_INTERFACE_LIST")
+	bindEnvAliases(v, "firewall.block_input.whitelist", "FIREWALL_BLOCK_INPUT_WHITELIST", "FIREWALL_INPUT_WHITELIST")
+	bindEnvAliases(v, "firewall.block_output.interface", "FIREWALL_BLOCK_OUTPUT_INTERFACE", "FIREWALL_OUTPUT_INTERFACE")
+	bindEnvAliases(v, "firewall.block_output.interface_list", "FIREWALL_BLOCK_OUTPUT_INTERFACE_LIST", "FIREWALL_OUTPUT_INTERFACE_LIST")
+	bindEnvAliases(v, "firewall.block_output.log_prefix", "FIREWALL_BLOCK_OUTPUT_LOG_PREFIX", "FIREWALL_OUTPUT_LOG_PREFIX")
+	bindEnvAliases(v, "firewall.block_output.passthrough_v4", "FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V4", "FIREWALL_OUTPUT_PASSTHROUGH_V4")
+	bindEnvAliases(v, "firewall.block_output.passthrough_v4_list", "FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V4_LIST", "FIREWALL_OUTPUT_PASSTHROUGH_V4_LIST")
+	bindEnvAliases(v, "firewall.block_output.passthrough_v6", "FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V6", "FIREWALL_OUTPUT_PASSTHROUGH_V6")
+	bindEnvAliases(v, "firewall.block_output.passthrough_v6_list", "FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V6_LIST", "FIREWALL_OUTPUT_PASSTHROUGH_V6_LIST")
 
 	// Handle space-separated CROWDSEC_ORIGINS → []string
 	if origins := os.Getenv("CROWDSEC_ORIGINS"); origins != "" {
@@ -269,7 +591,9 @@ func Load(configPath string) (*Config, error) {
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshaling config: %w", err)
 	}
-	expandConfigEnv(&cfg)
+	if err := expandConfigEnv(&cfg); err != nil {
+		return nil, fmt.Errorf("expanding config env: %w", err)
+	}
 
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("validating config: %w", err)
@@ -278,9 +602,14 @@ func Load(configPath string) (*Config, error) {
 	return &cfg, nil
 }
 
+func bindEnvAliases(v *viper.Viper, key string, envNames ...string) {
+	args := append([]string{key}, envNames...)
+	_ = v.BindEnv(args...)
+}
+
 // expandConfigEnv resolves ${VAR} placeholders in string-based configuration
 // values after Viper has merged YAML, defaults, and direct environment overrides.
-func expandConfigEnv(cfg *Config) {
+func expandConfigEnv(cfg *Config) error {
 	cfg.CrowdSec.APIURL = expandConfigValue(cfg.CrowdSec.APIURL, "CROWDSEC_URL")
 	cfg.CrowdSec.APIKey = expandConfigValue(cfg.CrowdSec.APIKey, "CROWDSEC_BOUNCER_API_KEY")
 	cfg.CrowdSec.CertPath = expandConfigValue(cfg.CrowdSec.CertPath, "CROWDSEC_CERT_PATH")
@@ -305,17 +634,21 @@ func expandConfigEnv(cfg *Config) {
 	cfg.Firewall.Raw.LogPrefix = expandConfigValue(cfg.Firewall.Raw.LogPrefix, "FIREWALL_RAW_LOG_PREFIX")
 	cfg.Firewall.DenyAction = expandConfigValue(cfg.Firewall.DenyAction, "FIREWALL_DENY_ACTION")
 	cfg.Firewall.RejectWith = expandConfigValue(cfg.Firewall.RejectWith, "FIREWALL_REJECT_WITH")
-	cfg.Firewall.BlockInput.Interface = expandConfigValue(cfg.Firewall.BlockInput.Interface, "FIREWALL_INPUT_INTERFACE")
-	cfg.Firewall.BlockInput.InterfaceList = expandConfigValue(cfg.Firewall.BlockInput.InterfaceList, "FIREWALL_INPUT_INTERFACE_LIST")
-	cfg.Firewall.BlockInput.Whitelist = expandConfigValue(cfg.Firewall.BlockInput.Whitelist, "FIREWALL_INPUT_WHITELIST")
-	cfg.Firewall.BlockOutput.Interface = expandConfigValue(cfg.Firewall.BlockOutput.Interface, "FIREWALL_OUTPUT_INTERFACE")
-	cfg.Firewall.BlockOutput.InterfaceList = expandConfigValue(cfg.Firewall.BlockOutput.InterfaceList, "FIREWALL_OUTPUT_INTERFACE_LIST")
-	cfg.Firewall.BlockOutput.LogPrefix = expandConfigValue(cfg.Firewall.BlockOutput.LogPrefix, "FIREWALL_OUTPUT_LOG_PREFIX")
-	cfg.Firewall.BlockOutput.PassthroughV4 = expandConfigValue(cfg.Firewall.BlockOutput.PassthroughV4, "FIREWALL_OUTPUT_PASSTHROUGH_V4")
-	cfg.Firewall.BlockOutput.PassthroughV4List = expandConfigValue(cfg.Firewall.BlockOutput.PassthroughV4List, "FIREWALL_OUTPUT_PASSTHROUGH_V4_LIST")
-	cfg.Firewall.BlockOutput.PassthroughV6 = expandConfigValue(cfg.Firewall.BlockOutput.PassthroughV6, "FIREWALL_OUTPUT_PASSTHROUGH_V6")
-	cfg.Firewall.BlockOutput.PassthroughV6List = expandConfigValue(cfg.Firewall.BlockOutput.PassthroughV6List, "FIREWALL_OUTPUT_PASSTHROUGH_V6_LIST")
-	cfg.Firewall.RulePlacement = expandConfigValue(cfg.Firewall.RulePlacement, "FIREWALL_RULE_PLACEMENT")
+	cfg.Firewall.BlockInput.Interface = expandConfigValueAny(cfg.Firewall.BlockInput.Interface, "FIREWALL_BLOCK_INPUT_INTERFACE", "FIREWALL_INPUT_INTERFACE")
+	cfg.Firewall.BlockInput.InterfaceList = expandConfigValueAny(cfg.Firewall.BlockInput.InterfaceList, "FIREWALL_BLOCK_INPUT_INTERFACE_LIST", "FIREWALL_INPUT_INTERFACE_LIST")
+	cfg.Firewall.BlockInput.Whitelist = expandConfigValueAny(cfg.Firewall.BlockInput.Whitelist, "FIREWALL_BLOCK_INPUT_WHITELIST", "FIREWALL_INPUT_WHITELIST")
+	cfg.Firewall.BlockOutput.Interface = expandConfigValueAny(cfg.Firewall.BlockOutput.Interface, "FIREWALL_BLOCK_OUTPUT_INTERFACE", "FIREWALL_OUTPUT_INTERFACE")
+	cfg.Firewall.BlockOutput.InterfaceList = expandConfigValueAny(cfg.Firewall.BlockOutput.InterfaceList, "FIREWALL_BLOCK_OUTPUT_INTERFACE_LIST", "FIREWALL_OUTPUT_INTERFACE_LIST")
+	cfg.Firewall.BlockOutput.LogPrefix = expandConfigValueAny(cfg.Firewall.BlockOutput.LogPrefix, "FIREWALL_BLOCK_OUTPUT_LOG_PREFIX", "FIREWALL_OUTPUT_LOG_PREFIX")
+	cfg.Firewall.BlockOutput.PassthroughV4 = expandConfigValueAny(cfg.Firewall.BlockOutput.PassthroughV4, "FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V4", "FIREWALL_OUTPUT_PASSTHROUGH_V4")
+	cfg.Firewall.BlockOutput.PassthroughV4List = expandConfigValueAny(cfg.Firewall.BlockOutput.PassthroughV4List, "FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V4_LIST", "FIREWALL_OUTPUT_PASSTHROUGH_V4_LIST")
+	cfg.Firewall.BlockOutput.PassthroughV6 = expandConfigValueAny(cfg.Firewall.BlockOutput.PassthroughV6, "FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V6", "FIREWALL_OUTPUT_PASSTHROUGH_V6")
+	cfg.Firewall.BlockOutput.PassthroughV6List = expandConfigValueAny(cfg.Firewall.BlockOutput.PassthroughV6List, "FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V6_LIST", "FIREWALL_OUTPUT_PASSTHROUGH_V6_LIST")
+	if err := expandRulePlacementEnv(&cfg.Firewall.RulePlacement); err != nil {
+		return err
+	}
+	expandRulePlacementPlaceholders(cfg.Firewall.IPv4.RulePlacement)
+	expandRulePlacementPlaceholders(cfg.Firewall.IPv6.RulePlacement)
 	cfg.Firewall.CommentPrefix = expandConfigValue(cfg.Firewall.CommentPrefix, "FIREWALL_COMMENT_PREFIX")
 	cfg.Firewall.LogPrefix = expandConfigValue(cfg.Firewall.LogPrefix, "FIREWALL_LOG_PREFIX")
 
@@ -323,11 +656,61 @@ func expandConfigEnv(cfg *Config) {
 	cfg.Logging.Format = expandConfigValue(cfg.Logging.Format, "LOG_FORMAT")
 	cfg.Logging.File = expandConfigValue(cfg.Logging.File, "LOG_FILE")
 	cfg.Metrics.ListenAddr = expandConfigValue(cfg.Metrics.ListenAddr, "METRICS_ADDR")
+	return nil
+}
+
+func expandRulePlacementEnv(placement *RulePlacementConfig) error {
+	expandRulePlacementPlaceholders(placement)
+	if envHasValue("FIREWALL_RULE_PLACEMENT") {
+		placement.Strategy = strings.ToLower(strings.TrimSpace(os.Getenv("FIREWALL_RULE_PLACEMENT")))
+	}
+	if envHasValue("FIREWALL_RULE_PLACEMENT_STRATEGY") {
+		placement.Strategy = strings.ToLower(strings.TrimSpace(os.Getenv("FIREWALL_RULE_PLACEMENT_STRATEGY")))
+	}
+	if envHasValue("FIREWALL_RULE_PLACEMENT_COMMENT") {
+		placement.Comment = os.Getenv("FIREWALL_RULE_PLACEMENT_COMMENT")
+	}
+	if envHasValue("FIREWALL_RULE_PLACEMENT_COMMENT_MATCH") {
+		placement.CommentMatch = strings.ToLower(strings.TrimSpace(os.Getenv("FIREWALL_RULE_PLACEMENT_COMMENT_MATCH")))
+	}
+	if envHasValue("FIREWALL_RULE_PLACEMENT_POSITION") {
+		position, err := strconv.Atoi(strings.TrimSpace(os.Getenv("FIREWALL_RULE_PLACEMENT_POSITION")))
+		if err != nil {
+			return fmt.Errorf("FIREWALL_RULE_PLACEMENT_POSITION must be an integer: %w", err)
+		}
+		placement.Position = &position
+	}
+	if envHasValue("FIREWALL_RULE_PLACEMENT_FALLBACK") {
+		placement.Fallback = strings.ToLower(strings.TrimSpace(os.Getenv("FIREWALL_RULE_PLACEMENT_FALLBACK")))
+	}
+	return nil
+}
+
+func expandRulePlacementPlaceholders(placement *RulePlacementConfig) {
+	if placement == nil {
+		return
+	}
+	placement.Strategy = strings.ToLower(strings.TrimSpace(expandBracedEnv(placement.Strategy)))
+	placement.Comment = expandBracedEnv(placement.Comment)
+	placement.CommentMatch = strings.ToLower(strings.TrimSpace(expandBracedEnv(placement.CommentMatch)))
+	placement.Fallback = strings.ToLower(strings.TrimSpace(expandBracedEnv(placement.Fallback)))
+	if placement.Filter != nil {
+		expandRulePlacementPlaceholders(placement.Filter)
+	}
+	if placement.Raw != nil {
+		expandRulePlacementPlaceholders(placement.Raw)
+	}
 }
 
 func expandConfigValue(value, envName string) string {
-	if envName != "" && envHasValue(envName) {
-		return value
+	return expandConfigValueAny(value, envName)
+}
+
+func expandConfigValueAny(value string, envNames ...string) string {
+	for _, envName := range envNames {
+		if envName != "" && envHasValue(envName) {
+			return value
+		}
 	}
 	return expandBracedEnv(value)
 }
@@ -423,7 +806,141 @@ func (c *Config) validateFirewall() error {
 	if err := c.validateFilterOptions(); err != nil {
 		return err
 	}
+	if err := c.validateRulePlacement(); err != nil {
+		return err
+	}
 	return c.validateBlockOutputOptions()
+}
+
+func (c *Config) validateRulePlacement() error {
+	placement := c.Firewall.RulePlacement
+	if err := validateRulePlacementConfig(rulePlacementConfigPath, placement.withoutTableOverrides()); err != nil {
+		return err
+	}
+	if placement.Filter != nil {
+		filterPlacement := placement.ForMode("filter")
+		if err := validateRulePlacementConfig(rulePlacementConfigPath+rulePlacementFilterSuffix, filterPlacement.withoutTableOverrides()); err != nil {
+			return err
+		}
+	}
+	if placement.Raw != nil {
+		rawPlacement := placement.ForMode("raw")
+		if err := validateRulePlacementConfig(rulePlacementConfigPath+rulePlacementRawSuffix, rawPlacement.withoutTableOverrides()); err != nil {
+			return err
+		}
+	}
+	if err := c.validateProtocolRulePlacement("firewall.ipv4.rule_placement", "ip", c.Firewall.IPv4.RulePlacement); err != nil {
+		return err
+	}
+	if err := c.validateProtocolRulePlacement("firewall.ipv6.rule_placement", "ipv6", c.Firewall.IPv6.RulePlacement); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *Config) validateProtocolRulePlacement(path, proto string, placement *RulePlacementConfig) error {
+	if placement == nil {
+		return nil
+	}
+	protocolPlacement := c.Firewall.RulePlacementFor(proto, "")
+	if err := validateRulePlacementConfig(path, protocolPlacement.withoutTableOverrides()); err != nil {
+		return err
+	}
+	if placement.Filter != nil {
+		filterPlacement := c.Firewall.RulePlacementFor(proto, "filter")
+		if err := validateRulePlacementConfig(path+rulePlacementFilterSuffix, filterPlacement.withoutTableOverrides()); err != nil {
+			return err
+		}
+	}
+	if placement.Raw != nil {
+		rawPlacement := c.Firewall.RulePlacementFor(proto, "raw")
+		if err := validateRulePlacementConfig(path+rulePlacementRawSuffix, rawPlacement.withoutTableOverrides()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateRulePlacementConfig(path string, placement RulePlacementConfig) error {
+	strategy := normalizedRulePlacementStrategy(placement.Strategy)
+	if !isValidRulePlacementStrategy(strategy) {
+		return fmt.Errorf("%s.strategy invalid value %q", path, placement.Strategy)
+	}
+	if err := validateRulePlacementCommentMatch(path, placement.CommentMatch); err != nil {
+		return err
+	}
+	if err := validateCommentRulePlacement(path, strategy, placement); err != nil {
+		return err
+	}
+	return validatePositionRulePlacement(path, strategy, placement.Position)
+}
+
+func normalizedRulePlacementStrategy(strategy string) string {
+	if strategy == "" {
+		return defaultStructuredRulePlacement().Strategy
+	}
+	return strategy
+}
+
+func isValidRulePlacementStrategy(strategy string) bool {
+	switch strategy {
+	case RulePlacementTop, RulePlacementBottom, RulePlacementBeforeComment, RulePlacementAfterComment, RulePlacementPosition:
+		return true
+	default:
+		return false
+	}
+}
+
+func validateRulePlacementCommentMatch(path, commentMatch string) error {
+	if commentMatch == "" {
+		commentMatch = RulePlacementMatchExact
+	}
+	if commentMatch != RulePlacementMatchExact && commentMatch != RulePlacementMatchContains {
+		return fmt.Errorf("%s.comment_match invalid value %q", path, commentMatch)
+	}
+	return nil
+}
+
+func validateCommentRulePlacement(path, strategy string, placement RulePlacementConfig) error {
+	if strategy != RulePlacementBeforeComment && strategy != RulePlacementAfterComment {
+		return nil
+	}
+	if strings.TrimSpace(placement.Comment) == "" {
+		return fmt.Errorf("%s.comment is required when strategy=%q", path, strategy)
+	}
+	if err := validateRouterOSComment(placement.Comment); err != nil {
+		return fmt.Errorf("%s.comment invalid value %q: %w", path, placement.Comment, err)
+	}
+	return validateRulePlacementFallback(path, placement.Fallback)
+}
+
+func validateRulePlacementFallback(path, fallback string) error {
+	if fallback == "" {
+		fallback = RulePlacementTop
+	}
+	if fallback != RulePlacementTop && fallback != RulePlacementBottom {
+		return fmt.Errorf("%s.fallback must be %q or %q, got %q", path, RulePlacementTop, RulePlacementBottom, fallback)
+	}
+	return nil
+}
+
+func validatePositionRulePlacement(path, strategy string, position *int) error {
+	if strategy == RulePlacementPosition && position == nil {
+		return fmt.Errorf("%s.position is required when strategy=%q", path, RulePlacementPosition)
+	}
+	if position != nil && *position < 0 {
+		return fmt.Errorf("%s.position must be >= 0, got %d", path, *position)
+	}
+	return nil
+}
+
+// validateRouterOSComment permits printable RouterOS comment text and rejects
+// control characters that cannot be safely represented in rule comments.
+func validateRouterOSComment(comment string) error {
+	if strings.ContainsFunc(comment, unicode.IsControl) {
+		return errors.New("control characters are not allowed")
+	}
+	return nil
 }
 
 // validateRejectOptions checks reject-only firewall options and allowed reject reasons.

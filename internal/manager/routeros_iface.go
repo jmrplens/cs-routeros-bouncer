@@ -60,6 +60,9 @@ type RouterOSClient interface {
 	// ListFirewallRulesBySignature lists rules containing the bouncer signature,
 	// returning network, timeout, permission, or RouterOS API errors.
 	ListFirewallRulesBySignature(proto, mode, signature string) ([]ros.RuleEntry, error)
+	// MoveFirewallRule moves one firewall rule before another in the same RouterOS
+	// menu, returning network, timeout, permission, or RouterOS API errors.
+	MoveFirewallRule(proto, mode, ruleID, beforeID string) error
 	// GetFirewallCounters returns aggregated counters for bouncer firewall rules,
 	// returning network, timeout, permission, or RouterOS API errors.
 	GetFirewallCounters(commentPrefix string) (*ros.FirewallCounters, error)

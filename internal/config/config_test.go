@@ -5,6 +5,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -73,7 +74,7 @@ func TestLoadDefaults(t *testing.T) {
 		{name: "Firewall IPv6 address list", want: "crowdsec6-banned", got: func() any { return cfg.Firewall.IPv6.AddressList }},
 		{name: "Firewall filter enabled", want: true, got: func() any { return cfg.Firewall.Filter.Enabled }},
 		{name: "Firewall raw enabled", want: true, got: func() any { return cfg.Firewall.Raw.Enabled }},
-		{name: "Firewall rule placement", want: "top", got: func() any { return cfg.Firewall.RulePlacement }},
+		{name: "Firewall rule placement", want: "top", got: func() any { return cfg.Firewall.RulePlacement.String() }},
 		{name: "Firewall comment prefix", want: "crowdsec-bouncer", got: func() any { return cfg.Firewall.CommentPrefix }},
 		{name: "Firewall log", want: false, got: func() any { return cfg.Firewall.Log }},
 		{name: "Firewall block output", want: false, got: func() any { return cfg.Firewall.BlockOutput.Enabled }},
@@ -393,7 +394,7 @@ func TestValidateCompleteConfig(t *testing.T) {
 			Filter:        FilterConfig{Enabled: true, Chains: []string{"input"}},
 			Raw:           RawConfig{Enabled: true, Chains: []string{"prerouting"}},
 			DenyAction:    "drop",
-			RulePlacement: "top",
+			RulePlacement: RulePlacementConfig{Strategy: RulePlacementTop},
 			CommentPrefix: "crowdsec-bouncer",
 		},
 	}
@@ -460,6 +461,466 @@ func TestEnvOverrides(t *testing.T) {
 	}
 	if cfg.Metrics.ListenPort != 9090 {
 		t.Errorf("expected metrics port 9090, got %d", cfg.Metrics.ListenPort)
+	}
+}
+
+// TestLoadStructuredRulePlacement verifies loading structured firewall rule
+// placement from a file and its per-mode override.
+func TestLoadStructuredRulePlacement(t *testing.T) {
+	setMinimalEnv(t)
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(configPath, []byte(`firewall:
+  rule_placement:
+    strategy: after_comment
+    comment: "drop invalid"
+    comment_match: contains
+    fallback: bottom
+    raw:
+      strategy: position
+      position: 2
+`), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	placement := cfg.Firewall.RulePlacement
+	if placement.Strategy != RulePlacementAfterComment {
+		t.Fatalf("expected after_comment strategy, got %q", placement.Strategy)
+	}
+	if placement.Comment != "drop invalid" || placement.CommentMatch != RulePlacementMatchContains {
+		t.Fatalf("unexpected comment placement: %#v", placement)
+	}
+	if placement.Fallback != RulePlacementBottom {
+		t.Fatalf("expected bottom fallback, got %q", placement.Fallback)
+	}
+	raw := placement.ForMode("raw")
+	if raw.Strategy != RulePlacementPosition || raw.Position == nil || *raw.Position != 2 {
+		t.Fatalf("expected raw position override 2, got %#v", raw)
+	}
+}
+
+// TestLoadProtocolRulePlacement verifies that IPv4 and IPv6 placement overrides
+// can inherit global fields and override table-specific behavior independently.
+func TestLoadProtocolRulePlacement(t *testing.T) {
+	setMinimalEnv(t)
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(configPath, []byte(`firewall:
+  rule_placement:
+    strategy: before_comment
+    comment: "global anchor"
+    fallback: bottom
+  ipv4:
+    rule_placement:
+      comment: "ipv4 anchor"
+  ipv6:
+    rule_placement:
+      strategy: bottom
+      filter:
+        strategy: after_comment
+        comment: "ipv6 filter anchor"
+`), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	ipv4Filter := cfg.Firewall.RulePlacementFor("ip", "filter")
+	if ipv4Filter.Strategy != RulePlacementBeforeComment || ipv4Filter.Comment != "ipv4 anchor" || ipv4Filter.Fallback != RulePlacementBottom {
+		t.Fatalf("expected IPv4 filter to inherit global placement with IPv4 comment, got %#v", ipv4Filter)
+	}
+	ipv4Raw := cfg.Firewall.RulePlacementFor("ip", "raw")
+	if ipv4Raw.Strategy != RulePlacementBeforeComment || ipv4Raw.Comment != "ipv4 anchor" || ipv4Raw.Fallback != RulePlacementBottom {
+		t.Fatalf("expected IPv4 raw to inherit global placement with IPv4 comment, got %#v", ipv4Raw)
+	}
+	ipv6Raw := cfg.Firewall.RulePlacementFor("ipv6", "raw")
+	if ipv6Raw.Strategy != RulePlacementBottom {
+		t.Fatalf("expected IPv6 raw bottom override, got %#v", ipv6Raw)
+	}
+	ipv6Filter := cfg.Firewall.RulePlacementFor("ipv6", "filter")
+	if ipv6Filter.Strategy != RulePlacementAfterComment || ipv6Filter.Comment != "ipv6 filter anchor" || ipv6Filter.Fallback != RulePlacementBottom {
+		t.Fatalf("expected IPv6 filter table override to inherit fallback, got %#v", ipv6Filter)
+	}
+	if got := cfg.Firewall.RulePlacementString(); !strings.Contains(got, "ipv4=before_comment:ipv4 anchor") || !strings.Contains(got, "ipv6=bottom") || !strings.Contains(got, "ipv6.filter=after_comment:ipv6 filter anchor") {
+		t.Fatalf("expected protocol placement summary, got %q", got)
+	}
+}
+
+// TestLoadRulePlacementEnvFields verifies loading firewall rule placement from
+// environment variables, including the structured strategy alias.
+func TestLoadRulePlacementEnvFields(t *testing.T) {
+	setMinimalEnv(t)
+	t.Setenv("FIREWALL_RULE_PLACEMENT_STRATEGY", "position")
+	t.Setenv("FIREWALL_RULE_PLACEMENT_POSITION", "3")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	placement := cfg.Firewall.RulePlacement
+	if placement.Strategy != RulePlacementPosition || placement.Position == nil || *placement.Position != 3 {
+		t.Fatalf("expected env position 3, got %#v", placement)
+	}
+}
+
+// TestLoadRulePlacementLegacyEnv verifies the legacy FIREWALL_RULE_PLACEMENT
+// strategy variable remains supported for existing deployments.
+func TestLoadRulePlacementLegacyEnv(t *testing.T) {
+	setMinimalEnv(t)
+	t.Setenv("FIREWALL_RULE_PLACEMENT", "bottom")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Firewall.RulePlacement.Strategy != RulePlacementBottom {
+		t.Fatalf("expected legacy env bottom placement, got %#v", cfg.Firewall.RulePlacement)
+	}
+}
+
+// TestValidateRulePlacement verifies RulePlacementConfig validation paths for
+// supported strategies, defaults, and invalid values.
+func TestValidateRulePlacement(t *testing.T) {
+	position := 4
+	positionZero := 0
+	tests := []struct {
+		name      string
+		placement RulePlacementConfig
+		wantErr   string
+	}{
+		{name: "legacy top", placement: RulePlacementConfig{Strategy: RulePlacementTop}},
+		{name: "position", placement: RulePlacementConfig{Strategy: RulePlacementPosition, Position: &position}},
+		{name: "position zero", placement: RulePlacementConfig{Strategy: RulePlacementPosition, Position: &positionZero}},
+		{name: "missing position", placement: RulePlacementConfig{Strategy: RulePlacementPosition}, wantErr: "position"},
+		{name: "after comment", placement: RulePlacementConfig{Strategy: RulePlacementAfterComment, Comment: "drop invalid"}},
+		{name: "invalid strategy", placement: RulePlacementConfig{Strategy: "middle"}, wantErr: "strategy"},
+		{name: "missing comment", placement: RulePlacementConfig{Strategy: RulePlacementBeforeComment}, wantErr: "comment"},
+		{name: "invalid comment", placement: RulePlacementConfig{Strategy: RulePlacementBeforeComment, Comment: "bad\ncomment"}, wantErr: "control characters"},
+		{name: "invalid match", placement: RulePlacementConfig{Strategy: RulePlacementTop, CommentMatch: "regex"}, wantErr: "comment_match"},
+		{name: "invalid fallback", placement: RulePlacementConfig{Strategy: RulePlacementAfterComment, Comment: "x", Fallback: "position"}, wantErr: "fallback"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validCfg()
+			cfg.Firewall.RulePlacement = tt.placement
+			err := cfg.Validate()
+			if tt.wantErr == "" && err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)) {
+				t.Fatalf("expected error containing %q, got %v", tt.wantErr, err)
+			}
+		})
+	}
+}
+
+// TestValidateRulePlacementNegativePosition ensures negative positions are rejected.
+func TestValidateRulePlacementNegativePosition(t *testing.T) {
+	position := -1
+	cfg := validCfg()
+	cfg.Firewall.RulePlacement = RulePlacementConfig{Strategy: RulePlacementPosition, Position: &position}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "position") {
+		t.Fatalf("expected position validation error, got %v", err)
+	}
+}
+
+// TestRulePlacementHelpers verifies String, ForMode, mergeRulePlacement, and
+// nil or empty default behavior.
+func TestRulePlacementHelpers(t *testing.T) {
+	position := 7
+	placement := RulePlacementConfig{
+		Strategy:     RulePlacementBeforeComment,
+		Comment:      "anchor",
+		CommentMatch: RulePlacementMatchContains,
+		Position:     &position,
+		Fallback:     RulePlacementBottom,
+		Filter:       &RulePlacementConfig{Strategy: RulePlacementAfterComment, Comment: "filter-anchor"},
+		Raw:          &RulePlacementConfig{Strategy: RulePlacementPosition, Position: &position},
+	}
+
+	if got := (*RulePlacementConfig)(nil).String(); got != RulePlacementTop {
+		t.Fatalf("nil String should default to top, got %q", got)
+	}
+	if got := (*RulePlacementConfig)(nil).ForMode("filter"); got.Strategy != "" {
+		t.Fatalf("nil ForMode should return zero value, got %#v", got)
+	}
+	if got := (*RulePlacementConfig)(nil).withoutTableOverrides(); got.Strategy != "" {
+		t.Fatalf("nil withoutTableOverrides should return zero value, got %#v", got)
+	}
+	if got := (&RulePlacementConfig{}).String(); got != RulePlacementTop {
+		t.Fatalf("empty String should default to top, got %q", got)
+	}
+	if got := placement.String(); !strings.Contains(got, "before_comment:anchor") || !strings.Contains(got, "filter=after_comment:filter-anchor") || !strings.Contains(got, "raw=position:7") {
+		t.Fatalf("unexpected placement string: %q", got)
+	}
+	if got := placement.ForMode("unknown"); got.Filter != nil || got.Raw != nil || got.Strategy != RulePlacementBeforeComment {
+		t.Fatalf("unknown mode should return global settings without overrides, got %#v", got)
+	}
+	if got := placement.ForMode("filter"); got.Strategy != RulePlacementAfterComment || got.Comment != "filter-anchor" || got.CommentMatch != RulePlacementMatchContains || got.Fallback != RulePlacementBottom {
+		t.Fatalf("filter override should merge with global settings, got %#v", got)
+	}
+	if got := placement.ForMode("raw"); got.Strategy != RulePlacementPosition || got.Position == nil || *got.Position != position {
+		t.Fatalf("raw override should keep configured position, got %#v", got)
+	}
+
+	merged := mergeRulePlacement(RulePlacementConfig{}, RulePlacementConfig{
+		Strategy:     RulePlacementAfterComment,
+		Comment:      "merged",
+		CommentMatch: RulePlacementMatchContains,
+		Position:     &position,
+		Fallback:     RulePlacementBottom,
+	})
+	if merged.Strategy != RulePlacementAfterComment || merged.Comment != "merged" || merged.CommentMatch != RulePlacementMatchContains || merged.Position == nil || *merged.Position != position || merged.Fallback != RulePlacementBottom {
+		t.Fatalf("unexpected merged placement: %#v", merged)
+	}
+}
+
+// TestFirewallRulePlacementFor verifies effective precedence across global,
+// table, protocol, and protocol-table placement overrides.
+func TestFirewallRulePlacementFor(t *testing.T) {
+	position := 4
+	firewall := FirewallConfig{
+		RulePlacement: RulePlacementConfig{
+			Strategy: RulePlacementBeforeComment,
+			Comment:  "global",
+			Fallback: RulePlacementBottom,
+			Raw:      &RulePlacementConfig{Strategy: RulePlacementTop},
+		},
+		IPv4: ProtoConfig{RulePlacement: &RulePlacementConfig{Comment: "ipv4"}},
+		IPv6: ProtoConfig{RulePlacement: &RulePlacementConfig{
+			Strategy: RulePlacementBottom,
+			Filter:   &RulePlacementConfig{Strategy: RulePlacementPosition, Position: &position},
+		}},
+	}
+
+	ipv4Filter := firewall.RulePlacementFor("ip", "filter")
+	if ipv4Filter.Strategy != RulePlacementBeforeComment || ipv4Filter.Comment != "ipv4" || ipv4Filter.Fallback != RulePlacementBottom {
+		t.Fatalf("unexpected IPv4 filter placement: %#v", ipv4Filter)
+	}
+	ipv4Raw := firewall.RulePlacementFor("ip", "raw")
+	if ipv4Raw.Strategy != RulePlacementTop || ipv4Raw.Comment != "ipv4" || ipv4Raw.Fallback != RulePlacementBottom {
+		t.Fatalf("unexpected IPv4 raw placement: %#v", ipv4Raw)
+	}
+	ipv6Raw := firewall.RulePlacementFor("ipv6", "raw")
+	if ipv6Raw.Strategy != RulePlacementBottom || ipv6Raw.Comment != "global" {
+		t.Fatalf("unexpected IPv6 raw placement: %#v", ipv6Raw)
+	}
+	ipv6Filter := firewall.RulePlacementFor("ipv6", "filter")
+	if ipv6Filter.Strategy != RulePlacementPosition || ipv6Filter.Position == nil || *ipv6Filter.Position != position || ipv6Filter.Comment != "global" {
+		t.Fatalf("unexpected IPv6 filter placement: %#v", ipv6Filter)
+	}
+}
+
+// TestParseRulePlacementConfigVariants verifies parsing of strings, maps,
+// and nested overrides.
+func TestParseRulePlacementConfigVariants(t *testing.T) {
+	position := 3
+	tests := []struct {
+		name  string
+		input any
+		want  RulePlacementConfig
+	}{
+		{name: "nil", input: nil, want: RulePlacementConfig{}},
+		{name: "struct", input: RulePlacementConfig{Strategy: RulePlacementBottom}, want: RulePlacementConfig{Strategy: RulePlacementBottom}},
+		{name: "map any", input: map[any]any{"strategy": "position", "position": int64(position)}, want: RulePlacementConfig{Strategy: RulePlacementPosition, CommentMatch: RulePlacementMatchExact, Position: &position, Fallback: RulePlacementTop}},
+		{name: "map string", input: map[string]any{"strategy": "after_comment", "comment": "anchor", "comment_match": "contains", "fallback": "bottom"}, want: RulePlacementConfig{Strategy: RulePlacementAfterComment, Comment: "anchor", CommentMatch: RulePlacementMatchContains, Fallback: RulePlacementBottom}},
+		{name: "filter override", input: map[string]any{"filter": map[string]any{"strategy": "bottom"}}, want: RulePlacementConfig{Strategy: RulePlacementTop, CommentMatch: RulePlacementMatchExact, Fallback: RulePlacementTop, Filter: &RulePlacementConfig{Strategy: RulePlacementBottom}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseRulePlacementConfig(tt.input)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("expected %#v, got %#v", tt.want, got)
+			}
+		})
+	}
+}
+
+func TestParseRulePlacementConfigPartialFilterOverrideInherits(t *testing.T) {
+	got, err := parseRulePlacementConfig(map[string]any{"strategy": "before_comment", "comment": "global", "fallback": "bottom", "filter": map[string]any{"comment": "filter"}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Filter == nil || got.Filter.Strategy != "" || got.Filter.Comment != "filter" {
+		t.Fatalf("expected sparse filter override, got %#v", got)
+	}
+	filter := got.ForMode("filter")
+	if filter.Strategy != RulePlacementBeforeComment || filter.Comment != "filter" || filter.Fallback != RulePlacementBottom {
+		t.Fatalf("expected filter to inherit global fields, got %#v", filter)
+	}
+}
+
+func TestParseRulePlacementConfigErrors(t *testing.T) {
+	errorInputs := []struct {
+		name    string
+		input   any
+		wantErr string
+	}{
+		{name: "invalid type", input: []string{"top"}, wantErr: "firewall.rule_placement must be a string or object"},
+		{name: "invalid position", input: map[string]any{"position": "not-int"}, wantErr: "firewall.rule_placement.position must be an integer"},
+		{name: "fractional position", input: map[string]any{"position": float64(1.5)}, wantErr: "firewall.rule_placement.position must be an integer"},
+		{name: "unknown key", input: map[string]any{"stategy": "top"}, wantErr: "firewall.rule_placement: unknown key \"stategy\""},
+		{name: "invalid filter", input: map[string]any{"filter": []string{"bad"}}, wantErr: "firewall.rule_placement.filter must be a string or object"},
+		{name: "invalid raw", input: map[string]any{"raw": []string{"bad"}}, wantErr: "firewall.rule_placement.raw must be a string or object"},
+	}
+	for _, tt := range errorInputs {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := parseRulePlacementConfig(tt.input); err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected error containing %q, got %v", tt.wantErr, err)
+			}
+		})
+	}
+}
+
+// TestRulePlacementPositionTypes verifies position type coercion and invalid
+// integer representations.
+func TestRulePlacementPositionTypes(t *testing.T) {
+	tests := []struct {
+		name string
+		in   any
+		want int
+	}{
+		{name: "int", in: 1, want: 1},
+		{name: "int64", in: int64(2), want: 2},
+		{name: "float64", in: float64(3), want: 3},
+		{name: "string", in: " 4 ", want: 4},
+		{name: "default", in: uint(5), want: 5},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := rulePlacementPosition(tt.in)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("expected %d, got %d", tt.want, got)
+			}
+		})
+	}
+	if _, err := rulePlacementPosition("bad"); err == nil {
+		t.Fatal("expected string conversion error")
+	}
+	if _, err := rulePlacementPosition(float64(1.5)); err == nil {
+		t.Fatal("expected fractional float conversion error")
+	}
+	if _, err := rulePlacementPosition([]string{"bad"}); err == nil {
+		t.Fatal("expected default conversion error")
+	}
+}
+
+func TestExpandRulePlacementPlaceholders(t *testing.T) {
+	t.Setenv("PLACEMENT_STRATEGY", "after_comment")
+	t.Setenv("PLACEMENT_COMMENT", "drop invalid")
+	t.Setenv("PLACEMENT_MATCH", "contains")
+	t.Setenv("PLACEMENT_FALLBACK", "bottom")
+	t.Setenv("FILTER_COMMENT", "filter anchor")
+	t.Setenv("RAW_COMMENT", "raw anchor")
+	placement := RulePlacementConfig{
+		Strategy:     "${PLACEMENT_STRATEGY}",
+		Comment:      "${PLACEMENT_COMMENT}",
+		CommentMatch: "${PLACEMENT_MATCH}",
+		Fallback:     "${PLACEMENT_FALLBACK}",
+		Filter:       &RulePlacementConfig{Comment: "${FILTER_COMMENT}"},
+		Raw:          &RulePlacementConfig{Comment: "${RAW_COMMENT}"},
+	}
+	if err := expandRulePlacementEnv(&placement); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if placement.Strategy != RulePlacementAfterComment || placement.Comment != "drop invalid" || placement.CommentMatch != RulePlacementMatchContains || placement.Fallback != RulePlacementBottom {
+		t.Fatalf("unexpected expanded placement: %#v", placement)
+	}
+	if placement.Filter.Comment != "filter anchor" || placement.Raw.Comment != "raw anchor" {
+		t.Fatalf("nested placeholders not expanded: %#v", placement)
+	}
+}
+
+func TestExpandRulePlacementEnvOverrides(t *testing.T) {
+	placement := RulePlacementConfig{}
+	t.Setenv("FIREWALL_RULE_PLACEMENT", "POSITION")
+	t.Setenv("FIREWALL_RULE_PLACEMENT_COMMENT", "env anchor")
+	t.Setenv("FIREWALL_RULE_PLACEMENT_COMMENT_MATCH", "CONTAINS")
+	t.Setenv("FIREWALL_RULE_PLACEMENT_POSITION", "9")
+	t.Setenv("FIREWALL_RULE_PLACEMENT_FALLBACK", "BOTTOM")
+	if err := expandRulePlacementEnv(&placement); err != nil {
+		t.Fatalf("unexpected env error: %v", err)
+	}
+	if placement.Strategy != RulePlacementPosition || placement.Comment != "env anchor" || placement.CommentMatch != RulePlacementMatchContains || placement.Position == nil || *placement.Position != 9 || placement.Fallback != RulePlacementBottom {
+		t.Fatalf("env overrides not applied: %#v", placement)
+	}
+}
+
+func TestExpandRulePlacementEnvInvalidPosition(t *testing.T) {
+	t.Setenv("FIREWALL_RULE_PLACEMENT_POSITION", "bad")
+	if err := expandRulePlacementEnv(&RulePlacementConfig{}); err == nil {
+		t.Fatal("expected invalid env position error")
+	}
+}
+
+// TestValidateRulePlacementNestedRawError verifies nested raw validation errors
+// include the full field path.
+func TestValidateRulePlacementNestedRawError(t *testing.T) {
+	cfg := validCfg()
+	cfg.Firewall.RulePlacement = RulePlacementConfig{Raw: &RulePlacementConfig{Strategy: "bad"}}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "firewall.rule_placement.raw.strategy") {
+		t.Fatalf("expected nested raw validation error, got %v", err)
+	}
+}
+
+// TestValidateRulePlacementNestedSuccessAndFilterError verifies valid nested
+// placements pass and invalid filter overrides keep their field path.
+func TestValidateRulePlacementNestedSuccessAndFilterError(t *testing.T) {
+	cfg := validCfg()
+	cfg.Firewall.RulePlacement = RulePlacementConfig{
+		Filter: &RulePlacementConfig{Strategy: RulePlacementBottom},
+		Raw:    &RulePlacementConfig{Strategy: RulePlacementTop},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected nested placement to validate, got %v", err)
+	}
+
+	cfg.Firewall.RulePlacement = RulePlacementConfig{Filter: &RulePlacementConfig{Strategy: "bad"}}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "firewall.rule_placement.filter.strategy") {
+		t.Fatalf("expected nested filter validation error, got %v", err)
+	}
+
+	cfg = validCfg()
+	cfg.Firewall.RulePlacement = RulePlacementConfig{Filter: &RulePlacementConfig{Strategy: RulePlacementPosition}}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "firewall.rule_placement.filter.position") {
+		t.Fatalf("expected nested filter position validation error, got %v", err)
+	}
+
+	cfg = validCfg()
+	cfg.Firewall.RulePlacement = RulePlacementConfig{Strategy: RulePlacementBeforeComment, Comment: "global"}
+	cfg.Firewall.IPv4.RulePlacement = &RulePlacementConfig{Comment: "ipv4"}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected IPv4 sparse placement override to validate, got %v", err)
+	}
+
+	cfg.Firewall.IPv4.RulePlacement = &RulePlacementConfig{Strategy: "bad"}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "firewall.ipv4.rule_placement.strategy") {
+		t.Fatalf("expected IPv4 placement validation error, got %v", err)
+	}
+
+	cfg = validCfg()
+	cfg.Firewall.IPv6.RulePlacement = &RulePlacementConfig{Filter: &RulePlacementConfig{Strategy: RulePlacementBeforeComment}}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "firewall.ipv6.rule_placement.filter.comment") {
+		t.Fatalf("expected IPv6 filter placement validation error, got %v", err)
+	}
+
+	cfg = validCfg()
+	cfg.Firewall.IPv6.RulePlacement = &RulePlacementConfig{Filter: &RulePlacementConfig{Strategy: RulePlacementPosition}}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "firewall.ipv6.rule_placement.filter.position") {
+		t.Fatalf("expected IPv6 filter position validation error, got %v", err)
 	}
 }
 
@@ -698,13 +1159,13 @@ func TestPoolSizeEnvOverride(t *testing.T) {
 	}
 }
 
-// TestBlockInputInterfaceEnv verifies that FIREWALL_INPUT_INTERFACE and
-// FIREWALL_INPUT_INTERFACE_LIST environment variables are correctly bound
-// to the BlockInput configuration.
+// TestBlockInputInterfaceEnv verifies canonical FIREWALL_BLOCK_INPUT_* variables
+// are bound to BlockInput configuration.
 func TestBlockInputInterfaceEnv(t *testing.T) {
 	setMinimalEnv(t)
-	t.Setenv("FIREWALL_INPUT_INTERFACE", "ether1")
-	t.Setenv("FIREWALL_INPUT_INTERFACE_LIST", "WAN")
+	t.Setenv("FIREWALL_BLOCK_INPUT_INTERFACE", "ether1")
+	t.Setenv("FIREWALL_BLOCK_INPUT_INTERFACE_LIST", "WAN")
+	t.Setenv("FIREWALL_BLOCK_INPUT_WHITELIST", "trusted")
 
 	cfg, err := Load("")
 	if err != nil {
@@ -716,6 +1177,76 @@ func TestBlockInputInterfaceEnv(t *testing.T) {
 	}
 	if cfg.Firewall.BlockInput.InterfaceList != "WAN" {
 		t.Errorf("expected block_input.interface_list='WAN', got '%s'", cfg.Firewall.BlockInput.InterfaceList)
+	}
+	if cfg.Firewall.BlockInput.Whitelist != "trusted" {
+		t.Errorf("expected block_input.whitelist='trusted', got '%s'", cfg.Firewall.BlockInput.Whitelist)
+	}
+}
+
+// TestBlockInputLegacyEnv verifies the previous FIREWALL_INPUT_* names remain
+// supported for backward compatibility.
+func TestBlockInputLegacyEnv(t *testing.T) {
+	setMinimalEnv(t)
+	t.Setenv("FIREWALL_INPUT_INTERFACE", "ether2")
+	t.Setenv("FIREWALL_INPUT_INTERFACE_LIST", "LAN")
+	t.Setenv("FIREWALL_INPUT_WHITELIST", "trusted-old")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Firewall.BlockInput.Interface != "ether2" || cfg.Firewall.BlockInput.InterfaceList != "LAN" || cfg.Firewall.BlockInput.Whitelist != "trusted-old" {
+		t.Fatalf("legacy block input env not applied: %#v", cfg.Firewall.BlockInput)
+	}
+}
+
+// TestBlockOutputEnv verifies canonical FIREWALL_BLOCK_OUTPUT_* variables are
+// bound to BlockOutput configuration.
+func TestBlockOutputEnv(t *testing.T) {
+	setMinimalEnv(t)
+	t.Setenv("FIREWALL_BLOCK_OUTPUT", "true")
+	t.Setenv("FIREWALL_BLOCK_OUTPUT_INTERFACE", "ether1")
+	t.Setenv("FIREWALL_BLOCK_OUTPUT_INTERFACE_LIST", "WAN")
+	t.Setenv("FIREWALL_BLOCK_OUTPUT_LOG_PREFIX", "out")
+	t.Setenv("FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V4", "10.0.0.5")
+	t.Setenv("FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V4_LIST", "allow-v4")
+	t.Setenv("FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V6", "2001:db8::5")
+	t.Setenv("FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V6_LIST", "allow-v6")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	output := cfg.Firewall.BlockOutput
+	if !output.Enabled || output.Interface != "ether1" || output.InterfaceList != "WAN" || output.LogPrefix != "out" ||
+		output.PassthroughV4 != "10.0.0.5" || output.PassthroughV4List != "allow-v4" ||
+		output.PassthroughV6 != "2001:db8::5" || output.PassthroughV6List != "allow-v6" {
+		t.Fatalf("block output env not applied: %#v", output)
+	}
+}
+
+// TestBlockOutputLegacyEnv verifies the previous FIREWALL_OUTPUT_* names remain
+// supported for backward compatibility.
+func TestBlockOutputLegacyEnv(t *testing.T) {
+	setMinimalEnv(t)
+	t.Setenv("FIREWALL_BLOCK_OUTPUT", "true")
+	t.Setenv("FIREWALL_OUTPUT_INTERFACE", "ether2")
+	t.Setenv("FIREWALL_OUTPUT_INTERFACE_LIST", "LAN")
+	t.Setenv("FIREWALL_OUTPUT_LOG_PREFIX", "legacy-out")
+	t.Setenv("FIREWALL_OUTPUT_PASSTHROUGH_V4", "10.0.0.6")
+	t.Setenv("FIREWALL_OUTPUT_PASSTHROUGH_V4_LIST", "legacy-v4")
+	t.Setenv("FIREWALL_OUTPUT_PASSTHROUGH_V6", "2001:db8::6")
+	t.Setenv("FIREWALL_OUTPUT_PASSTHROUGH_V6_LIST", "legacy-v6")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	output := cfg.Firewall.BlockOutput
+	if output.Interface != "ether2" || output.InterfaceList != "LAN" || output.LogPrefix != "legacy-out" ||
+		output.PassthroughV4 != "10.0.0.6" || output.PassthroughV4List != "legacy-v4" ||
+		output.PassthroughV6 != "2001:db8::6" || output.PassthroughV6List != "legacy-v6" {
+		t.Fatalf("legacy block output env not applied: %#v", output)
 	}
 }
 

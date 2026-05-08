@@ -62,6 +62,11 @@ type Manager struct {
 	cacheMu      sync.RWMutex
 }
 
+type firewallRuleRef struct {
+	Comment string
+	ID      string
+}
+
 // NewManager creates a new bouncer manager.
 func NewManager(cfg config.Config, version string) *Manager {
 	return &Manager{
@@ -228,7 +233,7 @@ func (m *Manager) recordConfigInfo() {
 		FWRawChains:              m.cfg.Firewall.Raw.Chains,
 		FWDenyAction:             m.cfg.Firewall.DenyAction,
 		FWBlockOutput:            m.cfg.Firewall.BlockOutput.Enabled,
-		FWRulePlacement:          m.cfg.Firewall.RulePlacement,
+		FWRulePlacement:          m.cfg.Firewall.RulePlacementString(),
 		FWCommentPrefix:          m.cfg.Firewall.CommentPrefix,
 		FWLog:                    m.cfg.Firewall.Log,
 		LogLevel:                 m.cfg.Logging.Level,
@@ -770,26 +775,25 @@ func (m *Manager) createFilterRules(proto, listName string) error {
 			return err
 		}
 	}
+	if m.cfg.Firewall.BlockOutput.Enabled {
+		outRule := m.outputRule(proto, listName)
+		return m.ensureFirewallBlock(proto, "filter", "output", []rosClient.FirewallRule{outRule})
+	}
 	return nil
 }
 
 // createFilterChainRules creates whitelist, deny, counting, and output filter rules for one chain.
 func (m *Manager) createFilterChainRules(proto, listName, chain string) error {
-	if err := m.ensureInputWhitelistRule(proto, "filter", chain); err != nil {
-		return err
+	rules := make([]rosClient.FirewallRule, 0, 3)
+	if whitelistRule, ok := m.inputWhitelistRule(proto, "filter", chain); ok {
+		rules = append(rules, whitelistRule)
 	}
 	comment := buildRuleComment(m.commentPrefix(), "filter", chain, "input", proto)
-	if err := m.ensureFirewallRule(proto, "filter", m.filterInputRule(listName, chain, comment)); err != nil {
-		return err
+	if countingRule, ok := m.processedCountingRule(proto, "filter", chain); ok {
+		rules = append(rules, countingRule)
 	}
-	if err := m.ensureProcessedCountingRule(proto, "filter", chain, comment); err != nil {
-		return err
-	}
-	if !m.cfg.Firewall.BlockOutput.Enabled {
-		return nil
-	}
-	outRule := m.outputRule(proto, listName)
-	return m.ensureFirewallRule(proto, "filter", outRule)
+	rules = append(rules, m.filterInputRule(listName, chain, comment))
+	return m.ensureFirewallBlock(proto, "filter", chain, rules)
 }
 
 // createRawRules creates all configured raw-table rules for one protocol.
@@ -807,8 +811,9 @@ func (m *Manager) createRawRules(proto, listName string) error {
 
 // createRawChainRules creates whitelist, deny, and counting raw rules for one chain.
 func (m *Manager) createRawChainRules(proto, listName, chain string) error {
-	if err := m.ensureInputWhitelistRule(proto, "raw", chain); err != nil {
-		return err
+	rules := make([]rosClient.FirewallRule, 0, 3)
+	if whitelistRule, ok := m.inputWhitelistRule(proto, "raw", chain); ok {
+		rules = append(rules, whitelistRule)
 	}
 	comment := buildRuleComment(m.commentPrefix(), "raw", chain, "input", proto)
 	rule := rosClient.FirewallRule{
@@ -820,16 +825,16 @@ func (m *Manager) createRawChainRules(proto, listName, chain string) error {
 		LogPrefix:      m.resolveLogPrefix("raw"),
 	}
 	m.applyInputRuleOptions(&rule)
-	if err := m.ensureFirewallRule(proto, "raw", rule); err != nil {
-		return err
+	if countingRule, ok := m.processedCountingRule(proto, "raw", chain); ok {
+		rules = append(rules, countingRule)
 	}
-	return m.ensureProcessedCountingRule(proto, "raw", chain, comment)
+	rules = append(rules, rule)
+	return m.ensureFirewallBlock(proto, "raw", chain, rules)
 }
 
-// ensureInputWhitelistRule creates the optional accept rule ahead of bouncer deny rules.
-func (m *Manager) ensureInputWhitelistRule(proto, mode, chain string) error {
+func (m *Manager) inputWhitelistRule(proto, mode, chain string) (rosClient.FirewallRule, bool) {
 	if m.cfg.Firewall.BlockInput.Whitelist == "" {
-		return nil
+		return rosClient.FirewallRule{}, false
 	}
 	comment := buildRuleComment(m.commentPrefix(), mode, chain, "whitelist", proto)
 	rule := rosClient.FirewallRule{
@@ -844,7 +849,7 @@ func (m *Manager) ensureInputWhitelistRule(proto, mode, chain string) error {
 	if mode == "filter" && m.cfg.Firewall.Filter.ConnectionState != "" {
 		rule.ConnectionState = m.cfg.Firewall.Filter.ConnectionState
 	}
-	return m.ensureFirewallRule(proto, mode, rule)
+	return rule, true
 }
 
 // filterInputRule builds the filter-table rule that blocks inbound source addresses.
@@ -882,9 +887,6 @@ func (m *Manager) outputRule(proto, listName string) rosClient.FirewallRule {
 	}
 	if m.cfg.Firewall.BlockOutput.InterfaceList != "" {
 		rule.OutInterfaceList = m.cfg.Firewall.BlockOutput.InterfaceList
-	}
-	if m.cfg.Firewall.RulePlacement == "top" {
-		rule.PlaceBefore = "0"
 	}
 	return rule
 }
@@ -926,19 +928,17 @@ func (m *Manager) rawDenyAction() string {
 	return m.cfg.Firewall.DenyAction
 }
 
-// ensureProcessedCountingRule creates passthrough rules for processed traffic counters.
-func (m *Manager) ensureProcessedCountingRule(proto, mode, chain, beforeComment string) error {
+func (m *Manager) processedCountingRule(proto, mode, chain string) (rosClient.FirewallRule, bool) {
 	if !m.cfg.Metrics.TrackProcessed {
-		return nil
+		return rosClient.FirewallRule{}, false
 	}
 	comment := buildRuleComment(m.commentPrefix(), mode, chain, "counting", proto)
 	rule := rosClient.FirewallRule{Chain: chain, Action: "passthrough", Comment: comment}
 	m.applyInputRuleOptions(&rule)
-	return m.ensureCountingRule(proto, mode, rule, beforeComment)
+	return rule, true
 }
 
-// applyInputRuleOptions sets InInterface, InInterfaceList and PlaceBefore on
-// a firewall rule based on the current BlockInput and RulePlacement config.
+// applyInputRuleOptions sets inbound interface matchers on a firewall rule.
 func (m *Manager) applyInputRuleOptions(rule *rosClient.FirewallRule) {
 	if m.cfg.Firewall.BlockInput.Interface != "" {
 		rule.InInterface = m.cfg.Firewall.BlockInput.Interface
@@ -946,18 +946,14 @@ func (m *Manager) applyInputRuleOptions(rule *rosClient.FirewallRule) {
 	if m.cfg.Firewall.BlockInput.InterfaceList != "" {
 		rule.InInterfaceList = m.cfg.Firewall.BlockInput.InterfaceList
 	}
-	if m.cfg.Firewall.RulePlacement == "top" {
-		rule.PlaceBefore = "0"
-	}
 }
 
-// ensureFirewallRule creates a firewall rule if it doesn't already exist.
-func (m *Manager) ensureFirewallRule(proto, mode string, rule rosClient.FirewallRule) error {
+func (m *Manager) ensureFirewallRuleRef(proto, mode string, rule rosClient.FirewallRule) (firewallRuleRef, error) {
 	// Check if rule already exists
 	existing, err := m.ros.FindFirewallRuleByComment(proto, mode, rule.Comment)
 	if err != nil && !errors.Is(err, rosClient.ErrNotFound) {
 		metrics.RecordError("firewall")
-		return fmt.Errorf("checking existing rule %q: %w", rule.Comment, err)
+		return firewallRuleRef{}, fmt.Errorf("checking existing rule %q: %w", rule.Comment, err)
 	}
 
 	if err == nil && existing != nil {
@@ -968,65 +964,229 @@ func (m *Manager) ensureFirewallRule(proto, mode string, rule rosClient.Firewall
 		m.ruleMu.Lock()
 		m.ruleIDs[rule.Comment] = existing.ID
 		m.ruleMu.Unlock()
-		return nil
+		return firewallRuleRef{Comment: rule.Comment, ID: existing.ID}, nil
 	}
 
 	id, err := m.ros.AddFirewallRule(proto, mode, rule)
 	if err != nil {
 		metrics.RecordError("firewall")
-		return fmt.Errorf("creating firewall rule %q: %w", rule.Comment, err)
+		return firewallRuleRef{}, fmt.Errorf("creating firewall rule %q: %w", rule.Comment, err)
 	}
 
 	m.ruleMu.Lock()
 	m.ruleIDs[rule.Comment] = id
 	m.ruleMu.Unlock()
 
+	return firewallRuleRef{Comment: rule.Comment, ID: id}, nil
+}
+
+func (m *Manager) ensureFirewallBlock(proto, mode, chain string, rules []rosClient.FirewallRule) error {
+	refs := make([]firewallRuleRef, 0, len(rules))
+	for _, rule := range rules {
+		ref, err := m.ensureFirewallRuleRef(proto, mode, rule)
+		if err != nil {
+			return err
+		}
+		refs = append(refs, ref)
+	}
+	m.placeFirewallBlock(proto, mode, chain, refs)
 	return nil
 }
 
-// ensureCountingRule creates a passthrough counting rule if it doesn't exist,
-// positioning it just before the specified target rule. These rules measure
-// total traffic evaluated by the bouncer, analogous to iptables JUMP counters.
-func (m *Manager) ensureCountingRule(proto, mode string, rule rosClient.FirewallRule, beforeComment string) error {
-	existing, err := m.ros.FindFirewallRuleByComment(proto, mode, rule.Comment)
-	if err != nil && !errors.Is(err, rosClient.ErrNotFound) {
-		return fmt.Errorf("checking counting rule %q: %w", rule.Comment, err)
+func (m *Manager) placeFirewallBlock(proto, mode, chain string, refs []firewallRuleRef) {
+	if len(refs) == 0 {
+		return
 	}
-	if err == nil && existing != nil {
-		m.ruleMu.Lock()
-		m.ruleIDs[rule.Comment] = existing.ID
-		m.ruleMu.Unlock()
-		return nil
+	placement := m.cfg.Firewall.RulePlacementFor(proto, mode)
+	strategy := placement.Strategy
+	if strategy == "" {
+		strategy = config.RulePlacementTop
+	}
+	if strategy == config.RulePlacementBottom {
+		return
 	}
 
-	// Find the target rule to position before it
-	target, err := m.ros.FindFirewallRuleByComment(proto, mode, beforeComment)
-	if err != nil && !errors.Is(err, rosClient.ErrNotFound) {
-		return fmt.Errorf("finding target rule %q for counting placement: %w", beforeComment, err)
-	}
-	if err == nil && target != nil {
-		rule.PlaceBefore = target.ID
-	} else {
-		m.logger.Warn().
-			Str("counting_rule", rule.Comment).
-			Str("target_rule", beforeComment).
-			Msg("target rule not found for counting placement; rule will be appended at end of chain")
-	}
-
-	id, err := m.ros.AddFirewallRule(proto, mode, rule)
+	candidates, err := m.placementCandidates(proto, mode)
 	if err != nil {
-		return fmt.Errorf("creating counting rule %q: %w", rule.Comment, err)
+		m.logger.Warn().Err(err).
+			Str("proto", proto).
+			Str("mode", mode).
+			Str("chain", chain).
+			Msg("could not list firewall rules for placement; block left at bottom")
+		return
 	}
 
-	m.ruleMu.Lock()
-	m.ruleIDs[rule.Comment] = id
-	m.ruleMu.Unlock()
+	switch strategy {
+	case config.RulePlacementTop:
+		m.placeFirewallBlockAtPosition(proto, mode, refs, candidates, 0)
+	case config.RulePlacementPosition:
+		position := 0
+		if placement.Position != nil {
+			position = *placement.Position
+		}
+		m.placeFirewallBlockAtPosition(proto, mode, refs, candidates, position)
+	case config.RulePlacementBeforeComment:
+		m.placeFirewallBlockBeforeComment(proto, mode, refs, candidates, placement)
+	case config.RulePlacementAfterComment:
+		m.placeFirewallBlockAfterComment(proto, mode, refs, candidates, placement)
+	}
+}
 
-	m.logger.Info().
-		Str("comment", rule.Comment).
-		Str("id", id).
-		Msg("created passthrough counting rule for processed metrics")
+func (m *Manager) placementCandidates(proto, mode string) ([]rosClient.RuleEntry, error) {
+	rules, err := m.ros.ListFirewallRules(proto, mode, "")
+	if err != nil {
+		return nil, err
+	}
+	candidates := make([]rosClient.RuleEntry, 0, len(rules))
+	for _, rule := range rules {
+		if hasRuleSignature(rule.Comment) {
+			continue
+		}
+		candidates = append(candidates, rule)
+	}
+	return candidates, nil
+}
 
+func (m *Manager) placeFirewallBlockAtPosition(proto, mode string, refs []firewallRuleRef, candidates []rosClient.RuleEntry, position int) {
+	if position >= len(candidates) {
+		m.logger.Debug().
+			Str("proto", proto).
+			Str("mode", mode).
+			Int("position", position).
+			Int("rules", len(candidates)).
+			Msg("configured firewall rule position is beyond existing rules; block left at bottom")
+		return
+	}
+	for i := position; i < len(candidates); i++ {
+		target := candidates[i]
+		if err := m.moveFirewallBlockBefore(proto, mode, refs, target.ID); err != nil {
+			m.logger.Debug().Err(err).
+				Str("proto", proto).
+				Str("mode", mode).
+				Int("position", i).
+				Str("target", target.ID).
+				Msg("cannot move firewall block before target, trying next position")
+			continue
+		}
+		m.logger.Info().
+			Str("proto", proto).
+			Str("mode", mode).
+			Int("position", i).
+			Msg("firewall rule block positioned")
+		return
+	}
+	m.logger.Warn().
+		Str("proto", proto).
+		Str("mode", mode).
+		Int("position", position).
+		Msg("could not move firewall rule block to requested position; block left at bottom")
+}
+
+func (m *Manager) placeFirewallBlockBeforeComment(
+	proto, mode string,
+	refs []firewallRuleRef,
+	candidates []rosClient.RuleEntry,
+	placement config.RulePlacementConfig,
+) {
+	index, ok := findPlacementComment(candidates, placement)
+	if !ok {
+		m.logger.Warn().
+			Str("proto", proto).
+			Str("mode", mode).
+			Str("comment", placement.Comment).
+			Msg("firewall rule placement anchor not found; using fallback")
+		m.placeFirewallBlockFallback(proto, mode, refs, candidates, placement)
+		return
+	}
+	if err := m.moveFirewallBlockBefore(proto, mode, refs, candidates[index].ID); err != nil {
+		m.logger.Warn().Err(err).
+			Str("proto", proto).
+			Str("mode", mode).
+			Str("comment", placement.Comment).
+			Msg("could not move firewall rule block before anchor; using fallback")
+		m.placeFirewallBlockFallback(proto, mode, refs, candidates, placement)
+	}
+}
+
+func (m *Manager) placeFirewallBlockAfterComment(
+	proto, mode string,
+	refs []firewallRuleRef,
+	candidates []rosClient.RuleEntry,
+	placement config.RulePlacementConfig,
+) {
+	index, ok := findPlacementComment(candidates, placement)
+	if !ok {
+		m.logger.Warn().
+			Str("proto", proto).
+			Str("mode", mode).
+			Str("comment", placement.Comment).
+			Msg("firewall rule placement anchor not found; using fallback")
+		m.placeFirewallBlockFallback(proto, mode, refs, candidates, placement)
+		return
+	}
+	if index+1 >= len(candidates) {
+		m.logger.Info().
+			Str("proto", proto).
+			Str("mode", mode).
+			Str("comment", placement.Comment).
+			Msg("firewall rule placement anchor is last rule; block left at bottom")
+		return
+	}
+	if err := m.moveFirewallBlockBefore(proto, mode, refs, candidates[index+1].ID); err != nil {
+		m.logger.Warn().Err(err).
+			Str("proto", proto).
+			Str("mode", mode).
+			Str("comment", placement.Comment).
+			Msg("could not move firewall rule block after anchor; using fallback")
+		m.placeFirewallBlockFallback(proto, mode, refs, candidates, placement)
+	}
+}
+
+func findPlacementComment(candidates []rosClient.RuleEntry, placement config.RulePlacementConfig) (int, bool) {
+	matchMode := placement.CommentMatch
+	if matchMode == "" {
+		matchMode = config.RulePlacementMatchExact
+	}
+	for i, candidate := range candidates {
+		switch matchMode {
+		case config.RulePlacementMatchContains:
+			if strings.Contains(candidate.Comment, placement.Comment) {
+				return i, true
+			}
+		default:
+			if candidate.Comment == placement.Comment {
+				return i, true
+			}
+		}
+	}
+	return 0, false
+}
+
+func (m *Manager) placeFirewallBlockFallback(
+	proto, mode string,
+	refs []firewallRuleRef,
+	candidates []rosClient.RuleEntry,
+	placement config.RulePlacementConfig,
+) {
+	fallback := placement.Fallback
+	if fallback == "" {
+		fallback = config.RulePlacementTop
+	}
+	if fallback == config.RulePlacementBottom {
+		return
+	}
+	m.placeFirewallBlockAtPosition(proto, mode, refs, candidates, 0)
+}
+
+// moveFirewallBlockBefore moves refs one by one using m.ros.MoveFirewallRule.
+// If a move fails after earlier refs were moved before beforeID, the block may
+// be partially reordered; callers can retry placement later to complete ordering.
+func (m *Manager) moveFirewallBlockBefore(proto, mode string, refs []firewallRuleRef, beforeID string) error {
+	for _, ref := range refs {
+		if err := m.ros.MoveFirewallRule(proto, mode, ref.ID, beforeID); err != nil {
+			return fmt.Errorf("moving firewall rule %q before %q: %w", ref.Comment, beforeID, err)
+		}
+	}
 	return nil
 }
 

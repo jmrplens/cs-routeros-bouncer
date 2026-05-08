@@ -28,7 +28,7 @@ CGO_ENABLED=0 go build -o cs-routeros-bouncer ./cmd/cs-routeros-bouncer
 **With version information:**
 
 ```bash
-CGO_ENABLED=0 go build -ldflags "-X github.com/jmrplens/cs-routeros-bouncer/internal/config.Version=1.4.0 -X github.com/jmrplens/cs-routeros-bouncer/internal/config.Commit=$(git rev-parse --short HEAD) -X github.com/jmrplens/cs-routeros-bouncer/internal/config.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) -X github.com/crowdsecurity/go-cs-lib/version.Version=1.4.0" \
+CGO_ENABLED=0 go build -ldflags "-X github.com/jmrplens/cs-routeros-bouncer/internal/config.Version=1.4.1 -X github.com/jmrplens/cs-routeros-bouncer/internal/config.Commit=$(git rev-parse --short HEAD) -X github.com/jmrplens/cs-routeros-bouncer/internal/config.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) -X github.com/crowdsecurity/go-cs-lib/version.Version=1.4.1" \
   -o cs-routeros-bouncer ./cmd/cs-routeros-bouncer
 ```
 
@@ -152,8 +152,8 @@ The project uses `.golangci.yml` for linter configuration.
 2. **Create and push a git tag**
 
    ```bash
-   git tag v1.4.0
-   git push origin v1.4.0
+   git tag v1.4.1
+   git push origin v1.4.1
    ```
 
 3. **GitHub Actions automatically:**

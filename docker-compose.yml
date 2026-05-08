@@ -25,7 +25,7 @@ services:
       FIREWALL_RAW_ENABLED: "true"
       FIREWALL_DENY_ACTION: "drop"
       # FIREWALL_BLOCK_OUTPUT: "false"
-      # FIREWALL_OUTPUT_INTERFACE: "ether1"
+      # FIREWALL_BLOCK_OUTPUT_INTERFACE: "ether1"
 
       # Observability
       METRICS_ENABLED: "true"

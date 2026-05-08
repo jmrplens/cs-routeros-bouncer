@@ -142,7 +142,7 @@ Exposes bouncer configuration as metric labels. Carries all configuration parame
 
 | Label                                   | Example value            |
 | --------------------------------------- | ------------------------ |
-| `version`                               | `1.4.0`                  |
+| `version`                               | `1.4.1`                  |
 | `crowdsec_url`                          | `http://localhost:8080/` |
 | `crowdsec_update_frequency`             | `10s`                    |
 | `crowdsec_include_scenarios_containing` | —                        |
@@ -173,6 +173,8 @@ Exposes bouncer configuration as metric labels. Carries all configuration parame
 | `firewall_filter_log_prefix`            | —                        |
 | `firewall_raw_log_prefix`               | —                        |
 | `metrics_routeros_poll_interval`        | `30s`                    |
+
+`firewall_rule_placement` is a configuration label. Simple values appear as `top` or `bottom`; structured placement appears as a compact summary such as `position:5`, `after_comment:drop invalid`, `top,filter=after_comment:drop invalid,raw=position:2`, or `top,ipv4=before_comment:IPv4 anchor,ipv6=bottom,ipv6.raw=position:4`.
 
 </details>
 
