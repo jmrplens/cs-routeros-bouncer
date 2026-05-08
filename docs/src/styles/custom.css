@@ -49,10 +49,10 @@
 
 	/* Typography — system font stack + fluid headings */
 	--sl-font:
-		system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+		system-ui, -apple-system, "Segoe UI", "Roboto", "Helvetica Neue", "Arial",
 		"Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
 	--sl-font-mono:
-		ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas,
+		ui-monospace, "Cascadia Code", "Source Code Pro", "Menlo", "Consolas",
 		"DejaVu Sans Mono", monospace;
 
 	--sl-text-h1: clamp(1.75rem, 1.25rem + 2vw, 2.5rem);

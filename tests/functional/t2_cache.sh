@@ -119,11 +119,18 @@ t2_3_live_unban() {
     lapi_remove_decision "$TEST_IP_BAN"
     log "Removed $TEST_IP_BAN, waiting for bouncer poll..."
 
-    local removed=false
+    local removed=false rc
     for i in $(seq 1 12); do
         sleep 5
-        if ! ssh_address_exists "${TEST_IPV4_LIST}" "$TEST_IP_BAN"; then
-            removed=true; break
+        ssh_address_exists "${TEST_IPV4_LIST}" "$TEST_IP_BAN"
+        rc=$?
+        if (( rc == 1 )); then
+            removed=true
+            break
+        fi
+        if (( rc == 2 )); then
+            echo "FAIL: SSH check failed while waiting for $TEST_IP_BAN removal (attempt $i/12)"
+            return 1
         fi
     done
 

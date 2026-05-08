@@ -453,10 +453,10 @@ config_write() {
 config_get_crowdsec_origins_csv() {
     python3 - "$_BOUNCER_CONFIG" 2>/dev/null <<'PY'
 import sys
-import yaml
 
 config_path = sys.argv[1]
 try:
+    import yaml
     with open(config_path, "r", encoding="utf-8") as config_file:
         config = yaml.safe_load(config_file) or {}
     origins = ((config.get("crowdsec") or {}).get("origins")) or ["crowdsec", "cscli"]
@@ -472,10 +472,10 @@ config_get_crowdsec_origins_json() {
     python3 - "$_BOUNCER_CONFIG" 2>/dev/null <<'PY'
 import json
 import sys
-import yaml
 
 config_path = sys.argv[1]
 try:
+    import yaml
     with open(config_path, "r", encoding="utf-8") as config_file:
         config = yaml.safe_load(config_file) or {}
     origins = ((config.get("crowdsec") or {}).get("origins")) or ["crowdsec", "cscli"]
@@ -490,10 +490,10 @@ PY
 config_get_mikrotik_pool_size() {
     python3 - "$_BOUNCER_CONFIG" 2>/dev/null <<'PY'
 import sys
-import yaml
 
 config_path = sys.argv[1]
 try:
+    import yaml
     with open(config_path, "r", encoding="utf-8") as config_file:
         config = yaml.safe_load(config_file) or {}
     pool_val = (config.get("mikrotik") or {}).get("pool_size")

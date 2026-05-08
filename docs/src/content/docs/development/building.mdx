@@ -137,11 +137,11 @@ The project uses `.golangci.yml` for linter configuration.
 
 ## CI/CD
 
-| Workflow      | Trigger      | Purpose                                              |
-| ------------- | ------------ | ---------------------------------------------------- |
-| `test.yml`    | Push, PR     | Run tests and linting                                |
-| `release.yml` | Tag push     | Build binaries, Docker images, create GitHub release |
-| `docker.yml`  | Push to main | Build and push Docker image to GHCR                  |
+| Workflow      | Trigger                  | Purpose                                              |
+| ------------- | ------------------------ | ---------------------------------------------------- |
+| `ci.yml`      | Push, PR                 | Run linting, tests, docs analysis, and build checks  |
+| `docs.yml`    | Docs changes, manual run | Build and deploy the Astro documentation site        |
+| `release.yml` | Tag push                 | Build binaries, Docker images, create GitHub release |
 
 ### Release process
 
