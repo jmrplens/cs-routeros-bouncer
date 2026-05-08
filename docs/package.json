@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "html:validate": "test -n \"$(find dist -name '*.html' -print -quit 2>/dev/null)\" || { echo 'No HTML files found in docs/dist. Run pnpm build first.' >&2; exit 1; }; html-validate \"dist/**/*.html\"",
+    "html:validate": "test -n \"$(find dist -name '*.html' -print -quit 2>/dev/null)\" || { echo 'No HTML files found in docs/dist. Run pnpm build first.' >&2; exit 1; }; html-validate --max-warnings 0 \"dist/**/*.html\"",
     "check": "astro check",
     "build": "astro build",
     "preview": "astro preview",
