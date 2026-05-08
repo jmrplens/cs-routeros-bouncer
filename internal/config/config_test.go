@@ -463,6 +463,8 @@ func TestEnvOverrides(t *testing.T) {
 	}
 }
 
+// TestLoadStructuredRulePlacement verifies loading structured firewall rule
+// placement from a file and its per-mode override.
 func TestLoadStructuredRulePlacement(t *testing.T) {
 	setMinimalEnv(t)
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
@@ -500,9 +502,11 @@ func TestLoadStructuredRulePlacement(t *testing.T) {
 	}
 }
 
+// TestLoadRulePlacementEnvFields verifies loading firewall rule placement from
+// environment variables, including the structured strategy alias.
 func TestLoadRulePlacementEnvFields(t *testing.T) {
 	setMinimalEnv(t)
-	t.Setenv("FIREWALL_RULE_PLACEMENT", "position")
+	t.Setenv("FIREWALL_RULE_PLACEMENT_STRATEGY", "position")
 	t.Setenv("FIREWALL_RULE_PLACEMENT_POSITION", "3")
 
 	cfg, err := Load("")
@@ -516,8 +520,26 @@ func TestLoadRulePlacementEnvFields(t *testing.T) {
 	}
 }
 
+// TestLoadRulePlacementLegacyEnv verifies the legacy FIREWALL_RULE_PLACEMENT
+// strategy variable remains supported for existing deployments.
+func TestLoadRulePlacementLegacyEnv(t *testing.T) {
+	setMinimalEnv(t)
+	t.Setenv("FIREWALL_RULE_PLACEMENT", "bottom")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Firewall.RulePlacement.Strategy != RulePlacementBottom {
+		t.Fatalf("expected legacy env bottom placement, got %#v", cfg.Firewall.RulePlacement)
+	}
+}
+
+// TestValidateRulePlacement verifies RulePlacementConfig validation paths for
+// supported strategies, defaults, and invalid values.
 func TestValidateRulePlacement(t *testing.T) {
 	position := 4
+	positionZero := 0
 	tests := []struct {
 		name      string
 		placement RulePlacementConfig
@@ -525,9 +547,11 @@ func TestValidateRulePlacement(t *testing.T) {
 	}{
 		{name: "legacy top", placement: RulePlacementConfig{Strategy: RulePlacementTop}},
 		{name: "position", placement: RulePlacementConfig{Strategy: RulePlacementPosition, Position: &position}},
+		{name: "position zero", placement: RulePlacementConfig{Strategy: RulePlacementPosition, Position: &positionZero}},
 		{name: "after comment", placement: RulePlacementConfig{Strategy: RulePlacementAfterComment, Comment: "drop invalid"}},
 		{name: "invalid strategy", placement: RulePlacementConfig{Strategy: "middle"}, wantErr: "strategy"},
 		{name: "missing comment", placement: RulePlacementConfig{Strategy: RulePlacementBeforeComment}, wantErr: "comment"},
+		{name: "invalid comment", placement: RulePlacementConfig{Strategy: RulePlacementBeforeComment, Comment: "bad\ncomment"}, wantErr: "control characters"},
 		{name: "invalid match", placement: RulePlacementConfig{Strategy: RulePlacementTop, CommentMatch: "regex"}, wantErr: "comment_match"},
 		{name: "invalid fallback", placement: RulePlacementConfig{Strategy: RulePlacementAfterComment, Comment: "x", Fallback: "position"}, wantErr: "fallback"},
 	}
@@ -546,6 +570,7 @@ func TestValidateRulePlacement(t *testing.T) {
 	}
 }
 
+// TestValidateRulePlacementNegativePosition ensures negative positions are rejected.
 func TestValidateRulePlacementNegativePosition(t *testing.T) {
 	position := -1
 	cfg := validCfg()
@@ -555,6 +580,8 @@ func TestValidateRulePlacementNegativePosition(t *testing.T) {
 	}
 }
 
+// TestRulePlacementHelpers verifies String, ForMode, mergeRulePlacement, and
+// nil or empty default behavior.
 func TestRulePlacementHelpers(t *testing.T) {
 	position := 7
 	placement := RulePlacementConfig{
@@ -567,8 +594,8 @@ func TestRulePlacementHelpers(t *testing.T) {
 		Raw:          &RulePlacementConfig{Strategy: RulePlacementPosition, Position: &position},
 	}
 
-	if got := (*RulePlacementConfig)(nil).String(); got != RulePlacementBottom {
-		t.Fatalf("nil String should default to bottom, got %q", got)
+	if got := (*RulePlacementConfig)(nil).String(); got != RulePlacementTop {
+		t.Fatalf("nil String should default to top, got %q", got)
 	}
 	if got := (*RulePlacementConfig)(nil).ForMode("filter"); got.Strategy != "" {
 		t.Fatalf("nil ForMode should return zero value, got %#v", got)
@@ -576,8 +603,8 @@ func TestRulePlacementHelpers(t *testing.T) {
 	if got := (*RulePlacementConfig)(nil).withoutTableOverrides(); got.Strategy != "" {
 		t.Fatalf("nil withoutTableOverrides should return zero value, got %#v", got)
 	}
-	if got := (&RulePlacementConfig{}).String(); got != RulePlacementBottom {
-		t.Fatalf("empty String should default to bottom, got %q", got)
+	if got := (&RulePlacementConfig{}).String(); got != RulePlacementTop {
+		t.Fatalf("empty String should default to top, got %q", got)
 	}
 	if got := placement.String(); !strings.Contains(got, "before_comment:anchor") || !strings.Contains(got, "filter=after_comment:filter-anchor") || !strings.Contains(got, "raw=position:7") {
 		t.Fatalf("unexpected placement string: %q", got)
@@ -604,6 +631,8 @@ func TestRulePlacementHelpers(t *testing.T) {
 	}
 }
 
+// TestParseRulePlacementConfigVariants verifies parsing of strings, maps,
+// nested overrides, and representative error cases.
 func TestParseRulePlacementConfigVariants(t *testing.T) {
 	position := 3
 	tests := []struct {
@@ -641,6 +670,16 @@ func TestParseRulePlacementConfigVariants(t *testing.T) {
 				t.Fatalf("expected filter bottom override, got %#v", got)
 			}
 		}},
+		{name: "partial filter override inherits", input: map[string]any{"strategy": "before_comment", "comment": "global", "fallback": "bottom", "filter": map[string]any{"comment": "filter"}}, check: func(t *testing.T, got RulePlacementConfig) {
+			t.Helper()
+			if got.Filter == nil || got.Filter.Strategy != "" || got.Filter.Comment != "filter" {
+				t.Fatalf("expected sparse filter override, got %#v", got)
+			}
+			filter := got.ForMode("filter")
+			if filter.Strategy != RulePlacementBeforeComment || filter.Comment != "filter" || filter.Fallback != RulePlacementBottom {
+				t.Fatalf("expected filter to inherit global fields, got %#v", filter)
+			}
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -653,23 +692,28 @@ func TestParseRulePlacementConfigVariants(t *testing.T) {
 	}
 
 	errorInputs := []struct {
-		name  string
-		input any
+		name    string
+		input   any
+		wantErr string
 	}{
-		{name: "invalid type", input: []string{"top"}},
-		{name: "invalid position", input: map[string]any{"position": "not-int"}},
-		{name: "invalid filter", input: map[string]any{"filter": []string{"bad"}}},
-		{name: "invalid raw", input: map[string]any{"raw": []string{"bad"}}},
+		{name: "invalid type", input: []string{"top"}, wantErr: "firewall.rule_placement must be a string or object"},
+		{name: "invalid position", input: map[string]any{"position": "not-int"}, wantErr: "firewall.rule_placement.position must be an integer"},
+		{name: "fractional position", input: map[string]any{"position": float64(1.5)}, wantErr: "firewall.rule_placement.position must be an integer"},
+		{name: "unknown key", input: map[string]any{"stategy": "top"}, wantErr: "firewall.rule_placement: unknown key \"stategy\""},
+		{name: "invalid filter", input: map[string]any{"filter": []string{"bad"}}, wantErr: "firewall.rule_placement.filter must be a string or object"},
+		{name: "invalid raw", input: map[string]any{"raw": []string{"bad"}}, wantErr: "firewall.rule_placement.raw must be a string or object"},
 	}
 	for _, tt := range errorInputs {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, err := parseRulePlacementConfig(tt.input); err == nil {
-				t.Fatal("expected parse error")
+			if _, err := parseRulePlacementConfig(tt.input); err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected error containing %q, got %v", tt.wantErr, err)
 			}
 		})
 	}
 }
 
+// TestRulePlacementPositionTypes verifies position type coercion and invalid
+// integer representations.
 func TestRulePlacementPositionTypes(t *testing.T) {
 	tests := []struct {
 		name string
@@ -695,6 +739,9 @@ func TestRulePlacementPositionTypes(t *testing.T) {
 	}
 	if _, err := rulePlacementPosition("bad"); err == nil {
 		t.Fatal("expected string conversion error")
+	}
+	if _, err := rulePlacementPosition(float64(1.5)); err == nil {
+		t.Fatal("expected fractional float conversion error")
 	}
 	if _, err := rulePlacementPosition([]string{"bad"}); err == nil {
 		t.Fatal("expected default conversion error")
@@ -746,6 +793,8 @@ func TestExpandRulePlacementEnvInvalidPosition(t *testing.T) {
 	}
 }
 
+// TestValidateRulePlacementNestedRawError verifies nested raw validation errors
+// include the full field path.
 func TestValidateRulePlacementNestedRawError(t *testing.T) {
 	cfg := validCfg()
 	cfg.Firewall.RulePlacement = RulePlacementConfig{Raw: &RulePlacementConfig{Strategy: "bad"}}
@@ -754,6 +803,8 @@ func TestValidateRulePlacementNestedRawError(t *testing.T) {
 	}
 }
 
+// TestValidateRulePlacementNestedSuccessAndFilterError verifies valid nested
+// placements pass and invalid filter overrides keep their field path.
 func TestValidateRulePlacementNestedSuccessAndFilterError(t *testing.T) {
 	cfg := validCfg()
 	cfg.Firewall.RulePlacement = RulePlacementConfig{
@@ -1005,13 +1056,13 @@ func TestPoolSizeEnvOverride(t *testing.T) {
 	}
 }
 
-// TestBlockInputInterfaceEnv verifies that FIREWALL_INPUT_INTERFACE and
-// FIREWALL_INPUT_INTERFACE_LIST environment variables are correctly bound
-// to the BlockInput configuration.
+// TestBlockInputInterfaceEnv verifies canonical FIREWALL_BLOCK_INPUT_* variables
+// are bound to BlockInput configuration.
 func TestBlockInputInterfaceEnv(t *testing.T) {
 	setMinimalEnv(t)
-	t.Setenv("FIREWALL_INPUT_INTERFACE", "ether1")
-	t.Setenv("FIREWALL_INPUT_INTERFACE_LIST", "WAN")
+	t.Setenv("FIREWALL_BLOCK_INPUT_INTERFACE", "ether1")
+	t.Setenv("FIREWALL_BLOCK_INPUT_INTERFACE_LIST", "WAN")
+	t.Setenv("FIREWALL_BLOCK_INPUT_WHITELIST", "trusted")
 
 	cfg, err := Load("")
 	if err != nil {
@@ -1023,6 +1074,76 @@ func TestBlockInputInterfaceEnv(t *testing.T) {
 	}
 	if cfg.Firewall.BlockInput.InterfaceList != "WAN" {
 		t.Errorf("expected block_input.interface_list='WAN', got '%s'", cfg.Firewall.BlockInput.InterfaceList)
+	}
+	if cfg.Firewall.BlockInput.Whitelist != "trusted" {
+		t.Errorf("expected block_input.whitelist='trusted', got '%s'", cfg.Firewall.BlockInput.Whitelist)
+	}
+}
+
+// TestBlockInputLegacyEnv verifies the previous FIREWALL_INPUT_* names remain
+// supported for backward compatibility.
+func TestBlockInputLegacyEnv(t *testing.T) {
+	setMinimalEnv(t)
+	t.Setenv("FIREWALL_INPUT_INTERFACE", "ether2")
+	t.Setenv("FIREWALL_INPUT_INTERFACE_LIST", "LAN")
+	t.Setenv("FIREWALL_INPUT_WHITELIST", "trusted-old")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Firewall.BlockInput.Interface != "ether2" || cfg.Firewall.BlockInput.InterfaceList != "LAN" || cfg.Firewall.BlockInput.Whitelist != "trusted-old" {
+		t.Fatalf("legacy block input env not applied: %#v", cfg.Firewall.BlockInput)
+	}
+}
+
+// TestBlockOutputEnv verifies canonical FIREWALL_BLOCK_OUTPUT_* variables are
+// bound to BlockOutput configuration.
+func TestBlockOutputEnv(t *testing.T) {
+	setMinimalEnv(t)
+	t.Setenv("FIREWALL_BLOCK_OUTPUT", "true")
+	t.Setenv("FIREWALL_BLOCK_OUTPUT_INTERFACE", "ether1")
+	t.Setenv("FIREWALL_BLOCK_OUTPUT_INTERFACE_LIST", "WAN")
+	t.Setenv("FIREWALL_BLOCK_OUTPUT_LOG_PREFIX", "out")
+	t.Setenv("FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V4", "10.0.0.5")
+	t.Setenv("FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V4_LIST", "allow-v4")
+	t.Setenv("FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V6", "2001:db8::5")
+	t.Setenv("FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V6_LIST", "allow-v6")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	output := cfg.Firewall.BlockOutput
+	if !output.Enabled || output.Interface != "ether1" || output.InterfaceList != "WAN" || output.LogPrefix != "out" ||
+		output.PassthroughV4 != "10.0.0.5" || output.PassthroughV4List != "allow-v4" ||
+		output.PassthroughV6 != "2001:db8::5" || output.PassthroughV6List != "allow-v6" {
+		t.Fatalf("block output env not applied: %#v", output)
+	}
+}
+
+// TestBlockOutputLegacyEnv verifies the previous FIREWALL_OUTPUT_* names remain
+// supported for backward compatibility.
+func TestBlockOutputLegacyEnv(t *testing.T) {
+	setMinimalEnv(t)
+	t.Setenv("FIREWALL_BLOCK_OUTPUT", "true")
+	t.Setenv("FIREWALL_OUTPUT_INTERFACE", "ether2")
+	t.Setenv("FIREWALL_OUTPUT_INTERFACE_LIST", "LAN")
+	t.Setenv("FIREWALL_OUTPUT_LOG_PREFIX", "legacy-out")
+	t.Setenv("FIREWALL_OUTPUT_PASSTHROUGH_V4", "10.0.0.6")
+	t.Setenv("FIREWALL_OUTPUT_PASSTHROUGH_V4_LIST", "legacy-v4")
+	t.Setenv("FIREWALL_OUTPUT_PASSTHROUGH_V6", "2001:db8::6")
+	t.Setenv("FIREWALL_OUTPUT_PASSTHROUGH_V6_LIST", "legacy-v6")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	output := cfg.Firewall.BlockOutput
+	if output.Interface != "ether2" || output.InterfaceList != "LAN" || output.LogPrefix != "legacy-out" ||
+		output.PassthroughV4 != "10.0.0.6" || output.PassthroughV4List != "legacy-v4" ||
+		output.PassthroughV6 != "2001:db8::6" || output.PassthroughV6List != "legacy-v6" {
+		t.Fatalf("legacy block output env not applied: %#v", output)
 	}
 }
 

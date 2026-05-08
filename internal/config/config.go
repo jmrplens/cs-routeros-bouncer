@@ -3,12 +3,14 @@ package config
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/spf13/viper"
 )
@@ -138,11 +140,28 @@ func (p *RulePlacementConfig) ForMode(mode string) RulePlacementConfig {
 // String returns a concise non-sensitive representation for logs and metrics.
 func (p *RulePlacementConfig) String() string {
 	if p == nil {
-		return RulePlacementBottom
+		return RulePlacementTop
+	}
+	base := p.withoutTableOverrides()
+	summary := base.summary()
+	if p.Filter != nil {
+		filterPlacement := mergeRulePlacement(base, p.Filter.withoutTableOverrides())
+		summary += ",filter=" + filterPlacement.summary()
+	}
+	if p.Raw != nil {
+		rawPlacement := mergeRulePlacement(base, p.Raw.withoutTableOverrides())
+		summary += ",raw=" + rawPlacement.summary()
+	}
+	return summary
+}
+
+func (p *RulePlacementConfig) summary() string {
+	if p == nil {
+		return RulePlacementTop
 	}
 	strategy := p.Strategy
 	if strategy == "" {
-		return RulePlacementBottom
+		strategy = RulePlacementTop
 	}
 	summary := strategy
 	switch strategy {
@@ -156,12 +175,6 @@ func (p *RulePlacementConfig) String() string {
 			position = *p.Position
 		}
 		summary += ":" + strconv.Itoa(position)
-	}
-	if p.Filter != nil {
-		summary += ",filter=" + p.Filter.String()
-	}
-	if p.Raw != nil {
-		summary += ",raw=" + p.Raw.String()
 	}
 	return summary
 }
@@ -204,34 +217,44 @@ func defaultStructuredRulePlacement() RulePlacementConfig {
 }
 
 func parseRulePlacementConfig(input any) (RulePlacementConfig, error) {
+	return parseRulePlacementConfigAt("firewall.rule_placement", input, true)
+}
+
+func parseRulePlacementConfigAt(path string, input any, withDefaults bool) (RulePlacementConfig, error) {
 	switch value := input.(type) {
 	case nil:
 		return RulePlacementConfig{}, nil
 	case string:
-		return rulePlacementFromString(value), nil
+		return rulePlacementFromString(value, withDefaults), nil
 	case RulePlacementConfig:
 		return value, nil
 	case map[string]any:
-		return rulePlacementFromMap(value)
+		return rulePlacementFromMap(path, value, withDefaults)
 	case map[any]any:
 		converted := make(map[string]any, len(value))
 		for key, item := range value {
 			converted[fmt.Sprint(key)] = item
 		}
-		return rulePlacementFromMap(converted)
+		return rulePlacementFromMap(path, converted, withDefaults)
 	default:
-		return RulePlacementConfig{}, fmt.Errorf("firewall.rule_placement must be a string or object, got %T", input)
+		return RulePlacementConfig{}, fmt.Errorf("%s must be a string or object, got %T", path, input)
 	}
 }
 
-func rulePlacementFromString(value string) RulePlacementConfig {
-	placement := defaultStructuredRulePlacement()
+func rulePlacementFromString(value string, withDefaults bool) RulePlacementConfig {
+	placement := RulePlacementConfig{}
+	if withDefaults {
+		placement = defaultStructuredRulePlacement()
+	}
 	placement.Strategy = strings.ToLower(strings.TrimSpace(value))
 	return placement
 }
 
-func rulePlacementFromMap(values map[string]any) (RulePlacementConfig, error) {
-	placement := defaultStructuredRulePlacement()
+func rulePlacementFromMap(path string, values map[string]any, withDefaults bool) (RulePlacementConfig, error) {
+	placement := RulePlacementConfig{}
+	if withDefaults {
+		placement = defaultStructuredRulePlacement()
+	}
 	for key, value := range values {
 		switch key {
 		case "strategy":
@@ -249,17 +272,19 @@ func rulePlacementFromMap(values map[string]any) (RulePlacementConfig, error) {
 			}
 			placement.Position = &position
 		case "filter":
-			parsed, err := parseRulePlacementConfig(value)
+			parsed, err := parseRulePlacementConfigAt(path+".filter", value, false)
 			if err != nil {
-				return RulePlacementConfig{}, fmt.Errorf("firewall.rule_placement.filter: %w", err)
+				return RulePlacementConfig{}, err
 			}
 			placement.Filter = &parsed
 		case "raw":
-			parsed, err := parseRulePlacementConfig(value)
+			parsed, err := parseRulePlacementConfigAt(path+".raw", value, false)
 			if err != nil {
-				return RulePlacementConfig{}, fmt.Errorf("firewall.rule_placement.raw: %w", err)
+				return RulePlacementConfig{}, err
 			}
 			placement.Raw = &parsed
+		default:
+			return RulePlacementConfig{}, fmt.Errorf("%s: unknown key %q", path, key)
 		}
 	}
 	return placement, nil
@@ -272,6 +297,9 @@ func rulePlacementPosition(value any) (int, error) {
 	case int64:
 		return int(typed), nil
 	case float64:
+		if typed != math.Trunc(typed) {
+			return 0, fmt.Errorf("firewall.rule_placement.position must be an integer, got %v", typed)
+		}
 		return int(typed), nil
 	case string:
 		position, err := strconv.Atoi(strings.TrimSpace(typed))
@@ -417,38 +445,28 @@ func Load(configPath string) (*Config, error) {
 		"mikrotik.command_timeout":    "MIKROTIK_CMD_TIMEOUT",
 		"mikrotik.pool_size":          "MIKROTIK_POOL_SIZE",
 		// Firewall
-		"firewall.ipv4.enabled":                     "FIREWALL_IPV4_ENABLED",
-		"firewall.ipv4.address_list":                "FIREWALL_IPV4_ADDRESS_LIST",
-		"firewall.ipv6.enabled":                     "FIREWALL_IPV6_ENABLED",
-		"firewall.ipv6.address_list":                "FIREWALL_IPV6_ADDRESS_LIST",
-		"firewall.filter.enabled":                   "FIREWALL_FILTER_ENABLED",
-		"firewall.filter.chains":                    "FIREWALL_FILTER_CHAINS",
-		"firewall.raw.enabled":                      "FIREWALL_RAW_ENABLED",
-		"firewall.raw.chains":                       "FIREWALL_RAW_CHAINS",
-		"firewall.deny_action":                      "FIREWALL_DENY_ACTION",
-		"firewall.reject_with":                      "FIREWALL_REJECT_WITH",
-		"firewall.rule_placement":                   "FIREWALL_RULE_PLACEMENT",
-		"firewall.rule_placement.comment":           "FIREWALL_RULE_PLACEMENT_COMMENT",
-		"firewall.rule_placement.comment_match":     "FIREWALL_RULE_PLACEMENT_COMMENT_MATCH",
-		"firewall.rule_placement.position":          "FIREWALL_RULE_PLACEMENT_POSITION",
-		"firewall.rule_placement.fallback":          "FIREWALL_RULE_PLACEMENT_FALLBACK",
-		"firewall.comment_prefix":                   "FIREWALL_COMMENT_PREFIX",
-		"firewall.log":                              "FIREWALL_LOG",
-		"firewall.log_prefix":                       "FIREWALL_LOG_PREFIX",
-		"firewall.filter.log_prefix":                "FIREWALL_FILTER_LOG_PREFIX",
-		"firewall.filter.connection_state":          "FIREWALL_FILTER_CONNECTION_STATE",
-		"firewall.raw.log_prefix":                   "FIREWALL_RAW_LOG_PREFIX",
-		"firewall.block_input.interface":            "FIREWALL_INPUT_INTERFACE",
-		"firewall.block_input.interface_list":       "FIREWALL_INPUT_INTERFACE_LIST",
-		"firewall.block_input.whitelist":            "FIREWALL_INPUT_WHITELIST",
-		"firewall.block_output.enabled":             "FIREWALL_BLOCK_OUTPUT",
-		"firewall.block_output.interface":           "FIREWALL_OUTPUT_INTERFACE",
-		"firewall.block_output.interface_list":      "FIREWALL_OUTPUT_INTERFACE_LIST",
-		"firewall.block_output.log_prefix":          "FIREWALL_OUTPUT_LOG_PREFIX",
-		"firewall.block_output.passthrough_v4":      "FIREWALL_OUTPUT_PASSTHROUGH_V4",
-		"firewall.block_output.passthrough_v4_list": "FIREWALL_OUTPUT_PASSTHROUGH_V4_LIST",
-		"firewall.block_output.passthrough_v6":      "FIREWALL_OUTPUT_PASSTHROUGH_V6",
-		"firewall.block_output.passthrough_v6_list": "FIREWALL_OUTPUT_PASSTHROUGH_V6_LIST",
+		"firewall.ipv4.enabled":                 "FIREWALL_IPV4_ENABLED",
+		"firewall.ipv4.address_list":            "FIREWALL_IPV4_ADDRESS_LIST",
+		"firewall.ipv6.enabled":                 "FIREWALL_IPV6_ENABLED",
+		"firewall.ipv6.address_list":            "FIREWALL_IPV6_ADDRESS_LIST",
+		"firewall.filter.enabled":               "FIREWALL_FILTER_ENABLED",
+		"firewall.filter.chains":                "FIREWALL_FILTER_CHAINS",
+		"firewall.raw.enabled":                  "FIREWALL_RAW_ENABLED",
+		"firewall.raw.chains":                   "FIREWALL_RAW_CHAINS",
+		"firewall.deny_action":                  "FIREWALL_DENY_ACTION",
+		"firewall.reject_with":                  "FIREWALL_REJECT_WITH",
+		"firewall.rule_placement":               "FIREWALL_RULE_PLACEMENT",
+		"firewall.rule_placement.comment":       "FIREWALL_RULE_PLACEMENT_COMMENT",
+		"firewall.rule_placement.comment_match": "FIREWALL_RULE_PLACEMENT_COMMENT_MATCH",
+		"firewall.rule_placement.position":      "FIREWALL_RULE_PLACEMENT_POSITION",
+		"firewall.rule_placement.fallback":      "FIREWALL_RULE_PLACEMENT_FALLBACK",
+		"firewall.comment_prefix":               "FIREWALL_COMMENT_PREFIX",
+		"firewall.log":                          "FIREWALL_LOG",
+		"firewall.log_prefix":                   "FIREWALL_LOG_PREFIX",
+		"firewall.filter.log_prefix":            "FIREWALL_FILTER_LOG_PREFIX",
+		"firewall.filter.connection_state":      "FIREWALL_FILTER_CONNECTION_STATE",
+		"firewall.raw.log_prefix":               "FIREWALL_RAW_LOG_PREFIX",
+		"firewall.block_output.enabled":         "FIREWALL_BLOCK_OUTPUT",
 		// Logging
 		"logging.level":  "LOG_LEVEL",
 		"logging.format": "LOG_FORMAT",
@@ -464,6 +482,17 @@ func Load(configPath string) (*Config, error) {
 	for key, env := range envBindings {
 		_ = v.BindEnv(key, env)
 	}
+	bindEnvAliases(v, "firewall.rule_placement.strategy", "FIREWALL_RULE_PLACEMENT_STRATEGY")
+	bindEnvAliases(v, "firewall.block_input.interface", "FIREWALL_BLOCK_INPUT_INTERFACE", "FIREWALL_INPUT_INTERFACE")
+	bindEnvAliases(v, "firewall.block_input.interface_list", "FIREWALL_BLOCK_INPUT_INTERFACE_LIST", "FIREWALL_INPUT_INTERFACE_LIST")
+	bindEnvAliases(v, "firewall.block_input.whitelist", "FIREWALL_BLOCK_INPUT_WHITELIST", "FIREWALL_INPUT_WHITELIST")
+	bindEnvAliases(v, "firewall.block_output.interface", "FIREWALL_BLOCK_OUTPUT_INTERFACE", "FIREWALL_OUTPUT_INTERFACE")
+	bindEnvAliases(v, "firewall.block_output.interface_list", "FIREWALL_BLOCK_OUTPUT_INTERFACE_LIST", "FIREWALL_OUTPUT_INTERFACE_LIST")
+	bindEnvAliases(v, "firewall.block_output.log_prefix", "FIREWALL_BLOCK_OUTPUT_LOG_PREFIX", "FIREWALL_OUTPUT_LOG_PREFIX")
+	bindEnvAliases(v, "firewall.block_output.passthrough_v4", "FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V4", "FIREWALL_OUTPUT_PASSTHROUGH_V4")
+	bindEnvAliases(v, "firewall.block_output.passthrough_v4_list", "FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V4_LIST", "FIREWALL_OUTPUT_PASSTHROUGH_V4_LIST")
+	bindEnvAliases(v, "firewall.block_output.passthrough_v6", "FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V6", "FIREWALL_OUTPUT_PASSTHROUGH_V6")
+	bindEnvAliases(v, "firewall.block_output.passthrough_v6_list", "FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V6_LIST", "FIREWALL_OUTPUT_PASSTHROUGH_V6_LIST")
 
 	// Handle space-separated CROWDSEC_ORIGINS → []string
 	if origins := os.Getenv("CROWDSEC_ORIGINS"); origins != "" {
@@ -493,6 +522,11 @@ func Load(configPath string) (*Config, error) {
 	return &cfg, nil
 }
 
+func bindEnvAliases(v *viper.Viper, key string, envNames ...string) {
+	args := append([]string{key}, envNames...)
+	_ = v.BindEnv(args...)
+}
+
 // expandConfigEnv resolves ${VAR} placeholders in string-based configuration
 // values after Viper has merged YAML, defaults, and direct environment overrides.
 func expandConfigEnv(cfg *Config) error {
@@ -520,16 +554,16 @@ func expandConfigEnv(cfg *Config) error {
 	cfg.Firewall.Raw.LogPrefix = expandConfigValue(cfg.Firewall.Raw.LogPrefix, "FIREWALL_RAW_LOG_PREFIX")
 	cfg.Firewall.DenyAction = expandConfigValue(cfg.Firewall.DenyAction, "FIREWALL_DENY_ACTION")
 	cfg.Firewall.RejectWith = expandConfigValue(cfg.Firewall.RejectWith, "FIREWALL_REJECT_WITH")
-	cfg.Firewall.BlockInput.Interface = expandConfigValue(cfg.Firewall.BlockInput.Interface, "FIREWALL_INPUT_INTERFACE")
-	cfg.Firewall.BlockInput.InterfaceList = expandConfigValue(cfg.Firewall.BlockInput.InterfaceList, "FIREWALL_INPUT_INTERFACE_LIST")
-	cfg.Firewall.BlockInput.Whitelist = expandConfigValue(cfg.Firewall.BlockInput.Whitelist, "FIREWALL_INPUT_WHITELIST")
-	cfg.Firewall.BlockOutput.Interface = expandConfigValue(cfg.Firewall.BlockOutput.Interface, "FIREWALL_OUTPUT_INTERFACE")
-	cfg.Firewall.BlockOutput.InterfaceList = expandConfigValue(cfg.Firewall.BlockOutput.InterfaceList, "FIREWALL_OUTPUT_INTERFACE_LIST")
-	cfg.Firewall.BlockOutput.LogPrefix = expandConfigValue(cfg.Firewall.BlockOutput.LogPrefix, "FIREWALL_OUTPUT_LOG_PREFIX")
-	cfg.Firewall.BlockOutput.PassthroughV4 = expandConfigValue(cfg.Firewall.BlockOutput.PassthroughV4, "FIREWALL_OUTPUT_PASSTHROUGH_V4")
-	cfg.Firewall.BlockOutput.PassthroughV4List = expandConfigValue(cfg.Firewall.BlockOutput.PassthroughV4List, "FIREWALL_OUTPUT_PASSTHROUGH_V4_LIST")
-	cfg.Firewall.BlockOutput.PassthroughV6 = expandConfigValue(cfg.Firewall.BlockOutput.PassthroughV6, "FIREWALL_OUTPUT_PASSTHROUGH_V6")
-	cfg.Firewall.BlockOutput.PassthroughV6List = expandConfigValue(cfg.Firewall.BlockOutput.PassthroughV6List, "FIREWALL_OUTPUT_PASSTHROUGH_V6_LIST")
+	cfg.Firewall.BlockInput.Interface = expandConfigValueAny(cfg.Firewall.BlockInput.Interface, "FIREWALL_BLOCK_INPUT_INTERFACE", "FIREWALL_INPUT_INTERFACE")
+	cfg.Firewall.BlockInput.InterfaceList = expandConfigValueAny(cfg.Firewall.BlockInput.InterfaceList, "FIREWALL_BLOCK_INPUT_INTERFACE_LIST", "FIREWALL_INPUT_INTERFACE_LIST")
+	cfg.Firewall.BlockInput.Whitelist = expandConfigValueAny(cfg.Firewall.BlockInput.Whitelist, "FIREWALL_BLOCK_INPUT_WHITELIST", "FIREWALL_INPUT_WHITELIST")
+	cfg.Firewall.BlockOutput.Interface = expandConfigValueAny(cfg.Firewall.BlockOutput.Interface, "FIREWALL_BLOCK_OUTPUT_INTERFACE", "FIREWALL_OUTPUT_INTERFACE")
+	cfg.Firewall.BlockOutput.InterfaceList = expandConfigValueAny(cfg.Firewall.BlockOutput.InterfaceList, "FIREWALL_BLOCK_OUTPUT_INTERFACE_LIST", "FIREWALL_OUTPUT_INTERFACE_LIST")
+	cfg.Firewall.BlockOutput.LogPrefix = expandConfigValueAny(cfg.Firewall.BlockOutput.LogPrefix, "FIREWALL_BLOCK_OUTPUT_LOG_PREFIX", "FIREWALL_OUTPUT_LOG_PREFIX")
+	cfg.Firewall.BlockOutput.PassthroughV4 = expandConfigValueAny(cfg.Firewall.BlockOutput.PassthroughV4, "FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V4", "FIREWALL_OUTPUT_PASSTHROUGH_V4")
+	cfg.Firewall.BlockOutput.PassthroughV4List = expandConfigValueAny(cfg.Firewall.BlockOutput.PassthroughV4List, "FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V4_LIST", "FIREWALL_OUTPUT_PASSTHROUGH_V4_LIST")
+	cfg.Firewall.BlockOutput.PassthroughV6 = expandConfigValueAny(cfg.Firewall.BlockOutput.PassthroughV6, "FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V6", "FIREWALL_OUTPUT_PASSTHROUGH_V6")
+	cfg.Firewall.BlockOutput.PassthroughV6List = expandConfigValueAny(cfg.Firewall.BlockOutput.PassthroughV6List, "FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V6_LIST", "FIREWALL_OUTPUT_PASSTHROUGH_V6_LIST")
 	if err := expandRulePlacementEnv(&cfg.Firewall.RulePlacement); err != nil {
 		return err
 	}
@@ -547,6 +581,9 @@ func expandRulePlacementEnv(placement *RulePlacementConfig) error {
 	expandRulePlacementPlaceholders(placement)
 	if envHasValue("FIREWALL_RULE_PLACEMENT") {
 		placement.Strategy = strings.ToLower(strings.TrimSpace(os.Getenv("FIREWALL_RULE_PLACEMENT")))
+	}
+	if envHasValue("FIREWALL_RULE_PLACEMENT_STRATEGY") {
+		placement.Strategy = strings.ToLower(strings.TrimSpace(os.Getenv("FIREWALL_RULE_PLACEMENT_STRATEGY")))
 	}
 	if envHasValue("FIREWALL_RULE_PLACEMENT_COMMENT") {
 		placement.Comment = os.Getenv("FIREWALL_RULE_PLACEMENT_COMMENT")
@@ -581,8 +618,14 @@ func expandRulePlacementPlaceholders(placement *RulePlacementConfig) {
 }
 
 func expandConfigValue(value, envName string) string {
-	if envName != "" && envHasValue(envName) {
-		return value
+	return expandConfigValueAny(value, envName)
+}
+
+func expandConfigValueAny(value string, envNames ...string) string {
+	for _, envName := range envNames {
+		if envName != "" && envHasValue(envName) {
+			return value
+		}
 	}
 	return expandBracedEnv(value)
 }
@@ -685,13 +728,29 @@ func (c *Config) validateFirewall() error {
 }
 
 func (c *Config) validateRulePlacement() error {
-	return validateRulePlacementConfig("firewall.rule_placement", c.Firewall.RulePlacement)
+	placement := c.Firewall.RulePlacement
+	if err := validateRulePlacementConfig("firewall.rule_placement", placement.withoutTableOverrides()); err != nil {
+		return err
+	}
+	if placement.Filter != nil {
+		filterPlacement := placement.ForMode("filter")
+		if err := validateRulePlacementConfig("firewall.rule_placement.filter", filterPlacement.withoutTableOverrides()); err != nil {
+			return err
+		}
+	}
+	if placement.Raw != nil {
+		rawPlacement := placement.ForMode("raw")
+		if err := validateRulePlacementConfig("firewall.rule_placement.raw", rawPlacement.withoutTableOverrides()); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func validateRulePlacementConfig(path string, placement RulePlacementConfig) error {
 	strategy := placement.Strategy
 	if strategy == "" {
-		strategy = RulePlacementBottom
+		strategy = defaultStructuredRulePlacement().Strategy
 	}
 	validStrategies := map[string]bool{
 		RulePlacementTop:           true,
@@ -716,6 +775,9 @@ func validateRulePlacementConfig(path string, placement RulePlacementConfig) err
 		if strings.TrimSpace(placement.Comment) == "" {
 			return fmt.Errorf("%s.comment is required when strategy=%q", path, strategy)
 		}
+		if err := validateRouterOSComment(placement.Comment); err != nil {
+			return fmt.Errorf("%s.comment invalid value %q: %w", path, placement.Comment, err)
+		}
 		fallback := placement.Fallback
 		if fallback == "" {
 			fallback = RulePlacementTop
@@ -728,15 +790,14 @@ func validateRulePlacementConfig(path string, placement RulePlacementConfig) err
 	if placement.Position != nil && *placement.Position < 0 {
 		return fmt.Errorf("%s.position must be >= 0, got %d", path, *placement.Position)
 	}
-	if placement.Filter != nil {
-		if err := validateRulePlacementConfig(path+".filter", *placement.Filter); err != nil {
-			return err
-		}
-	}
-	if placement.Raw != nil {
-		if err := validateRulePlacementConfig(path+".raw", *placement.Raw); err != nil {
-			return err
-		}
+	return nil
+}
+
+// validateRouterOSComment permits printable RouterOS comment text and rejects
+// control characters that cannot be safely represented in rule comments.
+func validateRouterOSComment(comment string) error {
+	if strings.ContainsFunc(comment, unicode.IsControl) {
+		return errors.New("control characters are not allowed")
 	}
 	return nil
 }

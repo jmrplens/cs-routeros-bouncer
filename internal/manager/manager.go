@@ -1000,7 +1000,7 @@ func (m *Manager) placeFirewallBlock(proto, mode, chain string, refs []firewallR
 	placement := m.cfg.Firewall.RulePlacement.ForMode(mode)
 	strategy := placement.Strategy
 	if strategy == "" {
-		strategy = config.RulePlacementBottom
+		strategy = config.RulePlacementTop
 	}
 	if strategy == config.RulePlacementBottom {
 		return
@@ -1178,6 +1178,9 @@ func (m *Manager) placeFirewallBlockFallback(
 	m.placeFirewallBlockAtPosition(proto, mode, refs, candidates, 0)
 }
 
+// moveFirewallBlockBefore moves refs one by one using m.ros.MoveFirewallRule.
+// If a move fails after earlier refs were moved before beforeID, the block may
+// be partially reordered; callers can retry placement later to complete ordering.
 func (m *Manager) moveFirewallBlockBefore(proto, mode string, refs []firewallRuleRef, beforeID string) error {
 	for _, ref := range refs {
 		if err := m.ros.MoveFirewallRule(proto, mode, ref.ID, beforeID); err != nil {

@@ -97,7 +97,7 @@ Where to place new firewall rule blocks. Placement is evaluated per RouterOS fir
 | ---------------- | -------------------------------------------------------- | ------------------ | --------------------------------------------------------------- | -------------------------------------------------------- |
 | `top`            | None                                                     | No                 | Yes, tries lower positions if RouterOS refuses the first target | Highest priority while tolerating dynamic/built-in rules |
 | `bottom`         | None                                                     | No                 | No                                                              | Append after existing rules                              |
-| `position`       | `position`                                               | No, ignored if set | Yes, retries lower positions when the target cannot be used     | Place at a RouterOS `print` position                     |
+| `position`       | `position`                                               | Not applicable     | Yes, retries lower positions when the target cannot be used     | Place at a RouterOS `print` position                     |
 | `before_comment` | `comment`, optional `comment_match`, optional `fallback` | Yes, default `top` | Fallback only                                                   | Place before a known user rule                           |
 | `after_comment`  | `comment`, optional `comment_match`, optional `fallback` | Yes, default `top` | Fallback only                                                   | Place after a known user rule                            |
 
@@ -116,15 +116,15 @@ firewall:
 
 Structured placement accepts these fields:
 
-| Field           | Default | Applies to                        | Description                                                                                                                     |
-| --------------- | ------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `strategy`      | `top`   | All modes                         | One of `top`, `bottom`, `position`, `before_comment`, or `after_comment`                                                        |
-| `position`      |         | `position`                        | Zero-based RouterOS `print` position. Negative values are invalid.                                                              |
-| `comment`       |         | `before_comment`, `after_comment` | RouterOS rule comment used as the anchor. Required for comment strategies.                                                      |
-| `comment_match` | `exact` | `before_comment`, `after_comment` | `exact` uses a case-sensitive full-string match. `contains` uses a case-sensitive literal substring match. This is not a regex. |
-| `fallback`      | `top`   | `before_comment`, `after_comment` | `top` or `bottom` when the anchor is missing or cannot be used. Ignored for `position`.                                         |
-| `filter`        |         | Structured config only            | Override the global placement for `/ip firewall filter` and `/ipv6 firewall filter`, including optional output rules.           |
-| `raw`           |         | Structured config only            | Override the global placement for `/ip firewall raw` and `/ipv6 firewall raw`.                                                  |
+| Field           | Default | Applies to                        | Description                                                                                                                                                          |
+| --------------- | ------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `strategy`      | `top`   | All modes                         | One of `top`, `bottom`, `position`, `before_comment`, or `after_comment`                                                                                             |
+| `position`      |         | `position`                        | Zero-based RouterOS `print` position. Negative values are invalid.                                                                                                   |
+| `comment`       |         | `before_comment`, `after_comment` | RouterOS rule comment used as the anchor. Required for comment strategies.                                                                                           |
+| `comment_match` | `exact` | `before_comment`, `after_comment` | `exact` uses a case-sensitive full-string match. `contains` uses a case-sensitive literal substring match. This is not a regex.                                      |
+| `fallback`      | `top`   | `before_comment`, `after_comment` | `top` or `bottom` when the anchor is missing or cannot be used. Ignored for `position`.                                                                              |
+| `filter`        |         | Structured config only            | Override the global placement for `/ip firewall filter` and `/ipv6 firewall filter`, including optional output-blocking rules configured via `block_output.enabled`. |
+| `raw`           |         | Structured config only            | Override the global placement for `/ip firewall raw` and `/ipv6 firewall raw`.                                                                                       |
 
 Place filter rules after an existing user rule while keeping raw rules at the top:
 
@@ -156,9 +156,21 @@ For example, if RouterOS shows existing non-bouncer rules at positions `0`, `1`,
 
 If both global placement and `filter` or `raw` overrides are configured, the table-specific override wins for that table and inherits any fields it does not set from the global placement.
 
+```yaml
+firewall:
+  rule_placement:
+    strategy: "before_comment"
+    comment: "my rule"
+    filter:
+      strategy: "top"
+```
+
+In this example, `filter` uses `strategy: "top"`. `raw` inherits the global `strategy: "before_comment"` and `comment: "my rule"`.
+
 Additional environment variables for structured global placement:
 
-- `FIREWALL_RULE_PLACEMENT` - global strategy (`top`, `bottom`, `position`, `before_comment`, or `after_comment`)
+- `FIREWALL_RULE_PLACEMENT` - legacy/simple global strategy (`top`, `bottom`, `position`, `before_comment`, or `after_comment`)
+- `FIREWALL_RULE_PLACEMENT_STRATEGY` - object-form global strategy; takes precedence over `FIREWALL_RULE_PLACEMENT` when both are set
 - `FIREWALL_RULE_PLACEMENT_COMMENT` - anchor comment for comment strategies
 - `FIREWALL_RULE_PLACEMENT_COMMENT_MATCH` - `exact` or `contains`
 - `FIREWALL_RULE_PLACEMENT_POSITION` - zero-based numeric position for `position`
@@ -219,7 +231,7 @@ Use this setting to limit blocking to the WAN interface only, so that banned IPs
 
 ### `firewall.block_input.interface` <Badge text="Optional" variant="note" />
 
-**Env:** `FIREWALL_INPUT_INTERFACE` · **Default:** — (all interfaces)
+**Env:** `FIREWALL_BLOCK_INPUT_INTERFACE` · **Default:** — (all interfaces)
 
 Restrict input/raw rules to a single interface.
 
@@ -231,7 +243,7 @@ firewall:
 
 ### `firewall.block_input.interface_list` <Badge text="Optional" variant="note" />
 
-**Env:** `FIREWALL_INPUT_INTERFACE_LIST` · **Default:** — (all interfaces)
+**Env:** `FIREWALL_BLOCK_INPUT_INTERFACE_LIST` · **Default:** — (all interfaces)
 
 Restrict input/raw rules to an interface list. Alternative to specifying a single interface.
 
@@ -257,7 +269,7 @@ Enable blocking of outgoing traffic to banned IPs. This prevents your network fr
 
 ### `firewall.block_output.interface` <Badge text="Optional" variant="note" />
 
-**Env:** `FIREWALL_OUTPUT_INTERFACE` · **Default:** —
+**Env:** `FIREWALL_BLOCK_OUTPUT_INTERFACE` · **Default:** —
 
 WAN interface for output rules. Required if `block_output.enabled` is true (unless `interface_list` is set).
 
@@ -270,7 +282,7 @@ firewall:
 
 ### `firewall.block_output.interface_list` <Badge text="Optional" variant="note" />
 
-**Env:** `FIREWALL_OUTPUT_INTERFACE_LIST` · **Default:** —
+**Env:** `FIREWALL_BLOCK_OUTPUT_INTERFACE_LIST` · **Default:** —
 
 WAN interface list for output rules. Alternative to specifying a single interface.
 
@@ -386,17 +398,17 @@ Setting `connection_state: "new"` is useful if you want to block new connections
 
 ### `firewall.filter.log_prefix` / `firewall.raw.log_prefix` / `firewall.block_output.log_prefix` <Badge text="Optional" variant="note" />
 
-**Env:** `FIREWALL_FILTER_LOG_PREFIX` / `FIREWALL_RAW_LOG_PREFIX` / `FIREWALL_OUTPUT_LOG_PREFIX`
+**Env:** `FIREWALL_FILTER_LOG_PREFIX` / `FIREWALL_RAW_LOG_PREFIX` / `FIREWALL_BLOCK_OUTPUT_LOG_PREFIX`
 
 Override the global `log_prefix` for specific rule types. This allows differentiating log entries from filter, raw, and output rules when parsing RouterOS logs.
 
 **Resolution order:** per-type prefix → global `firewall.log_prefix`.
 
-| Rule type          | Config key                         | Env var                      |
-| ------------------ | ---------------------------------- | ---------------------------- |
-| Filter input rules | `firewall.filter.log_prefix`       | `FIREWALL_FILTER_LOG_PREFIX` |
-| Raw input rules    | `firewall.raw.log_prefix`          | `FIREWALL_RAW_LOG_PREFIX`    |
-| Output rules       | `firewall.block_output.log_prefix` | `FIREWALL_OUTPUT_LOG_PREFIX` |
+| Rule type          | Config key                         | Env var                            |
+| ------------------ | ---------------------------------- | ---------------------------------- |
+| Filter input rules | `firewall.filter.log_prefix`       | `FIREWALL_FILTER_LOG_PREFIX`       |
+| Raw input rules    | `firewall.raw.log_prefix`          | `FIREWALL_RAW_LOG_PREFIX`          |
+| Output rules       | `firewall.block_output.log_prefix` | `FIREWALL_BLOCK_OUTPUT_LOG_PREFIX` |
 
 **Bouncer configuration:**
 
@@ -444,7 +456,7 @@ Per-type log prefixes are essential for log parsing tools (e.g., syslog parsers,
 
 ### `firewall.block_input.whitelist` <Badge text="Optional" variant="note" />
 
-**Env:** `FIREWALL_INPUT_WHITELIST` · **Default:** —
+**Env:** `FIREWALL_BLOCK_INPUT_WHITELIST` · **Default:** —
 
 Name of a RouterOS address-list containing trusted IPs that should bypass CrowdSec blocking. When set, the bouncer creates an **accept** rule before the drop/reject rule for each chain, allowing traffic from the whitelisted sources to pass through even if they are in the CrowdSec ban list.
 
@@ -497,7 +509,7 @@ When `connection_state` is configured, it also applies to the whitelist accept r
 
 ### `firewall.block_output.passthrough_v4` / `passthrough_v6` <Badge text="Optional" variant="note" />
 
-**Env:** `FIREWALL_OUTPUT_PASSTHROUGH_V4` / `FIREWALL_OUTPUT_PASSTHROUGH_V6` · **Default:** —
+**Env:** `FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V4` / `FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V6` · **Default:** —
 
 Allow a specific local client IP to bypass output blocking. Uses `src-address` negation (`!IP`) on the output drop/reject rule, so packets from this source address are not blocked even when going to a banned destination.
 
@@ -533,7 +545,7 @@ Use this when you have a security scanner or honeypot (e.g., `192.168.1.100`) th
 
 ### `firewall.block_output.passthrough_v4_list` / `passthrough_v6_list` <Badge text="Optional" variant="note" />
 
-**Env:** `FIREWALL_OUTPUT_PASSTHROUGH_V4_LIST` / `FIREWALL_OUTPUT_PASSTHROUGH_V6_LIST` · **Default:** —
+**Env:** `FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V4_LIST` / `FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V6_LIST` · **Default:** —
 
 Same as passthrough but using an address-list instead of a single IP. Uses `src-address-list` negation (`!list`) on the output rule. This is more flexible when multiple clients need to bypass output blocking.
 
@@ -607,19 +619,19 @@ firewall:
 
 ```routeros
 # Filter — input chain (whitelist + reject with connection-state):
-/ip/firewall/filter add chain=input action=accept src-address-list=crowdsec-whitelist in-interface=ether1 connection-state=new log=yes log-prefix="cs-filter" comment="crowdsec-bouncer:filter-input-whitelist-v4 @cs-routeros-bouncer" place-before=0
-/ip/firewall/filter add chain=input action=reject reject-with=tcp-reset src-address-list=crowdsec-banned in-interface=ether1 connection-state=new log=yes log-prefix="cs-filter" comment="crowdsec-bouncer:filter-input-input-v4 @cs-routeros-bouncer" place-before=1
+/ip/firewall/filter add chain=input action=accept src-address-list=crowdsec-whitelist in-interface=ether1 connection-state=new log=yes log-prefix="cs-filter" comment="crowdsec-bouncer:filter-input-whitelist-v4 @cs-routeros-bouncer"
+/ip/firewall/filter add chain=input action=reject reject-with=tcp-reset src-address-list=crowdsec-banned in-interface=ether1 connection-state=new log=yes log-prefix="cs-filter" comment="crowdsec-bouncer:filter-input-input-v4 @cs-routeros-bouncer"
 
 # Filter — forward chain (same pattern):
-/ip/firewall/filter add chain=forward action=accept src-address-list=crowdsec-whitelist in-interface=ether1 connection-state=new log=yes log-prefix="cs-filter" comment="crowdsec-bouncer:filter-forward-whitelist-v4 @cs-routeros-bouncer" place-before=0
-/ip/firewall/filter add chain=forward action=reject reject-with=tcp-reset src-address-list=crowdsec-banned in-interface=ether1 connection-state=new log=yes log-prefix="cs-filter" comment="crowdsec-bouncer:filter-forward-input-v4 @cs-routeros-bouncer" place-before=1
+/ip/firewall/filter add chain=forward action=accept src-address-list=crowdsec-whitelist in-interface=ether1 connection-state=new log=yes log-prefix="cs-filter" comment="crowdsec-bouncer:filter-forward-whitelist-v4 @cs-routeros-bouncer"
+/ip/firewall/filter add chain=forward action=reject reject-with=tcp-reset src-address-list=crowdsec-banned in-interface=ether1 connection-state=new log=yes log-prefix="cs-filter" comment="crowdsec-bouncer:filter-forward-input-v4 @cs-routeros-bouncer"
 
 # Raw — prerouting chain (no connection-state, no reject-with):
-/ip/firewall/raw add chain=prerouting action=accept src-address-list=crowdsec-whitelist in-interface=ether1 log=yes log-prefix="cs-raw" comment="crowdsec-bouncer:raw-prerouting-whitelist-v4 @cs-routeros-bouncer" place-before=0
-/ip/firewall/raw add chain=prerouting action=drop src-address-list=crowdsec-banned in-interface=ether1 log=yes log-prefix="cs-raw" comment="crowdsec-bouncer:raw-prerouting-input-v4 @cs-routeros-bouncer" place-before=1
+/ip/firewall/raw add chain=prerouting action=accept src-address-list=crowdsec-whitelist in-interface=ether1 log=yes log-prefix="cs-raw" comment="crowdsec-bouncer:raw-prerouting-whitelist-v4 @cs-routeros-bouncer"
+/ip/firewall/raw add chain=prerouting action=drop src-address-list=crowdsec-banned in-interface=ether1 log=yes log-prefix="cs-raw" comment="crowdsec-bouncer:raw-prerouting-input-v4 @cs-routeros-bouncer"
 
 # Filter — output chain (with passthrough list):
-/ip/firewall/filter add chain=output action=reject reject-with=tcp-reset dst-address-list=crowdsec-banned out-interface=ether1 src-address-list=!trusted-clients-v4 log=yes log-prefix="cs-output" comment="crowdsec-bouncer:filter-output-output-v4 @cs-routeros-bouncer" place-before=0
+/ip/firewall/filter add chain=output action=reject reject-with=tcp-reset dst-address-list=crowdsec-banned out-interface=ether1 src-address-list=!trusted-clients-v4 log=yes log-prefix="cs-output" comment="crowdsec-bouncer:filter-output-output-v4 @cs-routeros-bouncer"
 ```
 
 </details>

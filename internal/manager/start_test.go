@@ -951,8 +951,10 @@ func TestCreateFirewallRules_PlacementTop(t *testing.T) {
 	if len(mock.moveRuleCalls) == 0 {
 		t.Fatal("expected top placement to move the created block")
 	}
-	if mock.moveRuleCalls[0].BeforeID != "*U1" {
-		t.Errorf("expected block moved before *U1, got %s", mock.moveRuleCalls[0].BeforeID)
+	for i, call := range mock.moveRuleCalls {
+		if call.BeforeID != "*U1" {
+			t.Errorf("move call %d: expected block moved before *U1, got %s", i, call.BeforeID)
+		}
 	}
 }
 
