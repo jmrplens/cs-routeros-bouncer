@@ -28,12 +28,12 @@ jobs:
       - uses: pnpm/action-setup@v6
         with:
           version: 10
+          cache: true
+          cache_dependency_path: docs/pnpm-lock.yaml
 
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: pnpm
-          cache-dependency-path: docs/pnpm-lock.yaml
 
       - name: Install dependencies
         working-directory: docs

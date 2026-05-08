@@ -34,11 +34,11 @@ jobs:
       - uses: pnpm/action-setup@v6
         with:
           version: 10
+          cache: true
+          cache_dependency_path: docs/pnpm-lock.yaml
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: pnpm
-          cache-dependency-path: docs/pnpm-lock.yaml
       - name: Install Markdown linter
         run: pnpm --dir docs install --frozen-lockfile --ignore-scripts
       - name: Lint Markdown
@@ -123,11 +123,11 @@ jobs:
       - uses: pnpm/action-setup@v6
         with:
           version: 10
+          cache: true
+          cache_dependency_path: docs/pnpm-lock.yaml
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: pnpm
-          cache-dependency-path: docs/pnpm-lock.yaml
       - name: Install documentation dependencies
         working-directory: docs
         run: pnpm install --frozen-lockfile --ignore-scripts
@@ -174,11 +174,11 @@ jobs:
       - uses: pnpm/action-setup@v6
         with:
           version: 10
+          cache: true
+          cache_dependency_path: docs/pnpm-lock.yaml
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: pnpm
-          cache-dependency-path: docs/pnpm-lock.yaml
       - name: Install docs dependencies for analysis
         run: pnpm --dir docs install --frozen-lockfile --ignore-scripts
       - name: Generate Astro types for analysis
