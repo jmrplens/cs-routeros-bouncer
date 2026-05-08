@@ -20,6 +20,7 @@ import (
 	"github.com/jmrplens/cs-routeros-bouncer/internal/metrics"
 )
 
+// main dispatches setup/uninstall subcommands before starting the long-running bouncer.
 func main() {
 	if handleSubcommand() {
 		return
@@ -27,6 +28,7 @@ func main() {
 	runBouncer()
 }
 
+// handleSubcommand runs one-shot administrative subcommands and reports whether one matched.
 func handleSubcommand() bool {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
@@ -44,6 +46,7 @@ func handleSubcommand() bool {
 	return false
 }
 
+// runSetupCommand parses setup flags and installs the binary as a systemd service.
 func runSetupCommand(args []string) {
 	fs := flag.NewFlagSet("setup", flag.ExitOnError)
 	binPath := fs.String("bin", defaultBinPath, "installation path for the binary")
@@ -55,6 +58,7 @@ func runSetupCommand(args []string) {
 	}
 }
 
+// runUninstallCommand parses uninstall flags and removes the systemd service.
 func runUninstallCommand(args []string) {
 	fs := flag.NewFlagSet("uninstall", flag.ExitOnError)
 	binPath := fs.String("bin", defaultBinPath, "path of the installed binary")
@@ -66,6 +70,7 @@ func runUninstallCommand(args []string) {
 	}
 }
 
+// runBouncer loads configuration, starts metrics/health endpoints, and blocks on Manager.Start.
 func runBouncer() {
 	configPath := flag.String("c", "", "path to configuration file")
 	showVersion := flag.Bool("version", false, "show version and exit")
@@ -154,6 +159,7 @@ func runBouncer() {
 	log.Info().Msg("cs-routeros-bouncer stopped")
 }
 
+// printUsage writes the command help text to standard output.
 func printUsage() {
 	fmt.Printf(`cs-routeros-bouncer %s — CrowdSec bouncer for MikroTik RouterOS
 

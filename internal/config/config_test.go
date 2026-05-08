@@ -112,6 +112,7 @@ func TestMetricsTrackProcessedEnvOverride(t *testing.T) {
 	}
 }
 
+// TestLoadExpandsEnvPlaceholders verifies ${VAR} expansion in YAML values.
 func TestLoadExpandsEnvPlaceholders(t *testing.T) {
 	t.Setenv("CROWDSEC_KEY_FROM_FILE", "expanded-key")
 	t.Setenv("MIKROTIK_PASSWORD_FROM_FILE", "expanded-password")

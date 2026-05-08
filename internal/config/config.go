@@ -275,6 +275,8 @@ func Load(configPath string) (*Config, error) {
 	return &cfg, nil
 }
 
+// expandConfigEnv resolves ${VAR} placeholders in string-based configuration
+// values after Viper has merged YAML, defaults, and direct environment overrides.
 func expandConfigEnv(cfg *Config) {
 	cfg.CrowdSec.APIURL = os.ExpandEnv(cfg.CrowdSec.APIURL)
 	cfg.CrowdSec.APIKey = os.ExpandEnv(cfg.CrowdSec.APIKey)
@@ -320,6 +322,7 @@ func expandConfigEnv(cfg *Config) {
 	cfg.Metrics.ListenAddr = os.ExpandEnv(cfg.Metrics.ListenAddr)
 }
 
+// expandEnvSlice applies os.ExpandEnv to each item in a configuration slice.
 func expandEnvSlice(values []string) []string {
 	for i, value := range values {
 		values[i] = os.ExpandEnv(value)
@@ -341,6 +344,7 @@ func (c *Config) Validate() error {
 	return c.validateIntervals()
 }
 
+// validateCrowdSec checks the required LAPI URL and bouncer API key settings.
 func (c *Config) validateCrowdSec() error {
 	if c.CrowdSec.APIKey == "" {
 		return errors.New("crowdsec.api_key is required")
@@ -358,6 +362,7 @@ func (c *Config) validateCrowdSec() error {
 	return nil
 }
 
+// validateMikroTik checks RouterOS connection credentials and pool bounds.
 func (c *Config) validateMikroTik() error {
 	if c.MikroTik.Address == "" {
 		return errors.New("mikrotik.address is required")
@@ -374,6 +379,7 @@ func (c *Config) validateMikroTik() error {
 	return nil
 }
 
+// validateFirewall checks protocol, table, action, and option compatibility.
 func (c *Config) validateFirewall() error {
 	if !c.Firewall.IPv4.Enabled && !c.Firewall.IPv6.Enabled {
 		return errors.New("at least one of firewall.ipv4 or firewall.ipv6 must be enabled")
@@ -393,6 +399,7 @@ func (c *Config) validateFirewall() error {
 	return c.validateBlockOutputOptions()
 }
 
+// validateRejectOptions checks reject-only firewall options and allowed reject reasons.
 func (c *Config) validateRejectOptions() error {
 	if c.Firewall.RejectWith != "" && c.Firewall.DenyAction != "reject" {
 		return errors.New("firewall.reject_with requires deny_action='reject'")
@@ -415,6 +422,7 @@ func (c *Config) validateRejectOptions() error {
 	return nil
 }
 
+// validateFilterOptions checks optional filter-table match settings.
 func (c *Config) validateFilterOptions() error {
 	if c.Firewall.Filter.ConnectionState != "" {
 		valid := map[string]bool{
@@ -430,6 +438,7 @@ func (c *Config) validateFilterOptions() error {
 	return nil
 }
 
+// validateBlockOutputOptions ensures output blocking has a concrete interface target.
 func (c *Config) validateBlockOutputOptions() error {
 	if c.Firewall.BlockOutput.Enabled {
 		if c.Firewall.BlockOutput.Interface == "" && c.Firewall.BlockOutput.InterfaceList == "" {
@@ -439,6 +448,7 @@ func (c *Config) validateBlockOutputOptions() error {
 	return nil
 }
 
+// validateIntervals enforces minimum values for periodic background work.
 func (c *Config) validateIntervals() error {
 	if c.CrowdSec.ReconciliationInterval < 0 {
 		return errors.New("crowdsec.reconciliation_interval must be >= 0 (0 disables)")

@@ -18,6 +18,7 @@ import (
 	rosClient "github.com/jmrplens/cs-routeros-bouncer/internal/routeros"
 )
 
+// Manager-level constants define RouterOS comment signatures and channel sizing.
 const (
 	// defaultCommentPrefix is the fallback prefix for MikroTik resources when
 	// no custom comment_prefix is set in the configuration.
@@ -169,6 +170,7 @@ func (m *Manager) Start(ctx context.Context) error {
 	return m.processLiveDecisions(ctx, banCh, deleteCh, errCh, reconcileC)
 }
 
+// configureConnectionPool creates the optional RouterOS connection pool used by bulk cleanup.
 func (m *Manager) configureConnectionPool() {
 	poolSize := m.cfg.MikroTik.PoolSize
 	if maxSessions := m.ros.GetAPIMaxSessions(); maxSessions > 0 {
@@ -189,6 +191,7 @@ func (m *Manager) configureConnectionPool() {
 	}
 }
 
+// recordRouterIdentity stores RouterOS identity labels for Prometheus metrics.
 func (m *Manager) recordRouterIdentity() {
 	identity, identityErr := m.ros.GetIdentity()
 	if identityErr != nil {
@@ -200,6 +203,7 @@ func (m *Manager) recordRouterIdentity() {
 	}
 }
 
+// recordConfigInfo publishes static runtime configuration labels to metrics.
 func (m *Manager) recordConfigInfo() {
 	metrics.SetConfigInfo(metrics.ConfigParams{
 		CrowdSecAPIURL:           m.cfg.CrowdSec.APIURL,
@@ -237,6 +241,7 @@ func (m *Manager) recordConfigInfo() {
 	})
 }
 
+// startLAPIMetrics starts CrowdSec usage-metrics reporting when configured.
 func (m *Manager) startLAPIMetrics(ctx context.Context) {
 	if m.cfg.CrowdSec.LapiMetricsInterval <= 0 {
 		m.logger.Info().Msg("LAPI usage metrics reporting disabled")
@@ -261,6 +266,7 @@ func (m *Manager) startLAPIMetrics(ctx context.Context) {
 	}()
 }
 
+// collectLAPIFirewallCounters refreshes RouterOS byte/packet counters for LAPI deltas.
 func (m *Manager) collectLAPIFirewallCounters() {
 	fc, countersErr := m.ros.GetFirewallCounters(m.commentPrefix() + ":")
 	if countersErr != nil {
@@ -280,6 +286,7 @@ func (m *Manager) collectLAPIFirewallCounters() {
 	}
 }
 
+// startRouterOSMetrics starts periodic RouterOS system polling when metrics are enabled.
 func (m *Manager) startRouterOSMetrics(ctx context.Context) {
 	if m.cfg.Metrics.Enabled && m.cfg.Metrics.RouterOSPollInterval > 0 {
 		interval := m.cfg.Metrics.RouterOSPollInterval
@@ -288,6 +295,7 @@ func (m *Manager) startRouterOSMetrics(ctx context.Context) {
 	}
 }
 
+// startCrowdSecStream starts the CrowdSec stream and returns decision/error channels.
 func (m *Manager) startCrowdSecStream(ctx context.Context) (banCh, deleteCh chan *crowdsec.Decision, errCh chan error) {
 	banCh = make(chan *crowdsec.Decision, channelBuffer)
 	deleteCh = make(chan *crowdsec.Decision, channelBuffer)
@@ -300,6 +308,7 @@ func (m *Manager) startCrowdSecStream(ctx context.Context) (banCh, deleteCh chan
 	return banCh, deleteCh, errCh
 }
 
+// collectInitialDecisions drains the startup decision burst before reconciliation.
 func (m *Manager) collectInitialDecisions(ctx context.Context, banCh, deleteCh <-chan *crowdsec.Decision, errCh <-chan error) ([]*crowdsec.Decision, map[string]struct{}, error) {
 	m.logger.Info().Msg("bouncer started, collecting initial decisions for reconciliation")
 	var initialBans []*crowdsec.Decision
@@ -340,6 +349,7 @@ collectLoop:
 	return initialBans, initialDeletes, nil
 }
 
+// logInitialDecisions records the startup reconciliation input sizes.
 func (m *Manager) logInitialDecisions(initialBans []*crowdsec.Decision, initialDeletes map[string]struct{}) {
 	m.logger.Info().
 		Int("bans", len(initialBans)).
@@ -347,6 +357,7 @@ func (m *Manager) logInitialDecisions(initialBans []*crowdsec.Decision, initialD
 		Msg("initial decisions collected, starting reconciliation")
 }
 
+// filterInitialBans removes startup bans that were superseded by startup deletions.
 func (m *Manager) filterInitialBans(initialBans []*crowdsec.Decision, initialDeletes map[string]struct{}) []*crowdsec.Decision {
 	filteredBans := make([]*crowdsec.Decision, 0, len(initialBans))
 	skipped := 0
@@ -364,6 +375,7 @@ func (m *Manager) filterInitialBans(initialBans []*crowdsec.Decision, initialDel
 	return filteredBans
 }
 
+// reconciliationChannel creates the optional periodic reconciliation ticker.
 func (m *Manager) reconciliationChannel() (reconcileC <-chan time.Time, stop func()) {
 	reconcileInterval := m.cfg.CrowdSec.ReconciliationInterval
 	if reconcileInterval <= 0 {
@@ -377,6 +389,7 @@ func (m *Manager) reconciliationChannel() (reconcileC <-chan time.Time, stop fun
 	return reconcileTicker.C, reconcileTicker.Stop
 }
 
+// processLiveDecisions handles live ban/unban events, stream errors, and reconciliation ticks.
 func (m *Manager) processLiveDecisions(ctx context.Context, banCh, deleteCh <-chan *crowdsec.Decision, errCh <-chan error, reconcileC <-chan time.Time) error {
 	for {
 		select {
@@ -747,6 +760,7 @@ func (m *Manager) createFirewallRules() error {
 	return nil
 }
 
+// createFilterRules creates all configured filter-table rules for one protocol.
 func (m *Manager) createFilterRules(proto, listName string) error {
 	if !m.cfg.Firewall.Filter.Enabled {
 		return nil
@@ -759,6 +773,7 @@ func (m *Manager) createFilterRules(proto, listName string) error {
 	return nil
 }
 
+// createFilterChainRules creates whitelist, deny, counting, and output filter rules for one chain.
 func (m *Manager) createFilterChainRules(proto, listName, chain string) error {
 	if err := m.ensureInputWhitelistRule(proto, "filter", chain); err != nil {
 		return err
@@ -777,6 +792,7 @@ func (m *Manager) createFilterChainRules(proto, listName, chain string) error {
 	return m.ensureFirewallRule(proto, "filter", outRule)
 }
 
+// createRawRules creates all configured raw-table rules for one protocol.
 func (m *Manager) createRawRules(proto, listName string) error {
 	if !m.cfg.Firewall.Raw.Enabled {
 		return nil
@@ -789,6 +805,7 @@ func (m *Manager) createRawRules(proto, listName string) error {
 	return nil
 }
 
+// createRawChainRules creates whitelist, deny, and counting raw rules for one chain.
 func (m *Manager) createRawChainRules(proto, listName, chain string) error {
 	if err := m.ensureInputWhitelistRule(proto, "raw", chain); err != nil {
 		return err
@@ -809,6 +826,7 @@ func (m *Manager) createRawChainRules(proto, listName, chain string) error {
 	return m.ensureProcessedCountingRule(proto, "raw", chain, comment)
 }
 
+// ensureInputWhitelistRule creates the optional accept rule ahead of bouncer deny rules.
 func (m *Manager) ensureInputWhitelistRule(proto, mode, chain string) error {
 	if m.cfg.Firewall.BlockInput.Whitelist == "" {
 		return nil
@@ -829,6 +847,7 @@ func (m *Manager) ensureInputWhitelistRule(proto, mode, chain string) error {
 	return m.ensureFirewallRule(proto, mode, rule)
 }
 
+// filterInputRule builds the filter-table rule that blocks inbound source addresses.
 func (m *Manager) filterInputRule(listName, chain, comment string) rosClient.FirewallRule {
 	rule := rosClient.FirewallRule{
 		Chain:          chain,
@@ -846,6 +865,7 @@ func (m *Manager) filterInputRule(listName, chain, comment string) rosClient.Fir
 	return rule
 }
 
+// outputRule builds the optional filter-table rule that blocks outbound destinations.
 func (m *Manager) outputRule(proto, listName string) rosClient.FirewallRule {
 	rule := rosClient.FirewallRule{
 		Chain:          "output",
@@ -869,12 +889,14 @@ func (m *Manager) outputRule(proto, listName string) rosClient.FirewallRule {
 	return rule
 }
 
+// applyRejectOptions adds RouterOS reject-with settings when deny_action is reject.
 func (m *Manager) applyRejectOptions(rule *rosClient.FirewallRule) {
 	if m.cfg.Firewall.DenyAction == "reject" && m.cfg.Firewall.RejectWith != "" {
 		rule.RejectWith = m.cfg.Firewall.RejectWith
 	}
 }
 
+// applyOutputPassthrough adds negated source exceptions for output blocking rules.
 func (m *Manager) applyOutputPassthrough(rule *rosClient.FirewallRule, proto string) {
 	if proto == "ip" {
 		setNegatedAddress(&rule.SrcAddressList, m.cfg.Firewall.BlockOutput.PassthroughV4List)
@@ -889,12 +911,14 @@ func (m *Manager) applyOutputPassthrough(rule *rosClient.FirewallRule, proto str
 	}
 }
 
+// setNegatedAddress writes a RouterOS negated address matcher when value is set.
 func setNegatedAddress(target *string, value string) {
 	if value != "" {
 		*target = "!" + value
 	}
 }
 
+// rawDenyAction maps reject to drop because RouterOS raw rules cannot reject.
 func (m *Manager) rawDenyAction() string {
 	if m.cfg.Firewall.DenyAction == "reject" {
 		return "drop"
@@ -902,6 +926,7 @@ func (m *Manager) rawDenyAction() string {
 	return m.cfg.Firewall.DenyAction
 }
 
+// ensureProcessedCountingRule creates passthrough rules for processed traffic counters.
 func (m *Manager) ensureProcessedCountingRule(proto, mode, chain, beforeComment string) error {
 	if !m.cfg.Metrics.TrackProcessed {
 		return nil
@@ -1037,6 +1062,7 @@ func (m *Manager) removeFirewallRules() {
 // Compares CrowdSec active decisions with MikroTik address lists
 // and adds/removes entries as needed.
 // Uses script-based bulk add and parallel workers for maximum speed.
+// reconcileAddresses synchronizes RouterOS address lists with the active CrowdSec decisions.
 func (m *Manager) reconcileAddresses(ctx context.Context, decisions []*crowdsec.Decision) {
 	if ctx.Err() != nil {
 		return
@@ -1063,6 +1089,7 @@ func (m *Manager) reconcileAddresses(ctx context.Context, decisions []*crowdsec.
 	}
 }
 
+// reconcileDiff groups the desired, current, missing, and stale address state for one protocol.
 type reconcileDiff struct {
 	shouldExist map[string]*crowdsec.Decision
 	currentMap  map[string]rosClient.AddressEntry
@@ -1070,10 +1097,12 @@ type reconcileDiff struct {
 	toRemove    []rosClient.AddressEntry
 }
 
+// reconcileResult carries per-protocol reconciliation data used after processing.
 type reconcileResult struct {
 	originCounts map[string]int64
 }
 
+// reconcileProtocolAddresses applies the address-list diff for one RouterOS protocol.
 func (m *Manager) reconcileProtocolAddresses(proto string, decisions []*crowdsec.Decision, start time.Time) (reconcileResult, error) {
 	listName := m.getAddressListName(proto)
 	existing, err := m.ros.ListAddresses(proto, listName, m.commentPrefix())
@@ -1102,6 +1131,7 @@ func (m *Manager) reconcileProtocolAddresses(proto string, decisions []*crowdsec
 	return reconcileResult{originCounts: originCounts(diff.shouldExist)}, nil
 }
 
+// buildReconcileDiff computes additions and removals from desired and current address state.
 func buildReconcileDiff(proto string, decisions []*crowdsec.Decision, existing []rosClient.AddressEntry, commentPrefix string) reconcileDiff {
 	shouldExist := desiredAddressMap(proto, decisions)
 	currentMap := currentAddressMap(existing)
@@ -1113,6 +1143,7 @@ func buildReconcileDiff(proto string, decisions []*crowdsec.Decision, existing [
 	}
 }
 
+// desiredAddressMap indexes active decisions by normalized RouterOS address.
 func desiredAddressMap(proto string, decisions []*crowdsec.Decision) map[string]*crowdsec.Decision {
 	shouldExist := make(map[string]*crowdsec.Decision)
 	for _, decision := range decisions {
@@ -1125,6 +1156,7 @@ func desiredAddressMap(proto string, decisions []*crowdsec.Decision) map[string]
 	return shouldExist
 }
 
+// currentAddressMap indexes RouterOS address-list entries by normalized address.
 func currentAddressMap(existing []rosClient.AddressEntry) map[string]rosClient.AddressEntry {
 	currentMap := make(map[string]rosClient.AddressEntry)
 	for _, entry := range existing {
@@ -1133,6 +1165,7 @@ func currentAddressMap(existing []rosClient.AddressEntry) map[string]rosClient.A
 	return currentMap
 }
 
+// missingAddressEntries builds RouterOS bulk-add entries for decisions not yet present.
 func missingAddressEntries(shouldExist map[string]*crowdsec.Decision, currentMap map[string]rosClient.AddressEntry, commentPrefix string) []rosClient.BulkEntry {
 	var toAdd []rosClient.BulkEntry
 	for addr, decision := range shouldExist {
@@ -1148,6 +1181,7 @@ func missingAddressEntries(shouldExist map[string]*crowdsec.Decision, currentMap
 	return toAdd
 }
 
+// decisionTimeout converts CrowdSec duration to RouterOS timeout syntax.
 func decisionTimeout(decision *crowdsec.Decision) string {
 	if decision.Duration <= 0 {
 		return ""
@@ -1155,6 +1189,7 @@ func decisionTimeout(decision *crowdsec.Decision) string {
 	return rosClient.DurationToMikroTik(decision.Duration)
 }
 
+// staleAddressEntries returns RouterOS entries that no active decision still requires.
 func staleAddressEntries(shouldExist map[string]*crowdsec.Decision, currentMap map[string]rosClient.AddressEntry) []rosClient.AddressEntry {
 	var toRemove []rosClient.AddressEntry
 	for addr, entry := range currentMap {
@@ -1165,6 +1200,7 @@ func staleAddressEntries(shouldExist map[string]*crowdsec.Decision, currentMap m
 	return toRemove
 }
 
+// refreshAddressCache replaces the cache contents for one protocol after reconciliation.
 func (m *Manager) refreshAddressCache(proto string, currentMap map[string]rosClient.AddressEntry) {
 	// Hold cacheMu through the full replacement for this protocol so concurrent
 	// handleBan/handleUnban calls never observe a partially refreshed cache.
@@ -1185,6 +1221,7 @@ func (m *Manager) refreshAddressCache(proto string, currentMap map[string]rosCli
 	}
 }
 
+// addMissingAddresses bulk-adds missing entries and records reconciliation metrics.
 func (m *Manager) addMissingAddresses(proto, listName, metricsProto string, toAdd []rosClient.BulkEntry) int {
 	if len(toAdd) == 0 {
 		return 0
@@ -1203,6 +1240,7 @@ func (m *Manager) addMissingAddresses(proto, listName, metricsProto string, toAd
 	return added
 }
 
+// addEntriesToCache records newly added address-list entries in the fast-path cache.
 func (m *Manager) addEntriesToCache(proto string, entries []rosClient.BulkEntry) {
 	m.cacheMu.Lock()
 	defer m.cacheMu.Unlock()
@@ -1212,6 +1250,7 @@ func (m *Manager) addEntriesToCache(proto string, entries []rosClient.BulkEntry)
 	}
 }
 
+// removeStaleAddresses removes obsolete RouterOS entries and records reconciliation metrics.
 func (m *Manager) removeStaleAddresses(proto, metricsProto string, toRemove []rosClient.AddressEntry) int {
 	if len(toRemove) == 0 {
 		return 0
@@ -1227,6 +1266,7 @@ func (m *Manager) removeStaleAddresses(proto, metricsProto string, toRemove []ro
 	return removed
 }
 
+// removeAddresses selects parallel or sequential removal depending on pool availability.
 func (m *Manager) removeAddresses(proto string, entries []rosClient.AddressEntry) int {
 	if m.pool != nil {
 		return m.removeAddressesParallel(proto, entries)
@@ -1234,6 +1274,7 @@ func (m *Manager) removeAddresses(proto string, entries []rosClient.AddressEntry
 	return m.removeAddressesSequential(proto, entries)
 }
 
+// removeAddressesParallel removes address-list entries through the RouterOS connection pool.
 func (m *Manager) removeAddressesParallel(proto string, entries []rosClient.AddressEntry) int {
 	errs := rosClient.ParallelExec(m.pool, entries, func(c *rosClient.Client, entry rosClient.AddressEntry) error {
 		return c.RemoveAddress(proto, entry.ID)
@@ -1250,6 +1291,7 @@ func (m *Manager) removeAddressesParallel(proto string, entries []rosClient.Addr
 	return removed
 }
 
+// removeAddressesSequential removes address-list entries through the primary RouterOS client.
 func (m *Manager) removeAddressesSequential(proto string, entries []rosClient.AddressEntry) int {
 	removed := 0
 	for _, entry := range entries {
@@ -1267,6 +1309,7 @@ func (m *Manager) removeAddressesSequential(proto string, entries []rosClient.Ad
 	return removed
 }
 
+// removeEntriesFromCache deletes removed RouterOS entries from the fast-path cache.
 func (m *Manager) removeEntriesFromCache(entries []rosClient.AddressEntry) {
 	m.cacheMu.Lock()
 	defer m.cacheMu.Unlock()
@@ -1275,6 +1318,7 @@ func (m *Manager) removeEntriesFromCache(entries []rosClient.AddressEntry) {
 	}
 }
 
+// recordReconciliationMetrics updates Prometheus gauges and counters for one protocol.
 func (m *Manager) recordReconciliationMetrics(metricsProto string, expected, added, removed int) {
 	unchanged := max(expected-added, 0)
 	metrics.RecordReconciliation("added", added)
@@ -1283,6 +1327,7 @@ func (m *Manager) recordReconciliationMetrics(metricsProto string, expected, add
 	metrics.SetActiveDecisions(metricsProto, expected)
 }
 
+// metricsProtoName converts RouterOS protocol names to metric label values.
 func metricsProtoName(proto string) string {
 	if proto == "ipv6" {
 		return "ipv6"
@@ -1290,6 +1335,7 @@ func metricsProtoName(proto string) string {
 	return "ipv4"
 }
 
+// originCounts aggregates active decisions by CrowdSec origin label.
 func originCounts(shouldExist map[string]*crowdsec.Decision) map[string]int64 {
 	counts := map[string]int64{}
 	for _, decision := range shouldExist {
@@ -1302,6 +1348,7 @@ func originCounts(shouldExist map[string]*crowdsec.Decision) map[string]int64 {
 	return counts
 }
 
+// mergeOriginCounts accumulates source origin counts into target.
 func mergeOriginCounts(target, source map[string]int64) {
 	for origin, count := range source {
 		target[origin] += count

@@ -30,6 +30,7 @@ func callUpdater(p *Provider, interval time.Duration) *models.RemediationCompone
 	return payload
 }
 
+// metricValue finds a metric item by name, unit, and exact label set.
 func metricValue(items []*models.MetricsDetailItem, name, unit string, labels map[string]string) (float64, bool) {
 	for _, item := range items {
 		if item.Name == nil || *item.Name != name || item.Unit == nil || *item.Unit != unit || item.Value == nil {
@@ -42,6 +43,7 @@ func metricValue(items []*models.MetricsDetailItem, name, unit string, labels ma
 	return 0, false
 }
 
+// metricLabelsMatch reports whether got exactly matches the wanted label set.
 func metricLabelsMatch(got, want map[string]string) bool {
 	if want == nil {
 		return len(got) == 0
@@ -420,6 +422,7 @@ func TestBouncerTypeConstant(t *testing.T) {
 	}
 }
 
+// TestNewProviderAndRun verifies provider construction and graceful Run exits.
 func TestNewProviderAndRun(t *testing.T) {
 	tests := []struct {
 		name     string

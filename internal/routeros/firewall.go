@@ -10,6 +10,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// Firewall attribute names used by RouterOS API requests and responses.
 const (
 	fwAttrSrcAddress       = "src-address"
 	fwAttrSrcAddressList   = "src-address-list"
@@ -117,6 +118,7 @@ func (c *Client) AddFirewallRule(proto, mode string, rule FirewallRule) (string,
 	return c.moveRuleToTop(path, id)
 }
 
+// firewallRuleAttrs converts a FirewallRule into RouterOS API attributes.
 func firewallRuleAttrs(rule FirewallRule) map[string]string {
 	attrs := map[string]string{
 		"chain":   rule.Chain,
@@ -139,12 +141,14 @@ func firewallRuleAttrs(rule FirewallRule) map[string]string {
 	return attrs
 }
 
+// setIfNotEmpty includes a RouterOS API attribute only when it has a value.
 func setIfNotEmpty(attrs map[string]string, key, value string) {
 	if value != "" {
 		attrs[key] = value
 	}
 }
 
+// moveRuleToTop moves a newly created firewall rule ahead of user-editable rules.
 func (c *Client) moveRuleToTop(path, id string) (string, error) {
 	// Move the newly created rule to the top of the chain.
 	// List all rules to find the current first rule's internal ID.
@@ -372,11 +376,13 @@ func (c *Client) GetFirewallCounters(commentPrefix string) (*FirewallCounters, e
 	return fc, nil
 }
 
+// firewallCounterQuery describes one RouterOS firewall table to scan for counters.
 type firewallCounterQuery struct {
 	path  string
 	proto string // "ipv4" or "ipv6" for aggregation
 }
 
+// firewallCounterQueries returns IPv4/IPv6 filter and raw tables used for aggregation.
 func firewallCounterQueries() []firewallCounterQuery {
 	return []firewallCounterQuery{
 		{protoPrefix("ip") + "/firewall/filter", "ipv4"},
@@ -386,6 +392,7 @@ func firewallCounterQueries() []firewallCounterQuery {
 	}
 }
 
+// addRuleCounters folds RouterOS print results into rule and aggregate counters.
 func (fc *FirewallCounters) addRuleCounters(proto, commentPrefix string, results []map[string]string, logger zerolog.Logger) {
 	for _, result := range results {
 		comment := result["comment"]
@@ -410,6 +417,7 @@ func (fc *FirewallCounters) addRuleCounters(proto, commentPrefix string, results
 	}
 }
 
+// firewallCounterAction validates the action field before aggregate counter updates.
 func firewallCounterAction(action, comment string, logger zerolog.Logger) string {
 	if action != "" {
 		return action
@@ -418,6 +426,7 @@ func firewallCounterAction(action, comment string, logger zerolog.Logger) string
 	return ""
 }
 
+// addTotalCounters increments total and per-protocol traffic counters.
 func (fc *FirewallCounters) addTotalCounters(proto string, bytes, packets uint64) {
 	fc.TotalBytes += bytes
 	fc.TotalPkts += packets
@@ -430,6 +439,7 @@ func (fc *FirewallCounters) addTotalCounters(proto string, bytes, packets uint64
 	fc.IPv6Pkts += packets
 }
 
+// addDroppedCounters increments total and per-protocol dropped traffic counters.
 func (fc *FirewallCounters) addDroppedCounters(proto string, bytes, packets uint64) {
 	fc.DroppedBytes += bytes
 	fc.DroppedPkts += packets
@@ -442,6 +452,7 @@ func (fc *FirewallCounters) addDroppedCounters(proto string, bytes, packets uint
 	fc.DroppedIPv6Pkts += packets
 }
 
+// addProcessedCounters increments per-protocol processed traffic counters.
 func (fc *FirewallCounters) addProcessedCounters(proto string, bytes, packets uint64) {
 	if proto == "ipv4" {
 		fc.ProcessedIPv4Bytes += bytes

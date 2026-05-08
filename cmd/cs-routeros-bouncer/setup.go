@@ -15,6 +15,7 @@ import (
 	"github.com/jmrplens/cs-routeros-bouncer/internal/config"
 )
 
+// Default installation paths and command names used by setup and uninstall.
 const (
 	defaultBinPath     = "/usr/local/bin/cs-routeros-bouncer"
 	defaultConfigDir   = "/etc/cs-routeros-bouncer"
@@ -24,6 +25,8 @@ const (
 	systemctlPath      = "systemctl"
 )
 
+// setup hooks wrap OS operations so setup/uninstall behavior can be tested
+// without touching the host system.
 var (
 	setupGetuid       = os.Getuid
 	setupExecutable   = os.Executable

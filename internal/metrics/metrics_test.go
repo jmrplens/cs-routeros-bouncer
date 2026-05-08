@@ -243,12 +243,14 @@ func TestHandleHealthDisconnected(t *testing.T) {
 	}
 }
 
+// failingResponseWriter records writes while forcing body writes to fail.
 type failingResponseWriter struct {
 	header      http.Header
 	wroteHeader bool
 	wroteBody   bool
 }
 
+// Header implements http.ResponseWriter.Header.
 func (w *failingResponseWriter) Header() http.Header {
 	if w.header == nil {
 		w.header = http.Header{}
@@ -256,15 +258,18 @@ func (w *failingResponseWriter) Header() http.Header {
 	return w.header
 }
 
+// Write implements http.ResponseWriter.Write and always returns an error.
 func (w *failingResponseWriter) Write([]byte) (int, error) {
 	w.wroteBody = true
 	return 0, errors.New("write failed")
 }
 
+// WriteHeader implements http.ResponseWriter.WriteHeader and records the call.
 func (w *failingResponseWriter) WriteHeader(int) {
 	w.wroteHeader = true
 }
 
+// TestHandleHealthWriteError verifies write failures are logged without panicking.
 func TestHandleHealthWriteError(t *testing.T) {
 	srv := &Server{version: "test-v1"}
 	w := &failingResponseWriter{}

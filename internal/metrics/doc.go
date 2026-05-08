@@ -12,4 +12,8 @@
 //   - crowdsec_bouncer_reconciliation_total: reconciliation add/remove/unchanged (CounterVec)
 //
 // The HTTP server serves /metrics (Prometheus scrape) and /health (JSON liveness).
+//
+// Runtime code updates collectors through helper functions such as
+// [SetConnected], [RecordDecision], [SetActiveDecisions], and
+// [SetDroppedCounters]. Use [NewServer] to expose the HTTP endpoints.
 package metrics

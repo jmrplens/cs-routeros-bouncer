@@ -87,6 +87,7 @@ func (c *Client) AddAddress(proto, list, address, timeout, comment string) (stri
 	return id, nil
 }
 
+// updateDuplicateAddress refreshes timeout/comment on an existing RouterOS entry.
 func (c *Client) updateDuplicateAddress(path, proto, list, address, timeout, comment string) (string, error) {
 	existing, findErr := c.FindAddress(proto, list, address)
 	if errors.Is(findErr, ErrNotFound) {
@@ -109,6 +110,7 @@ func (c *Client) updateDuplicateAddress(path, proto, list, address, timeout, com
 	return existing.ID, nil
 }
 
+// duplicateAddressUpdateAttrs builds the non-empty fields used to refresh duplicates.
 func duplicateAddressUpdateAttrs(timeout, comment string) map[string]string {
 	updateAttrs := make(map[string]string)
 	if timeout != "" {

@@ -38,6 +38,7 @@ type Stream struct {
 	logger  zerolog.Logger
 }
 
+// activeDecisionPageSize caps each CrowdSec active-decision page request.
 const activeDecisionPageSize = 1000
 
 // NewStream creates a new CrowdSec stream client.

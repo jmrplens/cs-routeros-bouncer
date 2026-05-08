@@ -647,12 +647,14 @@ func TestAddAddress_Error(t *testing.T) {
 	}
 }
 
+// TestIsDuplicateEntryErrorSentinel verifies wrapped ErrAddressDuplicate matches duplicates.
 func TestIsDuplicateEntryErrorSentinel(t *testing.T) {
 	if !isDuplicateEntryError(fmt.Errorf("bulk fallback: %w", ErrAddressDuplicate)) {
 		t.Fatal("expected ErrAddressDuplicate to be recognized as duplicate")
 	}
 }
 
+// TestIsNoSuchItemErrorNil verifies nil errors do not match RouterOS missing-item traps.
 func TestIsNoSuchItemErrorNil(t *testing.T) {
 	if isNoSuchItemError(nil) {
 		t.Fatal("nil error should not match no such item")
@@ -745,6 +747,7 @@ func TestRemoveAddress_IPv6Path(t *testing.T) {
 	}
 }
 
+// TestRemoveAddress_NoSuchItemMapsErrNotFound verifies missing removals return ErrNotFound.
 func TestRemoveAddress_NoSuchItemMapsErrNotFound(t *testing.T) {
 	mc := newMockConn()
 	c := newTestClient(mc)
@@ -1416,6 +1419,7 @@ func TestBulkAddAddresses_FallbackAlreadyHaveIgnored(t *testing.T) {
 	}
 }
 
+// TestBulkAddAddresses_FallbackRealErrorReturned verifies non-duplicate fallback failures surface.
 func TestBulkAddAddresses_FallbackRealErrorReturned(t *testing.T) {
 	mc := newMockConn()
 	c := newTestClient(mc)
@@ -1531,6 +1535,7 @@ func TestRunBulkScript_CleansUpExistingScript(t *testing.T) {
 	}
 }
 
+// TestRunBulkScript_FindExistingError verifies lookup errors stop script execution.
 func TestRunBulkScript_FindExistingError(t *testing.T) {
 	mc := newMockConn()
 	c := newTestClient(mc)
@@ -1543,6 +1548,7 @@ func TestRunBulkScript_FindExistingError(t *testing.T) {
 	}
 }
 
+// TestRunBulkScript_RemoveExistingError verifies stale script cleanup errors are returned.
 func TestRunBulkScript_RemoveExistingError(t *testing.T) {
 	mc := newMockConn()
 	c := newTestClient(mc)
@@ -1887,6 +1893,7 @@ func TestGetFirewallCounters_InvalidNumbers(t *testing.T) {
 	}
 }
 
+// TestGetFirewallCounters_EmptyActionSkippedFromAggregates verifies malformed rules stay out of totals.
 func TestGetFirewallCounters_EmptyActionSkippedFromAggregates(t *testing.T) {
 	mc := newMockConn()
 	c := newTestClient(mc)

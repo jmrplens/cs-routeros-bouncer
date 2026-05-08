@@ -9,6 +9,7 @@ import (
 	"github.com/jmrplens/cs-routeros-bouncer/internal/config"
 )
 
+// TestHandleSubcommand verifies non-administrative argv values are ignored.
 func TestHandleSubcommand(t *testing.T) {
 	tests := []struct {
 		name string
@@ -32,6 +33,7 @@ func TestHandleSubcommand(t *testing.T) {
 	}
 }
 
+// TestHandleSubcommandHelp verifies the help subcommand prints usage output.
 func TestHandleSubcommandHelp(t *testing.T) {
 	oldArgs := os.Args
 	t.Cleanup(func() { os.Args = oldArgs })
@@ -51,6 +53,7 @@ func TestHandleSubcommandHelp(t *testing.T) {
 	}
 }
 
+// captureStdout captures standard output emitted while fn runs.
 func captureStdout(t *testing.T, fn func()) string {
 	t.Helper()
 	oldStdout := os.Stdout

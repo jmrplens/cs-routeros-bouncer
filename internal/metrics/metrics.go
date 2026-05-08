@@ -19,11 +19,13 @@ var activeDecisionCounts struct {
 	ipv6 atomic.Int64
 }
 
+// healthConnectedCallback lets tests and optional callers observe SetConnected updates.
 var healthConnectedCallback struct {
 	mu sync.RWMutex
 	fn func(bool)
 }
 
+// Prometheus collectors registered by this package on the default registry.
 var (
 	decisionsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "crowdsec_bouncer_decisions_total",
@@ -287,8 +289,13 @@ type ProtoCounters struct {
 	IPv6Pkts  uint64
 }
 
+// droppedCountersMu protects the cumulative dropped counter state used for LAPI deltas.
 var droppedCountersMu sync.Mutex
+
+// droppedCounters stores the latest total dropped counters read from RouterOS.
 var droppedCounters DroppedCounters
+
+// lastSentCounters stores the previous dropped baseline sent to CrowdSec LAPI.
 var lastSentCounters DroppedCounters
 
 // Per-ip_type dropped counters for LAPI (delta tracking).

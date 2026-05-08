@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// resetSetupHooks restores package-level setup hooks after a test or benchmark.
 func resetSetupHooks(tb testing.TB) {
 	tb.Helper()
 	oldGetuid := setupGetuid
@@ -40,6 +41,7 @@ func resetSetupHooks(tb testing.TB) {
 	})
 }
 
+// configureRootSetup installs root-mode test doubles for a successful setup path.
 func configureRootSetup(tb testing.TB) (binSrc, servicePath string, systemctlCalls *[][]string) {
 	tb.Helper()
 	resetSetupHooks(tb)
@@ -61,6 +63,7 @@ func configureRootSetup(tb testing.TB) (binSrc, servicePath string, systemctlCal
 	return binSrc, servicePath, &calls
 }
 
+// TestRunSetupRequiresRoot verifies setup refuses to run without root privileges.
 func TestRunSetupRequiresRoot(t *testing.T) {
 	resetSetupHooks(t)
 	setupGetuid = func() int { return 1000 }
@@ -71,6 +74,7 @@ func TestRunSetupRequiresRoot(t *testing.T) {
 	}
 }
 
+// TestRunUninstallRequiresRoot verifies uninstall refuses to run without root privileges.
 func TestRunUninstallRequiresRoot(t *testing.T) {
 	resetSetupHooks(t)
 	setupGetuid = func() int { return 1000 }
@@ -81,6 +85,7 @@ func TestRunUninstallRequiresRoot(t *testing.T) {
 	}
 }
 
+// TestRunSetupSuccess verifies binary, config, service, and systemctl setup steps.
 func TestRunSetupSuccess(t *testing.T) {
 	_, servicePath, systemctlCalls := configureRootSetup(t)
 	tmpDir := t.TempDir()
@@ -130,6 +135,7 @@ func TestRunSetupSuccess(t *testing.T) {
 	assert.Equal(t, []string{"start", serviceName}, (*systemctlCalls)[2], "third call")
 }
 
+// TestRunSetupCopyError verifies binary copy failures are reported.
 func TestRunSetupCopyError(t *testing.T) {
 	resetSetupHooks(t)
 	setupGetuid = func() int { return 0 }
@@ -142,6 +148,7 @@ func TestRunSetupCopyError(t *testing.T) {
 	}
 }
 
+// TestRunSetupMkdirError verifies config directory creation failures are reported.
 func TestRunSetupMkdirError(t *testing.T) {
 	_, _, _ = configureRootSetup(t)
 	setupMkdirAll = func(string, os.FileMode) error { return errors.New("mkdir denied") }
@@ -152,6 +159,7 @@ func TestRunSetupMkdirError(t *testing.T) {
 	}
 }
 
+// TestRunSetupConfigWriteError verifies generated config write failures are reported.
 func TestRunSetupConfigWriteError(t *testing.T) {
 	_, _, _ = configureRootSetup(t)
 	configDir := filepath.Join(t.TempDir(), "config")
@@ -168,6 +176,7 @@ func TestRunSetupConfigWriteError(t *testing.T) {
 	}
 }
 
+// TestRunSetupServiceWriteError verifies systemd unit write failures are reported.
 func TestRunSetupServiceWriteError(t *testing.T) {
 	_, servicePath, _ := configureRootSetup(t)
 	setupWriteFile = func(path string, data []byte, perm os.FileMode) error {
@@ -183,6 +192,7 @@ func TestRunSetupServiceWriteError(t *testing.T) {
 	}
 }
 
+// TestRunSetupSystemctlErrors verifies each systemctl setup failure is surfaced.
 func TestRunSetupSystemctlErrors(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -212,6 +222,7 @@ func TestRunSetupSystemctlErrors(t *testing.T) {
 	}
 }
 
+// TestRunUninstallSuccess verifies uninstall removes service, binary, and optional config.
 func TestRunUninstallSuccess(t *testing.T) {
 	resetSetupHooks(t)
 	tmpDir := t.TempDir()
@@ -251,6 +262,7 @@ func TestRunUninstallSuccess(t *testing.T) {
 	}
 }
 
+// TestCopyFileCopiesContents verifies copyFile preserves contents and permissions.
 func TestCopyFileCopiesContents(t *testing.T) {
 	tmpDir := t.TempDir()
 	src := filepath.Join(tmpDir, "source")
@@ -273,6 +285,7 @@ func TestCopyFileCopiesContents(t *testing.T) {
 	}
 }
 
+// TestCopyFileMissingSource verifies copyFile reports source open errors.
 func TestCopyFileMissingSource(t *testing.T) {
 	err := copyFile(filepath.Join(t.TempDir(), "missing"), filepath.Join(t.TempDir(), "dest"), 0o600)
 	if err == nil {
@@ -280,6 +293,7 @@ func TestCopyFileMissingSource(t *testing.T) {
 	}
 }
 
+// TestCopyFileDestinationOpenError verifies copyFile reports destination open errors.
 func TestCopyFileDestinationOpenError(t *testing.T) {
 	tmpDir := t.TempDir()
 	src := filepath.Join(tmpDir, "source")
@@ -293,6 +307,7 @@ func TestCopyFileDestinationOpenError(t *testing.T) {
 	}
 }
 
+// TestCopyFileReadError verifies copyFile reports read errors from the source.
 func TestCopyFileReadError(t *testing.T) {
 	tmpDir := t.TempDir()
 	err := copyFile(tmpDir, filepath.Join(t.TempDir(), "dest"), 0o600)
@@ -301,6 +316,7 @@ func TestCopyFileReadError(t *testing.T) {
 	}
 }
 
+// TestExampleConfigIncludesExpectedDefaults verifies generated YAML includes key defaults.
 func TestExampleConfigIncludesExpectedDefaults(t *testing.T) {
 	cfg := exampleConfig()
 	for _, want := range []string{
@@ -316,6 +332,7 @@ func TestExampleConfigIncludesExpectedDefaults(t *testing.T) {
 	}
 }
 
+// TestSystemctlUsesPathAndReportsStderr verifies systemctl error messages include stderr.
 func TestSystemctlUsesPathAndReportsStderr(t *testing.T) {
 	tmpDir := t.TempDir()
 	logPath := filepath.Join(tmpDir, "systemctl.args")

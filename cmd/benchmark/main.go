@@ -15,6 +15,7 @@ import (
 	rosClient "github.com/jmrplens/cs-routeros-bouncer/internal/routeros"
 )
 
+// Benchmark constants define safe documentation-prefix addresses and target lists.
 const (
 	benchmarkIPv4Address  = "198.51.100.1" // NOSONAR: RFC 5737 TEST-NET-2 benchmark address.
 	benchmarkFindAddress  = "198.51.100.2" // NOSONAR: RFC 5737 TEST-NET-2 benchmark address.
@@ -24,6 +25,7 @@ const (
 	benchmarkIPv4BatchMax = 254
 )
 
+// main connects to RouterOS and runs the standalone benchmark suite.
 func main() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.Kitchen})
 	cfg, err := loadConfig(configPath())
@@ -40,6 +42,7 @@ func main() {
 	runBenchmarks(client)
 }
 
+// configPath returns the optional CLI config path or the benchmark default.
 func configPath() string {
 	configPath := "config/test.yaml"
 	if len(os.Args) > 1 {
@@ -48,6 +51,7 @@ func configPath() string {
 	return configPath
 }
 
+// loadConfig reads the benchmark YAML config without applying full application defaults.
 func loadConfig(configPath string) (config.Config, error) {
 	viper.SetConfigFile(configPath)
 	if err := viper.ReadInConfig(); err != nil {
@@ -60,6 +64,7 @@ func loadConfig(configPath string) (config.Config, error) {
 	return cfg, nil
 }
 
+// runBenchmarks executes the benchmark groups in a stable human-readable order.
 func runBenchmarks(client *rosClient.Client) {
 	identity, err := client.GetIdentity()
 	if err != nil {
@@ -73,6 +78,7 @@ func runBenchmarks(client *rosClient.Client) {
 	fmt.Println("=== BENCHMARK COMPLETE ===")
 }
 
+// benchmarkSingleOperations measures individual address-list API calls.
 func benchmarkSingleOperations(client *rosClient.Client) {
 	fmt.Println("=== SINGLE OPERATION BENCHMARKS (RouterOS API) ===")
 
@@ -117,6 +123,7 @@ func benchmarkSingleOperations(client *rosClient.Client) {
 	}
 }
 
+// benchmarkFirewallRules measures firewall rule creation, lookup, and removal calls.
 func benchmarkFirewallRules(client *rosClient.Client) {
 	fmt.Println()
 	fmt.Println("=== FIREWALL RULE BENCHMARKS ===")
@@ -153,6 +160,7 @@ func benchmarkFirewallRules(client *rosClient.Client) {
 	})
 }
 
+// benchmarkFirewallRule times one create/remove lifecycle for a firewall rule.
 func benchmarkFirewallRule(client *rosClient.Client, proto, mode, createLabel, removeLabel string, rule rosClient.FirewallRule) {
 	var ruleID string
 	bench(createLabel, func() error {
@@ -167,6 +175,7 @@ func benchmarkFirewallRule(client *rosClient.Client, proto, mode, createLabel, r
 	}
 }
 
+// benchmarkBatchAdds runs sequential address add/list/find/remove scenarios.
 func benchmarkBatchAdds(client *rosClient.Client) {
 	fmt.Println()
 	fmt.Println("=== BATCH ADD BENCHMARKS (sequential via API) ===")
@@ -178,6 +187,7 @@ func benchmarkBatchAdds(client *rosClient.Client) {
 	}
 }
 
+// benchmarkBatchSize measures one sequential batch size using unique TEST-NET-2 addresses.
 func benchmarkBatchSize(client *rosClient.Client, n int) {
 	if n > benchmarkIPv4BatchMax {
 		fmt.Printf("  %-35s %8s  (max unique TEST-NET-2 addresses=%d)\n", fmt.Sprintf("Add %d IPv4 (sequential)", n), "SKIPPED", benchmarkIPv4BatchMax)
@@ -231,6 +241,7 @@ func benchmarkBatchSize(client *rosClient.Client, n int) {
 	}
 }
 
+// bench prints elapsed time and status for one standalone benchmark operation.
 func bench(label string, fn func() error) {
 	start := time.Now()
 	err := fn()

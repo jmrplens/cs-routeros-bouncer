@@ -82,6 +82,7 @@ func TestAPIClientNil(t *testing.T) {
 	}
 }
 
+// TestActiveDecisionsRequiresInitializedClient verifies snapshots require Init first.
 func TestActiveDecisionsRequiresInitializedClient(t *testing.T) {
 	mb := NewMockBouncer()
 	s := newTestStream(mb)
@@ -419,6 +420,7 @@ func TestRunContextCancel(t *testing.T) {
 	}
 }
 
+// TestRunBouncerRunCanceledError verifies bouncer cancellation is a clean shutdown.
 func TestRunBouncerRunCanceledError(t *testing.T) {
 	mb := NewMockBouncer()
 	mb.RunErr = context.Canceled
@@ -443,6 +445,7 @@ func TestRunBouncerRunCanceledError(t *testing.T) {
 	}
 }
 
+// TestRunBouncerRunUnexpectedError verifies unexpected bouncer stops surface as stream errors.
 func TestRunBouncerRunUnexpectedError(t *testing.T) {
 	mb := NewMockBouncer()
 	mb.RunReturnsImmediately = true
@@ -468,6 +471,7 @@ func TestRunBouncerRunUnexpectedError(t *testing.T) {
 	}
 }
 
+// waitForMockRun waits until the mock bouncer has entered its Run method.
 func waitForMockRun(t *testing.T, mb *MockBouncer) {
 	t.Helper()
 	select {

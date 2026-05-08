@@ -14,6 +14,7 @@ import (
 	ros "github.com/jmrplens/cs-routeros-bouncer/internal/routeros"
 )
 
+// errMock is a reusable sentinel returned by manager test doubles.
 var errMock = errors.New("mock error")
 
 // TestBuildRuleComment verifies that buildRuleComment produces the expected

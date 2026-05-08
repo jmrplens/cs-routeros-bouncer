@@ -11,20 +11,26 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
+// MockBouncerInner is a testify mock for the concrete StreamBouncer methods
+// wrapped by bouncerAdapter.
 type MockBouncerInner struct {
 	mock.Mock
 }
 
+// Init records and returns the configured mock Init result.
 func (m *MockBouncerInner) Init() error {
 	args := m.Called()
 	return args.Error(0)
 }
 
+// Run records the context passed through bouncerAdapter.Run.
 func (m *MockBouncerInner) Run(ctx context.Context) error {
 	args := m.Called(ctx)
 	return args.Error(0)
 }
 
+// TestBouncerAdapterDelegatesAndReadsPointers verifies method delegation and
+// dynamic reads of the StreamBouncer stream/client fields.
 func TestBouncerAdapterDelegatesAndReadsPointers(t *testing.T) {
 	stream := make(chan *models.DecisionsStreamResponse)
 	defer close(stream)
@@ -47,6 +53,7 @@ func TestBouncerAdapterDelegatesAndReadsPointers(t *testing.T) {
 	inner.AssertExpectations(t)
 }
 
+// TestBouncerAdapterPropagatesErrors verifies Init and Run errors are returned unchanged.
 func TestBouncerAdapterPropagatesErrors(t *testing.T) {
 	stream := make(chan *models.DecisionsStreamResponse)
 	defer close(stream)

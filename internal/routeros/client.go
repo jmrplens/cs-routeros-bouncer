@@ -140,6 +140,7 @@ func isDeviceError(err error) bool {
 	return errors.As(err, &de)
 }
 
+// isNoSuchItemError reports whether RouterOS returned its missing-item trap text.
 func isNoSuchItemError(err error) bool {
 	if err == nil {
 		return false

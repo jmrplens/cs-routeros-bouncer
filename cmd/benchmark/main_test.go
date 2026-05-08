@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// TestConfigPath verifies benchmark config path selection from argv.
 func TestConfigPath(t *testing.T) {
 	tests := []struct {
 		name string
@@ -34,6 +35,7 @@ func TestConfigPath(t *testing.T) {
 	}
 }
 
+// TestLoadConfig verifies the benchmark config loader reads YAML fields.
 func TestLoadConfig(t *testing.T) {
 	viper.Reset()
 	t.Cleanup(viper.Reset)
@@ -63,6 +65,7 @@ firewall:
 	}
 }
 
+// TestLoadConfigErrors verifies the benchmark loader returns read/parse errors.
 func TestLoadConfigErrors(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -91,6 +94,7 @@ func TestLoadConfigErrors(t *testing.T) {
 	}
 }
 
+// TestBenchReportsStatus verifies success and error labels in benchmark output.
 func TestBenchReportsStatus(t *testing.T) {
 	output := captureBenchmarkStdout(t, func() {
 		bench("success", func() error { return nil })
@@ -103,6 +107,7 @@ func TestBenchReportsStatus(t *testing.T) {
 	assert.Contains(t, output, "ERR: boom")
 }
 
+// captureBenchmarkStdout captures benchmark output emitted while fn runs.
 func captureBenchmarkStdout(t *testing.T, fn func()) string {
 	t.Helper()
 	oldStdout := os.Stdout

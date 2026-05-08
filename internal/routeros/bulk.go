@@ -12,6 +12,7 @@ import (
 // bulkScriptName is the temporary script used for bulk operations.
 const bulkScriptName = "crowdsec-bulk-import"
 
+// systemScriptPath is the RouterOS menu used to create and execute temporary scripts.
 const systemScriptPath = "/system/script"
 
 // bulkChunkSize limits addresses per script to keep within RouterOS API message size limits.
@@ -52,6 +53,7 @@ func (c *Client) BulkAddAddresses(proto, list string, entries []BulkEntry) (adde
 	return total, err
 }
 
+// bulkAddFallback retries a failed script chunk using individual AddAddress calls.
 func (c *Client) bulkAddFallback(proto, list string, chunk []BulkEntry) (int, error) {
 	added := 0
 	var fallbackErrs []error

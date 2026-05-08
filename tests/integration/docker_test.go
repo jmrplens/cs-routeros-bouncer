@@ -8,6 +8,7 @@ import (
 	"testing"
 )
 
+// dockerAvailable skips the caller unless the Docker CLI and daemon are reachable.
 func dockerAvailable(t *testing.T) {
 	t.Helper()
 	if _, err := exec.LookPath("docker"); err != nil {
@@ -19,6 +20,7 @@ func dockerAvailable(t *testing.T) {
 	}
 }
 
+// TestDockerBuild verifies the production Dockerfile builds an executable image.
 func TestDockerBuild(t *testing.T) {
 	dockerAvailable(t)
 
@@ -34,6 +36,7 @@ func TestDockerBuild(t *testing.T) {
 	t.Log("docker build succeeded")
 }
 
+// TestDockerVersion verifies the integration image can print the bouncer version.
 func TestDockerVersion(t *testing.T) {
 	dockerAvailable(t)
 
@@ -53,6 +56,7 @@ func TestDockerVersion(t *testing.T) {
 	t.Logf("version output: %s", output)
 }
 
+// TestDockerInvalidConfig verifies container startup fails for a missing config file.
 func TestDockerInvalidConfig(t *testing.T) {
 	dockerAvailable(t)
 

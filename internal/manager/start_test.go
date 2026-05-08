@@ -239,6 +239,7 @@ func setTestRetryTimings(t *testing.T, interval, timeout time.Duration) {
 	})
 }
 
+// setTestInitialCollectionTimings temporarily shortens startup drain timers.
 func setTestInitialCollectionTimings(t *testing.T, firstIdle, nextIdle time.Duration) {
 	t.Helper()
 	origFirstIdle := initialDecisionCollectionTimeout
@@ -251,6 +252,7 @@ func setTestInitialCollectionTimings(t *testing.T, firstIdle, nextIdle time.Dura
 	})
 }
 
+// waitForManagerResult waits for a manager goroutine to finish during tests.
 func waitForManagerResult(t *testing.T, errCh <-chan error) error {
 	t.Helper()
 	select {
@@ -262,6 +264,7 @@ func waitForManagerResult(t *testing.T, errCh <-chan error) error {
 	}
 }
 
+// waitForManagerCondition polls a manager-related condition until true or timed out.
 func waitForManagerCondition(t *testing.T, name string, condition func() bool) {
 	t.Helper()
 	deadline := time.After(2 * time.Second)
@@ -1768,6 +1771,7 @@ func TestHandleUnban_IPv6Disabled(t *testing.T) {
 	}
 }
 
+// TestHandleUnban_NotFoundErrorClearsCache verifies expired cache entries are forgotten.
 func TestHandleUnban_NotFoundErrorClearsCache(t *testing.T) {
 	mock := &mockROS{findAddressErr: fmt.Errorf("wrapped: %w", ros.ErrNotFound)}
 	cfg := baseConfig()
@@ -1790,6 +1794,7 @@ func TestHandleUnban_NotFoundErrorClearsCache(t *testing.T) {
 	}
 }
 
+// TestCollectLAPIFirewallCounters verifies RouterOS counters populate LAPI deltas.
 func TestCollectLAPIFirewallCounters(t *testing.T) {
 	resetLAPICounterDeltas()
 	t.Cleanup(resetLAPICounterDeltas)
@@ -1827,6 +1832,7 @@ func TestCollectLAPIFirewallCounters(t *testing.T) {
 	}
 }
 
+// TestCollectLAPIFirewallCountersError verifies failed counter reads leave deltas unchanged.
 func TestCollectLAPIFirewallCountersError(t *testing.T) {
 	resetLAPICounterDeltas()
 	t.Cleanup(resetLAPICounterDeltas)
@@ -1859,6 +1865,7 @@ func TestStartLAPIMetricsEnabledWithCanceledContext(t *testing.T) {
 	mgr.startLAPIMetrics(ctx)
 }
 
+// resetLAPICounterDeltas clears process-global LAPI metric delta state between tests.
 func resetLAPICounterDeltas() {
 	metrics.SetDroppedCounters(0, 0)
 	_, _ = metrics.GetAndResetDroppedDeltas()
@@ -1868,6 +1875,7 @@ func resetLAPICounterDeltas() {
 	_, _, _, _ = metrics.GetAndResetProcessedDeltas()
 }
 
+// TestReconciliationChannelEnabled verifies positive intervals create a ticker channel.
 func TestReconciliationChannelEnabled(t *testing.T) {
 	mgr := newTestManager(&mockROS{}, baseConfig())
 	mgr.cfg.CrowdSec.ReconciliationInterval = time.Millisecond
@@ -1884,6 +1892,7 @@ func TestReconciliationChannelEnabled(t *testing.T) {
 	}
 }
 
+// TestReconciliationChannelDisabled verifies zero intervals disable periodic reconciliation.
 func TestReconciliationChannelDisabled(t *testing.T) {
 	mgr := newTestManager(&mockROS{}, baseConfig())
 	mgr.cfg.CrowdSec.ReconciliationInterval = 0
@@ -1895,6 +1904,7 @@ func TestReconciliationChannelDisabled(t *testing.T) {
 	}
 }
 
+// TestProcessLiveDecisionsReturnsStreamError verifies stream errors stop live processing.
 func TestProcessLiveDecisionsReturnsStreamError(t *testing.T) {
 	mgr := newTestManager(&mockROS{}, baseConfig())
 	banCh := make(chan *crowdsec.Decision)
@@ -1908,6 +1918,7 @@ func TestProcessLiveDecisionsReturnsStreamError(t *testing.T) {
 	}
 }
 
+// TestProcessLiveDecisionsRunsPeriodicReconciliation verifies ticker events fetch snapshots.
 func TestProcessLiveDecisionsRunsPeriodicReconciliation(t *testing.T) {
 	mock := &mockROS{}
 	cfg := baseConfig()
@@ -1937,6 +1948,7 @@ func TestProcessLiveDecisionsRunsPeriodicReconciliation(t *testing.T) {
 	}
 }
 
+// TestOutputRuleTopPlacement verifies output-blocking rules honor top placement.
 func TestOutputRuleTopPlacement(t *testing.T) {
 	cfg := baseConfig()
 	cfg.Firewall.RulePlacement = "top"

@@ -42,12 +42,14 @@ func loadTestConfig(t *testing.T) config.MikroTikConfig {
 	return cfg.MikroTik
 }
 
+// integrationFirewallRule tracks RouterOS firewall rules created during a live test.
 type integrationFirewallRule struct {
 	table string
 	proto string
 	id    string
 }
 
+// TestRouterOSIntegration exercises live address-list and firewall operations.
 func TestRouterOSIntegration(t *testing.T) {
 	mikrotikCfg := loadTestConfig(t)
 	client := createRouterSession(t, mikrotikCfg)
@@ -94,6 +96,7 @@ func TestRouterOSIntegration(t *testing.T) {
 	})
 }
 
+// createRouterSession opens a RouterOS client and registers cleanup for it.
 func createRouterSession(t testing.TB, cfg config.MikroTikConfig) *routeros.Client {
 	t.Helper()
 	client := routeros.NewClient(cfg)
@@ -104,6 +107,7 @@ func createRouterSession(t testing.TB, cfg config.MikroTikConfig) *routeros.Clie
 	return client
 }
 
+// setupFirewallRules creates filter/raw IPv4 and IPv6 rules for the integration list.
 func setupFirewallRules(t testing.TB, client *routeros.Client, listName, comment string) []integrationFirewallRule {
 	t.Helper()
 	rules := make([]integrationFirewallRule, 0, 4)
@@ -122,6 +126,7 @@ func setupFirewallRules(t testing.TB, client *routeros.Client, listName, comment
 	return rules
 }
 
+// cleanupFirewallRules removes the rules created by setupFirewallRules.
 func cleanupFirewallRules(t testing.TB, client *routeros.Client, rules []integrationFirewallRule) {
 	t.Helper()
 	for _, rule := range rules {
@@ -133,6 +138,7 @@ func cleanupFirewallRules(t testing.TB, client *routeros.Client, rules []integra
 	}
 }
 
+// addIntegrationAddresses adds test addresses and returns their RouterOS IDs.
 func addIntegrationAddresses(t testing.TB, client *routeros.Client, proto, listName, comment string, addrs []string) []string {
 	t.Helper()
 	ids := make([]string, 0, len(addrs))
@@ -148,6 +154,7 @@ func addIntegrationAddresses(t testing.TB, client *routeros.Client, proto, listN
 	return ids
 }
 
+// removeIntegrationAddresses removes RouterOS address-list entries by ID.
 func removeIntegrationAddresses(t testing.TB, client *routeros.Client, proto string, ids []string) {
 	t.Helper()
 	for _, id := range ids {
@@ -159,6 +166,7 @@ func removeIntegrationAddresses(t testing.TB, client *routeros.Client, proto str
 	}
 }
 
+// verifyAddressCount checks that the integration list contains the expected entries.
 func verifyAddressCount(t testing.TB, client *routeros.Client, proto, listName, comment string, want int) {
 	t.Helper()
 	start := time.Now()
@@ -172,6 +180,7 @@ func verifyAddressCount(t testing.TB, client *routeros.Client, proto, listName, 
 	}
 }
 
+// verifyFirewallRulesRemoved ensures the integration firewall rules are no longer present.
 func verifyFirewallRulesRemoved(t testing.TB, client *routeros.Client, rules []integrationFirewallRule, comment string) {
 	t.Helper()
 	for _, rule := range rules {

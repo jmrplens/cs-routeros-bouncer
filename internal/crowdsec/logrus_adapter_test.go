@@ -438,6 +438,7 @@ func TestLogrusAdapterPanicln(t *testing.T) {
 	adapter.Panicln("panicln msg")
 }
 
+// TestLogrusToZerologLevel verifies every logrus level maps to the expected zerolog level.
 func TestLogrusToZerologLevel(t *testing.T) {
 	tests := []struct {
 		name  string

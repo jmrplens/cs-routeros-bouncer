@@ -40,9 +40,16 @@ type bouncerAdapter struct {
 	apiClientPtr **apiclient.ApiClient
 }
 
-func (a *bouncerAdapter) Init() error                   { return a.inner.Init() }
+// Init delegates initialization to the wrapped StreamBouncer.
+func (a *bouncerAdapter) Init() error { return a.inner.Init() }
+
+// Run delegates the blocking bouncer loop to the wrapped StreamBouncer.
 func (a *bouncerAdapter) Run(ctx context.Context) error { return a.inner.Run(ctx) }
+
+// DecisionStream returns the current StreamBouncer decision channel.
 func (a *bouncerAdapter) DecisionStream() <-chan *models.DecisionsStreamResponse {
 	return *a.streamPtr
 }
+
+// Client returns the current StreamBouncer API client pointer.
 func (a *bouncerAdapter) Client() *apiclient.ApiClient { return *a.apiClientPtr }
