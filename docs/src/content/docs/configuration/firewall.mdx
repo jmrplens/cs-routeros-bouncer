@@ -97,7 +97,7 @@ Where to place new firewall rule blocks. Placement is evaluated per RouterOS fir
 | ---------------- | -------------------------------------------------------- | ------------------ | --------------------------------------------------------------- | -------------------------------------------------------- |
 | `top`            | None                                                     | No                 | Yes, tries lower positions if RouterOS refuses the first target | Highest priority while tolerating dynamic/built-in rules |
 | `bottom`         | None                                                     | No                 | No                                                              | Append after existing rules                              |
-| `position`       | `position`                                               | Not applicable     | Yes, retries lower positions when the target cannot be used     | Place at a RouterOS `print` position                     |
+| `position`       | Required `position`                                      | Not applicable     | Yes, retries lower positions when the target cannot be used     | Place at a RouterOS `print` position                     |
 | `before_comment` | `comment`, optional `comment_match`, optional `fallback` | Yes, default `top` | Fallback only                                                   | Place before a known user rule                           |
 | `after_comment`  | `comment`, optional `comment_match`, optional `fallback` | Yes, default `top` | Fallback only                                                   | Place after a known user rule                            |
 
@@ -119,14 +119,14 @@ Structured placement accepts these fields:
 | Field           | Default | Applies to                        | Description                                                                                                                                                          |
 | --------------- | ------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `strategy`      | `top`   | All modes                         | One of `top`, `bottom`, `position`, `before_comment`, or `after_comment`                                                                                             |
-| `position`      |         | `position`                        | Zero-based RouterOS `print` position. Negative values are invalid.                                                                                                   |
+| `position`      |         | `position`                        | Required zero-based RouterOS `print` position. Negative values are invalid.                                                                                          |
 | `comment`       |         | `before_comment`, `after_comment` | RouterOS rule comment used as the anchor. Required for comment strategies.                                                                                           |
 | `comment_match` | `exact` | `before_comment`, `after_comment` | `exact` uses a case-sensitive full-string match. `contains` uses a case-sensitive literal substring match. This is not a regex.                                      |
 | `fallback`      | `top`   | `before_comment`, `after_comment` | `top` or `bottom` when the anchor is missing or cannot be used. Ignored for `position`.                                                                              |
 | `filter`        |         | Structured config only            | Override the global placement for `/ip firewall filter` and `/ipv6 firewall filter`, including optional output-blocking rules configured via `block_output.enabled`. |
 | `raw`           |         | Structured config only            | Override the global placement for `/ip firewall raw` and `/ipv6 firewall raw`.                                                                                       |
 
-The same structured object can be used under `firewall.ipv4.rule_placement` and `firewall.ipv6.rule_placement` for YAML-only protocol overrides. These overrides inherit unspecified fields from the global placement.
+The same structured object can be used under `firewall.ipv4.rule_placement` and `firewall.ipv6.rule_placement` for YAML-only protocol overrides. These overrides inherit unspecified fields from the global placement and can contain protocol-local `filter` and `raw` overrides.
 
 Place filter rules after an existing user rule while keeping raw rules at the top:
 
@@ -152,7 +152,7 @@ firewall:
     position: 2
 ```
 
-`position` uses zero-based RouterOS `print` numbering. If the configured position is greater than the number of existing non-bouncer rules, the block is appended at the bottom. `fallback` is ignored for `strategy: "position"`.
+`position` is required for `strategy: "position"` and uses zero-based RouterOS `print` numbering. If the configured position is greater than the number of existing non-bouncer rules, the block is appended at the bottom. `fallback` is ignored for `strategy: "position"`.
 
 For example, if RouterOS shows existing non-bouncer rules at positions `0`, `1`, `2`, and `3`, then `position: 2` inserts the managed block before the rule currently shown as `2`. The bouncer excludes its own `@cs-routeros-bouncer` rules before calculating the target position, so restarts are stable.
 
@@ -186,9 +186,12 @@ firewall:
       filter:
         strategy: "after_comment"
         comment: "IPv6 filter anchor"
+      raw:
+        strategy: "position"
+        position: 4
 ```
 
-In this example, IPv4 rules are placed before the IPv4 anchor. IPv6 raw rules are appended at the bottom, while IPv6 filter rules are placed after `IPv6 filter anchor`.
+In this example, IPv4 rules are placed before the IPv4 anchor. IPv6 rules inherit `bottom`, IPv6 filter rules are placed after `IPv6 filter anchor`, and IPv6 raw rules use zero-based position `4`.
 
 Additional environment variables for structured global placement:
 
@@ -196,7 +199,7 @@ Additional environment variables for structured global placement:
 - `FIREWALL_RULE_PLACEMENT_STRATEGY` - object-form global strategy; takes precedence over `FIREWALL_RULE_PLACEMENT` when both are set
 - `FIREWALL_RULE_PLACEMENT_COMMENT` - anchor comment for comment strategies
 - `FIREWALL_RULE_PLACEMENT_COMMENT_MATCH` - `exact` or `contains`
-- `FIREWALL_RULE_PLACEMENT_POSITION` - zero-based numeric position for `position`
+- `FIREWALL_RULE_PLACEMENT_POSITION` - required zero-based numeric position for `position`
 - `FIREWALL_RULE_PLACEMENT_FALLBACK` - `top` or `bottom` for comment strategies
 
 ```bash

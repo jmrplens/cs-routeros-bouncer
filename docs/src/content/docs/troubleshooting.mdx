@@ -149,7 +149,7 @@ Rules may be placed after existing rules.
 
 <Steps>
 
-1. **Verify** `rule_placement` in configuration. Use `"top"` for highest priority or `"bottom"` to append. Use structured placement (`position`, `before_comment`, `after_comment`) when existing router rules must stay first.
+1. **Verify** `rule_placement` in configuration. Use `"top"` for highest priority or `"bottom"` to append. Use structured placement (`position`, `before_comment`, `after_comment`) when existing router rules must stay first. Check both the global setting and any `firewall.ipv4.rule_placement` or `firewall.ipv6.rule_placement` override.
 
 2. **Check for dynamic rules** at position 0. The bouncer's retry logic only applies to `top` and `position`. It tries lower positions when RouterOS refuses a dynamic or built-in target.
 
@@ -162,7 +162,7 @@ Rules may be placed after existing rules.
    /ip/firewall/raw print
    ```
 
-5. **Check bouncer logs** with `journalctl -u cs-routeros-bouncer -f | grep -i placement`. Missing comment anchors use `fallback` (`top` by default, or `bottom`). Out-of-range numeric positions are appended at the bottom.
+5. **Check bouncer logs** with `journalctl -u cs-routeros-bouncer -f | grep -i placement`. Missing comment anchors use `fallback` (`top` by default, or `bottom`). Numeric placement requires `position`; out-of-range numeric positions are appended at the bottom.
 
 </Steps>
 

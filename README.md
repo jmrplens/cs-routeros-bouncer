@@ -266,7 +266,7 @@ Fine-tuning options for decision filtering, TLS, performance, firewall customiza
 <details>
 <summary><b>Firewall — rules, interfaces & logging</b></summary>
 
-`firewall.rule_placement` accepts either a simple string such as `"top"` or `"bottom"`, or an object with `strategy` and related fields. Object form also supports table-specific `filter` and `raw` overrides. IPv4 and IPv6 can define YAML-only `rule_placement` overrides under `firewall.ipv4` and `firewall.ipv6`; unspecified fields inherit from the global placement.
+`firewall.rule_placement` accepts either a simple string such as `"top"` or `"bottom"`, or an object with `strategy` and related fields. Object form also supports table-specific `filter` and `raw` overrides. IPv4 and IPv6 can define YAML-only `rule_placement` overrides under `firewall.ipv4` and `firewall.ipv6`; those protocol overrides can also contain their own `filter` and `raw` entries. Unspecified fields inherit from the global placement.
 
 | Config Key                                  | Env Variable                                | Default            | Description                                                                                                                                                                                                                               |
 | ------------------------------------------- | ------------------------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -278,12 +278,16 @@ Fine-tuning options for decision filtering, TLS, performance, firewall customiza
 | `firewall.rule_placement.strategy`          | `FIREWALL_RULE_PLACEMENT_STRATEGY`          | `top`              | Object-form global strategy: `top`, `bottom`, `position`, `before_comment`, or `after_comment`                                                                                                                                            |
 | `firewall.rule_placement.comment`           | `FIREWALL_RULE_PLACEMENT_COMMENT`           |                    | Anchor comment for comment-based placement                                                                                                                                                                                                |
 | `firewall.rule_placement.comment_match`     | `FIREWALL_RULE_PLACEMENT_COMMENT_MATCH`     | `exact`            | Comment match mode: `exact` or `contains`                                                                                                                                                                                                 |
-| `firewall.rule_placement.position`          | `FIREWALL_RULE_PLACEMENT_POSITION`          |                    | Zero-based RouterOS position for `position` strategy                                                                                                                                                                                      |
+| `firewall.rule_placement.position`          | `FIREWALL_RULE_PLACEMENT_POSITION`          |                    | Required zero-based RouterOS position when strategy is `position`                                                                                                                                                                         |
 | `firewall.rule_placement.fallback`          | `FIREWALL_RULE_PLACEMENT_FALLBACK`          | `top`              | Fallback for comment strategies: `top` or `bottom`                                                                                                                                                                                        |
 | `firewall.rule_placement.filter`            | YAML only                                   |                    | Filter-table override; inherits unspecified fields from global placement                                                                                                                                                                  |
 | `firewall.rule_placement.raw`               | YAML only                                   |                    | Raw-table override; inherits unspecified fields from global placement                                                                                                                                                                     |
 | `firewall.ipv4.rule_placement`              | YAML only                                   |                    | IPv4-only placement override; inherits unspecified fields from global placement                                                                                                                                                           |
+| `firewall.ipv4.rule_placement.filter`       | YAML only                                   |                    | IPv4 filter-table override; inherits from global and IPv4 placement                                                                                                                                                                       |
+| `firewall.ipv4.rule_placement.raw`          | YAML only                                   |                    | IPv4 raw-table override; inherits from global and IPv4 placement                                                                                                                                                                          |
 | `firewall.ipv6.rule_placement`              | YAML only                                   |                    | IPv6-only placement override; inherits unspecified fields from global placement                                                                                                                                                           |
+| `firewall.ipv6.rule_placement.filter`       | YAML only                                   |                    | IPv6 filter-table override; inherits from global and IPv6 placement                                                                                                                                                                       |
+| `firewall.ipv6.rule_placement.raw`          | YAML only                                   |                    | IPv6 raw-table override; inherits from global and IPv6 placement                                                                                                                                                                          |
 | `firewall.comment_prefix`                   | `FIREWALL_COMMENT_PREFIX`                   | `crowdsec-bouncer` | Comment prefix for managed resources                                                                                                                                                                                                      |
 | `firewall.log`                              | `FIREWALL_LOG`                              | `false`            | Enable RouterOS logging on firewall rules                                                                                                                                                                                                 |
 | `firewall.log_prefix`                       | `FIREWALL_LOG_PREFIX`                       | `crowdsec-bouncer` | Global prefix for RouterOS log entries                                                                                                                                                                                                    |
@@ -441,7 +445,7 @@ You can also place the managed rule block after or before an existing rule comme
 | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `top`            | Move before the first usable non-bouncer rule; if RouterOS refuses the position, the bouncer retries lower positions                                           |
 | `bottom`         | Append at the end of the RouterOS firewall menu                                                                                                                |
-| `position`       | Insert at a zero-based RouterOS `print` position, before the rule currently shown at that index; out-of-range positions append at bottom and ignore `fallback` |
+| `position`       | Insert at the required zero-based RouterOS `print` position, before the rule currently shown at that index; out-of-range positions append at bottom and ignore `fallback` |
 | `before_comment` | Insert before the first matching non-bouncer rule comment                                                                                                      |
 | `after_comment`  | Insert after the first matching non-bouncer rule comment                                                                                                       |
 
@@ -456,9 +460,9 @@ firewall:
       strategy: "top"
 ```
 
-For numeric placement, positions follow RouterOS `print` numbering. Out-of-range positions, such as `position: 15` when only 10 existing non-bouncer rules are present, append directly at the bottom without fallback or retry. The bouncer retries lower positions only when RouterOS rejects the move before an existing dynamic/built-in rule.
+For numeric placement, `position` is required and follows RouterOS `print` numbering. Out-of-range positions, such as `position: 15` when only 10 existing non-bouncer rules are present, append directly at the bottom without fallback or retry. The bouncer retries lower positions only when RouterOS rejects the move before an existing dynamic/built-in rule.
 
-Comment placement uses `comment_match: "exact"` by default. Use `contains` for a case-sensitive literal substring match. Missing anchors use `fallback` (`top` by default, or `bottom`). Table-specific `filter` and `raw` overrides inherit unspecified fields from the global placement. Protocol-specific `firewall.ipv4.rule_placement` and `firewall.ipv6.rule_placement` overrides can refine the global settings for one address family.
+Comment placement uses `comment_match: "exact"` by default. Use `contains` for a case-sensitive literal substring match. Missing anchors use `fallback` (`top` by default, or `bottom`). Table-specific `filter` and `raw` overrides inherit unspecified fields from the global placement. Protocol-specific `firewall.ipv4.rule_placement` and `firewall.ipv6.rule_placement` overrides can refine the global settings for one address family, including protocol-local `filter` and `raw` overrides.
 
 Placement precedence is: global placement, global `filter`/`raw` override, protocol override, then protocol `filter`/`raw` override.
 
@@ -477,6 +481,9 @@ firewall:
       filter:
         strategy: "after_comment"
         comment: "IPv6 filter anchor"
+      raw:
+        strategy: "position"
+        position: 4
 ```
 
 ### Performance
@@ -651,7 +658,7 @@ The dashboard provides real-time visibility into the bouncer's operation:
   - systemd: `journalctl -u cs-routeros-bouncer -f | grep -i placement`
   - Docker: `docker logs cs-routeros-bouncer | grep -i placement`
   - Standalone: check the file configured by `logging.file`, or stdout if no log file is configured
-- Ensure `firewall.rule_placement: "top"` is set, or use structured placement with `strategy: "position"`, `before_comment`, or `after_comment`
+- Ensure `firewall.rule_placement: "top"` is set, or use structured placement with `strategy: "position"`, `before_comment`, or `after_comment`. Also check any YAML-only `firewall.ipv4.rule_placement` or `firewall.ipv6.rule_placement` override.
 
 </details>
 

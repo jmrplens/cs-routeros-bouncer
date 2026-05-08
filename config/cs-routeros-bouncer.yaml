@@ -65,16 +65,19 @@ firewall:
     # Name of the IPv4 address list in MikroTik
     address_list: "crowdsec-banned"
     # Optional IPv4-only placement override. Inherits unspecified fields from
-    # firewall.rule_placement.
+    # firewall.rule_placement. You can also add IPv4-only filter/raw overrides.
     # rule_placement:
     #   strategy: "before_comment"
     #   comment: "IPv4 production anchor"
+    #   raw:
+    #     strategy: "position"
+    #     position: 4
   ipv6:
     enabled: true
     # Name of the IPv6 address list in MikroTik
     address_list: "crowdsec6-banned"
     # Optional IPv6-only placement override. Inherits unspecified fields from
-    # firewall.rule_placement.
+    # firewall.rule_placement. You can also add IPv6-only filter/raw overrides.
     # rule_placement: "bottom"
   filter:
     # Create filter firewall rules
@@ -151,7 +154,7 @@ firewall:
   #   fallback: "top" # only for comment strategies
   #   # For numeric placement:
   #   # strategy: "position"
-  #   # position: 2 # zero-based RouterOS print position; out-of-range appends
+  #   # position: 2 # required for position; zero-based RouterOS print position; out-of-range appends
   #   filter:
   #     strategy: "after_comment"
   #     comment: "drop invalid"

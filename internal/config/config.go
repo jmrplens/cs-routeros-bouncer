@@ -91,6 +91,11 @@ const (
 
 	RulePlacementMatchExact    = "exact"
 	RulePlacementMatchContains = "contains"
+
+	rulePlacementConfigPath   = "firewall.rule_placement"
+	rulePlacementFilterSuffix = ".filter"
+	rulePlacementPositionPath = rulePlacementConfigPath + ".position"
+	rulePlacementRawSuffix    = ".raw"
 )
 
 // RulePlacementConfig controls where bouncer-managed RouterOS firewall rules
@@ -109,7 +114,7 @@ type RulePlacementConfig struct {
 // UnmarshalMapstructure lets Viper decode rule_placement from either a legacy
 // scalar string or a structured map.
 func (p *RulePlacementConfig) UnmarshalMapstructure(input any) error {
-	parsed, err := parseRulePlacementConfigAt("firewall.rule_placement", input, false)
+	parsed, err := parseRulePlacementConfigAt(rulePlacementConfigPath, input, false)
 	if err != nil {
 		return err
 	}
@@ -291,7 +296,7 @@ func defaultStructuredRulePlacement() RulePlacementConfig {
 }
 
 func parseRulePlacementConfig(input any) (RulePlacementConfig, error) {
-	return parseRulePlacementConfigAt("firewall.rule_placement", input, true)
+	return parseRulePlacementConfigAt(rulePlacementConfigPath, input, true)
 }
 
 func parseRulePlacementConfigAt(path string, input any, withDefaults bool) (RulePlacementConfig, error) {
@@ -346,13 +351,13 @@ func rulePlacementFromMap(path string, values map[string]any, withDefaults bool)
 			}
 			placement.Position = &position
 		case "filter":
-			parsed, err := parseRulePlacementConfigAt(path+".filter", value, false)
+			parsed, err := parseRulePlacementConfigAt(path+rulePlacementFilterSuffix, value, false)
 			if err != nil {
 				return RulePlacementConfig{}, err
 			}
 			placement.Filter = &parsed
 		case "raw":
-			parsed, err := parseRulePlacementConfigAt(path+".raw", value, false)
+			parsed, err := parseRulePlacementConfigAt(path+rulePlacementRawSuffix, value, false)
 			if err != nil {
 				return RulePlacementConfig{}, err
 			}
@@ -372,19 +377,19 @@ func rulePlacementPosition(value any) (int, error) {
 		return int(typed), nil
 	case float64:
 		if typed != math.Trunc(typed) {
-			return 0, fmt.Errorf("firewall.rule_placement.position must be an integer, got %v", typed)
+			return 0, fmt.Errorf("%s must be an integer, got %v", rulePlacementPositionPath, typed)
 		}
 		return int(typed), nil
 	case string:
 		position, err := strconv.Atoi(strings.TrimSpace(typed))
 		if err != nil {
-			return 0, fmt.Errorf("firewall.rule_placement.position must be an integer: %w", err)
+			return 0, fmt.Errorf("%s must be an integer: %w", rulePlacementPositionPath, err)
 		}
 		return position, nil
 	default:
 		position, err := strconv.Atoi(fmt.Sprint(value))
 		if err != nil {
-			return 0, fmt.Errorf("firewall.rule_placement.position must be an integer: %w", err)
+			return 0, fmt.Errorf("%s must be an integer: %w", rulePlacementPositionPath, err)
 		}
 		return position, nil
 	}
@@ -478,7 +483,7 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("firewall.deny_action", "drop")
 	v.SetDefault("firewall.reject_with", "")
 	v.SetDefault("firewall.block_output.enabled", false)
-	v.SetDefault("firewall.rule_placement", "top")
+	v.SetDefault(rulePlacementConfigPath, "top")
 	v.SetDefault("firewall.comment_prefix", "crowdsec-bouncer")
 	v.SetDefault("firewall.log", false)
 	v.SetDefault("firewall.log_prefix", "crowdsec-bouncer")
@@ -520,28 +525,28 @@ func Load(configPath string) (*Config, error) {
 		"mikrotik.command_timeout":    "MIKROTIK_CMD_TIMEOUT",
 		"mikrotik.pool_size":          "MIKROTIK_POOL_SIZE",
 		// Firewall
-		"firewall.ipv4.enabled":                 "FIREWALL_IPV4_ENABLED",
-		"firewall.ipv4.address_list":            "FIREWALL_IPV4_ADDRESS_LIST",
-		"firewall.ipv6.enabled":                 "FIREWALL_IPV6_ENABLED",
-		"firewall.ipv6.address_list":            "FIREWALL_IPV6_ADDRESS_LIST",
-		"firewall.filter.enabled":               "FIREWALL_FILTER_ENABLED",
-		"firewall.filter.chains":                "FIREWALL_FILTER_CHAINS",
-		"firewall.raw.enabled":                  "FIREWALL_RAW_ENABLED",
-		"firewall.raw.chains":                   "FIREWALL_RAW_CHAINS",
-		"firewall.deny_action":                  "FIREWALL_DENY_ACTION",
-		"firewall.reject_with":                  "FIREWALL_REJECT_WITH",
-		"firewall.rule_placement":               "FIREWALL_RULE_PLACEMENT",
-		"firewall.rule_placement.comment":       "FIREWALL_RULE_PLACEMENT_COMMENT",
-		"firewall.rule_placement.comment_match": "FIREWALL_RULE_PLACEMENT_COMMENT_MATCH",
-		"firewall.rule_placement.position":      "FIREWALL_RULE_PLACEMENT_POSITION",
-		"firewall.rule_placement.fallback":      "FIREWALL_RULE_PLACEMENT_FALLBACK",
-		"firewall.comment_prefix":               "FIREWALL_COMMENT_PREFIX",
-		"firewall.log":                          "FIREWALL_LOG",
-		"firewall.log_prefix":                   "FIREWALL_LOG_PREFIX",
-		"firewall.filter.log_prefix":            "FIREWALL_FILTER_LOG_PREFIX",
-		"firewall.filter.connection_state":      "FIREWALL_FILTER_CONNECTION_STATE",
-		"firewall.raw.log_prefix":               "FIREWALL_RAW_LOG_PREFIX",
-		"firewall.block_output.enabled":         "FIREWALL_BLOCK_OUTPUT",
+		"firewall.ipv4.enabled":                    "FIREWALL_IPV4_ENABLED",
+		"firewall.ipv4.address_list":               "FIREWALL_IPV4_ADDRESS_LIST",
+		"firewall.ipv6.enabled":                    "FIREWALL_IPV6_ENABLED",
+		"firewall.ipv6.address_list":               "FIREWALL_IPV6_ADDRESS_LIST",
+		"firewall.filter.enabled":                  "FIREWALL_FILTER_ENABLED",
+		"firewall.filter.chains":                   "FIREWALL_FILTER_CHAINS",
+		"firewall.raw.enabled":                     "FIREWALL_RAW_ENABLED",
+		"firewall.raw.chains":                      "FIREWALL_RAW_CHAINS",
+		"firewall.deny_action":                     "FIREWALL_DENY_ACTION",
+		"firewall.reject_with":                     "FIREWALL_REJECT_WITH",
+		rulePlacementConfigPath:                    "FIREWALL_RULE_PLACEMENT",
+		rulePlacementConfigPath + ".comment":       "FIREWALL_RULE_PLACEMENT_COMMENT",
+		rulePlacementConfigPath + ".comment_match": "FIREWALL_RULE_PLACEMENT_COMMENT_MATCH",
+		rulePlacementPositionPath:                  "FIREWALL_RULE_PLACEMENT_POSITION",
+		rulePlacementConfigPath + ".fallback":      "FIREWALL_RULE_PLACEMENT_FALLBACK",
+		"firewall.comment_prefix":                  "FIREWALL_COMMENT_PREFIX",
+		"firewall.log":                             "FIREWALL_LOG",
+		"firewall.log_prefix":                      "FIREWALL_LOG_PREFIX",
+		"firewall.filter.log_prefix":               "FIREWALL_FILTER_LOG_PREFIX",
+		"firewall.filter.connection_state":         "FIREWALL_FILTER_CONNECTION_STATE",
+		"firewall.raw.log_prefix":                  "FIREWALL_RAW_LOG_PREFIX",
+		"firewall.block_output.enabled":            "FIREWALL_BLOCK_OUTPUT",
 		// Logging
 		"logging.level":  "LOG_LEVEL",
 		"logging.format": "LOG_FORMAT",
@@ -557,7 +562,7 @@ func Load(configPath string) (*Config, error) {
 	for key, env := range envBindings {
 		_ = v.BindEnv(key, env)
 	}
-	bindEnvAliases(v, "firewall.rule_placement.strategy", "FIREWALL_RULE_PLACEMENT_STRATEGY")
+	bindEnvAliases(v, rulePlacementConfigPath+".strategy", "FIREWALL_RULE_PLACEMENT_STRATEGY")
 	bindEnvAliases(v, "firewall.block_input.interface", "FIREWALL_BLOCK_INPUT_INTERFACE", "FIREWALL_INPUT_INTERFACE")
 	bindEnvAliases(v, "firewall.block_input.interface_list", "FIREWALL_BLOCK_INPUT_INTERFACE_LIST", "FIREWALL_INPUT_INTERFACE_LIST")
 	bindEnvAliases(v, "firewall.block_input.whitelist", "FIREWALL_BLOCK_INPUT_WHITELIST", "FIREWALL_INPUT_WHITELIST")
@@ -809,18 +814,18 @@ func (c *Config) validateFirewall() error {
 
 func (c *Config) validateRulePlacement() error {
 	placement := c.Firewall.RulePlacement
-	if err := validateRulePlacementConfig("firewall.rule_placement", placement.withoutTableOverrides()); err != nil {
+	if err := validateRulePlacementConfig(rulePlacementConfigPath, placement.withoutTableOverrides()); err != nil {
 		return err
 	}
 	if placement.Filter != nil {
 		filterPlacement := placement.ForMode("filter")
-		if err := validateRulePlacementConfig("firewall.rule_placement.filter", filterPlacement.withoutTableOverrides()); err != nil {
+		if err := validateRulePlacementConfig(rulePlacementConfigPath+rulePlacementFilterSuffix, filterPlacement.withoutTableOverrides()); err != nil {
 			return err
 		}
 	}
 	if placement.Raw != nil {
 		rawPlacement := placement.ForMode("raw")
-		if err := validateRulePlacementConfig("firewall.rule_placement.raw", rawPlacement.withoutTableOverrides()); err != nil {
+		if err := validateRulePlacementConfig(rulePlacementConfigPath+rulePlacementRawSuffix, rawPlacement.withoutTableOverrides()); err != nil {
 			return err
 		}
 	}
@@ -843,13 +848,13 @@ func (c *Config) validateProtocolRulePlacement(path, proto string, placement *Ru
 	}
 	if placement.Filter != nil {
 		filterPlacement := c.Firewall.RulePlacementFor(proto, "filter")
-		if err := validateRulePlacementConfig(path+".filter", filterPlacement.withoutTableOverrides()); err != nil {
+		if err := validateRulePlacementConfig(path+rulePlacementFilterSuffix, filterPlacement.withoutTableOverrides()); err != nil {
 			return err
 		}
 	}
 	if placement.Raw != nil {
 		rawPlacement := c.Firewall.RulePlacementFor(proto, "raw")
-		if err := validateRulePlacementConfig(path+".raw", rawPlacement.withoutTableOverrides()); err != nil {
+		if err := validateRulePlacementConfig(path+rulePlacementRawSuffix, rawPlacement.withoutTableOverrides()); err != nil {
 			return err
 		}
 	}
@@ -857,47 +862,74 @@ func (c *Config) validateProtocolRulePlacement(path, proto string, placement *Ru
 }
 
 func validateRulePlacementConfig(path string, placement RulePlacementConfig) error {
-	strategy := placement.Strategy
-	if strategy == "" {
-		strategy = defaultStructuredRulePlacement().Strategy
-	}
-	validStrategies := map[string]bool{
-		RulePlacementTop:           true,
-		RulePlacementBottom:        true,
-		RulePlacementBeforeComment: true,
-		RulePlacementAfterComment:  true,
-		RulePlacementPosition:      true,
-	}
-	if !validStrategies[strategy] {
+	strategy := normalizedRulePlacementStrategy(placement.Strategy)
+	if !isValidRulePlacementStrategy(strategy) {
 		return fmt.Errorf("%s.strategy invalid value %q", path, placement.Strategy)
 	}
+	if err := validateRulePlacementCommentMatch(path, placement.CommentMatch); err != nil {
+		return err
+	}
+	if err := validateCommentRulePlacement(path, strategy, placement); err != nil {
+		return err
+	}
+	return validatePositionRulePlacement(path, strategy, placement.Position)
+}
 
-	commentMatch := placement.CommentMatch
+func normalizedRulePlacementStrategy(strategy string) string {
+	if strategy == "" {
+		return defaultStructuredRulePlacement().Strategy
+	}
+	return strategy
+}
+
+func isValidRulePlacementStrategy(strategy string) bool {
+	switch strategy {
+	case RulePlacementTop, RulePlacementBottom, RulePlacementBeforeComment, RulePlacementAfterComment, RulePlacementPosition:
+		return true
+	default:
+		return false
+	}
+}
+
+func validateRulePlacementCommentMatch(path, commentMatch string) error {
 	if commentMatch == "" {
 		commentMatch = RulePlacementMatchExact
 	}
 	if commentMatch != RulePlacementMatchExact && commentMatch != RulePlacementMatchContains {
-		return fmt.Errorf("%s.comment_match invalid value %q", path, placement.CommentMatch)
+		return fmt.Errorf("%s.comment_match invalid value %q", path, commentMatch)
 	}
+	return nil
+}
 
-	if strategy == RulePlacementBeforeComment || strategy == RulePlacementAfterComment {
-		if strings.TrimSpace(placement.Comment) == "" {
-			return fmt.Errorf("%s.comment is required when strategy=%q", path, strategy)
-		}
-		if err := validateRouterOSComment(placement.Comment); err != nil {
-			return fmt.Errorf("%s.comment invalid value %q: %w", path, placement.Comment, err)
-		}
-		fallback := placement.Fallback
-		if fallback == "" {
-			fallback = RulePlacementTop
-		}
-		if fallback != RulePlacementTop && fallback != RulePlacementBottom {
-			return fmt.Errorf("%s.fallback must be %q or %q, got %q", path, RulePlacementTop, RulePlacementBottom, placement.Fallback)
-		}
+func validateCommentRulePlacement(path, strategy string, placement RulePlacementConfig) error {
+	if strategy != RulePlacementBeforeComment && strategy != RulePlacementAfterComment {
+		return nil
 	}
+	if strings.TrimSpace(placement.Comment) == "" {
+		return fmt.Errorf("%s.comment is required when strategy=%q", path, strategy)
+	}
+	if err := validateRouterOSComment(placement.Comment); err != nil {
+		return fmt.Errorf("%s.comment invalid value %q: %w", path, placement.Comment, err)
+	}
+	return validateRulePlacementFallback(path, placement.Fallback)
+}
 
-	if placement.Position != nil && *placement.Position < 0 {
-		return fmt.Errorf("%s.position must be >= 0, got %d", path, *placement.Position)
+func validateRulePlacementFallback(path, fallback string) error {
+	if fallback == "" {
+		fallback = RulePlacementTop
+	}
+	if fallback != RulePlacementTop && fallback != RulePlacementBottom {
+		return fmt.Errorf("%s.fallback must be %q or %q, got %q", path, RulePlacementTop, RulePlacementBottom, fallback)
+	}
+	return nil
+}
+
+func validatePositionRulePlacement(path, strategy string, position *int) error {
+	if strategy == RulePlacementPosition && position == nil {
+		return fmt.Errorf("%s.position is required when strategy=%q", path, RulePlacementPosition)
+	}
+	if position != nil && *position < 0 {
+		return fmt.Errorf("%s.position must be >= 0, got %d", path, *position)
 	}
 	return nil
 }

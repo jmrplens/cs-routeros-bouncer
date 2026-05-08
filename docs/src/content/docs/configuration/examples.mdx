@@ -164,13 +164,32 @@ firewall:
     fallback: "bottom"
 ```
 
-The same global strategy can be configured with environment variables. Table-specific `filter` and `raw` overrides require YAML.
+The same global strategy can be configured with environment variables. Table-specific `filter` and `raw` overrides, plus IPv4/IPv6-specific placement, require YAML.
 
 ```bash
 FIREWALL_RULE_PLACEMENT="after_comment"
 FIREWALL_RULE_PLACEMENT_COMMENT="drop invalid"
 FIREWALL_RULE_PLACEMENT_COMMENT_MATCH="contains"
 FIREWALL_RULE_PLACEMENT_FALLBACK="top"
+```
+
+Split placement by address family when IPv4 and IPv6 rules need different locations. Protocol overrides inherit from the global placement first, then apply protocol-local `filter` or `raw` overrides.
+
+```yaml
+firewall:
+  rule_placement:
+    strategy: "top"
+  ipv4:
+    rule_placement:
+      strategy: "before_comment"
+      comment: "IPv4 production anchor"
+      fallback: "bottom"
+  ipv6:
+    rule_placement:
+      strategy: "bottom"
+      raw:
+        strategy: "position"
+        position: 4
 ```
 
   </TabItem>
