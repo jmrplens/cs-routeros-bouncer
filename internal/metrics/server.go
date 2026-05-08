@@ -26,8 +26,6 @@ type Server struct {
 	connected  atomic.Bool
 }
 
-var healthJSONMarshal = json.Marshal
-
 // NewServer creates a new metrics HTTP server.
 // When cfg.Enabled is true the /metrics endpoint is registered;
 // the /health endpoint is always available.
@@ -97,7 +95,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 		"routeros_connected": s.connected.Load(),
 		"version":            s.version,
 	}
-	payload, err := healthJSONMarshal(resp)
+	payload, err := json.Marshal(resp)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to encode health response")
 		http.Error(w, "failed to encode health response", http.StatusInternalServerError)

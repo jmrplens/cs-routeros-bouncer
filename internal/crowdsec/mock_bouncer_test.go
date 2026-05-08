@@ -28,6 +28,9 @@ type MockBouncer struct {
 	RunCtx context.Context
 	// RunReturnsImmediately makes Run return RunErr without waiting for ctx.
 	RunReturnsImmediately bool
+	// RunStarted is closed when Run starts, letting tests wait without polling.
+	RunStarted     chan struct{}
+	runStartedOnce sync.Once
 
 	// DecisionCh is the channel returned by DecisionStream().
 	// Tests send *models.DecisionsStreamResponse on it to feed Run().
@@ -41,6 +44,7 @@ type MockBouncer struct {
 func NewMockBouncer() *MockBouncer {
 	return &MockBouncer{
 		DecisionCh: make(chan *models.DecisionsStreamResponse, 10),
+		RunStarted: make(chan struct{}),
 	}
 }
 
@@ -60,13 +64,18 @@ func (m *MockBouncer) Run(ctx context.Context) error {
 	m.RunCalled = true
 	m.RunCtx = ctx
 	immediate := m.RunReturnsImmediately
+	runErr := m.RunErr
+	runStarted := m.RunStarted
 	m.mu.Unlock()
+	if runStarted != nil {
+		m.runStartedOnce.Do(func() { close(runStarted) })
+	}
 	if immediate {
-		return m.RunErr
+		return runErr
 	}
 	// Block until context is canceled (mimics real bouncer).
 	<-ctx.Done()
-	return m.RunErr
+	return runErr
 }
 
 // DecisionStream implements BouncerIface.DecisionStream and returns the mock's

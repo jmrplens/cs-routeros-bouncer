@@ -28,6 +28,7 @@ import (
 
 	"github.com/jmrplens/cs-routeros-bouncer/internal/config"
 	"github.com/jmrplens/cs-routeros-bouncer/internal/crowdsec"
+	"github.com/jmrplens/cs-routeros-bouncer/internal/metrics"
 	ros "github.com/jmrplens/cs-routeros-bouncer/internal/routeros"
 )
 
@@ -615,7 +616,7 @@ func TestStart_DeleteChDrainFiltersDuringCollect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("collectInitialDecisions: %v", err)
 	}
-	mgr.reconcileAddresses(mgr.filterInitialBans(initialBans, initialDeletes))
+	mgr.reconcileAddresses(context.Background(), mgr.filterInitialBans(initialBans, initialDeletes))
 
 	// The bulk add should have been called with only the surviving ban (10.0.0.100)
 	mock.mu.Lock()
@@ -1076,7 +1077,7 @@ func TestReconcileAddresses_BulkAddPartialError(t *testing.T) {
 	}
 
 	// This should not panic despite the error
-	mgr.reconcileAddresses(decisions)
+	mgr.reconcileAddresses(context.Background(), decisions)
 
 	// Cache should still be populated (all entries added optimistically)
 	mgr.cacheMu.RLock()
@@ -1103,7 +1104,7 @@ func TestReconcileAddresses_SequentialRemoveFallback(t *testing.T) {
 	mgr.pool = nil // Force sequential fallback
 
 	// No decisions = all existing addresses should be removed
-	mgr.reconcileAddresses(nil)
+	mgr.reconcileAddresses(context.Background(), nil)
 
 	mock.mu.Lock()
 	defer mock.mu.Unlock()
@@ -1129,7 +1130,7 @@ func TestReconcileAddresses_SequentialRemoveNoSuchItem(t *testing.T) {
 
 	mock.removeAddressErr = fmt.Errorf("router remove failed: %w", ros.ErrNotFound)
 
-	mgr.reconcileAddresses(nil)
+	mgr.reconcileAddresses(context.Background(), nil)
 
 	// Should complete without error (ErrNotFound is treated as success).
 	mock.mu.Lock()
@@ -1155,7 +1156,7 @@ func TestReconcileAddresses_SequentialRemoveRealError(t *testing.T) {
 	mgr.pool = nil
 
 	// Should not panic — errors are logged, not returned
-	mgr.reconcileAddresses(nil)
+	mgr.reconcileAddresses(context.Background(), nil)
 
 	mock.mu.Lock()
 	defer mock.mu.Unlock()
@@ -1176,7 +1177,7 @@ func TestReconcileAddresses_ListAddressesError(t *testing.T) {
 	mgr := newTestManager(mock, cfg)
 
 	// Should not panic — error is logged, then continue
-	mgr.reconcileAddresses([]*crowdsec.Decision{
+	mgr.reconcileAddresses(context.Background(), []*crowdsec.Decision{
 		{Proto: "ip", Value: "1.2.3.4", Origin: "test"},
 	})
 
@@ -1202,7 +1203,7 @@ func TestReconcileAddresses_EmptyDecisions(t *testing.T) {
 	mgr := newTestManager(mock, cfg)
 	mgr.pool = nil
 
-	mgr.reconcileAddresses(nil)
+	mgr.reconcileAddresses(context.Background(), nil)
 
 	mock.mu.Lock()
 	defer mock.mu.Unlock()
@@ -1628,7 +1629,7 @@ func TestReconcileAddresses_OriginTracking(t *testing.T) {
 		{Value: "2.2.2.2", Proto: "ip", Duration: time.Hour, Origin: "CAPI", Scenario: "http-scan"},
 	}
 
-	mgr.reconcileAddresses(decisions)
+	mgr.reconcileAddresses(context.Background(), decisions)
 
 	// Verify that bulk add was called with both entries.
 	if len(mock.bulkAddCalls) != 1 {
@@ -1655,7 +1656,7 @@ func TestReconcileAddresses_ExistingAddressesUnchanged(t *testing.T) {
 		{Value: "1.1.1.1", Proto: "ip", Duration: time.Hour, Origin: "crowdsec", Scenario: "ssh-bf"},
 	}
 
-	mgr.reconcileAddresses(decisions)
+	mgr.reconcileAddresses(context.Background(), decisions)
 
 	// No bulk add should occur — address already exists.
 	if len(mock.bulkAddCalls) != 0 {
@@ -1681,7 +1682,7 @@ func TestReconcileAddresses_RemoveStaleAddress(t *testing.T) {
 		{Value: "1.1.1.1", Proto: "ip", Duration: time.Hour, Origin: "crowdsec", Scenario: "ssh-bf"},
 	}
 
-	mgr.reconcileAddresses(decisions)
+	mgr.reconcileAddresses(context.Background(), decisions)
 
 	// 2.2.2.2 should be removed.
 	if len(mock.removeAddressCalls) != 1 {
@@ -1704,7 +1705,7 @@ func TestReconcileAddresses_ZeroDurationNoTimeout(t *testing.T) {
 		{Value: "1.1.1.1", Proto: "ip", Duration: 0, Origin: "manual", Scenario: "manual"},
 	}
 
-	mgr.reconcileAddresses(decisions)
+	mgr.reconcileAddresses(context.Background(), decisions)
 
 	if len(mock.bulkAddCalls) != 1 {
 		t.Fatalf("expected 1 BulkAddAddresses call, got %d", len(mock.bulkAddCalls))
@@ -1790,6 +1791,8 @@ func TestHandleUnban_NotFoundErrorClearsCache(t *testing.T) {
 }
 
 func TestCollectLAPIFirewallCounters(t *testing.T) {
+	resetLAPICounterDeltas()
+	t.Cleanup(resetLAPICounterDeltas)
 	mock := &mockROS{
 		getCountersResult: &ros.FirewallCounters{
 			DroppedBytes:       10,
@@ -1810,9 +1813,23 @@ func TestCollectLAPIFirewallCounters(t *testing.T) {
 	if mock.getCountersCalls != 1 {
 		t.Fatalf("expected one GetFirewallCounters call, got %d", mock.getCountersCalls)
 	}
+	droppedBytes, droppedPkts := metrics.GetAndResetDroppedDeltas()
+	if droppedBytes != 10 || droppedPkts != 1 {
+		t.Fatalf("dropped counters = (%d, %d), want (10, 1)", droppedBytes, droppedPkts)
+	}
+	droppedIPv4Bytes, droppedIPv4Pkts, droppedIPv6Bytes, droppedIPv6Pkts := metrics.GetAndResetDroppedDeltasByIPType()
+	if droppedIPv4Bytes != 6 || droppedIPv4Pkts != 1 || droppedIPv6Bytes != 4 || droppedIPv6Pkts != 0 {
+		t.Fatalf("dropped ip counters = (%d, %d, %d, %d), want (6, 1, 4, 0)", droppedIPv4Bytes, droppedIPv4Pkts, droppedIPv6Bytes, droppedIPv6Pkts)
+	}
+	processedIPv4Bytes, processedIPv4Pkts, processedIPv6Bytes, processedIPv6Pkts := metrics.GetAndResetProcessedDeltas()
+	if processedIPv4Bytes != 100 || processedIPv4Pkts != 2 || processedIPv6Bytes != 200 || processedIPv6Pkts != 3 {
+		t.Fatalf("processed counters = (%d, %d, %d, %d), want (100, 2, 200, 3)", processedIPv4Bytes, processedIPv4Pkts, processedIPv6Bytes, processedIPv6Pkts)
+	}
 }
 
 func TestCollectLAPIFirewallCountersError(t *testing.T) {
+	resetLAPICounterDeltas()
+	t.Cleanup(resetLAPICounterDeltas)
 	mock := &mockROS{getCountersErr: errors.New("counter read failed")}
 	mgr := newTestManager(mock, baseConfig())
 
@@ -1821,8 +1838,17 @@ func TestCollectLAPIFirewallCountersError(t *testing.T) {
 	if mock.getCountersCalls != 1 {
 		t.Fatalf("expected one GetFirewallCounters call, got %d", mock.getCountersCalls)
 	}
+	droppedBytes, droppedPkts := metrics.GetAndResetDroppedDeltas()
+	droppedIPv4Bytes, droppedIPv4Pkts, droppedIPv6Bytes, droppedIPv6Pkts := metrics.GetAndResetDroppedDeltasByIPType()
+	processedIPv4Bytes, processedIPv4Pkts, processedIPv6Bytes, processedIPv6Pkts := metrics.GetAndResetProcessedDeltas()
+	if droppedBytes != 0 || droppedPkts != 0 || droppedIPv4Bytes != 0 || droppedIPv4Pkts != 0 || droppedIPv6Bytes != 0 || droppedIPv6Pkts != 0 ||
+		processedIPv4Bytes != 0 || processedIPv4Pkts != 0 || processedIPv6Bytes != 0 || processedIPv6Pkts != 0 {
+		t.Fatalf("expected counters to remain unchanged on error")
+	}
 }
 
+// TestStartLAPIMetricsEnabledWithCanceledContext verifies startLAPIMetrics
+// handles a pre-canceled context without panicking or blocking.
 func TestStartLAPIMetricsEnabledWithCanceledContext(t *testing.T) {
 	cfg := baseConfig()
 	cfg.CrowdSec.LapiMetricsInterval = time.Millisecond
@@ -1831,6 +1857,15 @@ func TestStartLAPIMetricsEnabledWithCanceledContext(t *testing.T) {
 	mgr := newTestManagerWithStream(&mockROS{}, &mockStream{}, cfg)
 
 	mgr.startLAPIMetrics(ctx)
+}
+
+func resetLAPICounterDeltas() {
+	metrics.SetDroppedCounters(0, 0)
+	_, _ = metrics.GetAndResetDroppedDeltas()
+	metrics.SetDroppedCountersByIPType(0, 0, 0, 0)
+	_, _, _, _ = metrics.GetAndResetDroppedDeltasByIPType()
+	metrics.SetProcessedCounters(0, 0, 0, 0)
+	_, _, _, _ = metrics.GetAndResetProcessedDeltas()
 }
 
 func TestReconciliationChannelEnabled(t *testing.T) {

@@ -201,6 +201,7 @@ func TestRunNewBanDecisions(t *testing.T) {
 	banCh := make(chan *Decision, 10)
 	deleteCh := make(chan *Decision, 10)
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- s.Run(ctx, banCh, deleteCh) }()
@@ -250,6 +251,7 @@ func TestRunDeleteDecisions(t *testing.T) {
 	banCh := make(chan *Decision, 10)
 	deleteCh := make(chan *Decision, 10)
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- s.Run(ctx, banCh, deleteCh) }()
@@ -425,6 +427,7 @@ func TestRunBouncerRunCanceledError(t *testing.T) {
 	banCh := make(chan *Decision, 10)
 	deleteCh := make(chan *Decision, 10)
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- s.Run(ctx, banCh, deleteCh) }()
@@ -467,17 +470,11 @@ func TestRunBouncerRunUnexpectedError(t *testing.T) {
 
 func waitForMockRun(t *testing.T, mb *MockBouncer) {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		mb.mu.Lock()
-		called := mb.RunCalled
-		mb.mu.Unlock()
-		if called {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
+	select {
+	case <-mb.RunStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("mock bouncer Run was not called")
 	}
-	t.Fatal("mock bouncer Run was not called")
 }
 
 // TestRunIPv6Decision verifies that IPv6 decisions are detected correctly.

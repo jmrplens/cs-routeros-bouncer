@@ -16,19 +16,24 @@ import (
 )
 
 const (
-	benchmarkIPv4Address = "198.51.100.1" // NOSONAR: RFC 5737 TEST-NET-2 benchmark address.
-	benchmarkFindAddress = "198.51.0.1"   // NOSONAR: RFC 5737 TEST-NET-2 benchmark address.
-	benchmarkIPv4List    = "crowdsec-banned"
-	benchmarkIPv6List    = "crowdsec6-banned"
+	benchmarkIPv4Address  = "198.51.100.1" // NOSONAR: RFC 5737 TEST-NET-2 benchmark address.
+	benchmarkFindAddress  = "198.51.100.2" // NOSONAR: RFC 5737 TEST-NET-2 benchmark address.
+	benchmarkIPv6Address  = "2001:db8::1/128"
+	benchmarkIPv4List     = "crowdsec-banned"
+	benchmarkIPv6List     = "crowdsec6-banned"
+	benchmarkIPv4BatchMax = 254
 )
 
 func main() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.Kitchen})
-	cfg := loadConfig(configPath())
+	cfg, err := loadConfig(configPath())
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to load config")
+	}
 
 	client := rosClient.NewClient(cfg.MikroTik)
-	if err := client.Connect(); err != nil {
-		log.Fatal().Err(err).Msg("failed to connect")
+	if connectErr := client.Connect(); connectErr != nil {
+		log.Fatal().Err(connectErr).Msg("failed to connect")
 	}
 	defer client.Close()
 
@@ -43,20 +48,24 @@ func configPath() string {
 	return configPath
 }
 
-func loadConfig(configPath string) config.Config {
+func loadConfig(configPath string) (config.Config, error) {
 	viper.SetConfigFile(configPath)
 	if err := viper.ReadInConfig(); err != nil {
-		log.Fatal().Err(err).Msg("failed to read config")
+		return config.Config{}, fmt.Errorf("read config: %w", err)
 	}
 	var cfg config.Config
 	if err := viper.Unmarshal(&cfg); err != nil {
-		log.Fatal().Err(err).Msg("failed to parse config")
+		return config.Config{}, fmt.Errorf("parse config: %w", err)
 	}
-	return cfg
+	return cfg, nil
 }
 
 func runBenchmarks(client *rosClient.Client) {
-	identity, _ := client.GetIdentity()
+	identity, err := client.GetIdentity()
+	if err != nil {
+		log.Warn().Err(err).Msg("failed to read RouterOS identity")
+		identity = "unknown"
+	}
 	fmt.Printf("Connected to: %s\n\n", identity)
 	benchmarkSingleOperations(client)
 	benchmarkFirewallRules(client)
@@ -93,11 +102,11 @@ func benchmarkSingleOperations(client *rosClient.Client) {
 	}
 
 	bench("Add single IPv6", func() error {
-		_, err := client.AddAddress("ipv6", benchmarkIPv6List, "2001:db8::1", "1m", "benchmark-test")
+		_, err := client.AddAddress("ipv6", benchmarkIPv6List, benchmarkIPv6Address, "1m", "benchmark-test")
 		return err
 	})
 
-	entry6, findErr := client.FindAddress("ipv6", benchmarkIPv6List, "2001:db8::1/128")
+	entry6, findErr := client.FindAddress("ipv6", benchmarkIPv6List, benchmarkIPv6Address)
 	if findErr != nil && !errors.Is(findErr, rosClient.ErrNotFound) {
 		log.Warn().Err(findErr).Msg("failed to find IPv6 entry before removal benchmark")
 	}
@@ -170,10 +179,15 @@ func benchmarkBatchAdds(client *rosClient.Client) {
 }
 
 func benchmarkBatchSize(client *rosClient.Client, n int) {
+	if n > benchmarkIPv4BatchMax {
+		fmt.Printf("  %-35s %8s  (max unique TEST-NET-2 addresses=%d)\n", fmt.Sprintf("Add %d IPv4 (sequential)", n), "SKIPPED", benchmarkIPv4BatchMax)
+		return
+	}
+
 	start := time.Now()
 	failureCount := 0
 	for i := 1; i <= n; i++ {
-		addr := fmt.Sprintf("198.51.%d.%d", i/256, i%256)
+		addr := fmt.Sprintf("198.51.100.%d", i)
 		if _, err := client.AddAddress("ip", benchmarkIPv4List, addr, "1m", "batch"); err != nil {
 			failureCount++
 		}
@@ -182,16 +196,29 @@ func benchmarkBatchSize(client *rosClient.Client, n int) {
 	fmt.Printf("  %-35s %8s  (%s/ip, failures=%d)\n", fmt.Sprintf("Add %d IPv4 (sequential)", n), elapsed.Round(time.Millisecond), (elapsed / time.Duration(n)).Round(time.Millisecond), failureCount)
 
 	listStart := time.Now()
-	entries, _ := client.ListAddresses("ip", benchmarkIPv4List, "")
-	fmt.Printf("  %-35s %8s  (entries=%d)\n", fmt.Sprintf("List %d entries", n), time.Since(listStart).Round(time.Millisecond), len(entries))
+	entries, listErr := client.ListAddresses("ip", benchmarkIPv4List, "")
+	listElapsed := time.Since(listStart)
+	fmt.Printf("  %-35s %8s  (entries=%d)\n", fmt.Sprintf("List %d entries", n), listElapsed.Round(time.Millisecond), len(entries))
+	if listErr != nil {
+		log.Warn().Err(listErr).Int("target", n).Str("list", benchmarkIPv4List).Msg("failed to list benchmark entries")
+	}
 
 	findStart := time.Now()
-	_, _ = client.FindAddress("ip", benchmarkIPv4List, benchmarkFindAddress)
-	fmt.Printf("  %-35s %8s\n", fmt.Sprintf("Find 1 in %d entries", n), time.Since(findStart).Round(time.Millisecond))
+	_, findErr := client.FindAddress("ip", benchmarkIPv4List, benchmarkFindAddress)
+	findElapsed := time.Since(findStart)
+	fmt.Printf("  %-35s %8s\n", fmt.Sprintf("Find 1 in %d entries", n), findElapsed.Round(time.Millisecond))
+	if findErr != nil && !errors.Is(findErr, rosClient.ErrNotFound) {
+		log.Warn().Err(findErr).Int("target", n).Str("list", benchmarkIPv4List).Msg("failed to find benchmark address")
+	}
 
 	cleanStart := time.Now()
+	cleanupFailures := 0
+	var cleanupErr error
 	for _, entry := range entries {
-		_ = client.RemoveAddress("ip", entry.ID)
+		if err := client.RemoveAddress("ip", entry.ID); err != nil {
+			cleanupFailures++
+			cleanupErr = err
+		}
 	}
 	cleanElapsed := time.Since(cleanStart)
 	perEntry := time.Duration(0)
@@ -199,6 +226,9 @@ func benchmarkBatchSize(client *rosClient.Client, n int) {
 		perEntry = cleanElapsed / time.Duration(len(entries))
 	}
 	fmt.Printf("  %-35s %8s  (%s/ip)\n", fmt.Sprintf("Remove %d entries", len(entries)), cleanElapsed.Round(time.Millisecond), perEntry.Round(time.Millisecond))
+	if cleanupFailures > 0 {
+		log.Warn().Err(cleanupErr).Int("failures", cleanupFailures).Str("list", benchmarkIPv4List).Msg("failed to clean benchmark entries")
+	}
 }
 
 func bench(label string, fn func() error) {

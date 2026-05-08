@@ -6,10 +6,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
-func resetSetupHooks(t *testing.T) {
-	t.Helper()
+func resetSetupHooks(tb testing.TB) {
+	tb.Helper()
 	oldGetuid := setupGetuid
 	oldExecutable := setupExecutable
 	oldEvalSymlinks := setupEvalSymlinks
@@ -22,7 +24,7 @@ func resetSetupHooks(t *testing.T) {
 	oldSystemctl := setupSystemctl
 	oldServicePath := setupServicePath
 	oldConfigDir := setupConfigDir
-	t.Cleanup(func() {
+	tb.Cleanup(func() {
 		setupGetuid = oldGetuid
 		setupExecutable = oldExecutable
 		setupEvalSymlinks = oldEvalSymlinks
@@ -38,14 +40,14 @@ func resetSetupHooks(t *testing.T) {
 	})
 }
 
-func configureRootSetup(t *testing.T) (binSrc, servicePath string, systemctlCalls *[][]string) {
-	t.Helper()
-	resetSetupHooks(t)
-	tmpDir := t.TempDir()
+func configureRootSetup(tb testing.TB) (binSrc, servicePath string, systemctlCalls *[][]string) {
+	tb.Helper()
+	resetSetupHooks(tb)
+	tmpDir := tb.TempDir()
 	binSrc = filepath.Join(tmpDir, "source-bin")
 	servicePath = filepath.Join(tmpDir, "cs-routeros-bouncer.service")
 	if err := os.WriteFile(binSrc, []byte("binary"), 0o700); err != nil {
-		t.Fatalf("write source binary: %v", err)
+		tb.Fatalf("write source binary: %v", err)
 	}
 	calls := [][]string{}
 	setupGetuid = func() int { return 0 }
@@ -109,6 +111,12 @@ func TestRunSetupSuccess(t *testing.T) {
 	if !strings.Contains(string(configData), `reconciliation_interval: "15m"`) {
 		t.Fatalf("generated config missing reconciliation interval")
 	}
+	if strings.Contains(string(configData), "\t") {
+		t.Fatalf("generated config should not contain YAML tabs")
+	}
+	if !strings.Contains(string(configData), `${CROWDSEC_BOUNCER_API_KEY}`) || !strings.Contains(string(configData), `${MIKROTIK_PASS}`) {
+		t.Fatalf("generated config missing environment variable placeholders")
+	}
 	unitData, err := os.ReadFile(servicePath)
 	if err != nil {
 		t.Fatalf("read service unit: %v", err)
@@ -116,12 +124,10 @@ func TestRunSetupSuccess(t *testing.T) {
 	if !strings.Contains(string(unitData), "ExecStart="+binDst+" -c "+configPath) {
 		t.Fatalf("service unit does not reference installed paths: %s", string(unitData))
 	}
-	if got := len(*systemctlCalls); got != 3 {
-		t.Fatalf("expected 3 systemctl calls, got %d: %v", got, *systemctlCalls)
-	}
-	if (*systemctlCalls)[0][0] != "daemon-reload" || (*systemctlCalls)[1][0] != "enable" || (*systemctlCalls)[2][0] != "start" {
-		t.Fatalf("unexpected systemctl calls: %v", *systemctlCalls)
-	}
+	assert.Len(t, *systemctlCalls, 3, "systemctl calls")
+	assert.Equal(t, []string{"daemon-reload"}, (*systemctlCalls)[0], "first call")
+	assert.Equal(t, []string{"enable", serviceName}, (*systemctlCalls)[1], "second call")
+	assert.Equal(t, []string{"start", serviceName}, (*systemctlCalls)[2], "third call")
 }
 
 func TestRunSetupCopyError(t *testing.T) {

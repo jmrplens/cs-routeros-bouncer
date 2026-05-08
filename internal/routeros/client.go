@@ -37,6 +37,10 @@ var ErrNotFound = errors.New("routeros resource not found")
 // duplicate, but the follow-up lookup could not find the existing resource.
 var ErrDuplicateReportedButNotFound = errors.New("routeros reported duplicate entry but lookup returned not found")
 
+// ErrAddressDuplicate reports that RouterOS rejected an address-list add
+// because the address already exists.
+var ErrAddressDuplicate = errors.New("routeros address already exists")
+
 // NewClient creates a new RouterOS API client.
 func NewClient(cfg config.MikroTikConfig) *Client {
 	return &Client{
@@ -137,6 +141,9 @@ func isDeviceError(err error) bool {
 }
 
 func isNoSuchItemError(err error) bool {
+	if err == nil {
+		return false
+	}
 	return strings.Contains(err.Error(), "no such item")
 }
 
@@ -221,7 +228,7 @@ func (c *Client) Remove(path, id string) error {
 	_, err := c.Run(path+"/remove", "=numbers="+id)
 	if err != nil {
 		if isNoSuchItemError(err) {
-			return fmt.Errorf("remove %s %s: %w: %w", path, id, ErrNotFound, err)
+			return fmt.Errorf("remove %s %s: %w", path, id, errors.Join(ErrNotFound, err))
 		}
 		return fmt.Errorf("remove %s %s: %w", path, id, err)
 	}

@@ -3,6 +3,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -48,7 +50,7 @@ func TestLoadFromEnv(t *testing.T) {
 
 // TestLoadDefaults verifies that all default values are correctly applied
 // when loading a minimal configuration.
-func TestLoadDefaults(t *testing.T) { // NOSONAR: table-style default assertions are intentionally grouped.
+func TestLoadDefaults(t *testing.T) {
 	setMinimalEnv(t)
 
 	cfg, err := Load("")
@@ -56,80 +58,41 @@ func TestLoadDefaults(t *testing.T) { // NOSONAR: table-style default assertions
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// CrowdSec defaults
-	if cfg.CrowdSec.UpdateFrequency.String() != "10s" {
-		t.Errorf("expected update_frequency '10s', got '%s'", cfg.CrowdSec.UpdateFrequency)
-	}
-	if cfg.CrowdSec.ReconciliationInterval != 15*time.Minute {
-		t.Errorf("expected reconciliation_interval '15m', got '%s'", cfg.CrowdSec.ReconciliationInterval)
-	}
-	if !cfg.CrowdSec.RetryInitialConnect {
-		t.Error("expected retry_initial_connect true by default")
-	}
-
-	// MikroTik defaults
-	if cfg.MikroTik.TLS {
-		t.Error("expected tls false by default")
-	}
-	if cfg.MikroTik.ConnectionTimeout.String() != "10s" {
-		t.Errorf("expected connection_timeout '10s', got '%s'", cfg.MikroTik.ConnectionTimeout)
-	}
-	if cfg.MikroTik.CommandTimeout.String() != "30s" {
-		t.Errorf("expected command_timeout '30s', got '%s'", cfg.MikroTik.CommandTimeout)
-	}
-
-	// Firewall defaults
-	if !cfg.Firewall.IPv6.Enabled {
-		t.Error("expected ipv6 enabled by default")
-	}
-	if cfg.Firewall.IPv6.AddressList != "crowdsec6-banned" {
-		t.Errorf("expected ipv6 address_list 'crowdsec6-banned', got '%s'", cfg.Firewall.IPv6.AddressList)
-	}
-	if !cfg.Firewall.Filter.Enabled {
-		t.Error("expected filter enabled by default")
-	}
-	if !cfg.Firewall.Raw.Enabled {
-		t.Error("expected raw enabled by default")
-	}
-	if cfg.Firewall.RulePlacement != "top" {
-		t.Errorf("expected rule_placement 'top', got '%s'", cfg.Firewall.RulePlacement)
-	}
-	if cfg.Firewall.CommentPrefix != "crowdsec-bouncer" {
-		t.Errorf("expected comment_prefix 'crowdsec-bouncer', got '%s'", cfg.Firewall.CommentPrefix)
-	}
-	if cfg.Firewall.Log {
-		t.Error("expected log false by default")
-	}
-	if cfg.Firewall.BlockOutput.Enabled {
-		t.Error("expected block_output disabled by default")
-	}
-	if cfg.Firewall.BlockInput.Interface != "" {
-		t.Error("expected block_input.interface empty by default")
-	}
-	if cfg.Firewall.BlockInput.InterfaceList != "" {
-		t.Error("expected block_input.interface_list empty by default")
+	tests := []struct {
+		name string
+		want any
+		got  func() any
+	}{
+		{name: "CrowdSec update frequency", want: 10 * time.Second, got: func() any { return cfg.CrowdSec.UpdateFrequency }},
+		{name: "CrowdSec reconciliation interval", want: 15 * time.Minute, got: func() any { return cfg.CrowdSec.ReconciliationInterval }},
+		{name: "CrowdSec retry initial connect", want: true, got: func() any { return cfg.CrowdSec.RetryInitialConnect }},
+		{name: "MikroTik TLS", want: false, got: func() any { return cfg.MikroTik.TLS }},
+		{name: "MikroTik connection timeout", want: 10 * time.Second, got: func() any { return cfg.MikroTik.ConnectionTimeout }},
+		{name: "MikroTik command timeout", want: 30 * time.Second, got: func() any { return cfg.MikroTik.CommandTimeout }},
+		{name: "Firewall IPv6 enabled", want: true, got: func() any { return cfg.Firewall.IPv6.Enabled }},
+		{name: "Firewall IPv6 address list", want: "crowdsec6-banned", got: func() any { return cfg.Firewall.IPv6.AddressList }},
+		{name: "Firewall filter enabled", want: true, got: func() any { return cfg.Firewall.Filter.Enabled }},
+		{name: "Firewall raw enabled", want: true, got: func() any { return cfg.Firewall.Raw.Enabled }},
+		{name: "Firewall rule placement", want: "top", got: func() any { return cfg.Firewall.RulePlacement }},
+		{name: "Firewall comment prefix", want: "crowdsec-bouncer", got: func() any { return cfg.Firewall.CommentPrefix }},
+		{name: "Firewall log", want: false, got: func() any { return cfg.Firewall.Log }},
+		{name: "Firewall block output", want: false, got: func() any { return cfg.Firewall.BlockOutput.Enabled }},
+		{name: "Firewall block input interface", want: "", got: func() any { return cfg.Firewall.BlockInput.Interface }},
+		{name: "Firewall block input interface list", want: "", got: func() any { return cfg.Firewall.BlockInput.InterfaceList }},
+		{name: "Logging level", want: "info", got: func() any { return cfg.Logging.Level }},
+		{name: "Logging format", want: "text", got: func() any { return cfg.Logging.Format }},
+		{name: "Metrics enabled", want: false, got: func() any { return cfg.Metrics.Enabled }},
+		{name: "Metrics listen address", want: "0.0.0.0", got: func() any { return cfg.Metrics.ListenAddr }},
+		{name: "Metrics listen port", want: 2112, got: func() any { return cfg.Metrics.ListenPort }},
+		{name: "Metrics track processed", want: true, got: func() any { return cfg.Metrics.TrackProcessed }},
 	}
 
-	// Logging defaults
-	if cfg.Logging.Level != "info" {
-		t.Errorf("expected log level 'info', got '%s'", cfg.Logging.Level)
-	}
-	if cfg.Logging.Format != "text" {
-		t.Errorf("expected log format 'text', got '%s'", cfg.Logging.Format)
-	}
-
-	// Metrics defaults
-	if cfg.Metrics.Enabled {
-		t.Error("expected metrics disabled by default")
-	}
-	if cfg.Metrics.ListenAddr != "0.0.0.0" {
-		t.Errorf("expected metrics addr '0.0.0.0', got '%s'", cfg.Metrics.ListenAddr)
-	}
-	if cfg.Metrics.ListenPort != 2112 {
-		t.Errorf("expected metrics port 2112, got %d", cfg.Metrics.ListenPort)
-	}
-	if !cfg.Metrics.TrackProcessed {
-		t.Error("expected track_processed true by default")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.got(); got != tt.want {
+				t.Errorf("got %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
@@ -146,6 +109,34 @@ func TestMetricsTrackProcessedEnvOverride(t *testing.T) {
 
 	if cfg.Metrics.TrackProcessed {
 		t.Error("expected track_processed false when METRICS_TRACK_PROCESSED=false")
+	}
+}
+
+func TestLoadExpandsEnvPlaceholders(t *testing.T) {
+	t.Setenv("CROWDSEC_KEY_FROM_FILE", "expanded-key")
+	t.Setenv("MIKROTIK_PASSWORD_FROM_FILE", "expanded-password")
+	t.Setenv("CROWDSEC_URL", "http://localhost:8080/")
+	t.Setenv("MIKROTIK_HOST", "192.168.0.1:8728")
+	t.Setenv("MIKROTIK_USER", "admin")
+
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(configPath, []byte(`crowdsec:
+  api_key: "${CROWDSEC_KEY_FROM_FILE}"
+mikrotik:
+  password: "${MIKROTIK_PASSWORD_FROM_FILE}"
+`), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+	if cfg.CrowdSec.APIKey != "expanded-key" {
+		t.Fatalf("expected expanded CrowdSec key, got %q", cfg.CrowdSec.APIKey)
+	}
+	if cfg.MikroTik.Password != "expanded-password" {
+		t.Fatalf("expected expanded MikroTik password, got %q", cfg.MikroTik.Password)
 	}
 }
 

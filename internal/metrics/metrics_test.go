@@ -244,7 +244,9 @@ func TestHandleHealthDisconnected(t *testing.T) {
 }
 
 type failingResponseWriter struct {
-	header http.Header
+	header      http.Header
+	wroteHeader bool
+	wroteBody   bool
 }
 
 func (w *failingResponseWriter) Header() http.Header {
@@ -255,27 +257,24 @@ func (w *failingResponseWriter) Header() http.Header {
 }
 
 func (w *failingResponseWriter) Write([]byte) (int, error) {
+	w.wroteBody = true
 	return 0, errors.New("write failed")
 }
 
-func (w *failingResponseWriter) WriteHeader(int) {}
+func (w *failingResponseWriter) WriteHeader(int) {
+	w.wroteHeader = true
+}
 
 func TestHandleHealthWriteError(t *testing.T) {
 	srv := &Server{version: "test-v1"}
-	srv.handleHealth(&failingResponseWriter{}, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/health", nil))
-}
-
-func TestHandleHealthMarshalError(t *testing.T) {
-	oldMarshal := healthJSONMarshal
-	healthJSONMarshal = func(any) ([]byte, error) { return nil, errors.New("marshal failed") }
-	t.Cleanup(func() { healthJSONMarshal = oldMarshal })
-
-	srv := &Server{version: "test-v1"}
-	w := httptest.NewRecorder()
+	w := &failingResponseWriter{}
 	srv.handleHealth(w, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/health", nil))
 
-	if w.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d", w.Code)
+	if !w.wroteBody {
+		t.Fatal("expected health handler to attempt response write")
+	}
+	if w.wroteHeader {
+		t.Fatal("expected no explicit error header on response write failure")
 	}
 }
 

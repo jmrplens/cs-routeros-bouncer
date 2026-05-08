@@ -9,23 +9,26 @@ import (
 	"github.com/jmrplens/cs-routeros-bouncer/internal/config"
 )
 
-func TestHandleSubcommandNoArgs(t *testing.T) {
-	oldArgs := os.Args
-	t.Cleanup(func() { os.Args = oldArgs })
-	os.Args = []string{"cs-routeros-bouncer"}
-
-	if handleSubcommand() {
-		t.Fatal("expected no subcommand to be handled")
+func TestHandleSubcommand(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want bool
+	}{
+		{name: "no args", args: []string{"cs-routeros-bouncer"}},
+		{name: "unknown", args: []string{"cs-routeros-bouncer", "run"}},
 	}
-}
 
-func TestHandleSubcommandUnknown(t *testing.T) {
-	oldArgs := os.Args
-	t.Cleanup(func() { os.Args = oldArgs })
-	os.Args = []string{"cs-routeros-bouncer", "run"}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			oldArgs := os.Args
+			t.Cleanup(func() { os.Args = oldArgs })
+			os.Args = tt.args
 
-	if handleSubcommand() {
-		t.Fatal("expected unknown subcommand to be ignored")
+			if got := handleSubcommand(); got != tt.want {
+				t.Fatalf("handleSubcommand() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
@@ -56,16 +59,10 @@ func captureStdout(t *testing.T, fn func()) string {
 		t.Fatalf("create stdout pipe: %v", err)
 	}
 	os.Stdout = w
-	restored := false
 	restoreStdout := func() {
-		if !restored {
-			os.Stdout = oldStdout
-			restored = true
-		}
+		os.Stdout = oldStdout
 	}
 	defer restoreStdout()
-	defer func() { _ = r.Close() }()
-	defer func() { _ = w.Close() }()
 
 	fn()
 	restoreStdout()
@@ -75,6 +72,9 @@ func captureStdout(t *testing.T, fn func()) string {
 	out, err := io.ReadAll(r)
 	if err != nil {
 		t.Fatalf("read stdout: %v", err)
+	}
+	if closeErr := r.Close(); closeErr != nil {
+		t.Fatalf("close stdout reader: %v", closeErr)
 	}
 	return string(out)
 }

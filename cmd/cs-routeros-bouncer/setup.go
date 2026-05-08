@@ -210,19 +210,20 @@ func copyFile(src, dst string, mode os.FileMode) error {
 
 // exampleConfig returns a YAML configuration template with sensible defaults.
 func exampleConfig() string {
-	return `# cs-routeros-bouncer configuration
+	return strings.ReplaceAll(`# cs-routeros-bouncer configuration
 # Documentation: https://github.com/jmrplens/cs-routeros-bouncer
 
 crowdsec:
   api_url: "http://localhost:8080/"
-  api_key: ""          # Required: cscli bouncers add cs-routeros-bouncer
+	# Environment variables in config values are expanded at runtime.
+	api_key: "${CROWDSEC_BOUNCER_API_KEY}" # Required: cscli bouncers add cs-routeros-bouncer
   update_frequency: "10s"
   reconciliation_interval: "15m"
 
 mikrotik:
   address: "192.168.0.1:8728"
   username: "crowdsec"
-  password: ""         # Required: RouterOS API password
+	password: "${MIKROTIK_PASS}" # Required: RouterOS API password
 
 firewall:
   ipv4:
@@ -245,5 +246,5 @@ logging:
 metrics:
   enabled: false
   listen_port: 2112
-`
+`, "\t", "  ")
 }

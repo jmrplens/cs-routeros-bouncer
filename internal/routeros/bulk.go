@@ -57,7 +57,7 @@ func (c *Client) bulkAddFallback(proto, list string, chunk []BulkEntry) (int, er
 	var fallbackErrs []error
 	for _, entry := range chunk {
 		if _, addErr := c.AddAddress(proto, list, entry.Address, entry.Timeout, entry.Comment); addErr != nil {
-			if !strings.Contains(addErr.Error(), "already have") {
+			if !isDuplicateEntryError(addErr) {
 				fallbackErrs = append(fallbackErrs, addErr)
 			}
 			continue

@@ -58,10 +58,9 @@ To restart the container when RouterOS connectivity is lost, inspect the JSON bo
 ```yaml
 healthcheck:
   test:
-    [
-      "CMD-SHELL",
-      'wget -qO- http://localhost:2112/health | grep -q ''"routeros_connected":[[:space:]]*true''',
-    ]
+    - CMD-SHELL
+    - >-
+      wget -qO- http://localhost:2112/health | grep -q '"routeros_connected":[[:space:]]*true'
   interval: 30s
   timeout: 10s
   retries: 3

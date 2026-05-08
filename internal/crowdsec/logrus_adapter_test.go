@@ -99,32 +99,66 @@ func TestLogrusAdapterInfo(t *testing.T) {
 // TestLogrusAdapterInfoMultiArgFormatting verifies logrus-style formatting for
 // multi-argument Info calls.
 func TestLogrusAdapterInfoMultiArgFormatting(t *testing.T) {
-	var buf bytes.Buffer
-	zl := zerolog.New(&buf).Level(zerolog.InfoLevel)
-	adapter := NewLogrusAdapter(zl)
+	tests := []struct {
+		name     string
+		args     []any
+		expected string
+	}{
+		{name: "single arg", args: []any{"info message"}, expected: "info message"},
+		{name: "multiple args", args: []any{"count=", 2}, expected: "count=2"},
+		{name: "mixed types", args: []any{"status ", 200, " ok"}, expected: "status 200 ok"},
+		{name: "empty and zero", args: []any{"", 0}, expected: "0"},
+	}
 
-	adapter.Info("count=", 2)
-	if output := buf.String(); !strings.Contains(output, "count=2") {
-		t.Errorf("expected 'count=2' in output, got: %s", output)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			zl := zerolog.New(&buf).Level(zerolog.InfoLevel)
+			adapter := NewLogrusAdapter(zl)
+
+			adapter.Info(tt.args...)
+			if output := buf.String(); !strings.Contains(output, tt.expected) {
+				t.Errorf("expected %q in output, got: %s", tt.expected, output)
+			}
+		})
 	}
 }
 
 // TestLogrusAdapterPrintlnTrimming verifies that Println output does not keep
 // the trailing newline added by fmt.Sprintln.
 func TestLogrusAdapterPrintlnTrimming(t *testing.T) {
-	var buf bytes.Buffer
-	zl := zerolog.New(&buf).Level(zerolog.InfoLevel)
-	adapter := NewLogrusAdapter(zl)
-
-	adapter.Println("hello", "world")
-	output := buf.String()
-	if !strings.Contains(output, "hello world") {
-		t.Errorf("expected 'hello world' in output, got: %s", output)
+	tests := []struct {
+		name            string
+		args            []string
+		wantContains    string
+		wantNotContains string
+	}{
+		{name: "single argument", args: []string{"hello"}, wantContains: "hello", wantNotContains: "hello\\n"},
+		{name: "multiple arguments", args: []string{"hello", "world"}, wantContains: "hello world", wantNotContains: "hello world\\n"},
+		{name: "empty string", args: []string{""}, wantContains: `"level":"info"`, wantNotContains: "\\n"},
+		{name: "trailing newline input", args: []string{"hello\n"}, wantContains: "hello", wantNotContains: "hello\\n\\n"},
 	}
-	// Zerolog JSON-escapes a real newline as the two-character sequence \n.
-	// This assertion checks that Println trimming removed that encoded newline.
-	if strings.Contains(output, "hello world\\n") {
-		t.Errorf("expected trimmed println message, got: %s", output)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			zl := zerolog.New(&buf).Level(zerolog.InfoLevel)
+			adapter := NewLogrusAdapter(zl)
+
+			stringArgs := make([]any, len(tt.args))
+			for i, arg := range tt.args {
+				stringArgs[i] = arg
+			}
+
+			adapter.Println(stringArgs...)
+			output := buf.String()
+			if !strings.Contains(output, tt.wantContains) {
+				t.Errorf("expected %q in output, got: %s", tt.wantContains, output)
+			}
+			if strings.Contains(output, tt.wantNotContains) {
+				t.Errorf("expected output not to contain %q, got: %s", tt.wantNotContains, output)
+			}
+		})
 	}
 }
 
@@ -200,21 +234,46 @@ func TestLogrusAdapterWithField(t *testing.T) {
 // TestLogrusAdapterWithFieldDebugPreservesLevel verifies that logrus entries
 // created from the adapter keep their log level and fields when forwarded.
 func TestLogrusAdapterWithFieldDebugPreservesLevel(t *testing.T) {
-	var buf bytes.Buffer
-	zl := zerolog.New(&buf).Level(zerolog.DebugLevel)
-	adapter := NewLogrusAdapter(zl)
-
-	adapter.WithField("key", "value").Debug("debug with field")
-
-	output := buf.String()
-	if !strings.Contains(output, `"level":"debug"`) {
-		t.Errorf("expected debug level in output, got: %s", output)
+	tests := []struct {
+		name            string
+		level           string
+		fields          logrus.Fields
+		message         string
+		expectedStrings []string
+	}{
+		{name: "debug single field", level: "debug", fields: logrus.Fields{"key": "value"}, message: "debug with field", expectedStrings: []string{`"level":"debug"`, `"key":"value"`, "debug with field"}},
+		{name: "info multiple fields", level: "info", fields: logrus.Fields{"user": "crowdsec", "count": 2}, message: "info with fields", expectedStrings: []string{`"level":"info"`, `"user":"crowdsec"`, `"count":2`, "info with fields"}},
+		{name: "warn bool field", level: "warn", fields: logrus.Fields{"enabled": true}, message: "warn with fields", expectedStrings: []string{`"level":"warn"`, `"enabled":true`, "warn with fields"}},
+		{name: "error string field", level: "error", fields: logrus.Fields{"component": "stream"}, message: "error with fields", expectedStrings: []string{`"level":"error"`, `"component":"stream"`, "error with fields"}},
 	}
-	if !strings.Contains(output, `"key":"value"`) {
-		t.Errorf("expected field in output, got: %s", output)
-	}
-	if !strings.Contains(output, "debug with field") {
-		t.Errorf("expected message in output, got: %s", output)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			zl := zerolog.New(&buf).Level(zerolog.DebugLevel)
+			adapter := NewLogrusAdapter(zl)
+			entry := adapter.WithFields(tt.fields)
+
+			switch tt.level {
+			case "debug":
+				entry.Debug(tt.message)
+			case "info":
+				entry.Info(tt.message)
+			case "warn":
+				entry.Warn(tt.message)
+			case "error":
+				entry.Error(tt.message)
+			default:
+				t.Fatalf("unsupported level %q", tt.level)
+			}
+
+			output := buf.String()
+			for _, expected := range tt.expectedStrings {
+				if !strings.Contains(output, expected) {
+					t.Errorf("expected %q in output, got: %s", expected, output)
+				}
+			}
+		})
 	}
 }
 

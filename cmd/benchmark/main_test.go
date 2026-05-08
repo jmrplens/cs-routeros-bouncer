@@ -5,29 +5,32 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/spf13/viper"
+	"github.com/stretchr/testify/assert"
 )
 
-func TestConfigPathDefault(t *testing.T) {
-	oldArgs := os.Args
-	t.Cleanup(func() { os.Args = oldArgs })
-	os.Args = []string{"benchmark"}
-
-	if got := configPath(); got != "config/test.yaml" {
-		t.Fatalf("configPath default = %q", got)
+func TestConfigPath(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "default", args: []string{"benchmark"}, want: "config/test.yaml"},
+		{name: "from arg", args: []string{"benchmark", "custom.yaml"}, want: "custom.yaml"},
 	}
-}
 
-func TestConfigPathFromArg(t *testing.T) {
-	oldArgs := os.Args
-	t.Cleanup(func() { os.Args = oldArgs })
-	os.Args = []string{"benchmark", "custom.yaml"}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			oldArgs := os.Args
+			t.Cleanup(func() { os.Args = oldArgs })
+			os.Args = tt.args
 
-	if got := configPath(); got != "custom.yaml" {
-		t.Fatalf("configPath arg = %q", got)
+			if got := configPath(); got != tt.want {
+				t.Fatalf("configPath() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 
@@ -48,12 +51,43 @@ firewall:
 		t.Fatalf("write config: %v", err)
 	}
 
-	cfg := loadConfig(configPath)
+	cfg, err := loadConfig(configPath)
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
 	if cfg.CrowdSec.APIURL != "http://crowdsec.local:8080/" {
 		t.Fatalf("unexpected crowdsec api url: %q", cfg.CrowdSec.APIURL)
 	}
 	if cfg.MikroTik.Address != "192.0.2.1:8728" {
 		t.Fatalf("unexpected mikrotik address: %q", cfg.MikroTik.Address)
+	}
+}
+
+func TestLoadConfigErrors(t *testing.T) {
+	tests := []struct {
+		name      string
+		writeFile bool
+		content   string
+	}{
+		{name: "invalid YAML syntax", writeFile: true, content: "crowdsec:\n  api_url: ["},
+		{name: "non-existent file"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			viper.Reset()
+			t.Cleanup(viper.Reset)
+
+			configPath := filepath.Join(t.TempDir(), "config.yaml")
+			if tt.writeFile {
+				if err := os.WriteFile(configPath, []byte(tt.content), 0o600); err != nil {
+					t.Fatalf("write config: %v", err)
+				}
+			}
+
+			_, err := loadConfig(configPath)
+			assert.Error(t, err)
+		})
 	}
 }
 
@@ -63,12 +97,10 @@ func TestBenchReportsStatus(t *testing.T) {
 		bench("failure", func() error { return errors.New("boom") })
 	})
 
-	if !strings.Contains(output, "success") || !strings.Contains(output, "OK") {
-		t.Fatalf("success output missing status: %q", output)
-	}
-	if !strings.Contains(output, "failure") || !strings.Contains(output, "ERR: boom") {
-		t.Fatalf("failure output missing status: %q", output)
-	}
+	assert.Contains(t, output, "success")
+	assert.Contains(t, output, "OK")
+	assert.Contains(t, output, "failure")
+	assert.Contains(t, output, "ERR: boom")
 }
 
 func captureBenchmarkStdout(t *testing.T, fn func()) string {

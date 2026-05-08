@@ -128,7 +128,7 @@ func (a *zerologAdapter) Print(args ...any) {
 }
 
 func (a *zerologAdapter) Printf(format string, args ...any) {
-	a.zl.Info().Msg(fmt.Sprintf(format, args...))
+	a.zl.Info().Msgf(format, args...)
 }
 
 func (a *zerologAdapter) Println(args ...any) {

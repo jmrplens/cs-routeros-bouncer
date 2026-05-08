@@ -160,7 +160,7 @@ func (m *Manager) Start(ctx context.Context) error {
 	}
 
 	m.logInitialDecisions(initialBans, initialDeletes)
-	m.reconcileAddresses(m.filterInitialBans(initialBans, initialDeletes))
+	m.reconcileAddresses(ctx, m.filterInitialBans(initialBans, initialDeletes))
 
 	reconcileC, stopReconcile := m.reconciliationChannel()
 	defer stopReconcile()
@@ -418,7 +418,7 @@ func (m *Manager) reconcileActiveDecisions(ctx context.Context) {
 	}
 
 	m.logger.Info().Int("decisions", len(decisions)).Msg("periodic reconciliation snapshot fetched")
-	m.reconcileAddresses(decisions)
+	m.reconcileAddresses(ctx, decisions)
 	m.logger.Info().Dur("elapsed", time.Since(start)).Msg("periodic reconciliation complete")
 }
 
@@ -1037,13 +1037,19 @@ func (m *Manager) removeFirewallRules() {
 // Compares CrowdSec active decisions with MikroTik address lists
 // and adds/removes entries as needed.
 // Uses script-based bulk add and parallel workers for maximum speed.
-func (m *Manager) reconcileAddresses(decisions []*crowdsec.Decision) {
+func (m *Manager) reconcileAddresses(ctx context.Context, decisions []*crowdsec.Decision) {
+	if ctx.Err() != nil {
+		return
+	}
 	m.logger.Info().Int("decisions", len(decisions)).Msg("reconciling addresses with MikroTik")
 
 	start := time.Now()
 	globalOriginCounts := map[string]int64{}
 
 	for _, proto := range m.enabledProtos() {
+		if ctx.Err() != nil {
+			return
+		}
 		result, err := m.reconcileProtocolAddresses(proto, decisions, start)
 		if err != nil {
 			continue
@@ -1160,6 +1166,10 @@ func staleAddressEntries(shouldExist map[string]*crowdsec.Decision, currentMap m
 }
 
 func (m *Manager) refreshAddressCache(proto string, currentMap map[string]rosClient.AddressEntry) {
+	// Hold cacheMu through the full replacement for this protocol so concurrent
+	// handleBan/handleUnban calls never observe a partially refreshed cache.
+	// Large reconciliations may briefly block live handlers, but correctness wins
+	// over lower-latency cache updates here.
 	m.cacheMu.Lock()
 	defer m.cacheMu.Unlock()
 	for addr := range m.addressCache {

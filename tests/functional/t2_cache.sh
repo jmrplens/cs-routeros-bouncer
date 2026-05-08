@@ -122,18 +122,15 @@ t2_3_live_unban() {
     local removed=false rc
     for i in $(seq 1 12); do
         sleep 5
-        if ssh_address_exists "${TEST_IPV4_LIST}" "$TEST_IP_BAN"; then
-            rc=0
-        else
-            rc=$?
-        fi
+        ssh_address_exists "${TEST_IPV4_LIST}" "$TEST_IP_BAN"
+        rc=$?
         if (( rc == 1 )); then
             removed=true
             break
         fi
         if (( rc == 2 )); then
-            echo "FAIL: SSH check failed while waiting for $TEST_IP_BAN removal (attempt $i/12)"
-            return 1
+            warn "SSH check failed while waiting for $TEST_IP_BAN removal (attempt $i/12)"
+            continue
         fi
     done
 

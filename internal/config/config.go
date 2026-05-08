@@ -266,12 +266,65 @@ func Load(configPath string) (*Config, error) {
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshaling config: %w", err)
 	}
+	expandConfigEnv(&cfg)
 
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("validating config: %w", err)
 	}
 
 	return &cfg, nil
+}
+
+func expandConfigEnv(cfg *Config) {
+	cfg.CrowdSec.APIURL = os.ExpandEnv(cfg.CrowdSec.APIURL)
+	cfg.CrowdSec.APIKey = os.ExpandEnv(cfg.CrowdSec.APIKey)
+	cfg.CrowdSec.CertPath = os.ExpandEnv(cfg.CrowdSec.CertPath)
+	cfg.CrowdSec.KeyPath = os.ExpandEnv(cfg.CrowdSec.KeyPath)
+	cfg.CrowdSec.CACertPath = os.ExpandEnv(cfg.CrowdSec.CACertPath)
+	cfg.CrowdSec.Origins = expandEnvSlice(cfg.CrowdSec.Origins)
+	cfg.CrowdSec.Scopes = expandEnvSlice(cfg.CrowdSec.Scopes)
+	cfg.CrowdSec.ScenariosContaining = expandEnvSlice(cfg.CrowdSec.ScenariosContaining)
+	cfg.CrowdSec.ScenariosNotContaining = expandEnvSlice(cfg.CrowdSec.ScenariosNotContaining)
+	cfg.CrowdSec.SupportedDecisionTypes = expandEnvSlice(cfg.CrowdSec.SupportedDecisionTypes)
+
+	cfg.MikroTik.Address = os.ExpandEnv(cfg.MikroTik.Address)
+	cfg.MikroTik.Username = os.ExpandEnv(cfg.MikroTik.Username)
+	cfg.MikroTik.Password = os.ExpandEnv(cfg.MikroTik.Password)
+
+	cfg.Firewall.IPv4.AddressList = os.ExpandEnv(cfg.Firewall.IPv4.AddressList)
+	cfg.Firewall.IPv6.AddressList = os.ExpandEnv(cfg.Firewall.IPv6.AddressList)
+	cfg.Firewall.Filter.Chains = expandEnvSlice(cfg.Firewall.Filter.Chains)
+	cfg.Firewall.Filter.LogPrefix = os.ExpandEnv(cfg.Firewall.Filter.LogPrefix)
+	cfg.Firewall.Filter.ConnectionState = os.ExpandEnv(cfg.Firewall.Filter.ConnectionState)
+	cfg.Firewall.Raw.Chains = expandEnvSlice(cfg.Firewall.Raw.Chains)
+	cfg.Firewall.Raw.LogPrefix = os.ExpandEnv(cfg.Firewall.Raw.LogPrefix)
+	cfg.Firewall.DenyAction = os.ExpandEnv(cfg.Firewall.DenyAction)
+	cfg.Firewall.RejectWith = os.ExpandEnv(cfg.Firewall.RejectWith)
+	cfg.Firewall.BlockInput.Interface = os.ExpandEnv(cfg.Firewall.BlockInput.Interface)
+	cfg.Firewall.BlockInput.InterfaceList = os.ExpandEnv(cfg.Firewall.BlockInput.InterfaceList)
+	cfg.Firewall.BlockInput.Whitelist = os.ExpandEnv(cfg.Firewall.BlockInput.Whitelist)
+	cfg.Firewall.BlockOutput.Interface = os.ExpandEnv(cfg.Firewall.BlockOutput.Interface)
+	cfg.Firewall.BlockOutput.InterfaceList = os.ExpandEnv(cfg.Firewall.BlockOutput.InterfaceList)
+	cfg.Firewall.BlockOutput.LogPrefix = os.ExpandEnv(cfg.Firewall.BlockOutput.LogPrefix)
+	cfg.Firewall.BlockOutput.PassthroughV4 = os.ExpandEnv(cfg.Firewall.BlockOutput.PassthroughV4)
+	cfg.Firewall.BlockOutput.PassthroughV4List = os.ExpandEnv(cfg.Firewall.BlockOutput.PassthroughV4List)
+	cfg.Firewall.BlockOutput.PassthroughV6 = os.ExpandEnv(cfg.Firewall.BlockOutput.PassthroughV6)
+	cfg.Firewall.BlockOutput.PassthroughV6List = os.ExpandEnv(cfg.Firewall.BlockOutput.PassthroughV6List)
+	cfg.Firewall.RulePlacement = os.ExpandEnv(cfg.Firewall.RulePlacement)
+	cfg.Firewall.CommentPrefix = os.ExpandEnv(cfg.Firewall.CommentPrefix)
+	cfg.Firewall.LogPrefix = os.ExpandEnv(cfg.Firewall.LogPrefix)
+
+	cfg.Logging.Level = os.ExpandEnv(cfg.Logging.Level)
+	cfg.Logging.Format = os.ExpandEnv(cfg.Logging.Format)
+	cfg.Logging.File = os.ExpandEnv(cfg.Logging.File)
+	cfg.Metrics.ListenAddr = os.ExpandEnv(cfg.Metrics.ListenAddr)
+}
+
+func expandEnvSlice(values []string) []string {
+	for i, value := range values {
+		values[i] = os.ExpandEnv(value)
+	}
+	return values
 }
 
 // Validate checks that all required configuration fields are set.

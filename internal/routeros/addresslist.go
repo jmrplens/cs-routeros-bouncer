@@ -11,7 +11,7 @@ import (
 // isDuplicateEntryError returns true when the error is a RouterOS DeviceError
 // indicating that the resource already exists ("already have such entry").
 func isDuplicateEntryError(err error) bool {
-	return isDeviceError(err) && strings.Contains(err.Error(), "already have such entry")
+	return errors.Is(err, ErrAddressDuplicate) || isDeviceError(err) && strings.Contains(err.Error(), "already have such entry")
 }
 
 // AddressEntry represents an entry in a MikroTik address list.

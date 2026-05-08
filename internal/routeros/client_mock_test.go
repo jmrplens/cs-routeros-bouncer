@@ -647,6 +647,18 @@ func TestAddAddress_Error(t *testing.T) {
 	}
 }
 
+func TestIsDuplicateEntryErrorSentinel(t *testing.T) {
+	if !isDuplicateEntryError(fmt.Errorf("bulk fallback: %w", ErrAddressDuplicate)) {
+		t.Fatal("expected ErrAddressDuplicate to be recognized as duplicate")
+	}
+}
+
+func TestIsNoSuchItemErrorNil(t *testing.T) {
+	if isNoSuchItemError(nil) {
+		t.Fatal("nil error should not match no such item")
+	}
+}
+
 // TestAddAddress_DuplicateUpdatesTimeout verifies that when Add returns
 // "already have such entry", AddAddress finds the existing entry and updates
 // its timeout and comment instead of failing (fixes issue #14).

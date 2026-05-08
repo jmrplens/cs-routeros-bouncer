@@ -20,6 +20,7 @@
 package manager
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"sync"
@@ -1080,7 +1081,7 @@ func TestReconcileAddresses_Empty(t *testing.T) {
 	mock := &mockROS{listAddresses: []ros.AddressEntry{}}
 	mgr := newTestManager(mock, baseConfig())
 
-	mgr.reconcileAddresses(nil)
+	mgr.reconcileAddresses(context.Background(), nil)
 
 	if len(mock.bulkAddCalls) != 0 {
 		t.Error("expected no bulk add calls for nil decisions")
@@ -1101,7 +1102,7 @@ func TestReconcileAddresses_AddOnly(t *testing.T) {
 		{Proto: "ip", Value: "10.0.0.2", Duration: 3600 * time.Second, Origin: "cscli"},
 	}
 
-	mgr.reconcileAddresses(decisions)
+	mgr.reconcileAddresses(context.Background(), decisions)
 
 	if len(mock.bulkAddCalls) != 1 {
 		t.Fatalf("expected 1 BulkAddAddresses call for IPv4, got %d", len(mock.bulkAddCalls))
@@ -1124,7 +1125,7 @@ func TestReconcileAddresses_RemoveOnly(t *testing.T) {
 	cfg.Firewall.IPv6.Enabled = false
 	mgr := newTestManager(mock, cfg)
 
-	mgr.reconcileAddresses([]*crowdsec.Decision{})
+	mgr.reconcileAddresses(context.Background(), []*crowdsec.Decision{})
 
 	if len(mock.removeAddressCalls) != 1 {
 		t.Fatalf("expected 1 RemoveAddress call, got %d", len(mock.removeAddressCalls))
@@ -1140,7 +1141,7 @@ func TestReconcileAddresses_ListError(t *testing.T) {
 	mock := &mockROS{listAddressesErr: errors.New("connection reset")}
 	mgr := newTestManager(mock, baseConfig())
 
-	mgr.reconcileAddresses([]*crowdsec.Decision{
+	mgr.reconcileAddresses(context.Background(), []*crowdsec.Decision{
 		{Proto: "ip", Value: "10.0.0.1"},
 	})
 
@@ -1169,7 +1170,7 @@ func TestReconcileAddresses_MixedAddRemove(t *testing.T) {
 		{Proto: "ip", Value: "10.0.0.2", Origin: "cscli"}, // New → add
 	}
 
-	mgr.reconcileAddresses(decisions)
+	mgr.reconcileAddresses(context.Background(), decisions)
 
 	if len(mock.bulkAddCalls) != 1 {
 		t.Fatalf("expected 1 BulkAdd call, got %d", len(mock.bulkAddCalls))
@@ -1201,7 +1202,7 @@ func TestReconcileAddresses_PopulatesCache(t *testing.T) {
 		{Proto: "ip", Value: "10.0.0.2", Origin: "cscli"},
 	}
 
-	mgr.reconcileAddresses(decisions)
+	mgr.reconcileAddresses(context.Background(), decisions)
 
 	mgr.cacheMu.RLock()
 	_, has1 := mgr.addressCache["10.0.0.1"]
@@ -1232,7 +1233,7 @@ func TestReconcileAddresses_PurgesStaleCacheEntries(t *testing.T) {
 	mgr.addressCache["10.0.0.99"] = struct{}{}
 	mgr.cacheMu.Unlock()
 
-	mgr.reconcileAddresses([]*crowdsec.Decision{
+	mgr.reconcileAddresses(context.Background(), []*crowdsec.Decision{
 		{Proto: "ip", Value: "10.0.0.1", Origin: "cscli"},
 	})
 

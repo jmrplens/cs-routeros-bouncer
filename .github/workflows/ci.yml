@@ -186,7 +186,6 @@ jobs:
       - name: SonarCloud Scan
         if: env.SONAR_TOKEN != ''
         uses: SonarSource/sonarqube-scan-action@v8
-        continue-on-error: true
         env:
           SONAR_HOST_URL: https://sonarcloud.io
           SONAR_TOKEN: ${{ env.SONAR_TOKEN }}

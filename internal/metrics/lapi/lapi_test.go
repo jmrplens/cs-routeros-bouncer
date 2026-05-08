@@ -5,6 +5,7 @@ package lapi
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -34,21 +35,26 @@ func metricValue(items []*models.MetricsDetailItem, name, unit string, labels ma
 		if item.Name == nil || *item.Name != name || item.Unit == nil || *item.Unit != unit || item.Value == nil {
 			continue
 		}
-		matches := true
-		for key, want := range labels {
-			if item.Labels[key] != want {
-				matches = false
-				break
-			}
-		}
-		if labels != nil && len(item.Labels) != len(labels) {
-			matches = false
-		}
-		if matches {
+		if metricLabelsMatch(item.Labels, labels) {
 			return *item.Value, true
 		}
 	}
 	return 0, false
+}
+
+func metricLabelsMatch(got, want map[string]string) bool {
+	if want == nil {
+		return len(got) == 0
+	}
+	if got == nil || len(got) != len(want) {
+		return false
+	}
+	for key, wantValue := range want {
+		if got[key] != wantValue {
+			return false
+		}
+	}
+	return true
 }
 
 // resetMetrics sets a known metrics state for test isolation.
@@ -414,19 +420,42 @@ func TestBouncerTypeConstant(t *testing.T) {
 	}
 }
 
-func TestNewProviderAndRunDisabled(t *testing.T) {
-	p, err := NewProvider(nil, 0, logrus.New(), zerolog.Nop())
-	if err != nil {
-		t.Fatalf("NewProvider: %v", err)
+func TestNewProviderAndRun(t *testing.T) {
+	tests := []struct {
+		name     string
+		interval time.Duration
+		ctx      func() context.Context
+		wantErr  error
+	}{
+		{name: "disabled interval", interval: 0, ctx: func() context.Context { return context.Background() }},
+		{name: "enabled canceled before run", interval: time.Millisecond, ctx: func() context.Context {
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			return ctx
+		}, wantErr: context.Canceled},
+		{name: "canceled context", interval: 0, ctx: func() context.Context {
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			return ctx
+		}},
 	}
-	if p.mp == nil {
-		t.Fatal("expected MetricsProvider to be configured")
-	}
-	if p.mp.Interval != 0 {
-		t.Fatalf("expected disabled interval, got %v", p.mp.Interval)
-	}
-	if runErr := p.Run(context.Background()); runErr != nil {
-		t.Fatalf("Run with disabled interval: %v", runErr)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p, err := NewProvider(nil, tt.interval, logrus.New(), zerolog.Nop())
+			if err != nil {
+				t.Fatalf("NewProvider: %v", err)
+			}
+			if p.mp == nil {
+				t.Fatal("expected MetricsProvider to be configured")
+			}
+			if p.mp.Interval != tt.interval {
+				t.Fatalf("expected interval %v, got %v", tt.interval, p.mp.Interval)
+			}
+			if runErr := p.Run(tt.ctx()); !errors.Is(runErr, tt.wantErr) {
+				t.Fatalf("Run: %v", runErr)
+			}
+		})
 	}
 }
 
