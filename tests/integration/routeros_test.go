@@ -185,14 +185,15 @@ func verifyFirewallRulesRemoved(t testing.TB, client *routeros.Client, rules []i
 	t.Helper()
 	for _, rule := range rules {
 		entry, err := client.FindFirewallRuleByComment(rule.proto, rule.table, comment)
-		if err != nil && !errors.Is(err, routeros.ErrNotFound) {
+		if err == nil {
+			t.Errorf("expected ErrNotFound for removed %s/%s firewall rule with comment %q, got nil error", rule.proto, rule.table, comment)
+			continue
+		}
+		if !errors.Is(err, routeros.ErrNotFound) {
 			t.Errorf("failed to verify %s/%s firewall rule removal: %v", rule.proto, rule.table, err)
 		}
 		if errors.Is(err, routeros.ErrNotFound) && entry != nil {
 			t.Errorf("inconsistent %s/%s firewall rule removal result: ErrNotFound with non-nil entry id=%s", rule.proto, rule.table, entry.ID)
-		}
-		if err == nil && entry != nil {
-			t.Errorf("expected %s/%s firewall rule with comment %q to be removed, but found id=%s", rule.proto, rule.table, comment, entry.ID)
 		}
 	}
 }

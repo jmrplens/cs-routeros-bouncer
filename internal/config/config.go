@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -17,6 +18,8 @@ var (
 	Commit    = "unknown"
 	BuildDate = "unknown"
 )
+
+var bracedEnvPlaceholder = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
 // Config holds the complete bouncer configuration.
 type Config struct {
@@ -278,54 +281,78 @@ func Load(configPath string) (*Config, error) {
 // expandConfigEnv resolves ${VAR} placeholders in string-based configuration
 // values after Viper has merged YAML, defaults, and direct environment overrides.
 func expandConfigEnv(cfg *Config) {
-	cfg.CrowdSec.APIURL = os.ExpandEnv(cfg.CrowdSec.APIURL)
-	cfg.CrowdSec.APIKey = os.ExpandEnv(cfg.CrowdSec.APIKey)
-	cfg.CrowdSec.CertPath = os.ExpandEnv(cfg.CrowdSec.CertPath)
-	cfg.CrowdSec.KeyPath = os.ExpandEnv(cfg.CrowdSec.KeyPath)
-	cfg.CrowdSec.CACertPath = os.ExpandEnv(cfg.CrowdSec.CACertPath)
-	cfg.CrowdSec.Origins = expandEnvSlice(cfg.CrowdSec.Origins)
-	cfg.CrowdSec.Scopes = expandEnvSlice(cfg.CrowdSec.Scopes)
-	cfg.CrowdSec.ScenariosContaining = expandEnvSlice(cfg.CrowdSec.ScenariosContaining)
-	cfg.CrowdSec.ScenariosNotContaining = expandEnvSlice(cfg.CrowdSec.ScenariosNotContaining)
-	cfg.CrowdSec.SupportedDecisionTypes = expandEnvSlice(cfg.CrowdSec.SupportedDecisionTypes)
+	cfg.CrowdSec.APIURL = expandConfigValue(cfg.CrowdSec.APIURL, "CROWDSEC_URL")
+	cfg.CrowdSec.APIKey = expandConfigValue(cfg.CrowdSec.APIKey, "CROWDSEC_BOUNCER_API_KEY")
+	cfg.CrowdSec.CertPath = expandConfigValue(cfg.CrowdSec.CertPath, "CROWDSEC_CERT_PATH")
+	cfg.CrowdSec.KeyPath = expandConfigValue(cfg.CrowdSec.KeyPath, "CROWDSEC_KEY_PATH")
+	cfg.CrowdSec.CACertPath = expandConfigValue(cfg.CrowdSec.CACertPath, "CROWDSEC_CA_CERT_PATH")
+	cfg.CrowdSec.Origins = expandEnvSlice(cfg.CrowdSec.Origins, "CROWDSEC_ORIGINS")
+	cfg.CrowdSec.Scopes = expandEnvSlice(cfg.CrowdSec.Scopes, "CROWDSEC_SCOPES")
+	cfg.CrowdSec.ScenariosContaining = expandEnvSlice(cfg.CrowdSec.ScenariosContaining, "CROWDSEC_SCENARIOS_CONTAINING")
+	cfg.CrowdSec.ScenariosNotContaining = expandEnvSlice(cfg.CrowdSec.ScenariosNotContaining, "CROWDSEC_SCENARIOS_NOT_CONTAINING")
+	cfg.CrowdSec.SupportedDecisionTypes = expandEnvSlice(cfg.CrowdSec.SupportedDecisionTypes, "CROWDSEC_DECISIONS_TYPES")
 
-	cfg.MikroTik.Address = os.ExpandEnv(cfg.MikroTik.Address)
-	cfg.MikroTik.Username = os.ExpandEnv(cfg.MikroTik.Username)
-	cfg.MikroTik.Password = os.ExpandEnv(cfg.MikroTik.Password)
+	cfg.MikroTik.Address = expandConfigValue(cfg.MikroTik.Address, "MIKROTIK_HOST")
+	cfg.MikroTik.Username = expandConfigValue(cfg.MikroTik.Username, "MIKROTIK_USER")
+	cfg.MikroTik.Password = expandConfigValue(cfg.MikroTik.Password, "MIKROTIK_PASS")
 
-	cfg.Firewall.IPv4.AddressList = os.ExpandEnv(cfg.Firewall.IPv4.AddressList)
-	cfg.Firewall.IPv6.AddressList = os.ExpandEnv(cfg.Firewall.IPv6.AddressList)
-	cfg.Firewall.Filter.Chains = expandEnvSlice(cfg.Firewall.Filter.Chains)
-	cfg.Firewall.Filter.LogPrefix = os.ExpandEnv(cfg.Firewall.Filter.LogPrefix)
-	cfg.Firewall.Filter.ConnectionState = os.ExpandEnv(cfg.Firewall.Filter.ConnectionState)
-	cfg.Firewall.Raw.Chains = expandEnvSlice(cfg.Firewall.Raw.Chains)
-	cfg.Firewall.Raw.LogPrefix = os.ExpandEnv(cfg.Firewall.Raw.LogPrefix)
-	cfg.Firewall.DenyAction = os.ExpandEnv(cfg.Firewall.DenyAction)
-	cfg.Firewall.RejectWith = os.ExpandEnv(cfg.Firewall.RejectWith)
-	cfg.Firewall.BlockInput.Interface = os.ExpandEnv(cfg.Firewall.BlockInput.Interface)
-	cfg.Firewall.BlockInput.InterfaceList = os.ExpandEnv(cfg.Firewall.BlockInput.InterfaceList)
-	cfg.Firewall.BlockInput.Whitelist = os.ExpandEnv(cfg.Firewall.BlockInput.Whitelist)
-	cfg.Firewall.BlockOutput.Interface = os.ExpandEnv(cfg.Firewall.BlockOutput.Interface)
-	cfg.Firewall.BlockOutput.InterfaceList = os.ExpandEnv(cfg.Firewall.BlockOutput.InterfaceList)
-	cfg.Firewall.BlockOutput.LogPrefix = os.ExpandEnv(cfg.Firewall.BlockOutput.LogPrefix)
-	cfg.Firewall.BlockOutput.PassthroughV4 = os.ExpandEnv(cfg.Firewall.BlockOutput.PassthroughV4)
-	cfg.Firewall.BlockOutput.PassthroughV4List = os.ExpandEnv(cfg.Firewall.BlockOutput.PassthroughV4List)
-	cfg.Firewall.BlockOutput.PassthroughV6 = os.ExpandEnv(cfg.Firewall.BlockOutput.PassthroughV6)
-	cfg.Firewall.BlockOutput.PassthroughV6List = os.ExpandEnv(cfg.Firewall.BlockOutput.PassthroughV6List)
-	cfg.Firewall.RulePlacement = os.ExpandEnv(cfg.Firewall.RulePlacement)
-	cfg.Firewall.CommentPrefix = os.ExpandEnv(cfg.Firewall.CommentPrefix)
-	cfg.Firewall.LogPrefix = os.ExpandEnv(cfg.Firewall.LogPrefix)
+	cfg.Firewall.IPv4.AddressList = expandConfigValue(cfg.Firewall.IPv4.AddressList, "FIREWALL_IPV4_ADDRESS_LIST")
+	cfg.Firewall.IPv6.AddressList = expandConfigValue(cfg.Firewall.IPv6.AddressList, "FIREWALL_IPV6_ADDRESS_LIST")
+	cfg.Firewall.Filter.Chains = expandEnvSlice(cfg.Firewall.Filter.Chains, "FIREWALL_FILTER_CHAINS")
+	cfg.Firewall.Filter.LogPrefix = expandConfigValue(cfg.Firewall.Filter.LogPrefix, "FIREWALL_FILTER_LOG_PREFIX")
+	cfg.Firewall.Filter.ConnectionState = expandConfigValue(cfg.Firewall.Filter.ConnectionState, "FIREWALL_FILTER_CONNECTION_STATE")
+	cfg.Firewall.Raw.Chains = expandEnvSlice(cfg.Firewall.Raw.Chains, "FIREWALL_RAW_CHAINS")
+	cfg.Firewall.Raw.LogPrefix = expandConfigValue(cfg.Firewall.Raw.LogPrefix, "FIREWALL_RAW_LOG_PREFIX")
+	cfg.Firewall.DenyAction = expandConfigValue(cfg.Firewall.DenyAction, "FIREWALL_DENY_ACTION")
+	cfg.Firewall.RejectWith = expandConfigValue(cfg.Firewall.RejectWith, "FIREWALL_REJECT_WITH")
+	cfg.Firewall.BlockInput.Interface = expandConfigValue(cfg.Firewall.BlockInput.Interface, "FIREWALL_INPUT_INTERFACE")
+	cfg.Firewall.BlockInput.InterfaceList = expandConfigValue(cfg.Firewall.BlockInput.InterfaceList, "FIREWALL_INPUT_INTERFACE_LIST")
+	cfg.Firewall.BlockInput.Whitelist = expandConfigValue(cfg.Firewall.BlockInput.Whitelist, "FIREWALL_INPUT_WHITELIST")
+	cfg.Firewall.BlockOutput.Interface = expandConfigValue(cfg.Firewall.BlockOutput.Interface, "FIREWALL_OUTPUT_INTERFACE")
+	cfg.Firewall.BlockOutput.InterfaceList = expandConfigValue(cfg.Firewall.BlockOutput.InterfaceList, "FIREWALL_OUTPUT_INTERFACE_LIST")
+	cfg.Firewall.BlockOutput.LogPrefix = expandConfigValue(cfg.Firewall.BlockOutput.LogPrefix, "FIREWALL_OUTPUT_LOG_PREFIX")
+	cfg.Firewall.BlockOutput.PassthroughV4 = expandConfigValue(cfg.Firewall.BlockOutput.PassthroughV4, "FIREWALL_OUTPUT_PASSTHROUGH_V4")
+	cfg.Firewall.BlockOutput.PassthroughV4List = expandConfigValue(cfg.Firewall.BlockOutput.PassthroughV4List, "FIREWALL_OUTPUT_PASSTHROUGH_V4_LIST")
+	cfg.Firewall.BlockOutput.PassthroughV6 = expandConfigValue(cfg.Firewall.BlockOutput.PassthroughV6, "FIREWALL_OUTPUT_PASSTHROUGH_V6")
+	cfg.Firewall.BlockOutput.PassthroughV6List = expandConfigValue(cfg.Firewall.BlockOutput.PassthroughV6List, "FIREWALL_OUTPUT_PASSTHROUGH_V6_LIST")
+	cfg.Firewall.RulePlacement = expandConfigValue(cfg.Firewall.RulePlacement, "FIREWALL_RULE_PLACEMENT")
+	cfg.Firewall.CommentPrefix = expandConfigValue(cfg.Firewall.CommentPrefix, "FIREWALL_COMMENT_PREFIX")
+	cfg.Firewall.LogPrefix = expandConfigValue(cfg.Firewall.LogPrefix, "FIREWALL_LOG_PREFIX")
 
-	cfg.Logging.Level = os.ExpandEnv(cfg.Logging.Level)
-	cfg.Logging.Format = os.ExpandEnv(cfg.Logging.Format)
-	cfg.Logging.File = os.ExpandEnv(cfg.Logging.File)
-	cfg.Metrics.ListenAddr = os.ExpandEnv(cfg.Metrics.ListenAddr)
+	cfg.Logging.Level = expandConfigValue(cfg.Logging.Level, "LOG_LEVEL")
+	cfg.Logging.Format = expandConfigValue(cfg.Logging.Format, "LOG_FORMAT")
+	cfg.Logging.File = expandConfigValue(cfg.Logging.File, "LOG_FILE")
+	cfg.Metrics.ListenAddr = expandConfigValue(cfg.Metrics.ListenAddr, "METRICS_ADDR")
 }
 
-// expandEnvSlice applies os.ExpandEnv to each item in a configuration slice.
-func expandEnvSlice(values []string) []string {
+func expandConfigValue(value, envName string) string {
+	if envName != "" && envHasValue(envName) {
+		return value
+	}
+	return expandBracedEnv(value)
+}
+
+func envHasValue(envName string) bool {
+	value, ok := os.LookupEnv(envName)
+	return ok && value != ""
+}
+
+// expandBracedEnv expands explicit ${VAR} placeholders while preserving bare
+// dollar signs that commonly appear in secrets and RouterOS values.
+func expandBracedEnv(value string) string {
+	return bracedEnvPlaceholder.ReplaceAllStringFunc(value, func(match string) string {
+		name := match[2 : len(match)-1]
+		return os.Getenv(name)
+	})
+}
+
+// expandEnvSlice applies expandBracedEnv to each item in a configuration slice.
+func expandEnvSlice(values []string, envName string) []string {
+	if envName != "" && envHasValue(envName) {
+		return values
+	}
 	for i, value := range values {
-		values[i] = os.ExpandEnv(value)
+		values[i] = expandBracedEnv(value)
 	}
 	return values
 }

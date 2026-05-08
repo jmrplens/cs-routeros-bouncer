@@ -456,7 +456,7 @@ func TestNewProviderAndRun(t *testing.T) {
 				t.Fatalf("expected interval %v, got %v", tt.interval, p.mp.Interval)
 			}
 			if runErr := p.Run(tt.ctx()); !errors.Is(runErr, tt.wantErr) {
-				t.Fatalf("Run: %v", runErr)
+				t.Fatalf("Run: got %v, want %v", runErr, tt.wantErr)
 			}
 		})
 	}

@@ -116,13 +116,18 @@ func TestMetricsTrackProcessedEnvOverride(t *testing.T) {
 func TestLoadExpandsEnvPlaceholders(t *testing.T) {
 	t.Setenv("CROWDSEC_KEY_FROM_FILE", "expanded-key")
 	t.Setenv("MIKROTIK_PASSWORD_FROM_FILE", "expanded-password")
+	t.Setenv("CROWDSEC_ORIGIN", "expanded-origin")
+	t.Setenv("CROWDSEC_BOUNCER_API_KEY", "")
+	t.Setenv("CROWDSEC_ORIGINS", "")
 	t.Setenv("CROWDSEC_URL", "http://localhost:8080/")
 	t.Setenv("MIKROTIK_HOST", "192.168.0.1:8728")
 	t.Setenv("MIKROTIK_USER", "admin")
+	t.Setenv("MIKROTIK_PASS", "")
 
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(configPath, []byte(`crowdsec:
   api_key: "${CROWDSEC_KEY_FROM_FILE}"
+  origins: ["${CROWDSEC_ORIGIN}"]
 mikrotik:
   password: "${MIKROTIK_PASSWORD_FROM_FILE}"
 `), 0o600); err != nil {
@@ -138,6 +143,43 @@ mikrotik:
 	}
 	if cfg.MikroTik.Password != "expanded-password" {
 		t.Fatalf("expected expanded MikroTik password, got %q", cfg.MikroTik.Password)
+	}
+	if len(cfg.CrowdSec.Origins) != 1 || cfg.CrowdSec.Origins[0] != "expanded-origin" {
+		t.Fatalf("expected expanded origins, got %#v", cfg.CrowdSec.Origins)
+	}
+}
+
+// TestLoadPreservesLiteralDollarValues verifies secrets are not shell-expanded.
+func TestLoadPreservesLiteralDollarValues(t *testing.T) {
+	t.Setenv("CROWDSEC_URL", "http://localhost:8080/")
+	t.Setenv("MIKROTIK_HOST", "192.168.0.1:8728")
+	t.Setenv("MIKROTIK_USER", "admin")
+	t.Setenv("MIKROTIK_PASS", "pa$$from-env")
+	t.Setenv("COMMENT_SUFFIX", "prod")
+	t.Setenv("CROWDSEC_BOUNCER_API_KEY", "")
+	t.Setenv("FIREWALL_COMMENT_PREFIX", "")
+
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(configPath, []byte(`crowdsec:
+  api_key: "api$KEY-pa$$word"
+firewall:
+  comment_prefix: "cost$center-${COMMENT_SUFFIX}"
+`), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+	if cfg.CrowdSec.APIKey != "api$KEY-pa$$word" {
+		t.Fatalf("expected literal CrowdSec key, got %q", cfg.CrowdSec.APIKey)
+	}
+	if cfg.MikroTik.Password != "pa$$from-env" {
+		t.Fatalf("expected literal MikroTik password, got %q", cfg.MikroTik.Password)
+	}
+	if cfg.Firewall.CommentPrefix != "cost$center-prod" {
+		t.Fatalf("expected braced placeholder only expansion, got %q", cfg.Firewall.CommentPrefix)
 	}
 }
 
