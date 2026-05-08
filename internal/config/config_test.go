@@ -555,6 +555,221 @@ func TestValidateRulePlacementNegativePosition(t *testing.T) {
 	}
 }
 
+func TestRulePlacementHelpers(t *testing.T) {
+	position := 7
+	placement := RulePlacementConfig{
+		Strategy:     RulePlacementBeforeComment,
+		Comment:      "anchor",
+		CommentMatch: RulePlacementMatchContains,
+		Position:     &position,
+		Fallback:     RulePlacementBottom,
+		Filter:       &RulePlacementConfig{Strategy: RulePlacementAfterComment, Comment: "filter-anchor"},
+		Raw:          &RulePlacementConfig{Strategy: RulePlacementPosition, Position: &position},
+	}
+
+	if got := (*RulePlacementConfig)(nil).String(); got != RulePlacementBottom {
+		t.Fatalf("nil String should default to bottom, got %q", got)
+	}
+	if got := (*RulePlacementConfig)(nil).ForMode("filter"); got.Strategy != "" {
+		t.Fatalf("nil ForMode should return zero value, got %#v", got)
+	}
+	if got := (*RulePlacementConfig)(nil).withoutTableOverrides(); got.Strategy != "" {
+		t.Fatalf("nil withoutTableOverrides should return zero value, got %#v", got)
+	}
+	if got := (&RulePlacementConfig{}).String(); got != RulePlacementBottom {
+		t.Fatalf("empty String should default to bottom, got %q", got)
+	}
+	if got := placement.String(); !strings.Contains(got, "before_comment:anchor") || !strings.Contains(got, "filter=after_comment:filter-anchor") || !strings.Contains(got, "raw=position:7") {
+		t.Fatalf("unexpected placement string: %q", got)
+	}
+	if got := placement.ForMode("unknown"); got.Filter != nil || got.Raw != nil || got.Strategy != RulePlacementBeforeComment {
+		t.Fatalf("unknown mode should return global settings without overrides, got %#v", got)
+	}
+	if got := placement.ForMode("filter"); got.Strategy != RulePlacementAfterComment || got.Comment != "filter-anchor" || got.CommentMatch != RulePlacementMatchContains || got.Fallback != RulePlacementBottom {
+		t.Fatalf("filter override should merge with global settings, got %#v", got)
+	}
+	if got := placement.ForMode("raw"); got.Strategy != RulePlacementPosition || got.Position == nil || *got.Position != position {
+		t.Fatalf("raw override should keep configured position, got %#v", got)
+	}
+
+	merged := mergeRulePlacement(RulePlacementConfig{}, RulePlacementConfig{
+		Strategy:     RulePlacementAfterComment,
+		Comment:      "merged",
+		CommentMatch: RulePlacementMatchContains,
+		Position:     &position,
+		Fallback:     RulePlacementBottom,
+	})
+	if merged.Strategy != RulePlacementAfterComment || merged.Comment != "merged" || merged.CommentMatch != RulePlacementMatchContains || merged.Position == nil || *merged.Position != position || merged.Fallback != RulePlacementBottom {
+		t.Fatalf("unexpected merged placement: %#v", merged)
+	}
+}
+
+func TestParseRulePlacementConfigVariants(t *testing.T) {
+	position := 3
+	tests := []struct {
+		name  string
+		input any
+		check func(*testing.T, RulePlacementConfig)
+	}{
+		{name: "nil", input: nil, check: func(t *testing.T, got RulePlacementConfig) {
+			t.Helper()
+			if got.Strategy != "" {
+				t.Fatalf("expected zero value, got %#v", got)
+			}
+		}},
+		{name: "struct", input: RulePlacementConfig{Strategy: RulePlacementBottom}, check: func(t *testing.T, got RulePlacementConfig) {
+			t.Helper()
+			if got.Strategy != RulePlacementBottom {
+				t.Fatalf("expected bottom, got %#v", got)
+			}
+		}},
+		{name: "map any", input: map[any]any{"strategy": "position", "position": int64(position)}, check: func(t *testing.T, got RulePlacementConfig) {
+			t.Helper()
+			if got.Strategy != RulePlacementPosition || got.Position == nil || *got.Position != position {
+				t.Fatalf("expected position %d, got %#v", position, got)
+			}
+		}},
+		{name: "map string", input: map[string]any{"strategy": "after_comment", "comment": "anchor", "comment_match": "contains", "fallback": "bottom"}, check: func(t *testing.T, got RulePlacementConfig) {
+			t.Helper()
+			if got.Strategy != RulePlacementAfterComment || got.Comment != "anchor" || got.CommentMatch != RulePlacementMatchContains || got.Fallback != RulePlacementBottom {
+				t.Fatalf("unexpected parsed map: %#v", got)
+			}
+		}},
+		{name: "filter override", input: map[string]any{"filter": map[string]any{"strategy": "bottom"}}, check: func(t *testing.T, got RulePlacementConfig) {
+			t.Helper()
+			if got.Filter == nil || got.Filter.Strategy != RulePlacementBottom {
+				t.Fatalf("expected filter bottom override, got %#v", got)
+			}
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseRulePlacementConfig(tt.input)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			tt.check(t, got)
+		})
+	}
+
+	errorInputs := []struct {
+		name  string
+		input any
+	}{
+		{name: "invalid type", input: []string{"top"}},
+		{name: "invalid position", input: map[string]any{"position": "not-int"}},
+		{name: "invalid filter", input: map[string]any{"filter": []string{"bad"}}},
+		{name: "invalid raw", input: map[string]any{"raw": []string{"bad"}}},
+	}
+	for _, tt := range errorInputs {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := parseRulePlacementConfig(tt.input); err == nil {
+				t.Fatal("expected parse error")
+			}
+		})
+	}
+}
+
+func TestRulePlacementPositionTypes(t *testing.T) {
+	tests := []struct {
+		name string
+		in   any
+		want int
+	}{
+		{name: "int", in: 1, want: 1},
+		{name: "int64", in: int64(2), want: 2},
+		{name: "float64", in: float64(3), want: 3},
+		{name: "string", in: " 4 ", want: 4},
+		{name: "default", in: uint(5), want: 5},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := rulePlacementPosition(tt.in)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("expected %d, got %d", tt.want, got)
+			}
+		})
+	}
+	if _, err := rulePlacementPosition("bad"); err == nil {
+		t.Fatal("expected string conversion error")
+	}
+	if _, err := rulePlacementPosition([]string{"bad"}); err == nil {
+		t.Fatal("expected default conversion error")
+	}
+}
+
+func TestExpandRulePlacementEnvAndPlaceholders(t *testing.T) {
+	t.Setenv("PLACEMENT_STRATEGY", "after_comment")
+	t.Setenv("PLACEMENT_COMMENT", "drop invalid")
+	t.Setenv("PLACEMENT_MATCH", "contains")
+	t.Setenv("PLACEMENT_FALLBACK", "bottom")
+	t.Setenv("FILTER_COMMENT", "filter anchor")
+	t.Setenv("RAW_COMMENT", "raw anchor")
+	placement := RulePlacementConfig{
+		Strategy:     "${PLACEMENT_STRATEGY}",
+		Comment:      "${PLACEMENT_COMMENT}",
+		CommentMatch: "${PLACEMENT_MATCH}",
+		Fallback:     "${PLACEMENT_FALLBACK}",
+		Filter:       &RulePlacementConfig{Comment: "${FILTER_COMMENT}"},
+		Raw:          &RulePlacementConfig{Comment: "${RAW_COMMENT}"},
+	}
+	if err := expandRulePlacementEnv(&placement); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if placement.Strategy != RulePlacementAfterComment || placement.Comment != "drop invalid" || placement.CommentMatch != RulePlacementMatchContains || placement.Fallback != RulePlacementBottom {
+		t.Fatalf("unexpected expanded placement: %#v", placement)
+	}
+	if placement.Filter.Comment != "filter anchor" || placement.Raw.Comment != "raw anchor" {
+		t.Fatalf("nested placeholders not expanded: %#v", placement)
+	}
+
+	t.Setenv("FIREWALL_RULE_PLACEMENT", "POSITION")
+	t.Setenv("FIREWALL_RULE_PLACEMENT_COMMENT", "env anchor")
+	t.Setenv("FIREWALL_RULE_PLACEMENT_COMMENT_MATCH", "CONTAINS")
+	t.Setenv("FIREWALL_RULE_PLACEMENT_POSITION", "9")
+	t.Setenv("FIREWALL_RULE_PLACEMENT_FALLBACK", "BOTTOM")
+	if err := expandRulePlacementEnv(&placement); err != nil {
+		t.Fatalf("unexpected env error: %v", err)
+	}
+	if placement.Strategy != RulePlacementPosition || placement.Comment != "env anchor" || placement.CommentMatch != RulePlacementMatchContains || placement.Position == nil || *placement.Position != 9 || placement.Fallback != RulePlacementBottom {
+		t.Fatalf("env overrides not applied: %#v", placement)
+	}
+}
+
+func TestExpandRulePlacementEnvInvalidPosition(t *testing.T) {
+	t.Setenv("FIREWALL_RULE_PLACEMENT_POSITION", "bad")
+	if err := expandRulePlacementEnv(&RulePlacementConfig{}); err == nil {
+		t.Fatal("expected invalid env position error")
+	}
+}
+
+func TestValidateRulePlacementNestedRawError(t *testing.T) {
+	cfg := validCfg()
+	cfg.Firewall.RulePlacement = RulePlacementConfig{Raw: &RulePlacementConfig{Strategy: "bad"}}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "firewall.rule_placement.raw.strategy") {
+		t.Fatalf("expected nested raw validation error, got %v", err)
+	}
+}
+
+func TestValidateRulePlacementNestedSuccessAndFilterError(t *testing.T) {
+	cfg := validCfg()
+	cfg.Firewall.RulePlacement = RulePlacementConfig{
+		Filter: &RulePlacementConfig{Strategy: RulePlacementBottom},
+		Raw:    &RulePlacementConfig{Strategy: RulePlacementTop},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected nested placement to validate, got %v", err)
+	}
+
+	cfg.Firewall.RulePlacement = RulePlacementConfig{Filter: &RulePlacementConfig{Strategy: "bad"}}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "firewall.rule_placement.filter.strategy") {
+		t.Fatalf("expected nested filter validation error, got %v", err)
+	}
+}
+
 // TestLoadInvalidConfigFile verifies that loading a nonexistent YAML file
 // returns an error.
 func TestLoadInvalidConfigFile(t *testing.T) {

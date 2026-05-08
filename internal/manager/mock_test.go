@@ -1123,6 +1123,131 @@ func TestCreateFirewallRules_TableOverrideAffectsOnlySelectedTable(t *testing.T)
 	}
 }
 
+func TestPlacementCandidatesFiltersBouncerRulesAndErrors(t *testing.T) {
+	mock := &mockROS{listFirewallRulesResult: []ros.RuleEntry{
+		{ID: "*U1", Comment: "user rule"},
+		{ID: "*B1", Comment: "crowdsec-bouncer:filter-input-input-v4 @cs-routeros-bouncer"},
+	}}
+	mgr := newTestManager(mock, baseConfig())
+
+	candidates, err := mgr.placementCandidates("ip", "filter")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(candidates) != 1 || candidates[0].ID != "*U1" {
+		t.Fatalf("expected only user rule candidate, got %#v", candidates)
+	}
+
+	mock.listFirewallRulesErr = errors.New("router unavailable")
+	if _, listErr := mgr.placementCandidates("ip", "filter"); listErr == nil {
+		t.Fatal("expected list firewall rules error")
+	}
+}
+
+func TestPlaceFirewallBlockSkipsEmptyBottomAndListError(t *testing.T) {
+	refs := []firewallRuleRef{{Comment: "managed", ID: "*M1"}}
+
+	position := 0
+	mock := &mockROS{listFirewallRulesResult: []ros.RuleEntry{{ID: "*U1", Comment: "user"}}}
+	cfg := baseConfig()
+	cfg.Firewall.RulePlacement = config.RulePlacementConfig{Strategy: config.RulePlacementPosition, Position: &position}
+	mgr := newTestManager(mock, cfg)
+	mgr.placeFirewallBlock("ip", "filter", "input", nil)
+	if len(mock.moveRuleCalls) != 0 {
+		t.Fatalf("empty refs should not move rules, got %#v", mock.moveRuleCalls)
+	}
+
+	cfg.Firewall.RulePlacement = config.RulePlacementConfig{Strategy: config.RulePlacementBottom}
+	mock = &mockROS{listFirewallRulesResult: []ros.RuleEntry{{ID: "*U1", Comment: "user"}}}
+	mgr = newTestManager(mock, cfg)
+	mgr.placeFirewallBlock("ip", "filter", "input", refs)
+	if len(mock.moveRuleCalls) != 0 {
+		t.Fatalf("bottom placement should not move rules, got %#v", mock.moveRuleCalls)
+	}
+
+	cfg.Firewall.RulePlacement = config.RulePlacementConfig{Strategy: config.RulePlacementTop}
+	mock = &mockROS{listFirewallRulesErr: errors.New("list failed")}
+	mgr = newTestManager(mock, cfg)
+	mgr.placeFirewallBlock("ip", "filter", "input", refs)
+	if len(mock.moveRuleCalls) != 0 {
+		t.Fatalf("list error should leave block at bottom, got %#v", mock.moveRuleCalls)
+	}
+}
+
+func TestPlaceFirewallBlockPositionDefaultAndAllMovesFail(t *testing.T) {
+	mock := &mockROS{
+		listFirewallRulesResult: []ros.RuleEntry{
+			{ID: "*U1", Comment: "first"},
+			{ID: "*U2", Comment: "second"},
+		},
+		moveRuleErr: errors.New("cannot move"),
+	}
+	cfg := baseConfig()
+	cfg.Firewall.RulePlacement = config.RulePlacementConfig{Strategy: config.RulePlacementPosition}
+	mgr := newTestManager(mock, cfg)
+
+	mgr.placeFirewallBlock("ip", "filter", "input", []firewallRuleRef{{Comment: "managed", ID: "*M1"}})
+	if len(mock.moveRuleCalls) != 2 {
+		t.Fatalf("expected retry across all candidates, got %#v", mock.moveRuleCalls)
+	}
+	if mock.moveRuleCalls[0].BeforeID != "*U1" || mock.moveRuleCalls[1].BeforeID != "*U2" {
+		t.Fatalf("unexpected retry targets: %#v", mock.moveRuleCalls)
+	}
+}
+
+func TestPlaceFirewallBlockBeforeCommentMoveErrorUsesDefaultTopFallback(t *testing.T) {
+	mock := &mockROS{
+		listFirewallRulesResult: []ros.RuleEntry{{ID: "*A1", Comment: "anchor"}, {ID: "*U2", Comment: "next"}},
+		moveRuleErrs:            []error{errors.New("anchor move failed"), nil},
+	}
+	cfg := baseConfig()
+	cfg.Firewall.RulePlacement = config.RulePlacementConfig{Strategy: config.RulePlacementBeforeComment, Comment: "anchor"}
+	mgr := newTestManager(mock, cfg)
+
+	mgr.placeFirewallBlock("ip", "filter", "input", []firewallRuleRef{{Comment: "managed", ID: "*M1"}})
+	if len(mock.moveRuleCalls) != 2 {
+		t.Fatalf("expected failed anchor move plus fallback move, got %#v", mock.moveRuleCalls)
+	}
+	if mock.moveRuleCalls[0].BeforeID != "*A1" || mock.moveRuleCalls[1].BeforeID != "*A1" {
+		t.Fatalf("unexpected before-comment fallback targets: %#v", mock.moveRuleCalls)
+	}
+}
+
+func TestPlaceFirewallBlockAfterCommentFallbackBranches(t *testing.T) {
+	refs := []firewallRuleRef{{Comment: "managed", ID: "*M1"}}
+	cfg := baseConfig()
+	cfg.Firewall.RulePlacement = config.RulePlacementConfig{
+		Strategy: config.RulePlacementAfterComment,
+		Comment:  "missing",
+		Fallback: config.RulePlacementBottom,
+	}
+	mock := &mockROS{listFirewallRulesResult: []ros.RuleEntry{{ID: "*U1", Comment: "user"}}}
+	mgr := newTestManager(mock, cfg)
+	mgr.placeFirewallBlock("ip", "filter", "input", refs)
+	if len(mock.moveRuleCalls) != 0 {
+		t.Fatalf("missing anchor with bottom fallback should not move, got %#v", mock.moveRuleCalls)
+	}
+
+	cfg.Firewall.RulePlacement = config.RulePlacementConfig{Strategy: config.RulePlacementAfterComment, Comment: "anchor"}
+	mock = &mockROS{listFirewallRulesResult: []ros.RuleEntry{{ID: "*A1", Comment: "anchor"}}}
+	mgr = newTestManager(mock, cfg)
+	mgr.placeFirewallBlock("ip", "filter", "input", refs)
+	if len(mock.moveRuleCalls) != 0 {
+		t.Fatalf("anchor at end should append without moves, got %#v", mock.moveRuleCalls)
+	}
+
+	cfg.Firewall.RulePlacement = config.RulePlacementConfig{Strategy: config.RulePlacementAfterComment, Comment: "anchor", Fallback: config.RulePlacementBottom}
+	mock = &mockROS{
+		listFirewallRulesResult: []ros.RuleEntry{{ID: "*A1", Comment: "anchor"}, {ID: "*U2", Comment: "next"}},
+		moveRuleErr:             errors.New("after move failed"),
+	}
+	mgr = newTestManager(mock, cfg)
+	mgr.placeFirewallBlock("ip", "filter", "input", refs)
+	if len(mock.moveRuleCalls) != 1 || mock.moveRuleCalls[0].BeforeID != "*U2" {
+		t.Fatalf("expected one failed after-comment move before next rule, got %#v", mock.moveRuleCalls)
+	}
+}
+
 // TestCreateFirewallRules_NoneEnabled verifies that no rules are created when
 // both filter and raw tables are disabled.
 func TestCreateFirewallRules_NoneEnabled(t *testing.T) {
