@@ -23,7 +23,7 @@ RUN CGO_ENABLED=0 go build \
     ./cmd/cs-routeros-bouncer/
 
 # Runtime stage
-FROM alpine:3.21
+FROM alpine:3.23
 
 ARG VERSION=dev
 

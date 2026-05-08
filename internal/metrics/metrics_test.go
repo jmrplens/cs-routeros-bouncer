@@ -183,7 +183,7 @@ func TestSetInfo(t *testing.T) {
 // TestSetStartTime verifies that SetStartTime records a non-zero timestamp.
 func TestSetStartTime(t *testing.T) {
 	SetStartTime()
-	if got := testutil.ToFloat64(startTimeSeconds); got == 0 {
+	if testutil.ToFloat64(startTimeSeconds) == 0 {
 		t.Error("expected non-zero start time")
 	}
 }
