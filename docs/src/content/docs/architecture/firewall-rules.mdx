@@ -69,7 +69,7 @@ The bouncer places related rules as ordered blocks. A typical input block includ
 
 Placement is menu-local. A `filter` block is positioned within `/ip firewall filter` or `/ipv6 firewall filter`; a `raw` block is positioned within `/ip firewall raw` or `/ipv6 firewall raw`.
 
-The bouncer can place its managed block (the related rules it creates and moves together) at the top, at the bottom, at a numeric RouterOS `print` position, or relative to an existing comment owned by another rule. If output blocking is enabled, the output block is moved with the same internal ordering. The bouncer reuses the same placement strategy for IPv4 and IPv6, and table overrides can send `filter` and `raw` blocks to different locations.
+The bouncer can place its managed block (the related rules it creates and moves together) at the top, at the bottom, at a numeric RouterOS `print` position, or relative to an existing comment owned by another rule. If output blocking is enabled, the output block is moved with the same internal ordering. By default, the bouncer reuses the same placement strategy for IPv4 and IPv6. Table and protocol overrides can send `filter`, `raw`, IPv4, and IPv6 blocks to different locations.
 
 | Strategy         | Behavior                                                                                                                                                                       |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

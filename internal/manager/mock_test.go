@@ -1123,6 +1123,32 @@ func TestCreateFirewallRules_TableOverrideAffectsOnlySelectedTable(t *testing.T)
 	}
 }
 
+func TestCreateFirewallRules_ProtocolOverrideAffectsOnlySelectedProtocol(t *testing.T) {
+	mock := &mockROS{
+		addRuleID:               "*R1",
+		listFirewallRulesResult: []ros.RuleEntry{{ID: "*U1", Comment: "user rule"}},
+	}
+	cfg := baseConfig()
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"input"}
+	cfg.Firewall.Raw.Enabled = false
+	cfg.Firewall.RulePlacement = config.RulePlacementConfig{Strategy: config.RulePlacementBottom}
+	cfg.Firewall.IPv6.RulePlacement = &config.RulePlacementConfig{Strategy: config.RulePlacementTop}
+	mgr := newTestManager(mock, cfg)
+
+	if err := mgr.createFirewallRules(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(mock.moveRuleCalls) != 2 {
+		t.Fatalf("expected only IPv6 block moves, got %#v", mock.moveRuleCalls)
+	}
+	for _, call := range mock.moveRuleCalls {
+		if call.Proto != "ipv6" || call.Mode != "filter" || call.BeforeID != "*U1" {
+			t.Fatalf("unexpected protocol override move: %#v", mock.moveRuleCalls)
+		}
+	}
+}
+
 func TestPlacementCandidatesFiltersBouncerRulesAndErrors(t *testing.T) {
 	mock := &mockROS{listFirewallRulesResult: []ros.RuleEntry{
 		{ID: "*U1", Comment: "user rule"},

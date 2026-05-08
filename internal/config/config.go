@@ -109,12 +109,86 @@ type RulePlacementConfig struct {
 // UnmarshalMapstructure lets Viper decode rule_placement from either a legacy
 // scalar string or a structured map.
 func (p *RulePlacementConfig) UnmarshalMapstructure(input any) error {
-	parsed, err := parseRulePlacementConfig(input)
+	parsed, err := parseRulePlacementConfigAt("firewall.rule_placement", input, false)
 	if err != nil {
 		return err
 	}
 	*p = parsed
 	return nil
+}
+
+// RulePlacementFor returns the effective placement for one protocol and table,
+// applying global, table-specific, protocol-specific, and protocol-table
+// overrides in that order.
+func (f *FirewallConfig) RulePlacementFor(proto, mode string) RulePlacementConfig {
+	if f == nil {
+		return RulePlacementConfig{}
+	}
+	placement := f.RulePlacement.ForMode(mode)
+	protocolPlacement := f.rulePlacementForProto(proto)
+	if protocolPlacement == nil {
+		return placement
+	}
+	placement = mergeRulePlacement(placement, protocolPlacement.withoutTableOverrides())
+	var tableOverride *RulePlacementConfig
+	switch mode {
+	case "filter":
+		tableOverride = protocolPlacement.Filter
+	case "raw":
+		tableOverride = protocolPlacement.Raw
+	}
+	if tableOverride != nil {
+		placement = mergeRulePlacement(placement, tableOverride.withoutTableOverrides())
+	}
+	return placement
+}
+
+// RulePlacementString returns a concise non-sensitive summary of global and
+// protocol-specific placement settings for logs and metrics.
+func (f *FirewallConfig) RulePlacementString() string {
+	if f == nil {
+		return RulePlacementTop
+	}
+	summary := f.RulePlacement.String()
+	if f.IPv4.RulePlacement != nil {
+		ipv4Placement := f.RulePlacementFor("ip", "")
+		summary += ",ipv4=" + ipv4Placement.summary()
+		if f.IPv4.RulePlacement.Filter != nil {
+			ipv4FilterPlacement := f.RulePlacementFor("ip", "filter")
+			summary += ",ipv4.filter=" + ipv4FilterPlacement.summary()
+		}
+		if f.IPv4.RulePlacement.Raw != nil {
+			ipv4RawPlacement := f.RulePlacementFor("ip", "raw")
+			summary += ",ipv4.raw=" + ipv4RawPlacement.summary()
+		}
+	}
+	if f.IPv6.RulePlacement != nil {
+		ipv6Placement := f.RulePlacementFor("ipv6", "")
+		summary += ",ipv6=" + ipv6Placement.summary()
+		if f.IPv6.RulePlacement.Filter != nil {
+			ipv6FilterPlacement := f.RulePlacementFor("ipv6", "filter")
+			summary += ",ipv6.filter=" + ipv6FilterPlacement.summary()
+		}
+		if f.IPv6.RulePlacement.Raw != nil {
+			ipv6RawPlacement := f.RulePlacementFor("ipv6", "raw")
+			summary += ",ipv6.raw=" + ipv6RawPlacement.summary()
+		}
+	}
+	return summary
+}
+
+func (f *FirewallConfig) rulePlacementForProto(proto string) *RulePlacementConfig {
+	if f == nil {
+		return nil
+	}
+	switch proto {
+	case "ip", "ipv4":
+		return f.IPv4.RulePlacement
+	case "ipv6":
+		return f.IPv6.RulePlacement
+	default:
+		return nil
+	}
 }
 
 // ForMode returns the placement settings for one RouterOS firewall table,
@@ -318,8 +392,9 @@ func rulePlacementPosition(value any) (int, error) {
 
 // ProtoConfig holds per-protocol (IPv4/IPv6) settings.
 type ProtoConfig struct {
-	Enabled     bool   `yaml:"enabled" mapstructure:"enabled"`
-	AddressList string `yaml:"address_list" mapstructure:"address_list"`
+	Enabled       bool                 `yaml:"enabled" mapstructure:"enabled"`
+	AddressList   string               `yaml:"address_list" mapstructure:"address_list"`
+	RulePlacement *RulePlacementConfig `yaml:"rule_placement" mapstructure:"rule_placement"`
 }
 
 // FilterConfig holds filter-specific rule settings.
@@ -567,6 +642,8 @@ func expandConfigEnv(cfg *Config) error {
 	if err := expandRulePlacementEnv(&cfg.Firewall.RulePlacement); err != nil {
 		return err
 	}
+	expandRulePlacementPlaceholders(cfg.Firewall.IPv4.RulePlacement)
+	expandRulePlacementPlaceholders(cfg.Firewall.IPv6.RulePlacement)
 	cfg.Firewall.CommentPrefix = expandConfigValue(cfg.Firewall.CommentPrefix, "FIREWALL_COMMENT_PREFIX")
 	cfg.Firewall.LogPrefix = expandConfigValue(cfg.Firewall.LogPrefix, "FIREWALL_LOG_PREFIX")
 
@@ -605,6 +682,9 @@ func expandRulePlacementEnv(placement *RulePlacementConfig) error {
 }
 
 func expandRulePlacementPlaceholders(placement *RulePlacementConfig) {
+	if placement == nil {
+		return
+	}
 	placement.Strategy = strings.ToLower(strings.TrimSpace(expandBracedEnv(placement.Strategy)))
 	placement.Comment = expandBracedEnv(placement.Comment)
 	placement.CommentMatch = strings.ToLower(strings.TrimSpace(expandBracedEnv(placement.CommentMatch)))
@@ -741,6 +821,35 @@ func (c *Config) validateRulePlacement() error {
 	if placement.Raw != nil {
 		rawPlacement := placement.ForMode("raw")
 		if err := validateRulePlacementConfig("firewall.rule_placement.raw", rawPlacement.withoutTableOverrides()); err != nil {
+			return err
+		}
+	}
+	if err := c.validateProtocolRulePlacement("firewall.ipv4.rule_placement", "ip", c.Firewall.IPv4.RulePlacement); err != nil {
+		return err
+	}
+	if err := c.validateProtocolRulePlacement("firewall.ipv6.rule_placement", "ipv6", c.Firewall.IPv6.RulePlacement); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *Config) validateProtocolRulePlacement(path, proto string, placement *RulePlacementConfig) error {
+	if placement == nil {
+		return nil
+	}
+	protocolPlacement := c.Firewall.RulePlacementFor(proto, "")
+	if err := validateRulePlacementConfig(path, protocolPlacement.withoutTableOverrides()); err != nil {
+		return err
+	}
+	if placement.Filter != nil {
+		filterPlacement := c.Firewall.RulePlacementFor(proto, "filter")
+		if err := validateRulePlacementConfig(path+".filter", filterPlacement.withoutTableOverrides()); err != nil {
+			return err
+		}
+	}
+	if placement.Raw != nil {
+		rawPlacement := c.Firewall.RulePlacementFor(proto, "raw")
+		if err := validateRulePlacementConfig(path+".raw", rawPlacement.withoutTableOverrides()); err != nil {
 			return err
 		}
 	}

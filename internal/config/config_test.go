@@ -502,6 +502,55 @@ func TestLoadStructuredRulePlacement(t *testing.T) {
 	}
 }
 
+// TestLoadProtocolRulePlacement verifies that IPv4 and IPv6 placement overrides
+// can inherit global fields and override table-specific behavior independently.
+func TestLoadProtocolRulePlacement(t *testing.T) {
+	setMinimalEnv(t)
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(configPath, []byte(`firewall:
+  rule_placement:
+    strategy: before_comment
+    comment: "global anchor"
+    fallback: bottom
+  ipv4:
+    rule_placement:
+      comment: "ipv4 anchor"
+  ipv6:
+    rule_placement:
+      strategy: bottom
+      filter:
+        strategy: after_comment
+        comment: "ipv6 filter anchor"
+`), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	ipv4Filter := cfg.Firewall.RulePlacementFor("ip", "filter")
+	if ipv4Filter.Strategy != RulePlacementBeforeComment || ipv4Filter.Comment != "ipv4 anchor" || ipv4Filter.Fallback != RulePlacementBottom {
+		t.Fatalf("expected IPv4 filter to inherit global placement with IPv4 comment, got %#v", ipv4Filter)
+	}
+	ipv4Raw := cfg.Firewall.RulePlacementFor("ip", "raw")
+	if ipv4Raw.Strategy != RulePlacementBeforeComment || ipv4Raw.Comment != "ipv4 anchor" || ipv4Raw.Fallback != RulePlacementBottom {
+		t.Fatalf("expected IPv4 raw to inherit global placement with IPv4 comment, got %#v", ipv4Raw)
+	}
+	ipv6Raw := cfg.Firewall.RulePlacementFor("ipv6", "raw")
+	if ipv6Raw.Strategy != RulePlacementBottom {
+		t.Fatalf("expected IPv6 raw bottom override, got %#v", ipv6Raw)
+	}
+	ipv6Filter := cfg.Firewall.RulePlacementFor("ipv6", "filter")
+	if ipv6Filter.Strategy != RulePlacementAfterComment || ipv6Filter.Comment != "ipv6 filter anchor" || ipv6Filter.Fallback != RulePlacementBottom {
+		t.Fatalf("expected IPv6 filter table override to inherit fallback, got %#v", ipv6Filter)
+	}
+	if got := cfg.Firewall.RulePlacementString(); !strings.Contains(got, "ipv4=before_comment:ipv4 anchor") || !strings.Contains(got, "ipv6=bottom") || !strings.Contains(got, "ipv6.filter=after_comment:ipv6 filter anchor") {
+		t.Fatalf("expected protocol placement summary, got %q", got)
+	}
+}
+
 // TestLoadRulePlacementEnvFields verifies loading firewall rule placement from
 // environment variables, including the structured strategy alias.
 func TestLoadRulePlacementEnvFields(t *testing.T) {
@@ -628,6 +677,42 @@ func TestRulePlacementHelpers(t *testing.T) {
 	})
 	if merged.Strategy != RulePlacementAfterComment || merged.Comment != "merged" || merged.CommentMatch != RulePlacementMatchContains || merged.Position == nil || *merged.Position != position || merged.Fallback != RulePlacementBottom {
 		t.Fatalf("unexpected merged placement: %#v", merged)
+	}
+}
+
+// TestFirewallRulePlacementFor verifies effective precedence across global,
+// table, protocol, and protocol-table placement overrides.
+func TestFirewallRulePlacementFor(t *testing.T) {
+	position := 4
+	firewall := FirewallConfig{
+		RulePlacement: RulePlacementConfig{
+			Strategy: RulePlacementBeforeComment,
+			Comment:  "global",
+			Fallback: RulePlacementBottom,
+			Raw:      &RulePlacementConfig{Strategy: RulePlacementTop},
+		},
+		IPv4: ProtoConfig{RulePlacement: &RulePlacementConfig{Comment: "ipv4"}},
+		IPv6: ProtoConfig{RulePlacement: &RulePlacementConfig{
+			Strategy: RulePlacementBottom,
+			Filter:   &RulePlacementConfig{Strategy: RulePlacementPosition, Position: &position},
+		}},
+	}
+
+	ipv4Filter := firewall.RulePlacementFor("ip", "filter")
+	if ipv4Filter.Strategy != RulePlacementBeforeComment || ipv4Filter.Comment != "ipv4" || ipv4Filter.Fallback != RulePlacementBottom {
+		t.Fatalf("unexpected IPv4 filter placement: %#v", ipv4Filter)
+	}
+	ipv4Raw := firewall.RulePlacementFor("ip", "raw")
+	if ipv4Raw.Strategy != RulePlacementTop || ipv4Raw.Comment != "ipv4" || ipv4Raw.Fallback != RulePlacementBottom {
+		t.Fatalf("unexpected IPv4 raw placement: %#v", ipv4Raw)
+	}
+	ipv6Raw := firewall.RulePlacementFor("ipv6", "raw")
+	if ipv6Raw.Strategy != RulePlacementBottom || ipv6Raw.Comment != "global" {
+		t.Fatalf("unexpected IPv6 raw placement: %#v", ipv6Raw)
+	}
+	ipv6Filter := firewall.RulePlacementFor("ipv6", "filter")
+	if ipv6Filter.Strategy != RulePlacementPosition || ipv6Filter.Position == nil || *ipv6Filter.Position != position || ipv6Filter.Comment != "global" {
+		t.Fatalf("unexpected IPv6 filter placement: %#v", ipv6Filter)
 	}
 }
 
@@ -818,6 +903,24 @@ func TestValidateRulePlacementNestedSuccessAndFilterError(t *testing.T) {
 	cfg.Firewall.RulePlacement = RulePlacementConfig{Filter: &RulePlacementConfig{Strategy: "bad"}}
 	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "firewall.rule_placement.filter.strategy") {
 		t.Fatalf("expected nested filter validation error, got %v", err)
+	}
+
+	cfg = validCfg()
+	cfg.Firewall.RulePlacement = RulePlacementConfig{Strategy: RulePlacementBeforeComment, Comment: "global"}
+	cfg.Firewall.IPv4.RulePlacement = &RulePlacementConfig{Comment: "ipv4"}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected IPv4 sparse placement override to validate, got %v", err)
+	}
+
+	cfg.Firewall.IPv4.RulePlacement = &RulePlacementConfig{Strategy: "bad"}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "firewall.ipv4.rule_placement.strategy") {
+		t.Fatalf("expected IPv4 placement validation error, got %v", err)
+	}
+
+	cfg = validCfg()
+	cfg.Firewall.IPv6.RulePlacement = &RulePlacementConfig{Filter: &RulePlacementConfig{Strategy: RulePlacementBeforeComment}}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "firewall.ipv6.rule_placement.filter.comment") {
+		t.Fatalf("expected IPv6 filter placement validation error, got %v", err)
 	}
 }
 

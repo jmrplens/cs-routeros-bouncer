@@ -64,10 +64,18 @@ firewall:
     enabled: true
     # Name of the IPv4 address list in MikroTik
     address_list: "crowdsec-banned"
+    # Optional IPv4-only placement override. Inherits unspecified fields from
+    # firewall.rule_placement.
+    # rule_placement:
+    #   strategy: "before_comment"
+    #   comment: "IPv4 production anchor"
   ipv6:
     enabled: true
     # Name of the IPv6 address list in MikroTik
     address_list: "crowdsec6-banned"
+    # Optional IPv6-only placement override. Inherits unspecified fields from
+    # firewall.rule_placement.
+    # rule_placement: "bottom"
   filter:
     # Create filter firewall rules
     enabled: true

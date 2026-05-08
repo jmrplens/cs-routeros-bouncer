@@ -126,6 +126,8 @@ Structured placement accepts these fields:
 | `filter`        |         | Structured config only            | Override the global placement for `/ip firewall filter` and `/ipv6 firewall filter`, including optional output-blocking rules configured via `block_output.enabled`. |
 | `raw`           |         | Structured config only            | Override the global placement for `/ip firewall raw` and `/ipv6 firewall raw`.                                                                                       |
 
+The same structured object can be used under `firewall.ipv4.rule_placement` and `firewall.ipv6.rule_placement` for YAML-only protocol overrides. These overrides inherit unspecified fields from the global placement.
+
 Place filter rules after an existing user rule while keeping raw rules at the top:
 
 ```yaml
@@ -167,6 +169,27 @@ firewall:
 
 In this example, `filter` uses `strategy: "top"`. `raw` inherits the global `strategy: "before_comment"` and `comment: "my rule"`.
 
+Protocol-specific overrides are evaluated after global table overrides. The full precedence order is global placement, global `filter`/`raw`, protocol placement, then protocol `filter`/`raw`.
+
+```yaml
+firewall:
+  rule_placement:
+    strategy: "top"
+  ipv4:
+    rule_placement:
+      strategy: "before_comment"
+      comment: "IPv4 production anchor"
+      fallback: "bottom"
+  ipv6:
+    rule_placement:
+      strategy: "bottom"
+      filter:
+        strategy: "after_comment"
+        comment: "IPv6 filter anchor"
+```
+
+In this example, IPv4 rules are placed before the IPv4 anchor. IPv6 raw rules are appended at the bottom, while IPv6 filter rules are placed after `IPv6 filter anchor`.
+
 Additional environment variables for structured global placement:
 
 - `FIREWALL_RULE_PLACEMENT` - legacy/simple global strategy (`top`, `bottom`, `position`, `before_comment`, or `after_comment`)
@@ -183,7 +206,7 @@ FIREWALL_RULE_PLACEMENT_COMMENT_MATCH="contains"
 FIREWALL_RULE_PLACEMENT_FALLBACK="top"
 ```
 
-Environment variables configure the global placement only. Use YAML when you need different `filter` and `raw` placement strategies.
+Environment variables configure the global placement only. Use YAML when you need different `filter`, `raw`, IPv4, or IPv6 placement strategies.
 
 ### `firewall.comment_prefix` <Badge text="Optional" variant="note" />
 

@@ -233,7 +233,7 @@ func (m *Manager) recordConfigInfo() {
 		FWRawChains:              m.cfg.Firewall.Raw.Chains,
 		FWDenyAction:             m.cfg.Firewall.DenyAction,
 		FWBlockOutput:            m.cfg.Firewall.BlockOutput.Enabled,
-		FWRulePlacement:          m.cfg.Firewall.RulePlacement.String(),
+		FWRulePlacement:          m.cfg.Firewall.RulePlacementString(),
 		FWCommentPrefix:          m.cfg.Firewall.CommentPrefix,
 		FWLog:                    m.cfg.Firewall.Log,
 		LogLevel:                 m.cfg.Logging.Level,
@@ -997,7 +997,7 @@ func (m *Manager) placeFirewallBlock(proto, mode, chain string, refs []firewallR
 	if len(refs) == 0 {
 		return
 	}
-	placement := m.cfg.Firewall.RulePlacement.ForMode(mode)
+	placement := m.cfg.Firewall.RulePlacementFor(proto, mode)
 	strategy := placement.Strategy
 	if strategy == "" {
 		strategy = config.RulePlacementTop
