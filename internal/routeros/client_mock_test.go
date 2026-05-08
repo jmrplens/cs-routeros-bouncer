@@ -1103,6 +1103,24 @@ func TestMoveRule_Success(t *testing.T) {
 	}
 }
 
+// TestMoveFirewallRule_Success verifies the exported move helper used by manager.
+func TestMoveFirewallRule_Success(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+	mc.pushReply(emptyReply())
+
+	if err := c.MoveFirewallRule("ip", "filter", "*R1", "*R0"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	args := mc.lastArgs()
+	if args[0] != "/ip/firewall/filter/move" {
+		t.Fatalf("expected move command, got: %s", args[0])
+	}
+	if args[1] != "=numbers=*R1" || args[2] != "=destination=*R0" {
+		t.Fatalf("unexpected move args: %v", args)
+	}
+}
+
 // TestMoveRule_Error verifies move error propagation.
 func TestMoveRule_Error(t *testing.T) {
 	mc := newMockConn()

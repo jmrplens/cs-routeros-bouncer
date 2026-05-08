@@ -134,7 +134,18 @@ firewall:
     # for traffic coming from IPs in this list. Useful for allowing trusted
     # sources even when their IPs appear in CrowdSec ban lists.
     # whitelist: ""
-  # Where to place new rules: "top" (most secure) or "bottom"
+  # Where to place new rules. Simple values: "top" (most secure) or "bottom".
+  # Advanced placement can target an absolute RouterOS position or a rule comment:
+  # rule_placement:
+  #   strategy: "after_comment" # top, bottom, before_comment, after_comment, position
+  #   comment: "drop invalid"
+  #   comment_match: "contains" # exact or contains
+  #   fallback: "top" # only for comment strategies
+  #   filter:
+  #     strategy: "after_comment"
+  #     comment: "drop invalid"
+  #   raw:
+  #     strategy: "top"
   rule_placement: "top"
   # Comment prefix used to identify bouncer-managed resources in MikroTik
   comment_prefix: "crowdsec-bouncer"

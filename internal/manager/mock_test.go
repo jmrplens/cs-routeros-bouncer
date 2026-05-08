@@ -64,7 +64,10 @@ type mockROS struct {
 	bulkAddErr       error
 
 	addRuleID         string
+	addRuleIDs        []string
 	addRuleErr        error
+	moveRuleErr       error
+	moveRuleErrs      []error
 	removeRuleErr     error
 	removeRuleErrFunc func(proto, mode, id string) error // per-call error (takes priority)
 	findRuleEntry     *ros.RuleEntry
@@ -93,6 +96,7 @@ type mockROS struct {
 	listAddressesCalls int
 	bulkAddCalls       []bulkAddCall
 	addRuleCalls       []addRuleCall
+	moveRuleCalls      []moveRuleCall
 	removeRuleCalls    []removeRuleCall
 	findRuleCalls      []findRuleCall
 	getCountersCalls   int
@@ -129,6 +133,11 @@ type bulkAddCall struct {
 type addRuleCall struct {
 	Proto, Mode string
 	Rule        ros.FirewallRule
+}
+
+// moveRuleCall captures the arguments to a single MoveFirewallRule invocation.
+type moveRuleCall struct {
+	Proto, Mode, RuleID, BeforeID string
 }
 
 // removeRuleCall captures the arguments to a single RemoveFirewallRule invocation.
@@ -237,7 +246,23 @@ func (m *mockROS) AddFirewallRule(proto, mode string, rule ros.FirewallRule) (st
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.addRuleCalls = append(m.addRuleCalls, addRuleCall{proto, mode, rule})
-	return m.addRuleID, m.addRuleErr
+	id := m.addRuleID
+	if index := len(m.addRuleCalls) - 1; index < len(m.addRuleIDs) {
+		id = m.addRuleIDs[index]
+	}
+	return id, m.addRuleErr
+}
+
+// MoveFirewallRule implements RouterOSClient.MoveFirewallRule and records the
+// requested move operation.
+func (m *mockROS) MoveFirewallRule(proto, mode, ruleID, beforeID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.moveRuleCalls = append(m.moveRuleCalls, moveRuleCall{proto, mode, ruleID, beforeID})
+	if index := len(m.moveRuleCalls) - 1; index < len(m.moveRuleErrs) {
+		return m.moveRuleErrs[index]
+	}
+	return m.moveRuleErr
 }
 
 // RemoveFirewallRule implements RouterOSClient.RemoveFirewallRule and optionally
@@ -728,7 +753,7 @@ func TestEnsureFirewallRule_AlreadyExists(t *testing.T) {
 	mgr := newTestManager(mock, baseConfig())
 
 	rule := ros.FirewallRule{Comment: "crowdsec-bouncer:filter-input-input-v4"}
-	if err := mgr.ensureFirewallRule("ip", "filter", rule); err != nil {
+	if _, err := mgr.ensureFirewallRuleRef("ip", "filter", rule); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -759,7 +784,7 @@ func TestEnsureFirewallRule_Creates(t *testing.T) {
 		SrcAddressList: "crowdsec-banned",
 		Comment:        "crowdsec-bouncer:filter-input-input-v4",
 	}
-	if err := mgr.ensureFirewallRule("ip", "filter", rule); err != nil {
+	if _, err := mgr.ensureFirewallRuleRef("ip", "filter", rule); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -785,7 +810,7 @@ func TestEnsureFirewallRule_FindError(t *testing.T) {
 	mgr := newTestManager(mock, baseConfig())
 
 	rule := ros.FirewallRule{Comment: "test-comment"}
-	err := mgr.ensureFirewallRule("ip", "filter", rule)
+	_, err := mgr.ensureFirewallRuleRef("ip", "filter", rule)
 	if err == nil {
 		t.Fatal("expected error from FindFirewallRuleByComment failure")
 	}
@@ -798,7 +823,7 @@ func TestEnsureFirewallRule_AddError(t *testing.T) {
 	mgr := newTestManager(mock, baseConfig())
 
 	rule := ros.FirewallRule{Comment: "test-comment"}
-	err := mgr.ensureFirewallRule("ip", "filter", rule)
+	_, err := mgr.ensureFirewallRuleRef("ip", "filter", rule)
 	if err == nil {
 		t.Fatal("expected error from AddFirewallRule failure")
 	}
@@ -930,22 +955,170 @@ func TestCreateFirewallRules_WithInterfaceList(t *testing.T) {
 }
 
 // TestCreateFirewallRules_TopPlacement verifies that rule_placement: "top"
-// sets PlaceBefore=0 on all created rules.
+// moves created blocks before the first existing rule.
 func TestCreateFirewallRules_TopPlacement(t *testing.T) {
-	mock := &mockROS{addRuleID: "*R1"}
+	mock := &mockROS{
+		addRuleID:               "*R1",
+		listFirewallRulesResult: []ros.RuleEntry{{ID: "*U1", Comment: "user rule"}},
+	}
 	cfg := baseConfig()
 	cfg.Firewall.Filter.Enabled = true
 	cfg.Firewall.Filter.Chains = []string{"input"}
-	cfg.Firewall.RulePlacement = "top"
+	cfg.Firewall.RulePlacement = config.RulePlacementConfig{Strategy: config.RulePlacementTop}
 	mgr := newTestManager(mock, cfg)
 
 	if err := mgr.createFirewallRules(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	for _, call := range mock.addRuleCalls {
-		if call.Rule.PlaceBefore != "0" {
-			t.Errorf("expected PlaceBefore=0 for top placement, got %q", call.Rule.PlaceBefore)
+	if len(mock.moveRuleCalls) == 0 {
+		t.Fatal("expected top placement to move created rules")
+	}
+	for _, call := range mock.moveRuleCalls {
+		if call.BeforeID != "*U1" {
+			t.Errorf("expected move before *U1, got %q", call.BeforeID)
+		}
+	}
+}
+
+func TestCreateFirewallRules_PositionOutOfRangeAppends(t *testing.T) {
+	position := 5
+	mock := &mockROS{
+		addRuleIDs:              []string{"*C1", "*D1"},
+		listFirewallRulesResult: []ros.RuleEntry{{ID: "*U1", Comment: "user one"}, {ID: "*U2", Comment: "user two"}},
+	}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"input"}
+	cfg.Firewall.RulePlacement = config.RulePlacementConfig{Strategy: config.RulePlacementPosition, Position: &position}
+	mgr := newTestManager(mock, cfg)
+
+	if err := mgr.createFirewallRules(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(mock.moveRuleCalls) != 0 {
+		t.Fatalf("expected out-of-range position to append at bottom, got moves: %#v", mock.moveRuleCalls)
+	}
+}
+
+func TestCreateFirewallRules_PositionRetriesLowerRules(t *testing.T) {
+	position := 0
+	mock := &mockROS{
+		addRuleIDs: []string{"*C1", "*D1"},
+		listFirewallRulesResult: []ros.RuleEntry{
+			{ID: "*U1", Comment: "dynamic counter"},
+			{ID: "*U2", Comment: "drop invalid"},
+		},
+		moveRuleErrs: []error{errors.New("cannot move before dynamic"), nil, nil},
+	}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"input"}
+	cfg.Firewall.RulePlacement = config.RulePlacementConfig{Strategy: config.RulePlacementPosition, Position: &position}
+	mgr := newTestManager(mock, cfg)
+
+	if err := mgr.createFirewallRules(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(mock.moveRuleCalls) != 3 {
+		t.Fatalf("expected one failed move and two retry moves, got %#v", mock.moveRuleCalls)
+	}
+	if mock.moveRuleCalls[0].BeforeID != "*U1" || mock.moveRuleCalls[1].BeforeID != "*U2" || mock.moveRuleCalls[2].BeforeID != "*U2" {
+		t.Fatalf("unexpected retry targets: %#v", mock.moveRuleCalls)
+	}
+}
+
+func TestCreateFirewallRules_AfterCommentPlacement(t *testing.T) {
+	mock := &mockROS{
+		addRuleIDs: []string{"*C1", "*D1"},
+		listFirewallRulesResult: []ros.RuleEntry{
+			{ID: "*U1", Comment: "drop invalid input"},
+			{ID: "*U2", Comment: "accept established"},
+		},
+	}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"input"}
+	cfg.Firewall.RulePlacement = config.RulePlacementConfig{
+		Strategy:     config.RulePlacementAfterComment,
+		Comment:      "drop invalid",
+		CommentMatch: config.RulePlacementMatchContains,
+	}
+	mgr := newTestManager(mock, cfg)
+
+	if err := mgr.createFirewallRules(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(mock.moveRuleCalls) != 2 {
+		t.Fatalf("expected block moved after anchor, got %#v", mock.moveRuleCalls)
+	}
+	for _, call := range mock.moveRuleCalls {
+		if call.BeforeID != "*U2" {
+			t.Fatalf("expected block inserted before rule after anchor, got %#v", mock.moveRuleCalls)
+		}
+	}
+}
+
+func TestCreateFirewallRules_CommentPlacementMissingAnchorUsesBottomFallback(t *testing.T) {
+	mock := &mockROS{
+		addRuleIDs:              []string{"*C1", "*D1"},
+		listFirewallRulesResult: []ros.RuleEntry{{ID: "*U1", Comment: "accept established"}},
+	}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"input"}
+	cfg.Firewall.RulePlacement = config.RulePlacementConfig{
+		Strategy: config.RulePlacementBeforeComment,
+		Comment:  "drop invalid",
+		Fallback: config.RulePlacementBottom,
+	}
+	mgr := newTestManager(mock, cfg)
+
+	if err := mgr.createFirewallRules(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(mock.moveRuleCalls) != 0 {
+		t.Fatalf("expected bottom fallback to append without moves, got %#v", mock.moveRuleCalls)
+	}
+}
+
+func TestCreateFirewallRules_TableOverrideAffectsOnlySelectedTable(t *testing.T) {
+	mock := &mockROS{
+		addRuleIDs: []string{"*FC", "*FD", "*RC", "*RD"},
+		listFirewallRulesResult: []ros.RuleEntry{
+			{ID: "*U1", Comment: "drop invalid"},
+			{ID: "*U2", Comment: "accept established"},
+		},
+	}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	cfg.Firewall.Filter.Enabled = true
+	cfg.Firewall.Filter.Chains = []string{"input"}
+	cfg.Firewall.Raw.Enabled = true
+	cfg.Firewall.Raw.Chains = []string{"prerouting"}
+	cfg.Firewall.RulePlacement = config.RulePlacementConfig{
+		Strategy: config.RulePlacementTop,
+		Filter: &config.RulePlacementConfig{
+			Strategy: config.RulePlacementAfterComment,
+			Comment:  "drop invalid",
+		},
+		Raw: &config.RulePlacementConfig{Strategy: config.RulePlacementBottom},
+	}
+	mgr := newTestManager(mock, cfg)
+
+	if err := mgr.createFirewallRules(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(mock.moveRuleCalls) != 2 {
+		t.Fatalf("expected only filter block moves, got %#v", mock.moveRuleCalls)
+	}
+	for _, call := range mock.moveRuleCalls {
+		if call.Mode != "filter" || call.BeforeID != "*U2" {
+			t.Fatalf("unexpected table override move: %#v", mock.moveRuleCalls)
 		}
 	}
 }
@@ -1559,7 +1732,7 @@ func TestCreateFirewallRules_InputWhitelist(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Should create: whitelist-accept-v4, drop-v4, counting-v4, whitelist-accept-v6, drop-v6, counting-v6 = 6 rules
+	// Should create: whitelist-accept-v4, counting-v4, drop-v4, whitelist-accept-v6, counting-v6, drop-v6 = 6 rules
 	if len(mock.addRuleCalls) != 6 {
 		t.Fatalf("expected 6 rules (2 whitelist + 2 drop + 2 counting), got %d", len(mock.addRuleCalls))
 	}
@@ -1573,10 +1746,10 @@ func TestCreateFirewallRules_InputWhitelist(t *testing.T) {
 		t.Errorf("whitelist rule should have src-address-list=trusted-hosts, got %q", first.Rule.SrcAddressList)
 	}
 
-	// Second rule should be the drop/reject
-	second := mock.addRuleCalls[1]
-	if second.Rule.Action != "drop" {
-		t.Errorf("second rule should be drop, got %q", second.Rule.Action)
+	// The input block should keep the deny rule after whitelist/counting.
+	third := mock.addRuleCalls[2]
+	if third.Rule.Action != "drop" {
+		t.Errorf("third rule should be drop, got %q", third.Rule.Action)
 	}
 }
 
@@ -1811,7 +1984,7 @@ func TestCreateFirewallRules_AllFeaturesCombined(t *testing.T) { // NOSONAR: sce
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Expected: per proto: whitelist-accept + reject-input + counting + reject-output = 4
+	// Expected: per proto: whitelist-accept + counting + reject-input + reject-output = 4
 	// For 2 protos: 8 rules total
 	if len(mock.addRuleCalls) != 8 {
 		t.Fatalf("expected 8 rules, got %d", len(mock.addRuleCalls))
@@ -1824,7 +1997,16 @@ func TestCreateFirewallRules_AllFeaturesCombined(t *testing.T) { // NOSONAR: sce
 	}
 
 	// Verify reject-with on input reject rule
-	inputRule := mock.addRuleCalls[1]
+	var inputRule *addRuleCall
+	for i := range mock.addRuleCalls {
+		if mock.addRuleCalls[i].Proto == "ip" && mock.addRuleCalls[i].Rule.Action == "reject" && mock.addRuleCalls[i].Rule.SrcAddressList != "" {
+			inputRule = &mock.addRuleCalls[i]
+			break
+		}
+	}
+	if inputRule == nil {
+		t.Fatal("input reject rule not found")
+	}
 	if inputRule.Rule.RejectWith != "icmp-admin-prohibited" {
 		t.Errorf("input reject rule should have reject-with, got %q", inputRule.Rule.RejectWith)
 	}

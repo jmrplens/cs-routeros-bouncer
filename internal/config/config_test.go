@@ -73,7 +73,7 @@ func TestLoadDefaults(t *testing.T) {
 		{name: "Firewall IPv6 address list", want: "crowdsec6-banned", got: func() any { return cfg.Firewall.IPv6.AddressList }},
 		{name: "Firewall filter enabled", want: true, got: func() any { return cfg.Firewall.Filter.Enabled }},
 		{name: "Firewall raw enabled", want: true, got: func() any { return cfg.Firewall.Raw.Enabled }},
-		{name: "Firewall rule placement", want: "top", got: func() any { return cfg.Firewall.RulePlacement }},
+		{name: "Firewall rule placement", want: "top", got: func() any { return cfg.Firewall.RulePlacement.String() }},
 		{name: "Firewall comment prefix", want: "crowdsec-bouncer", got: func() any { return cfg.Firewall.CommentPrefix }},
 		{name: "Firewall log", want: false, got: func() any { return cfg.Firewall.Log }},
 		{name: "Firewall block output", want: false, got: func() any { return cfg.Firewall.BlockOutput.Enabled }},
@@ -393,7 +393,7 @@ func TestValidateCompleteConfig(t *testing.T) {
 			Filter:        FilterConfig{Enabled: true, Chains: []string{"input"}},
 			Raw:           RawConfig{Enabled: true, Chains: []string{"prerouting"}},
 			DenyAction:    "drop",
-			RulePlacement: "top",
+			RulePlacement: RulePlacementConfig{Strategy: RulePlacementTop},
 			CommentPrefix: "crowdsec-bouncer",
 		},
 	}
@@ -460,6 +460,98 @@ func TestEnvOverrides(t *testing.T) {
 	}
 	if cfg.Metrics.ListenPort != 9090 {
 		t.Errorf("expected metrics port 9090, got %d", cfg.Metrics.ListenPort)
+	}
+}
+
+func TestLoadStructuredRulePlacement(t *testing.T) {
+	setMinimalEnv(t)
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(configPath, []byte(`firewall:
+  rule_placement:
+    strategy: after_comment
+    comment: "drop invalid"
+    comment_match: contains
+    fallback: bottom
+    raw:
+      strategy: position
+      position: 2
+`), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	placement := cfg.Firewall.RulePlacement
+	if placement.Strategy != RulePlacementAfterComment {
+		t.Fatalf("expected after_comment strategy, got %q", placement.Strategy)
+	}
+	if placement.Comment != "drop invalid" || placement.CommentMatch != RulePlacementMatchContains {
+		t.Fatalf("unexpected comment placement: %#v", placement)
+	}
+	if placement.Fallback != RulePlacementBottom {
+		t.Fatalf("expected bottom fallback, got %q", placement.Fallback)
+	}
+	raw := placement.ForMode("raw")
+	if raw.Strategy != RulePlacementPosition || raw.Position == nil || *raw.Position != 2 {
+		t.Fatalf("expected raw position override 2, got %#v", raw)
+	}
+}
+
+func TestLoadRulePlacementEnvFields(t *testing.T) {
+	setMinimalEnv(t)
+	t.Setenv("FIREWALL_RULE_PLACEMENT", "position")
+	t.Setenv("FIREWALL_RULE_PLACEMENT_POSITION", "3")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	placement := cfg.Firewall.RulePlacement
+	if placement.Strategy != RulePlacementPosition || placement.Position == nil || *placement.Position != 3 {
+		t.Fatalf("expected env position 3, got %#v", placement)
+	}
+}
+
+func TestValidateRulePlacement(t *testing.T) {
+	position := 4
+	tests := []struct {
+		name      string
+		placement RulePlacementConfig
+		wantErr   string
+	}{
+		{name: "legacy top", placement: RulePlacementConfig{Strategy: RulePlacementTop}},
+		{name: "position", placement: RulePlacementConfig{Strategy: RulePlacementPosition, Position: &position}},
+		{name: "after comment", placement: RulePlacementConfig{Strategy: RulePlacementAfterComment, Comment: "drop invalid"}},
+		{name: "invalid strategy", placement: RulePlacementConfig{Strategy: "middle"}, wantErr: "strategy"},
+		{name: "missing comment", placement: RulePlacementConfig{Strategy: RulePlacementBeforeComment}, wantErr: "comment"},
+		{name: "invalid match", placement: RulePlacementConfig{Strategy: RulePlacementTop, CommentMatch: "regex"}, wantErr: "comment_match"},
+		{name: "invalid fallback", placement: RulePlacementConfig{Strategy: RulePlacementAfterComment, Comment: "x", Fallback: "position"}, wantErr: "fallback"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validCfg()
+			cfg.Firewall.RulePlacement = tt.placement
+			err := cfg.Validate()
+			if tt.wantErr == "" && err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)) {
+				t.Fatalf("expected error containing %q, got %v", tt.wantErr, err)
+			}
+		})
+	}
+}
+
+func TestValidateRulePlacementNegativePosition(t *testing.T) {
+	position := -1
+	cfg := validCfg()
+	cfg.Firewall.RulePlacement = RulePlacementConfig{Strategy: RulePlacementPosition, Position: &position}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "position") {
+		t.Fatalf("expected position validation error, got %v", err)
 	}
 }
 

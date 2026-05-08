@@ -272,7 +272,11 @@ Fine-tuning options for decision filtering, TLS, performance, firewall customiza
 | `firewall.ipv6.address_list` | `FIREWALL_IPV6_ADDRESS_LIST` | `crowdsec6-banned` | IPv6 address list name in MikroTik |
 | `firewall.filter.chains` | `FIREWALL_FILTER_CHAINS` | `["input"]` | Chains for filter rules |
 | `firewall.raw.chains` | `FIREWALL_RAW_CHAINS` | `["prerouting"]` | Chains for raw rules |
-| `firewall.rule_placement` | `FIREWALL_RULE_PLACEMENT` | `top` | Placement: `top` or `bottom` |
+| `firewall.rule_placement` | `FIREWALL_RULE_PLACEMENT` | `top` | Placement: `top`, `bottom`, `position`, `before_comment`, or `after_comment` |
+| `firewall.rule_placement.comment` | `FIREWALL_RULE_PLACEMENT_COMMENT` | | Anchor comment for comment-based placement |
+| `firewall.rule_placement.comment_match` | `FIREWALL_RULE_PLACEMENT_COMMENT_MATCH` | `exact` | Comment match mode: `exact` or `contains` |
+| `firewall.rule_placement.position` | `FIREWALL_RULE_PLACEMENT_POSITION` | | Zero-based RouterOS position for `position` strategy |
+| `firewall.rule_placement.fallback` | `FIREWALL_RULE_PLACEMENT_FALLBACK` | `top` | Fallback for comment strategies: `top` or `bottom` |
 | `firewall.comment_prefix` | `FIREWALL_COMMENT_PREFIX` | `crowdsec-bouncer` | Comment prefix for managed resources |
 | `firewall.log` | `FIREWALL_LOG` | `false` | Enable RouterOS logging on firewall rules |
 | `firewall.log_prefix` | `FIREWALL_LOG_PREFIX` | `crowdsec-bouncer` | Global prefix for RouterOS log entries |
@@ -422,7 +426,22 @@ chain=input action=drop src-address-list=crowdsec-banned
 chain=prerouting action=drop src-address-list=crowdsec-banned
 ```
 
-Rules are placed at the **top** of the chain by default (`rule_placement: top`) to ensure they are evaluated first. If dynamic/built-in rules occupy the top positions (e.g., RouterOS fasttrack counters), the bouncer iterates through subsequent positions until it finds one where the rule can be placed.
+Rules are placed at the **top** of the RouterOS firewall menu by default (`rule_placement: top`) to ensure they are evaluated early. If dynamic/built-in rules occupy the top positions (e.g., RouterOS fasttrack counters), the bouncer iterates through subsequent positions until it finds one where the managed block can be placed.
+
+You can also place the managed rule block after or before an existing rule comment, or at a zero-based RouterOS position:
+
+```yaml
+firewall:
+  rule_placement:
+    strategy: "after_comment"
+    comment: "drop invalid"
+    comment_match: "contains"
+    fallback: "top"
+    raw:
+      strategy: "top"
+```
+
+For numeric placement, positions follow RouterOS `print` numbering. If `position: 15` is configured but only 10 existing non-bouncer rules are present, the block is left at the bottom. If the requested position cannot be used because RouterOS refuses to move before a dynamic/built-in rule, the bouncer retries lower positions.
 
 ### Performance
 
@@ -589,9 +608,9 @@ The dashboard provides real-time visibility into the bouncer's operation:
 <details>
 <summary><b>Firewall rules not at the top of the chain</b></summary>
 
-- RouterOS dynamic/built-in rules (e.g., fasttrack counters) cannot be moved — the bouncer iterates through positions until it finds one where the rule can be placed
+- RouterOS dynamic/built-in rules (e.g., fasttrack counters) cannot be moved — the bouncer iterates through positions until it finds one where the managed block can be placed
 - Verify with: `/ip/firewall/filter/print` on the router
-- Ensure `firewall.rule_placement: "top"` is set in your config
+- Ensure `firewall.rule_placement: "top"` is set, or use structured placement with `strategy: "position"`, `before_comment`, or `after_comment`
 
 </details>
 

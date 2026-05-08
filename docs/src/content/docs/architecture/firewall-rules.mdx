@@ -66,10 +66,10 @@ Example rule as seen in RouterOS:
 
 ## Rule placement
 
-With `rule_placement: "top"`, the bouncer places rules at position 0 for maximum priority. If a dynamic/built-in rule occupies position 0, the bouncer iterates through positions until finding a valid placement.
+With `rule_placement: "top"`, the bouncer places managed rule blocks at position 0 for maximum priority. If a dynamic/built-in rule occupies position 0, the bouncer iterates through positions until finding a valid placement. Structured placement can also target a zero-based position or an existing rule comment.
 
 ```routeros
-# Rules appear at the top of the firewall:
+# Rules appear near the configured location in the firewall:
 /ip/firewall/filter print
 # 0  chain=input action=drop src-address-list=crowdsec-banned ...
 # 1  chain=forward action=drop src-address-list=crowdsec-banned ...

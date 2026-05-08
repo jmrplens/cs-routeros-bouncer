@@ -91,14 +91,57 @@ Action for firewall rules:
 
 **Env:** `FIREWALL_RULE_PLACEMENT` · **Default:** `top`
 
-Where to place new firewall rules in the chain:
+Where to place new firewall rule blocks:
 
-- `top` — at position 0 (processed first, most secure)
-- `bottom` — at the end of the chain
+- `top` — at position 0, retrying lower positions if RouterOS refuses to move before dynamic/built-in rules
+- `bottom` — at the end of the RouterOS firewall menu
+- `position` — before a zero-based RouterOS `print` position
+- `before_comment` — before a rule whose comment matches `comment`
+- `after_comment` — after a rule whose comment matches `comment`
 
 :::note
-If a dynamic/built-in rule occupies position 0 (e.g., RouterOS fasttrack counters), the bouncer iterates through subsequent positions until it finds one where the rule can be placed.
+The bouncer places related rules as a block so whitelist, counting, and deny/reject rules keep their internal order.
 :::
+
+Legacy shorthand remains supported:
+
+```yaml
+firewall:
+  rule_placement: "top"
+```
+
+Place filter rules after an existing user rule while keeping raw rules at the top:
+
+```yaml
+firewall:
+  rule_placement:
+    strategy: "top"
+    filter:
+      strategy: "after_comment"
+      comment: "drop invalid"
+      comment_match: "contains"
+      fallback: "top"
+    raw:
+      strategy: "top"
+```
+
+Place rules at a numeric RouterOS position:
+
+```yaml
+firewall:
+  rule_placement:
+    strategy: "position"
+    position: 2
+```
+
+`position` uses zero-based RouterOS `print` numbering. If the configured position is greater than the number of existing non-bouncer rules, the block is appended at the bottom. `fallback` is ignored for `strategy: "position"`.
+
+Additional environment variables for structured global placement:
+
+- `FIREWALL_RULE_PLACEMENT_COMMENT`
+- `FIREWALL_RULE_PLACEMENT_COMMENT_MATCH`
+- `FIREWALL_RULE_PLACEMENT_POSITION`
+- `FIREWALL_RULE_PLACEMENT_FALLBACK`
 
 ### `firewall.comment_prefix` <Badge text="Optional" variant="note" />
 

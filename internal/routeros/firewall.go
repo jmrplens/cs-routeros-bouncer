@@ -206,6 +206,12 @@ func (c *Client) moveRule(path, ruleID, beforeID string) error {
 	return err
 }
 
+// MoveFirewallRule moves a firewall rule before another rule in the same
+// RouterOS firewall menu.
+func (c *Client) MoveFirewallRule(proto, mode, ruleID, beforeID string) error {
+	return c.moveRule(firewallPath(proto, mode), ruleID, beforeID)
+}
+
 // RemoveFirewallRule removes a firewall rule by its .id.
 func (c *Client) RemoveFirewallRule(proto, mode, id string) error {
 	path := firewallPath(proto, mode)

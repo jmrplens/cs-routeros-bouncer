@@ -149,9 +149,9 @@ Rules may be placed after existing rules.
 
 <Steps>
 
-1. **Verify** `rule_placement: "top"` in configuration
+1. **Verify** `rule_placement` in configuration. Use `"top"` for highest priority, or structured placement (`position`, `before_comment`, `after_comment`) when existing router rules must stay first.
 
-2. **Check for dynamic rules** at position 0 (the bouncer skips these and places after)
+2. **Check for dynamic rules** at position 0. The bouncer skips these and retries lower positions.
 
 3. **Inspect positions manually**
 
