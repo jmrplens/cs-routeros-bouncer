@@ -198,13 +198,3 @@ func logrusToZerologLevel(level logrus.Level) zerolog.Level {
 		return zerolog.InfoLevel
 	}
 }
-
-// zerologWriter routes logrus output to zerolog.
-type zerologWriter struct {
-	zl zerolog.Logger
-}
-
-func (w zerologWriter) Write(p []byte) (n int, err error) {
-	w.zl.Info().Msg(string(p))
-	return len(p), nil
-}

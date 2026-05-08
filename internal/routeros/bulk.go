@@ -155,7 +155,7 @@ func (c *Client) RemoveAddresses(proto string, ids []string) (removed int, errs 
 	path := addressListPath(proto)
 	for _, id := range ids {
 		if err := c.Remove(path, id); err != nil {
-			if strings.Contains(err.Error(), "no such item") {
+			if errors.Is(err, ErrNotFound) {
 				// Already expired — harmless
 				continue
 			}

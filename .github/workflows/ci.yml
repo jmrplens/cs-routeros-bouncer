@@ -31,18 +31,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
       - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: pnpm
           cache-dependency-path: docs/pnpm-lock.yaml
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
       - name: Install Markdown linter
         run: pnpm --dir docs install --frozen-lockfile --ignore-scripts
       - name: Lint Markdown
-        run: pnpm --dir docs exec markdownlint-cli2 --config ../.markdownlint-cli2.yaml "../**/*.md"
+        run: pnpm --dir docs exec markdownlint-cli2 --config ../.markdownlint-cli2.jsonc "../**/*.md"
 
   go-format:
     name: Go formatting

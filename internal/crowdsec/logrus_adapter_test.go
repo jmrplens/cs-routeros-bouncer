@@ -282,24 +282,6 @@ func TestLogrusAdapterLnVariants(t *testing.T) {
 	}
 }
 
-// TestZerologWriterWrite verifies the zerologWriter routes bytes to zerolog.
-func TestZerologWriterWrite(t *testing.T) {
-	var buf bytes.Buffer
-	zl := zerolog.New(&buf).Level(zerolog.InfoLevel)
-	w := zerologWriter{zl: zl}
-
-	n, err := w.Write([]byte("test write"))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if n != 10 {
-		t.Errorf("expected n=10, got %d", n)
-	}
-	if !strings.Contains(buf.String(), "test write") {
-		t.Errorf("expected 'test write' in output, got: %s", buf.String())
-	}
-}
-
 // TestLogrusAdapterDebug verifies the non-format Debug method.
 func TestLogrusAdapterDebug(t *testing.T) {
 	var buf bytes.Buffer
@@ -395,6 +377,31 @@ func TestLogrusAdapterPanicln(t *testing.T) {
 		}
 	}()
 	adapter.Panicln("panicln msg")
+}
+
+func TestLogrusToZerologLevel(t *testing.T) {
+	tests := []struct {
+		name  string
+		level logrus.Level
+		want  zerolog.Level
+	}{
+		{"panic", logrus.PanicLevel, zerolog.PanicLevel},
+		{"fatal", logrus.FatalLevel, zerolog.FatalLevel},
+		{"error", logrus.ErrorLevel, zerolog.ErrorLevel},
+		{"warn", logrus.WarnLevel, zerolog.WarnLevel},
+		{"info", logrus.InfoLevel, zerolog.InfoLevel},
+		{"debug", logrus.DebugLevel, zerolog.DebugLevel},
+		{"trace", logrus.TraceLevel, zerolog.TraceLevel},
+		{"default", logrus.Level(99), zerolog.InfoLevel},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := logrusToZerologLevel(tt.level); got != tt.want {
+				t.Fatalf("logrusToZerologLevel(%v) = %v, want %v", tt.level, got, tt.want)
+			}
+		})
+	}
 }
 
 // Note: Fatalf, Fatal, and Fatalln call zerolog.Fatal() which invokes os.Exit(1).

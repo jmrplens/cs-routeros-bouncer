@@ -397,6 +397,9 @@ func (fc *FirewallCounters) addRuleCounters(proto, commentPrefix string, results
 		action := firewallCounterAction(result["action"], comment, logger)
 
 		fc.Rules = append(fc.Rules, RuleCounters{Comment: comment, Action: action, Bytes: bytes, Packets: packets})
+		if action == "" {
+			continue
+		}
 		fc.addTotalCounters(proto, bytes, packets)
 		if action == "drop" || action == "reject" {
 			fc.addDroppedCounters(proto, bytes, packets)
@@ -411,8 +414,8 @@ func firewallCounterAction(action, comment string, logger zerolog.Logger) string
 	if action != "" {
 		return action
 	}
-	logger.Warn().Str("comment", comment).Msg("firewall rule has empty action, treating as drop")
-	return "drop"
+	logger.Warn().Str("comment", comment).Msg("firewall rule has empty action, skipping aggregate counters")
+	return ""
 }
 
 func (fc *FirewallCounters) addTotalCounters(proto string, bytes, packets uint64) {

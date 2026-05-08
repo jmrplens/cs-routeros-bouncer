@@ -1087,7 +1087,7 @@ func TestReconcileAddresses_SequentialRemoveFallback(t *testing.T) {
 	}
 }
 
-// TestReconcileAddresses_SequentialRemoveNoSuchItem verifies that "no such item"
+// TestReconcileAddresses_SequentialRemoveNoSuchItem verifies that ErrNotFound
 // errors during sequential remove are treated as success (expired items).
 func TestReconcileAddresses_SequentialRemoveNoSuchItem(t *testing.T) {
 	mock := &mockROS{
@@ -1095,18 +1095,17 @@ func TestReconcileAddresses_SequentialRemoveNoSuchItem(t *testing.T) {
 			{ID: "*1", Address: "10.0.0.1", Comment: "crowdsec-bouncer|old"},
 		},
 	}
-	// Override RemoveAddress to return "no such item"
+	// Override RemoveAddress to return ErrNotFound.
 	cfg := baseConfig()
 	cfg.Firewall.IPv6.Enabled = false
 	mgr := newTestManager(mock, cfg)
 	mgr.pool = nil
 
-	// Set error to "no such item"
-	mock.removeAddressErr = errors.New("no such item")
+	mock.removeAddressErr = fmt.Errorf("router remove failed: %w", ros.ErrNotFound)
 
 	mgr.reconcileAddresses(nil)
 
-	// Should complete without error (no such item is treated as success)
+	// Should complete without error (ErrNotFound is treated as success).
 	mock.mu.Lock()
 	defer mock.mu.Unlock()
 

@@ -1228,7 +1228,7 @@ func (m *Manager) removeAddressesParallel(proto string, entries []rosClient.Addr
 	})
 	removed := len(entries) - len(errs)
 	for _, err := range errs {
-		if strings.Contains(err.Error(), "no such item") {
+		if errors.Is(err, rosClient.ErrNotFound) {
 			removed++
 			continue
 		}
@@ -1245,7 +1245,7 @@ func (m *Manager) removeAddressesSequential(proto string, entries []rosClient.Ad
 		switch {
 		case removeErr == nil:
 			removed++
-		case strings.Contains(removeErr.Error(), "no such item"):
+		case errors.Is(removeErr, rosClient.ErrNotFound):
 			removed++
 		default:
 			m.logger.Error().Err(removeErr).Str("address", entry.Address).Msg("reconcile: error removing address")

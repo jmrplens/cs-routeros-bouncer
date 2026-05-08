@@ -733,6 +733,18 @@ func TestRemoveAddress_IPv6Path(t *testing.T) {
 	}
 }
 
+func TestRemoveAddress_NoSuchItemMapsErrNotFound(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+	mc.pushError(errors.New("no such item"))
+	mc.pushError(errors.New("no such item"))
+
+	err := c.RemoveAddress("ip", "*gone")
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
 // TestListAddresses_FiltersCommentPrefix verifies comment prefix filtering.
 func TestListAddresses_FiltersCommentPrefix(t *testing.T) {
 	mc := newMockConn()
@@ -1812,6 +1824,36 @@ func TestGetFirewallCounters_InvalidNumbers(t *testing.T) {
 
 	if fc.TotalBytes != 0 || fc.TotalPkts != 0 {
 		t.Errorf("want (0,0) for invalid numbers, got (%d,%d)", fc.TotalBytes, fc.TotalPkts)
+	}
+}
+
+func TestGetFirewallCounters_EmptyActionSkippedFromAggregates(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+
+	mc.pushReply(reReply(
+		map[string]string{".id": "*1", "bytes": "100", "packets": "1", "comment": "cs:drop", "action": "drop"},
+		map[string]string{".id": "*2", "bytes": "900", "packets": "9", "comment": "cs:missing-action"},
+	))
+	mc.pushReply(reReply())
+	mc.pushReply(reReply())
+	mc.pushReply(reReply())
+
+	fc, err := c.GetFirewallCounters("cs:")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(fc.Rules) != 2 {
+		t.Fatalf("want 2 matching rules, got %d", len(fc.Rules))
+	}
+	if fc.Rules[1].Action != "" {
+		t.Fatalf("empty action rule recorded action %q", fc.Rules[1].Action)
+	}
+	if fc.TotalBytes != 100 || fc.TotalPkts != 1 {
+		t.Fatalf("want aggregates to skip empty action, got (%d,%d)", fc.TotalBytes, fc.TotalPkts)
+	}
+	if fc.DroppedBytes != 100 || fc.DroppedPkts != 1 {
+		t.Fatalf("want dropped counters from drop rule only, got (%d,%d)", fc.DroppedBytes, fc.DroppedPkts)
 	}
 }
 

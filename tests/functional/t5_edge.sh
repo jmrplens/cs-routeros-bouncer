@@ -204,7 +204,7 @@ t5_6_ipv6_lifecycle() {
     local found=false
     for i in $(seq 1 12); do
         sleep 5
-        if ssh_address_exists "${TEST_IPV6_LIST}" "2001:db8::dead:beef"; then
+        if ssh_address_exists "${TEST_IPV6_LIST}" "$ipv6"; then
             found=true; break
         fi
     done
@@ -216,7 +216,7 @@ t5_6_ipv6_lifecycle() {
         lapi_remove_decision "$ipv6"
         sleep 20
 
-        if ssh_address_exists "${TEST_IPV6_LIST}" "2001:db8::dead:beef"; then
+        if ssh_address_exists "${TEST_IPV6_LIST}" "$ipv6"; then
             warn "IPv6 still on router (may be timeout-based removal)"
         else
             log "IPv6 unban confirmed"

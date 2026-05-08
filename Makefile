@@ -12,12 +12,6 @@ PROJECT_GO_VERSION := $(shell awk '/^go / {print $$2; exit}' go.mod)
 GO_TOOLCHAIN ?= go$(PROJECT_GO_VERSION)
 export GOTOOLCHAIN := $(GO_TOOLCHAIN)
 
-GOLANGCI_LINT_VERSION ?= v2.12.2
-STATICCHECK_VERSION ?= v0.7.0
-ACTIONLINT_VERSION ?= v1.7.12
-MODERNIZE_VERSION ?= latest
-GOSEC_VERSION ?= latest
-
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -144,11 +138,11 @@ actionlint:
 
 ## mdlint: lint Markdown files with markdownlint-cli2
 mdlint:
-	pnpm --dir docs exec markdownlint-cli2 --config ../.markdownlint-cli2.yaml "../**/*.md"
+	pnpm --dir docs exec markdownlint-cli2 --config ../.markdownlint-cli2.jsonc "../**/*.md"
 
 ## mdlint-fix: auto-fix Markdown files where possible
 mdlint-fix:
-	pnpm --dir docs exec markdownlint-cli2 --config ../.markdownlint-cli2.yaml --fix "../**/*.md"
+	pnpm --dir docs exec markdownlint-cli2 --config ../.markdownlint-cli2.jsonc --fix "../**/*.md"
 
 ## lint: fast local lint alias
 lint: vet staticcheck golangci-lint
@@ -156,7 +150,7 @@ lint: vet staticcheck golangci-lint
 ## analyze: run full static analysis suite
 analyze: gofmt-check goimports-check vet modernize golangci-lint gosec staticcheck govulncheck actionlint mdlint docs-analyze
 
-## install-tools: install Go analysis tools pinned to CI versions
+## install-tools: download Go modules and tool dependencies
 install-tools:
 	go mod download
 

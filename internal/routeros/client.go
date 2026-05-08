@@ -136,6 +136,10 @@ func isDeviceError(err error) bool {
 	return errors.As(err, &de)
 }
 
+func isNoSuchItemError(err error) bool {
+	return strings.Contains(err.Error(), "no such item")
+}
+
 // Run executes a RouterOS API command and returns the reply.
 // Automatically reconnects on connection failure. Device-level errors
 // (e.g. "already have such entry") are returned immediately without
@@ -216,6 +220,9 @@ func (c *Client) Set(path, id string, attrs map[string]string) error {
 func (c *Client) Remove(path, id string) error {
 	_, err := c.Run(path+"/remove", "=numbers="+id)
 	if err != nil {
+		if isNoSuchItemError(err) {
+			return fmt.Errorf("remove %s %s: %w: %w", path, id, ErrNotFound, err)
+		}
 		return fmt.Errorf("remove %s %s: %w", path, id, err)
 	}
 

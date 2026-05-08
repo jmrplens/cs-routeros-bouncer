@@ -21,7 +21,7 @@ const (
 	defaultConfigFile  = "cs-routeros-bouncer.yaml"
 	defaultServicePath = "/etc/systemd/system/cs-routeros-bouncer.service"
 	serviceName        = "cs-routeros-bouncer"
-	systemctlPath      = "/usr/bin/systemctl"
+	systemctlPath      = "systemctl"
 )
 
 // serviceTemplate is the systemd unit file content.
@@ -185,9 +185,9 @@ func copyFile(src, dst string, mode os.FileMode) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = out.Close() }()
 
 	if _, copyErr := io.Copy(out, in); copyErr != nil {
+		_ = out.Close()
 		return copyErr
 	}
 	return out.Close()
