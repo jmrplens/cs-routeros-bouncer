@@ -41,6 +41,9 @@ func metricValue(items []*models.MetricsDetailItem, name, unit string, labels ma
 				break
 			}
 		}
+		if labels != nil && len(item.Labels) != len(labels) {
+			matches = false
+		}
 		if matches {
 			return *item.Value, true
 		}

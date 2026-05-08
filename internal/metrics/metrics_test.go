@@ -7,6 +7,7 @@ package metrics
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -239,6 +240,42 @@ func TestHandleHealthDisconnected(t *testing.T) {
 	}
 	if body["routeros_connected"] != false {
 		t.Errorf("expected false, got %v", body["routeros_connected"])
+	}
+}
+
+type failingResponseWriter struct {
+	header http.Header
+}
+
+func (w *failingResponseWriter) Header() http.Header {
+	if w.header == nil {
+		w.header = http.Header{}
+	}
+	return w.header
+}
+
+func (w *failingResponseWriter) Write([]byte) (int, error) {
+	return 0, errors.New("write failed")
+}
+
+func (w *failingResponseWriter) WriteHeader(int) {}
+
+func TestHandleHealthWriteError(t *testing.T) {
+	srv := &Server{version: "test-v1"}
+	srv.handleHealth(&failingResponseWriter{}, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/health", nil))
+}
+
+func TestHandleHealthMarshalError(t *testing.T) {
+	oldMarshal := healthJSONMarshal
+	healthJSONMarshal = func(any) ([]byte, error) { return nil, errors.New("marshal failed") }
+	t.Cleanup(func() { healthJSONMarshal = oldMarshal })
+
+	srv := &Server{version: "test-v1"}
+	w := httptest.NewRecorder()
+	srv.handleHealth(w, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/health", nil))
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", w.Code)
 	}
 }
 

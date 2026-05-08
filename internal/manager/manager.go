@@ -36,8 +36,10 @@ const (
 
 // Connection retry settings (vars so tests can override).
 var (
-	connectRetryInterval = 10 * time.Second
-	connectRetryTimeout  = 3 * time.Minute
+	connectRetryInterval             = 10 * time.Second
+	connectRetryTimeout              = 3 * time.Minute
+	initialDecisionCollectionTimeout = 10 * time.Second
+	initialDecisionIdleTimeout       = 3 * time.Second
 )
 
 // Manager orchestrates the CrowdSec stream and MikroTik firewall operations.
@@ -302,7 +304,7 @@ func (m *Manager) collectInitialDecisions(ctx context.Context, banCh, deleteCh <
 	m.logger.Info().Msg("bouncer started, collecting initial decisions for reconciliation")
 	var initialBans []*crowdsec.Decision
 	initialDeletes := make(map[string]struct{})
-	idleTimeout := time.NewTimer(10 * time.Second)
+	idleTimeout := time.NewTimer(initialDecisionCollectionTimeout)
 	defer idleTimeout.Stop()
 
 	resetIdleTimer := func() {
@@ -312,7 +314,7 @@ func (m *Manager) collectInitialDecisions(ctx context.Context, banCh, deleteCh <
 			default:
 			}
 		}
-		idleTimeout.Reset(3 * time.Second)
+		idleTimeout.Reset(initialDecisionIdleTimeout)
 	}
 
 collectLoop:

@@ -56,9 +56,19 @@ func captureStdout(t *testing.T, fn func()) string {
 		t.Fatalf("create stdout pipe: %v", err)
 	}
 	os.Stdout = w
-	t.Cleanup(func() { os.Stdout = oldStdout })
+	restored := false
+	restoreStdout := func() {
+		if !restored {
+			os.Stdout = oldStdout
+			restored = true
+		}
+	}
+	defer restoreStdout()
+	defer func() { _ = r.Close() }()
+	defer func() { _ = w.Close() }()
 
 	fn()
+	restoreStdout()
 	if closeErr := w.Close(); closeErr != nil {
 		t.Fatalf("close stdout writer: %v", closeErr)
 	}

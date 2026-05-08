@@ -24,6 +24,21 @@ const (
 	systemctlPath      = "systemctl"
 )
 
+var (
+	setupGetuid       = os.Getuid
+	setupExecutable   = os.Executable
+	setupEvalSymlinks = filepath.EvalSymlinks
+	setupMkdirAll     = os.MkdirAll
+	setupStat         = os.Stat
+	setupWriteFile    = os.WriteFile
+	setupRemove       = os.Remove
+	setupRemoveAll    = os.RemoveAll
+	setupCopyFile     = copyFile
+	setupSystemctl    = systemctl
+	setupServicePath  = defaultServicePath
+	setupConfigDir    = defaultConfigDir
+)
+
 // serviceTemplate is the systemd unit file content.
 // %s placeholders: binary path, config file path.
 const serviceTemplate = `[Unit]
@@ -53,15 +68,15 @@ WantedBy=multi-user.target
 
 // runSetup installs the bouncer as a systemd service.
 func runSetup(binDst, configDir string) error {
-	if os.Getuid() != 0 {
+	if setupGetuid() != 0 {
 		return errors.New("setup must be run as root")
 	}
 
-	binSrc, err := os.Executable()
+	binSrc, err := setupExecutable()
 	if err != nil {
 		return fmt.Errorf("cannot determine own path: %w", err)
 	}
-	binSrc, err = filepath.EvalSymlinks(binSrc)
+	binSrc, err = setupEvalSymlinks(binSrc)
 	if err != nil {
 		return fmt.Errorf("cannot resolve symlinks: %w", err)
 	}
@@ -70,18 +85,18 @@ func runSetup(binDst, configDir string) error {
 
 	// 1. Copy binary
 	fmt.Printf("→ Installing binary to %s ...\n", binDst)
-	if copyErr := copyFile(binSrc, binDst, 0o755); copyErr != nil {
+	if copyErr := setupCopyFile(binSrc, binDst, 0o755); copyErr != nil {
 		return fmt.Errorf("failed to copy binary: %w", copyErr)
 	}
 
 	// 2. Create config directory and example config
-	if mkdirErr := os.MkdirAll(configDir, 0o750); mkdirErr != nil {
+	if mkdirErr := setupMkdirAll(configDir, 0o750); mkdirErr != nil {
 		return fmt.Errorf("failed to create config dir: %w", mkdirErr)
 	}
-	if _, statErr := os.Stat(configFile); os.IsNotExist(statErr) {
+	if _, statErr := setupStat(configFile); os.IsNotExist(statErr) {
 		fmt.Printf("→ Creating example config at %s ...\n", configFile)
 		// #nosec G306 -- config must be group-readable by service operators.
-		if writeErr := os.WriteFile(configFile, []byte(exampleConfig()), 0o640); writeErr != nil {
+		if writeErr := setupWriteFile(configFile, []byte(exampleConfig()), 0o640); writeErr != nil {
 			return fmt.Errorf("failed to write config: %w", writeErr)
 		}
 		fmt.Println("  ⚠ Edit the config file to set your CrowdSec API key and MikroTik credentials.")
@@ -90,24 +105,24 @@ func runSetup(binDst, configDir string) error {
 	}
 
 	// 3. Write systemd unit
-	fmt.Printf("→ Creating systemd service at %s ...\n", defaultServicePath)
+	fmt.Printf("→ Creating systemd service at %s ...\n", setupServicePath)
 	unit := fmt.Sprintf(serviceTemplate, binDst, configFile)
 	// #nosec G306 -- systemd units must be world-readable.
-	if writeErr := os.WriteFile(defaultServicePath, []byte(unit), 0o644); writeErr != nil {
+	if writeErr := setupWriteFile(setupServicePath, []byte(unit), 0o644); writeErr != nil {
 		return fmt.Errorf("failed to write service file: %w", writeErr)
 	}
 
 	// 4. Reload, enable, start
 	fmt.Println("→ Reloading systemd daemon ...")
-	if systemctlErr := systemctl("daemon-reload"); systemctlErr != nil {
+	if systemctlErr := setupSystemctl("daemon-reload"); systemctlErr != nil {
 		return fmt.Errorf("reload systemd daemon: %w", systemctlErr)
 	}
 	fmt.Printf("→ Enabling %s ...\n", serviceName)
-	if systemctlErr := systemctl("enable", serviceName); systemctlErr != nil {
+	if systemctlErr := setupSystemctl("enable", serviceName); systemctlErr != nil {
 		return fmt.Errorf("enable %s: %w", serviceName, systemctlErr)
 	}
 	fmt.Printf("→ Starting %s ...\n", serviceName)
-	if systemctlErr := systemctl("start", serviceName); systemctlErr != nil {
+	if systemctlErr := setupSystemctl("start", serviceName); systemctlErr != nil {
 		return fmt.Errorf("start %s: %w", serviceName, systemctlErr)
 	}
 
@@ -122,32 +137,32 @@ func runSetup(binDst, configDir string) error {
 
 // runUninstall stops and removes the systemd service and binary.
 func runUninstall(binDst string, removeConfig bool) error {
-	if os.Getuid() != 0 {
+	if setupGetuid() != 0 {
 		return errors.New("uninstall must be run as root")
 	}
 
 	fmt.Printf("→ Stopping %s ...\n", serviceName)
-	_ = systemctl("stop", serviceName)
+	_ = setupSystemctl("stop", serviceName)
 
 	fmt.Printf("→ Disabling %s ...\n", serviceName)
-	_ = systemctl("disable", serviceName)
+	_ = setupSystemctl("disable", serviceName)
 
-	if _, err := os.Stat(defaultServicePath); err == nil {
-		fmt.Printf("→ Removing %s ...\n", defaultServicePath)
-		_ = os.Remove(defaultServicePath)
+	if _, err := setupStat(setupServicePath); err == nil {
+		fmt.Printf("→ Removing %s ...\n", setupServicePath)
+		_ = setupRemove(setupServicePath)
 	}
-	_ = systemctl("daemon-reload")
+	_ = setupSystemctl("daemon-reload")
 
-	if _, err := os.Stat(binDst); err == nil {
+	if _, err := setupStat(binDst); err == nil {
 		fmt.Printf("→ Removing %s ...\n", binDst)
-		_ = os.Remove(binDst)
+		_ = setupRemove(binDst)
 	}
 
 	if removeConfig {
-		fmt.Printf("→ Removing config dir %s ...\n", defaultConfigDir)
-		_ = os.RemoveAll(defaultConfigDir)
+		fmt.Printf("→ Removing config dir %s ...\n", setupConfigDir)
+		_ = setupRemoveAll(setupConfigDir)
 	} else {
-		fmt.Printf("→ Config dir %s preserved (use -purge to remove).\n", defaultConfigDir)
+		fmt.Printf("→ Config dir %s preserved (use -purge to remove).\n", setupConfigDir)
 	}
 
 	fmt.Printf("✓ %s uninstalled.\n", serviceName)

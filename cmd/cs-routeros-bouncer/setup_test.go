@@ -1,11 +1,249 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func resetSetupHooks(t *testing.T) {
+	t.Helper()
+	oldGetuid := setupGetuid
+	oldExecutable := setupExecutable
+	oldEvalSymlinks := setupEvalSymlinks
+	oldMkdirAll := setupMkdirAll
+	oldStat := setupStat
+	oldWriteFile := setupWriteFile
+	oldRemove := setupRemove
+	oldRemoveAll := setupRemoveAll
+	oldCopyFile := setupCopyFile
+	oldSystemctl := setupSystemctl
+	oldServicePath := setupServicePath
+	oldConfigDir := setupConfigDir
+	t.Cleanup(func() {
+		setupGetuid = oldGetuid
+		setupExecutable = oldExecutable
+		setupEvalSymlinks = oldEvalSymlinks
+		setupMkdirAll = oldMkdirAll
+		setupStat = oldStat
+		setupWriteFile = oldWriteFile
+		setupRemove = oldRemove
+		setupRemoveAll = oldRemoveAll
+		setupCopyFile = oldCopyFile
+		setupSystemctl = oldSystemctl
+		setupServicePath = oldServicePath
+		setupConfigDir = oldConfigDir
+	})
+}
+
+func configureRootSetup(t *testing.T) (binSrc, servicePath string, systemctlCalls *[][]string) {
+	t.Helper()
+	resetSetupHooks(t)
+	tmpDir := t.TempDir()
+	binSrc = filepath.Join(tmpDir, "source-bin")
+	servicePath = filepath.Join(tmpDir, "cs-routeros-bouncer.service")
+	if err := os.WriteFile(binSrc, []byte("binary"), 0o700); err != nil {
+		t.Fatalf("write source binary: %v", err)
+	}
+	calls := [][]string{}
+	setupGetuid = func() int { return 0 }
+	setupExecutable = func() (string, error) { return binSrc, nil }
+	setupEvalSymlinks = func(path string) (string, error) { return path, nil }
+	setupServicePath = servicePath
+	setupSystemctl = func(args ...string) error {
+		calls = append(calls, append([]string(nil), args...))
+		return nil
+	}
+	return binSrc, servicePath, &calls
+}
+
+func TestRunSetupRequiresRoot(t *testing.T) {
+	resetSetupHooks(t)
+	setupGetuid = func() int { return 1000 }
+
+	err := runSetup(filepath.Join(t.TempDir(), "bin"), filepath.Join(t.TempDir(), "config"))
+	if err == nil || !strings.Contains(err.Error(), "setup must be run as root") {
+		t.Fatalf("expected root error, got %v", err)
+	}
+}
+
+func TestRunUninstallRequiresRoot(t *testing.T) {
+	resetSetupHooks(t)
+	setupGetuid = func() int { return 1000 }
+
+	err := runUninstall(filepath.Join(t.TempDir(), "bin"), false)
+	if err == nil || !strings.Contains(err.Error(), "uninstall must be run as root") {
+		t.Fatalf("expected root error, got %v", err)
+	}
+}
+
+func TestRunSetupSuccess(t *testing.T) {
+	_, servicePath, systemctlCalls := configureRootSetup(t)
+	tmpDir := t.TempDir()
+	binDst := filepath.Join(tmpDir, "bin", "cs-routeros-bouncer")
+	configDir := filepath.Join(tmpDir, "config")
+	if err := os.MkdirAll(filepath.Dir(binDst), 0o755); err != nil {
+		t.Fatalf("create bin dir: %v", err)
+	}
+
+	_ = captureStdout(t, func() {
+		if err := runSetup(binDst, configDir); err != nil {
+			t.Fatalf("runSetup: %v", err)
+		}
+	})
+
+	binData, err := os.ReadFile(binDst)
+	if err != nil {
+		t.Fatalf("read installed binary: %v", err)
+	}
+	if string(binData) != "binary" {
+		t.Fatalf("unexpected installed binary contents: %q", string(binData))
+	}
+	configPath := filepath.Join(configDir, defaultConfigFile)
+	configData, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read generated config: %v", err)
+	}
+	if !strings.Contains(string(configData), `reconciliation_interval: "15m"`) {
+		t.Fatalf("generated config missing reconciliation interval")
+	}
+	unitData, err := os.ReadFile(servicePath)
+	if err != nil {
+		t.Fatalf("read service unit: %v", err)
+	}
+	if !strings.Contains(string(unitData), "ExecStart="+binDst+" -c "+configPath) {
+		t.Fatalf("service unit does not reference installed paths: %s", string(unitData))
+	}
+	if got := len(*systemctlCalls); got != 3 {
+		t.Fatalf("expected 3 systemctl calls, got %d: %v", got, *systemctlCalls)
+	}
+	if (*systemctlCalls)[0][0] != "daemon-reload" || (*systemctlCalls)[1][0] != "enable" || (*systemctlCalls)[2][0] != "start" {
+		t.Fatalf("unexpected systemctl calls: %v", *systemctlCalls)
+	}
+}
+
+func TestRunSetupCopyError(t *testing.T) {
+	resetSetupHooks(t)
+	setupGetuid = func() int { return 0 }
+	setupExecutable = func() (string, error) { return filepath.Join(t.TempDir(), "missing"), nil }
+	setupEvalSymlinks = func(path string) (string, error) { return path, nil }
+
+	err := runSetup(filepath.Join(t.TempDir(), "bin"), filepath.Join(t.TempDir(), "config"))
+	if err == nil || !strings.Contains(err.Error(), "failed to copy binary") {
+		t.Fatalf("expected copy error, got %v", err)
+	}
+}
+
+func TestRunSetupMkdirError(t *testing.T) {
+	_, _, _ = configureRootSetup(t)
+	setupMkdirAll = func(string, os.FileMode) error { return errors.New("mkdir denied") }
+
+	err := runSetup(filepath.Join(t.TempDir(), "bin"), filepath.Join(t.TempDir(), "config"))
+	if err == nil || !strings.Contains(err.Error(), "failed to create config dir") {
+		t.Fatalf("expected mkdir error, got %v", err)
+	}
+}
+
+func TestRunSetupConfigWriteError(t *testing.T) {
+	_, _, _ = configureRootSetup(t)
+	configDir := filepath.Join(t.TempDir(), "config")
+	setupWriteFile = func(path string, data []byte, perm os.FileMode) error {
+		if path == filepath.Join(configDir, defaultConfigFile) {
+			return errors.New("config denied")
+		}
+		return os.WriteFile(path, data, perm)
+	}
+
+	err := runSetup(filepath.Join(t.TempDir(), "bin"), configDir)
+	if err == nil || !strings.Contains(err.Error(), "failed to write config") {
+		t.Fatalf("expected config write error, got %v", err)
+	}
+}
+
+func TestRunSetupServiceWriteError(t *testing.T) {
+	_, servicePath, _ := configureRootSetup(t)
+	setupWriteFile = func(path string, data []byte, perm os.FileMode) error {
+		if path == servicePath {
+			return errors.New("service denied")
+		}
+		return os.WriteFile(path, data, perm)
+	}
+
+	err := runSetup(filepath.Join(t.TempDir(), "bin"), filepath.Join(t.TempDir(), "config"))
+	if err == nil || !strings.Contains(err.Error(), "failed to write service file") {
+		t.Fatalf("expected service write error, got %v", err)
+	}
+}
+
+func TestRunSetupSystemctlErrors(t *testing.T) {
+	tests := []struct {
+		name    string
+		failCmd string
+		want    string
+	}{
+		{"reload", "daemon-reload", "reload systemd daemon"},
+		{"enable", "enable", "enable cs-routeros-bouncer"},
+		{"start", "start", "start cs-routeros-bouncer"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, _ = configureRootSetup(t)
+			setupSystemctl = func(args ...string) error {
+				if args[0] == tt.failCmd {
+					return errors.New("systemctl failed")
+				}
+				return nil
+			}
+
+			err := runSetup(filepath.Join(t.TempDir(), "bin"), filepath.Join(t.TempDir(), "config"))
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("expected %q error, got %v", tt.want, err)
+			}
+		})
+	}
+}
+
+func TestRunUninstallSuccess(t *testing.T) {
+	resetSetupHooks(t)
+	tmpDir := t.TempDir()
+	binPath := filepath.Join(tmpDir, "cs-routeros-bouncer")
+	servicePath := filepath.Join(tmpDir, "cs-routeros-bouncer.service")
+	configDir := filepath.Join(tmpDir, "config")
+	for path, data := range map[string]string{binPath: "binary", servicePath: "unit"} {
+		if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+	}
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("create config dir: %v", err)
+	}
+	var calls [][]string
+	setupGetuid = func() int { return 0 }
+	setupServicePath = servicePath
+	setupConfigDir = configDir
+	setupSystemctl = func(args ...string) error {
+		calls = append(calls, append([]string(nil), args...))
+		return nil
+	}
+
+	_ = captureStdout(t, func() {
+		if err := runUninstall(binPath, true); err != nil {
+			t.Fatalf("runUninstall: %v", err)
+		}
+	})
+
+	for _, path := range []string{binPath, servicePath, configDir} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("expected %s to be removed, stat err=%v", path, err)
+		}
+	}
+	if got := len(calls); got != 3 {
+		t.Fatalf("expected 3 systemctl calls, got %d: %v", got, calls)
+	}
+}
 
 func TestCopyFileCopiesContents(t *testing.T) {
 	tmpDir := t.TempDir()

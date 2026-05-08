@@ -1404,6 +1404,29 @@ func TestBulkAddAddresses_FallbackAlreadyHaveIgnored(t *testing.T) {
 	}
 }
 
+func TestBulkAddAddresses_FallbackRealErrorReturned(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+
+	entries := []BulkEntry{
+		{Address: "1.1.1.1", Timeout: "1h", Comment: "test"},
+	}
+
+	mc.pushReply(emptyReply())             // Find existing script -> not found
+	mc.pushError(errors.New("script add")) // Add script fails
+	mc.pushError(errors.New("script add")) // reconnect retry fails
+	mc.pushError(errors.New("add failed")) // fallback AddAddress fails
+	mc.pushError(errors.New("add failed")) // reconnect retry fails
+
+	added, err := c.BulkAddAddresses("ip", "list", entries)
+	if err == nil || !strings.Contains(err.Error(), "fallback add errors") {
+		t.Fatalf("expected fallback error, got %v", err)
+	}
+	if added != 0 {
+		t.Fatalf("expected 0 added, got %d", added)
+	}
+}
+
 // TestRemoveAddresses_Success verifies sequential removes.
 func TestRemoveAddresses_Success(t *testing.T) {
 	mc := newMockConn()
@@ -1493,6 +1516,31 @@ func TestRunBulkScript_CleansUpExistingScript(t *testing.T) {
 	}
 	if n != 1 {
 		t.Fatalf("expected 1, got %d", n)
+	}
+}
+
+func TestRunBulkScript_FindExistingError(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+	mc.pushError(errors.New("find failed"))
+	mc.pushError(errors.New("find failed"))
+
+	_, err := c.runBulkScript("test-script")
+	if err == nil || !strings.Contains(err.Error(), "find existing bulk script") {
+		t.Fatalf("expected find existing error, got %v", err)
+	}
+}
+
+func TestRunBulkScript_RemoveExistingError(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+	mc.pushReply(reReply(map[string]string{".id": "*OLD"}))
+	mc.pushError(errors.New("remove failed"))
+	mc.pushError(errors.New("remove failed"))
+
+	_, err := c.runBulkScript("test-script")
+	if err == nil || !strings.Contains(err.Error(), "remove existing bulk script") {
+		t.Fatalf("expected remove existing error, got %v", err)
 	}
 }
 

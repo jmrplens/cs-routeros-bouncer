@@ -82,6 +82,22 @@ func TestAPIClientNil(t *testing.T) {
 	}
 }
 
+func TestActiveDecisionsRequiresInitializedClient(t *testing.T) {
+	mb := NewMockBouncer()
+	s := newTestStream(mb)
+
+	decisions, err := s.ActiveDecisions(context.Background())
+	if err == nil {
+		t.Fatal("expected uninitialized API client error")
+	}
+	if decisions != nil {
+		t.Fatalf("expected nil decisions, got %v", decisions)
+	}
+	if !strings.Contains(err.Error(), "API client is not initialized") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 // TestActiveDecisionsUsesDecisionListEndpoint verifies that periodic
 // reconciliation snapshots use the active-decision listing endpoint instead of
 // the delta stream's startup mode.
@@ -399,6 +415,69 @@ func TestRunContextCancel(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for Run to return")
 	}
+}
+
+func TestRunBouncerRunCanceledError(t *testing.T) {
+	mb := NewMockBouncer()
+	mb.RunErr = context.Canceled
+	s := newTestStream(mb)
+
+	banCh := make(chan *Decision, 10)
+	deleteCh := make(chan *Decision, 10)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- s.Run(ctx, banCh, deleteCh) }()
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Errorf("expected nil error on ctx cancel, got: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for Run to return")
+	}
+}
+
+func TestRunBouncerRunUnexpectedError(t *testing.T) {
+	mb := NewMockBouncer()
+	mb.RunReturnsImmediately = true
+	mb.RunErr = fmt.Errorf("bouncer stopped")
+	s := newTestStream(mb)
+
+	banCh := make(chan *Decision, 10)
+	deleteCh := make(chan *Decision, 10)
+	ctx := t.Context()
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- s.Run(ctx, banCh, deleteCh) }()
+	waitForMockRun(t, mb)
+	close(mb.DecisionCh)
+
+	select {
+	case err := <-errCh:
+		if err == nil || !strings.Contains(err.Error(), "stream channel closed") {
+			t.Fatalf("expected channel closed error, got %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for Run to return")
+	}
+}
+
+func waitForMockRun(t *testing.T, mb *MockBouncer) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		mb.mu.Lock()
+		called := mb.RunCalled
+		mb.mu.Unlock()
+		if called {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("mock bouncer Run was not called")
 }
 
 // TestRunIPv6Decision verifies that IPv6 decisions are detected correctly.
