@@ -34,6 +34,7 @@ t4_1_pool_established() {
     fi
     log "Pool log messages found: $pool_msg"
     # Not a hard failure — the pool may have started >10 min ago
+    return 0
 }
 run_test "T4.1 Pool establishment (logs)" t4_1_pool_established
 
@@ -55,10 +56,12 @@ t4_2_concurrent_ops() {
     parallel_count=$(echo "$logs" | grep -ci "parallel\|worker\|pool" || true)
     log "Parallel/pool log entries: $parallel_count"
 
-    # The real validation: if reconciliation < 30s with >500 IPs, pool is working
+    # Soft check: log the most recent reconciliation line for manual inspection.
+    # Fast reconciliation with a large address set implies pool is functioning.
     local recon_line
     recon_line=$(echo "$logs" | grep -i "reconcil" | tail -1 || true)
     log "Last reconciliation: $recon_line"
+    return 0
 }
 run_test "T4.2 Concurrent operations (logs)" t4_2_concurrent_ops
 
@@ -98,5 +101,6 @@ t4_3_clean_shutdown() {
         return 1
     fi
     log "Clean shutdown/restart OK (count: $count_before → $count_after)"
+    return 0
 }
 run_test "T4.3 Clean shutdown / restart" t4_3_clean_shutdown

@@ -20,36 +20,58 @@ import (
 	"github.com/jmrplens/cs-routeros-bouncer/internal/metrics"
 )
 
+// main dispatches setup/uninstall subcommands before starting the long-running bouncer.
 func main() {
-	// Handle subcommands before flag parsing
+	if handleSubcommand() {
+		return
+	}
+	runBouncer()
+}
+
+// handleSubcommand runs one-shot administrative subcommands and reports whether one matched.
+func handleSubcommand() bool {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "setup":
-			fs := flag.NewFlagSet("setup", flag.ExitOnError)
-			binPath := fs.String("bin", defaultBinPath, "installation path for the binary")
-			cfgDir := fs.String("config-dir", defaultConfigDir, "directory for configuration files")
-			_ = fs.Parse(os.Args[2:])
-			if err := runSetup(*binPath, *cfgDir); err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				os.Exit(1)
-			}
-			return
+			runSetupCommand(os.Args[2:])
+			return true
 		case "uninstall":
-			fs := flag.NewFlagSet("uninstall", flag.ExitOnError)
-			binPath := fs.String("bin", defaultBinPath, "path of the installed binary")
-			purge := fs.Bool("purge", false, "also remove configuration files")
-			_ = fs.Parse(os.Args[2:])
-			if err := runUninstall(*binPath, *purge); err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				os.Exit(1)
-			}
-			return
+			runUninstallCommand(os.Args[2:])
+			return true
 		case "help":
 			printUsage()
-			return
+			return true
 		}
 	}
+	return false
+}
 
+// runSetupCommand parses setup flags and installs the binary as a systemd service.
+func runSetupCommand(args []string) {
+	fs := flag.NewFlagSet("setup", flag.ExitOnError)
+	binPath := fs.String("bin", defaultBinPath, "installation path for the binary")
+	cfgDir := fs.String("config-dir", defaultConfigDir, "directory for configuration files")
+	_ = fs.Parse(args)
+	if err := runSetup(*binPath, *cfgDir); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+// runUninstallCommand parses uninstall flags and removes the systemd service.
+func runUninstallCommand(args []string) {
+	fs := flag.NewFlagSet("uninstall", flag.ExitOnError)
+	binPath := fs.String("bin", defaultBinPath, "path of the installed binary")
+	purge := fs.Bool("purge", false, "also remove configuration files")
+	_ = fs.Parse(args)
+	if err := runUninstall(*binPath, *purge); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+// runBouncer loads configuration, starts metrics/health endpoints, and blocks on Manager.Start.
+func runBouncer() {
 	configPath := flag.String("c", "", "path to configuration file")
 	showVersion := flag.Bool("version", false, "show version and exit")
 	flag.Parse()
@@ -100,9 +122,9 @@ func main() {
 	// available for container health checks even when metrics are disabled.
 	metricsSrv := metrics.NewServer(cfg.Metrics, config.Version)
 	metrics.SetHealthConnectedCallback(metricsSrv.SetConnected)
-	if err := metricsSrv.Start(); err != nil {
+	if startMetricsErr := metricsSrv.Start(); startMetricsErr != nil {
 		cancel()
-		log.Fatal().Err(err).Msg("failed to start health/metrics server") //nolint:gocritic // exitAfterDefer: intentional early exit before goroutines start
+		log.Fatal().Err(startMetricsErr).Msg("failed to start health/metrics server") //nolint:gocritic // exitAfterDefer: intentional early exit before goroutines start
 	}
 
 	go func() {
@@ -120,8 +142,8 @@ func main() {
 	// Shutdown health/metrics server
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
-	if err := metricsSrv.Shutdown(shutdownCtx); err != nil {
-		log.Error().Err(err).Msg("error shutting down health/metrics server")
+	if shutdownErr := metricsSrv.Shutdown(shutdownCtx); shutdownErr != nil {
+		log.Error().Err(shutdownErr).Msg("error shutting down health/metrics server")
 	}
 
 	if startErr != nil {
@@ -137,6 +159,7 @@ func main() {
 	log.Info().Msg("cs-routeros-bouncer stopped")
 }
 
+// printUsage writes the command help text to standard output.
 func printUsage() {
 	fmt.Printf(`cs-routeros-bouncer %s — CrowdSec bouncer for MikroTik RouterOS
 

@@ -400,12 +400,40 @@ func TestFirewallRuleAllFields(t *testing.T) {
 	if rule.DstAddressList != "dst-list" {
 		t.Errorf("expected DstAddressList 'dst-list', got %q", rule.DstAddressList)
 	}
-	if rule.OutInterfaceList != "LAN" {
-		t.Errorf("expected OutInterfaceList 'LAN', got %q", rule.OutInterfaceList)
-	}
 	if rule.SrcAddress != "!10.0.0.5" {
 		t.Errorf("expected SrcAddress '!10.0.0.5', got %q", rule.SrcAddress)
 	}
+	if rule.SrcAddressList != "src-list" {
+		t.Errorf("expected SrcAddressList 'src-list', got %q", rule.SrcAddressList)
+	}
+
+	if rule.InInterfaceList != "WAN" {
+		t.Errorf("expected InInterfaceList 'WAN', got %q", rule.InInterfaceList)
+	}
+	if rule.OutInterfaceList != "LAN" {
+		t.Errorf("expected OutInterfaceList 'LAN', got %q", rule.OutInterfaceList)
+	}
+
+	if rule.Chain != "forward" {
+		t.Errorf("expected Chain 'forward', got %q", rule.Chain)
+	}
+	if rule.Action != "reject" {
+		t.Errorf("expected Action 'reject', got %q", rule.Action)
+	}
+	if rule.Comment != "test" {
+		t.Errorf("expected Comment 'test', got %q", rule.Comment)
+	}
+	if rule.PlaceBefore != "top" {
+		t.Errorf("expected PlaceBefore 'top', got %q", rule.PlaceBefore)
+	}
+
+	if !rule.Log {
+		t.Error("expected Log true")
+	}
+	if rule.LogPrefix != "DROP" {
+		t.Errorf("expected LogPrefix 'DROP', got %q", rule.LogPrefix)
+	}
+
 	if rule.ConnectionState != "new,invalid" {
 		t.Errorf("expected ConnectionState 'new,invalid', got %q", rule.ConnectionState)
 	}
@@ -578,6 +606,9 @@ func TestBulkEntryStruct(t *testing.T) {
 	if e.Timeout != "2h" {
 		t.Errorf("expected Timeout '2h', got %q", e.Timeout)
 	}
+	if e.Comment != "cs|test|scenario" {
+		t.Errorf("expected Comment 'cs|test|scenario', got %q", e.Comment)
+	}
 }
 
 // --- FirewallRule attribute building tests ---
@@ -604,9 +635,9 @@ func TestFirewallRuleWantTopDetection(t *testing.T) {
 	}
 }
 
-// TestFirewallRuleInInterfaceFields verifies that input interface fields
-// are correctly stored on the FirewallRule struct.
-func TestFirewallRuleInInterfaceFields(t *testing.T) {
+// TestFirewallRuleInputFields verifies that input rule fields are correctly
+// stored on the FirewallRule struct.
+func TestFirewallRuleInputFields(t *testing.T) {
 	rule := FirewallRule{
 		Chain:           "input",
 		Action:          "drop",
@@ -620,6 +651,18 @@ func TestFirewallRuleInInterfaceFields(t *testing.T) {
 	}
 	if rule.InInterfaceList != "WAN" {
 		t.Errorf("expected InInterfaceList 'WAN', got %q", rule.InInterfaceList)
+	}
+	if rule.Chain != "input" {
+		t.Errorf("expected Chain 'input', got %q", rule.Chain)
+	}
+	if rule.Action != "drop" {
+		t.Errorf("expected Action 'drop', got %q", rule.Action)
+	}
+	if rule.SrcAddressList != "banned" {
+		t.Errorf("expected SrcAddressList 'banned', got %q", rule.SrcAddressList)
+	}
+	if rule.Comment != "test" {
+		t.Errorf("expected Comment 'test', got %q", rule.Comment)
 	}
 }
 

@@ -1,2 +1,32 @@
-# Default code owner for all files
+# CODEOWNERS for cs-routeros-bouncer
+# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything
 * @jmrplens
+
+# Go source and module files
+*.go @jmrplens
+go.mod @jmrplens
+go.sum @jmrplens
+
+# Build, release, and CI
+Makefile @jmrplens
+.github/ @jmrplens
+.goreleaser.yaml @jmrplens
+docker/ @jmrplens
+
+# Documentation and site
+README.md @jmrplens
+CHANGELOG.md @jmrplens
+CONTRIBUTING.md @jmrplens
+docs/ @jmrplens
+
+# Runtime configuration
+config/ @jmrplens
+grafana/ @jmrplens
+
+# Core integrations
+internal/crowdsec/ @jmrplens
+internal/routeros/ @jmrplens
+internal/manager/ @jmrplens
+internal/metrics/ @jmrplens

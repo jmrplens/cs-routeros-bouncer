@@ -1,31 +1,112 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
+    branches: [main]
+  push:
     branches: [main]
 
 permissions:
   contents: read
 
+env:
+  GO_VERSION: "1.26.3"
+  GOTOOLCHAIN: go1.26.3
+
 jobs:
-  lint:
+  workflows:
+    name: GitHub Actions
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
-          go-version-file: go.mod
-      - name: Install golangci-lint
-        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+          go-version: ${{ env.GO_VERSION }}
+      - run: go mod download
+      - name: Lint GitHub workflows
+        run: go tool actionlint
+
+  markdown:
+    name: Markdown
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: docs/pnpm-lock.yaml
+      - name: Install Markdown linter
+        run: pnpm --dir docs install --frozen-lockfile --ignore-scripts
+      - name: Lint Markdown
+        run: pnpm --dir docs exec markdownlint-cli2 --config ../.markdownlint-cli2.jsonc "../**/*.md"
+
+  go-format:
+    name: Go formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - run: go mod download
+      - name: Check gofmt
+        run: |
+          issues=$(gofmt -l -s cmd internal tests)
+          if [ -n "$issues" ]; then
+            echo "Files needing gofmt:"
+            echo "$issues"
+            exit 1
+          fi
+      - name: Check goimports
+        run: |
+          issues=$(go tool goimports -local github.com/jmrplens/cs-routeros-bouncer -l cmd internal tests)
+          if [ -n "$issues" ]; then
+            echo "Files needing goimports:"
+            echo "$issues"
+            exit 1
+          fi
+
+  go-analysis:
+    name: Go analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - run: go mod download
+      - name: Run go vet
+        run: go vet ./cmd/... ./internal/...
+      - name: Run modernize
+        run: go tool modernize ./cmd/... ./internal/...
       - name: Run golangci-lint
-        run: golangci-lint run
+        run: go tool golangci-lint run ./cmd/... ./internal/...
+      - name: Run gosec
+        run: go tool gosec -quiet -severity medium -confidence medium -exclude-generated -fmt text ./cmd/... ./internal/...
+      - name: Run Staticcheck
+        run: go tool staticcheck ./cmd/... ./internal/...
+
+  vulncheck:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - run: go mod download
+      - name: Run govulncheck
+        run: go tool govulncheck ./cmd/... ./internal/...
 
   shellcheck:
+    name: ShellCheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Run ShellCheck on functional tests
         uses: ludeeus/action-shellcheck@2.0.0
         with:
@@ -34,61 +115,116 @@ jobs:
         env:
           SHELLCHECK_OPTS: -x
 
-  vulncheck:
+  docs:
+    name: Astro docs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
         with:
-          go-version-file: go.mod
-      - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
-      - name: Run govulncheck
-        run: govulncheck ./...
+          version: 10
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: docs/pnpm-lock.yaml
+      - name: Install documentation dependencies
+        working-directory: docs
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Install Playwright browser
+        working-directory: docs
+        run: ./node_modules/.bin/playwright install --with-deps chromium
+      - name: Analyze documentation
+        working-directory: docs
+        run: pnpm analyze
 
   test:
+    name: Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
-          go-version-file: go.mod
-      - run: go test -v -race -coverprofile=coverage.out ./...
-      - uses: actions/upload-artifact@v4
+          go-version: ${{ env.GO_VERSION }}
+      - run: go mod download
+      - name: Run tests with race detector and coverage
+        run: go test -v -race -coverprofile=coverage.out ./...
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v7
         with:
           name: coverage
           path: coverage.out
+          retention-days: 1
+
+  sonarcloud:
+    name: SonarCloud
+    runs-on: ubuntu-latest
+    needs: [test]
+    timeout-minutes: 10
+    env:
+      SONAR_TOKEN: ${{ secrets.SONARQUBE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v8
+        with:
+          name: coverage
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: docs/pnpm-lock.yaml
+      - name: Install docs dependencies for analysis
+        run: pnpm --dir docs install --frozen-lockfile --ignore-scripts
+      - name: Generate Astro types for analysis
+        run: pnpm --dir docs exec astro sync
+      - name: SonarCloud Scan
+        if: env.SONAR_TOKEN != ''
+        uses: SonarSource/sonarqube-scan-action@v8
+        env:
+          SONAR_HOST_URL: https://sonarcloud.io
+          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build:
-    needs: [lint, shellcheck, vulncheck, test]
+    name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
+    needs: [go-format, go-analysis, shellcheck, vulncheck, test, docs, workflows, markdown]
     runs-on: ubuntu-latest
     strategy:
       matrix:
         goos: [linux]
         goarch: [amd64, arm64]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
-          go-version-file: go.mod
+          go-version: ${{ env.GO_VERSION }}
       - name: Build
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
         run: |
-          CGO_ENABLED=0 go build -ldflags "-X github.com/jmrplens/cs-routeros-bouncer/internal/config.Version=${{ github.sha }}" \
+          CGO_ENABLED=0 go build -trimpath -buildmode=pie \
+            -ldflags "-s -w -X github.com/jmrplens/cs-routeros-bouncer/internal/config.Version=${{ github.sha }}" \
             -o bin/cs-routeros-bouncer-${{ matrix.goos }}-${{ matrix.goarch }} \
             ./cmd/cs-routeros-bouncer/
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: cs-routeros-bouncer-${{ matrix.goos }}-${{ matrix.goarch }}
           path: bin/
+          retention-days: 1
 
   docker:
+    name: Docker
     needs: [test]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Build Docker image
         run: docker build -f docker/Dockerfile -t cs-routeros-bouncer:ci-test .
       - name: Verify image

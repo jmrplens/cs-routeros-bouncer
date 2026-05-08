@@ -4,6 +4,11 @@
 package crowdsec
 
 import (
+	"fmt"
+	"io"
+	"strings"
+	"sync"
+
 	"github.com/rs/zerolog"
 	"github.com/sirupsen/logrus"
 )
@@ -11,7 +16,9 @@ import (
 // zerologAdapter adapts zerolog.Logger to logrus.FieldLogger interface.
 // This is needed because go-cs-bouncer's MetricsProvider requires logrus.
 type zerologAdapter struct {
-	zl zerolog.Logger
+	zl         zerolog.Logger
+	logrusOnce sync.Once
+	logrus     *logrus.Logger
 }
 
 // NewLogrusAdapter creates a logrus.FieldLogger that delegates to zerolog.
@@ -19,130 +26,207 @@ func NewLogrusAdapter(zl zerolog.Logger) logrus.FieldLogger {
 	return &zerologAdapter{zl: zl}
 }
 
-func (a *zerologAdapter) WithField(key string, value interface{}) *logrus.Entry {
+// WithField returns a logrus entry that forwards the field to zerolog.
+func (a *zerologAdapter) WithField(key string, value any) *logrus.Entry {
 	// Return a logrus entry that will use our adapter as logger
 	return logrus.NewEntry(a.asLogrus()).WithField(key, value)
 }
 
+// WithFields returns a logrus entry that forwards all fields to zerolog.
 func (a *zerologAdapter) WithFields(fields logrus.Fields) *logrus.Entry {
 	return logrus.NewEntry(a.asLogrus()).WithFields(fields)
 }
 
+// WithError returns a logrus entry that forwards the error field to zerolog.
 func (a *zerologAdapter) WithError(err error) *logrus.Entry {
 	return logrus.NewEntry(a.asLogrus()).WithError(err)
 }
 
-func (a *zerologAdapter) Debugf(format string, args ...interface{}) {
+// Debugf logs a formatted debug message.
+func (a *zerologAdapter) Debugf(format string, args ...any) {
 	a.zl.Debug().Msgf(format, args...)
 }
 
-func (a *zerologAdapter) Infof(format string, args ...interface{}) {
+// Infof logs a formatted info message.
+func (a *zerologAdapter) Infof(format string, args ...any) {
 	a.zl.Info().Msgf(format, args...)
 }
 
-func (a *zerologAdapter) Warnf(format string, args ...interface{}) {
+// Warnf logs a formatted warning message.
+func (a *zerologAdapter) Warnf(format string, args ...any) {
 	a.zl.Warn().Msgf(format, args...)
 }
 
-func (a *zerologAdapter) Warningf(format string, args ...interface{}) {
+// Warningf logs a formatted warning message using the logrus alias name.
+func (a *zerologAdapter) Warningf(format string, args ...any) {
 	a.zl.Warn().Msgf(format, args...)
 }
 
-func (a *zerologAdapter) Errorf(format string, args ...interface{}) {
+// Errorf logs a formatted error message.
+func (a *zerologAdapter) Errorf(format string, args ...any) {
 	a.zl.Error().Msgf(format, args...)
 }
 
-func (a *zerologAdapter) Fatalf(format string, args ...interface{}) {
+// Fatalf logs a formatted fatal message.
+func (a *zerologAdapter) Fatalf(format string, args ...any) {
 	a.zl.Fatal().Msgf(format, args...)
 }
 
-func (a *zerologAdapter) Panicf(format string, args ...interface{}) {
+// Panicf logs a formatted panic message.
+func (a *zerologAdapter) Panicf(format string, args ...any) {
 	a.zl.Panic().Msgf(format, args...)
 }
 
-func (a *zerologAdapter) Debug(args ...interface{}) {
-	a.zl.Debug().Msgf("%v", args...)
+// Debug logs arguments with fmt.Sprint at debug level.
+func (a *zerologAdapter) Debug(args ...any) {
+	a.zl.Debug().Msg(fmt.Sprint(args...))
 }
 
-func (a *zerologAdapter) Info(args ...interface{}) {
-	a.zl.Info().Msgf("%v", args...)
+// Info logs arguments with fmt.Sprint at info level.
+func (a *zerologAdapter) Info(args ...any) {
+	a.zl.Info().Msg(fmt.Sprint(args...))
 }
 
-func (a *zerologAdapter) Warn(args ...interface{}) {
-	a.zl.Warn().Msgf("%v", args...)
+// Warn logs arguments with fmt.Sprint at warning level.
+func (a *zerologAdapter) Warn(args ...any) {
+	a.zl.Warn().Msg(fmt.Sprint(args...))
 }
 
-func (a *zerologAdapter) Warning(args ...interface{}) {
-	a.zl.Warn().Msgf("%v", args...)
+// Warning logs arguments with fmt.Sprint using the logrus alias name.
+func (a *zerologAdapter) Warning(args ...any) {
+	a.zl.Warn().Msg(fmt.Sprint(args...))
 }
 
-func (a *zerologAdapter) Error(args ...interface{}) {
-	a.zl.Error().Msgf("%v", args...)
+// Error logs arguments with fmt.Sprint at error level.
+func (a *zerologAdapter) Error(args ...any) {
+	a.zl.Error().Msg(fmt.Sprint(args...))
 }
 
-func (a *zerologAdapter) Fatal(args ...interface{}) {
-	a.zl.Fatal().Msgf("%v", args...)
+// Fatal logs arguments with fmt.Sprint at fatal level.
+func (a *zerologAdapter) Fatal(args ...any) {
+	a.zl.Fatal().Msg(fmt.Sprint(args...))
 }
 
-func (a *zerologAdapter) Panic(args ...interface{}) {
-	a.zl.Panic().Msgf("%v", args...)
+// Panic logs arguments with fmt.Sprint at panic level.
+func (a *zerologAdapter) Panic(args ...any) {
+	a.zl.Panic().Msg(fmt.Sprint(args...))
 }
 
-func (a *zerologAdapter) Debugln(args ...interface{}) {
-	a.zl.Debug().Msgf("%v", args...)
+// Debugln logs logrus-style line arguments at debug level.
+func (a *zerologAdapter) Debugln(args ...any) {
+	a.zl.Debug().Msg(logrusLine(args...))
 }
 
-func (a *zerologAdapter) Infoln(args ...interface{}) {
-	a.zl.Info().Msgf("%v", args...)
+// Infoln logs logrus-style line arguments at info level.
+func (a *zerologAdapter) Infoln(args ...any) {
+	a.zl.Info().Msg(logrusLine(args...))
 }
 
-func (a *zerologAdapter) Warnln(args ...interface{}) {
-	a.zl.Warn().Msgf("%v", args...)
+// Warnln logs logrus-style line arguments at warning level.
+func (a *zerologAdapter) Warnln(args ...any) {
+	a.zl.Warn().Msg(logrusLine(args...))
 }
 
-func (a *zerologAdapter) Warningln(args ...interface{}) {
-	a.zl.Warn().Msgf("%v", args...)
+// Warningln logs logrus-style line arguments using the logrus alias name.
+func (a *zerologAdapter) Warningln(args ...any) {
+	a.zl.Warn().Msg(logrusLine(args...))
 }
 
-func (a *zerologAdapter) Errorln(args ...interface{}) {
-	a.zl.Error().Msgf("%v", args...)
+// Errorln logs logrus-style line arguments at error level.
+func (a *zerologAdapter) Errorln(args ...any) {
+	a.zl.Error().Msg(logrusLine(args...))
 }
 
-func (a *zerologAdapter) Fatalln(args ...interface{}) {
-	a.zl.Fatal().Msgf("%v", args...)
+// Fatalln logs logrus-style line arguments at fatal level.
+func (a *zerologAdapter) Fatalln(args ...any) {
+	a.zl.Fatal().Msg(logrusLine(args...))
 }
 
-func (a *zerologAdapter) Panicln(args ...interface{}) {
-	a.zl.Panic().Msgf("%v", args...)
+// Panicln logs logrus-style line arguments at panic level.
+func (a *zerologAdapter) Panicln(args ...any) {
+	a.zl.Panic().Msg(logrusLine(args...))
 }
 
-func (a *zerologAdapter) Print(args ...interface{}) {
-	a.zl.Info().Msgf("%v", args...)
+// Print logs arguments at info level to match logrus.Print.
+func (a *zerologAdapter) Print(args ...any) {
+	a.zl.Info().Msg(fmt.Sprint(args...))
 }
 
-func (a *zerologAdapter) Printf(format string, args ...interface{}) {
+// Printf logs a formatted message at info level to match logrus.Printf.
+func (a *zerologAdapter) Printf(format string, args ...any) {
 	a.zl.Info().Msgf(format, args...)
 }
 
-func (a *zerologAdapter) Println(args ...interface{}) {
-	a.zl.Info().Msgf("%v", args...)
+// Println logs line arguments at info level to match logrus.Println.
+func (a *zerologAdapter) Println(args ...any) {
+	a.zl.Info().Msg(logrusLine(args...))
+}
+
+// logrusLine formats arguments like logrus line methods without the trailing newline.
+func logrusLine(args ...any) string {
+	return strings.TrimSuffix(fmt.Sprintln(args...), "\n")
 }
 
 // asLogrus creates a minimal logrus.Logger that writes to zerolog.
 // Used internally for WithField/WithFields/WithError which need a *logrus.Logger.
 func (a *zerologAdapter) asLogrus() *logrus.Logger {
-	l := logrus.New()
-	l.SetOutput(zerologWriter{zl: a.zl})
-	l.SetFormatter(&logrus.TextFormatter{DisableTimestamp: true})
-	return l
+	a.logrusOnce.Do(func() {
+		l := logrus.New()
+		l.SetOutput(io.Discard)
+		l.SetLevel(logrus.TraceLevel)
+		l.AddHook(zerologHook{zl: a.zl})
+		a.logrus = l
+	})
+	return a.logrus
 }
 
-// zerologWriter routes logrus output to zerolog.
-type zerologWriter struct {
+// zerologHook forwards logrus entries created by WithField(s) into zerolog events.
+type zerologHook struct {
 	zl zerolog.Logger
 }
 
-func (w zerologWriter) Write(p []byte) (n int, err error) {
-	w.zl.Info().Msg(string(p))
-	return len(p), nil
+// Levels subscribes the hook to every logrus level.
+func (h zerologHook) Levels() []logrus.Level {
+	return logrus.AllLevels
+}
+
+// Fire converts a logrus entry and its fields into a zerolog event.
+func (h zerologHook) Fire(entry *logrus.Entry) error {
+	event := h.zl.WithLevel(logrusToZerologLevel(entry.Level))
+	if event == nil {
+		return nil
+	}
+	for key, value := range entry.Data {
+		if key == logrus.ErrorKey {
+			if err, ok := value.(error); ok {
+				event = event.Err(err)
+				continue
+			}
+		}
+		event = event.Interface(key, value)
+	}
+	event.Msg(entry.Message)
+	return nil
+}
+
+// logrusToZerologLevel maps logrus levels to the closest zerolog level.
+func logrusToZerologLevel(level logrus.Level) zerolog.Level {
+	switch level {
+	case logrus.PanicLevel:
+		return zerolog.PanicLevel
+	case logrus.FatalLevel:
+		return zerolog.FatalLevel
+	case logrus.ErrorLevel:
+		return zerolog.ErrorLevel
+	case logrus.WarnLevel:
+		return zerolog.WarnLevel
+	case logrus.InfoLevel:
+		return zerolog.InfoLevel
+	case logrus.DebugLevel:
+		return zerolog.DebugLevel
+	case logrus.TraceLevel:
+		return zerolog.TraceLevel
+	default:
+		return zerolog.InfoLevel
+	}
 }

@@ -1,0 +1,51 @@
+name: Documentation
+description: Report missing, outdated, or incorrect documentation
+title: "[Docs]: "
+labels: ["documentation", "needs-triage"]
+body:
+  - type: checkboxes
+    id: prereqs
+    attributes:
+      label: Prerequisites
+      options:
+        - label: I have searched [existing issues](https://github.com/jmrplens/cs-routeros-bouncer/issues?q=is%3Aissue) for this documentation gap.
+          required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Brief description of the documentation change needed.
+    validations:
+      required: true
+
+  - type: textarea
+    id: current
+    attributes:
+      label: Current state
+      description: What is wrong, missing, or outdated?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed change
+      description: What should be added, updated, or removed?
+
+  - type: checkboxes
+    id: affected
+    attributes:
+      label: Affected documents
+      options:
+        - label: "README.md"
+        - label: "CONTRIBUTING.md"
+        - label: "Astro Starlight docs (docs/src/content/docs/)"
+        - label: "Configuration examples"
+        - label: "Monitoring / Grafana docs"
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Links, screenshots, related code changes, etc.

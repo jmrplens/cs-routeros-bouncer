@@ -1,17 +1,21 @@
-name: ✨ Feature Request
-description: Suggest a new feature or improvement
-labels: ["enhancement"]
+name: Feature Request
+description: Suggest a new feature
+title: "[Feature]: "
+labels: ["feature", "needs-triage"]
 body:
-  - type: markdown
+  - type: checkboxes
+    id: prereqs
     attributes:
-      value: |
-        Thanks for suggesting an improvement! Please describe your idea below.
+      label: Prerequisites
+      options:
+        - label: I have searched [existing issues](https://github.com/jmrplens/cs-routeros-bouncer/issues?q=is%3Aissue) and this feature has not been requested.
+          required: true
 
   - type: textarea
     id: problem
     attributes:
-      label: Problem or motivation
-      description: "What problem does this feature solve? Why is it needed?"
+      label: Problem
+      description: What problem does this feature solve? What is the current limitation?
     validations:
       required: true
 
@@ -19,21 +23,14 @@ body:
     id: solution
     attributes:
       label: Proposed solution
-      description: "How would you like this to work?"
+      description: Describe the desired behavior or feature.
     validations:
       required: true
-
-  - type: textarea
-    id: alternatives
-    attributes:
-      label: Alternatives considered
-      description: "Have you considered any alternative solutions or workarounds?"
 
   - type: dropdown
     id: area
     attributes:
       label: Area
-      description: "Which part of the bouncer does this relate to?"
       options:
         - Firewall rules management
         - Address list management
@@ -44,9 +41,28 @@ body:
         - Docker / Packaging
         - Documentation
         - Other
+    validations:
+      required: true
 
   - type: textarea
-    id: additional
+    id: use-cases
+    attributes:
+      label: Use cases
+      description: How would this feature be used? Provide concrete examples.
+      placeholder: |
+        1.
+        2.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What other approaches were considered and why were they rejected?
+
+  - type: textarea
+    id: context
     attributes:
       label: Additional context
-      description: "Any other relevant information, examples, or references"
+      description: Mockups, references, related issues, links to RouterOS or CrowdSec docs, etc.

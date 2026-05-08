@@ -3,22 +3,43 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/jmrplens/cs-routeros-bouncer/internal/config"
 )
 
+// Default installation paths and command names used by setup and uninstall.
 const (
 	defaultBinPath     = "/usr/local/bin/cs-routeros-bouncer"
 	defaultConfigDir   = "/etc/cs-routeros-bouncer"
 	defaultConfigFile  = "cs-routeros-bouncer.yaml"
 	defaultServicePath = "/etc/systemd/system/cs-routeros-bouncer.service"
 	serviceName        = "cs-routeros-bouncer"
+	systemctlPath      = "systemctl"
+)
+
+// setup hooks wrap OS operations so setup/uninstall behavior can be tested
+// without touching the host system.
+var (
+	setupGetuid       = os.Getuid
+	setupExecutable   = os.Executable
+	setupEvalSymlinks = filepath.EvalSymlinks
+	setupMkdirAll     = os.MkdirAll
+	setupStat         = os.Stat
+	setupWriteFile    = os.WriteFile
+	setupRemove       = os.Remove
+	setupRemoveAll    = os.RemoveAll
+	setupCopyFile     = copyFile
+	setupSystemctl    = systemctl
+	setupServicePath  = defaultServicePath
+	setupConfigDir    = defaultConfigDir
 )
 
 // serviceTemplate is the systemd unit file content.
@@ -34,6 +55,7 @@ Type=simple
 ExecStart=%s -c %s
 Restart=on-failure
 RestartSec=10
+TimeoutStopSec=90
 LimitNOFILE=65536
 
 # Hardening
@@ -49,15 +71,15 @@ WantedBy=multi-user.target
 
 // runSetup installs the bouncer as a systemd service.
 func runSetup(binDst, configDir string) error {
-	if os.Getuid() != 0 {
-		return fmt.Errorf("setup must be run as root")
+	if setupGetuid() != 0 {
+		return errors.New("setup must be run as root")
 	}
 
-	binSrc, err := os.Executable()
+	binSrc, err := setupExecutable()
 	if err != nil {
 		return fmt.Errorf("cannot determine own path: %w", err)
 	}
-	binSrc, err = filepath.EvalSymlinks(binSrc)
+	binSrc, err = setupEvalSymlinks(binSrc)
 	if err != nil {
 		return fmt.Errorf("cannot resolve symlinks: %w", err)
 	}
@@ -66,18 +88,19 @@ func runSetup(binDst, configDir string) error {
 
 	// 1. Copy binary
 	fmt.Printf("→ Installing binary to %s ...\n", binDst)
-	if err := copyFile(binSrc, binDst, 0o755); err != nil {
-		return fmt.Errorf("failed to copy binary: %w", err)
+	if copyErr := setupCopyFile(binSrc, binDst, 0o755); copyErr != nil {
+		return fmt.Errorf("failed to copy binary: %w", copyErr)
 	}
 
 	// 2. Create config directory and example config
-	if err := os.MkdirAll(configDir, 0o750); err != nil {
-		return fmt.Errorf("failed to create config dir: %w", err)
+	if mkdirErr := setupMkdirAll(configDir, 0o750); mkdirErr != nil {
+		return fmt.Errorf("failed to create config dir: %w", mkdirErr)
 	}
-	if _, err := os.Stat(configFile); os.IsNotExist(err) {
+	if _, statErr := setupStat(configFile); os.IsNotExist(statErr) {
 		fmt.Printf("→ Creating example config at %s ...\n", configFile)
-		if err := os.WriteFile(configFile, []byte(exampleConfig()), 0o640); err != nil { //nolint:gosec // config must be group-readable
-			return fmt.Errorf("failed to write config: %w", err)
+		// #nosec G306 -- config must be group-readable by service operators.
+		if writeErr := setupWriteFile(configFile, []byte(exampleConfig()), 0o640); writeErr != nil {
+			return fmt.Errorf("failed to write config: %w", writeErr)
 		}
 		fmt.Println("  ⚠ Edit the config file to set your CrowdSec API key and MikroTik credentials.")
 	} else {
@@ -85,24 +108,25 @@ func runSetup(binDst, configDir string) error {
 	}
 
 	// 3. Write systemd unit
-	fmt.Printf("→ Creating systemd service at %s ...\n", defaultServicePath)
+	fmt.Printf("→ Creating systemd service at %s ...\n", setupServicePath)
 	unit := fmt.Sprintf(serviceTemplate, binDst, configFile)
-	if err := os.WriteFile(defaultServicePath, []byte(unit), 0o644); err != nil { //nolint:gosec // systemd units must be world-readable
-		return fmt.Errorf("failed to write service file: %w", err)
+	// #nosec G306 -- systemd units must be world-readable.
+	if writeErr := setupWriteFile(setupServicePath, []byte(unit), 0o644); writeErr != nil {
+		return fmt.Errorf("failed to write service file: %w", writeErr)
 	}
 
 	// 4. Reload, enable, start
 	fmt.Println("→ Reloading systemd daemon ...")
-	if err := systemctl("daemon-reload"); err != nil {
-		return err
+	if systemctlErr := setupSystemctl("daemon-reload"); systemctlErr != nil {
+		return fmt.Errorf("reload systemd daemon: %w", systemctlErr)
 	}
 	fmt.Printf("→ Enabling %s ...\n", serviceName)
-	if err := systemctl("enable", serviceName); err != nil {
-		return err
+	if systemctlErr := setupSystemctl("enable", serviceName); systemctlErr != nil {
+		return fmt.Errorf("enable %s: %w", serviceName, systemctlErr)
 	}
 	fmt.Printf("→ Starting %s ...\n", serviceName)
-	if err := systemctl("start", serviceName); err != nil {
-		return err
+	if systemctlErr := setupSystemctl("start", serviceName); systemctlErr != nil {
+		return fmt.Errorf("start %s: %w", serviceName, systemctlErr)
 	}
 
 	fmt.Println()
@@ -116,32 +140,32 @@ func runSetup(binDst, configDir string) error {
 
 // runUninstall stops and removes the systemd service and binary.
 func runUninstall(binDst string, removeConfig bool) error {
-	if os.Getuid() != 0 {
-		return fmt.Errorf("uninstall must be run as root")
+	if setupGetuid() != 0 {
+		return errors.New("uninstall must be run as root")
 	}
 
 	fmt.Printf("→ Stopping %s ...\n", serviceName)
-	_ = systemctl("stop", serviceName)
+	_ = setupSystemctl("stop", serviceName)
 
 	fmt.Printf("→ Disabling %s ...\n", serviceName)
-	_ = systemctl("disable", serviceName)
+	_ = setupSystemctl("disable", serviceName)
 
-	if _, err := os.Stat(defaultServicePath); err == nil {
-		fmt.Printf("→ Removing %s ...\n", defaultServicePath)
-		_ = os.Remove(defaultServicePath)
+	if _, err := setupStat(setupServicePath); err == nil {
+		fmt.Printf("→ Removing %s ...\n", setupServicePath)
+		_ = setupRemove(setupServicePath)
 	}
-	_ = systemctl("daemon-reload")
+	_ = setupSystemctl("daemon-reload")
 
-	if _, err := os.Stat(binDst); err == nil {
+	if _, err := setupStat(binDst); err == nil {
 		fmt.Printf("→ Removing %s ...\n", binDst)
-		_ = os.Remove(binDst)
+		_ = setupRemove(binDst)
 	}
 
 	if removeConfig {
-		fmt.Printf("→ Removing config dir %s ...\n", defaultConfigDir)
-		_ = os.RemoveAll(defaultConfigDir)
+		fmt.Printf("→ Removing config dir %s ...\n", setupConfigDir)
+		_ = setupRemoveAll(setupConfigDir)
 	} else {
-		fmt.Printf("→ Config dir %s preserved (use -purge to remove).\n", defaultConfigDir)
+		fmt.Printf("→ Config dir %s preserved (use -purge to remove).\n", setupConfigDir)
 	}
 
 	fmt.Printf("✓ %s uninstalled.\n", serviceName)
@@ -152,50 +176,57 @@ func runUninstall(binDst string, removeConfig bool) error {
 func systemctl(args ...string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "systemctl", args...) //nolint:gosec // args are controlled by caller
+	// #nosec G204 -- systemctl arguments are controlled by setup/uninstall callers.
+	cmd := exec.CommandContext(ctx, systemctlPath, args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("systemctl %v failed: %s", args, stderr.String())
+		if stderrText := strings.TrimSpace(stderr.String()); stderrText != "" {
+			return fmt.Errorf("systemctl %v failed: %s: %w", args, stderrText, err)
+		}
+		return fmt.Errorf("systemctl %v failed: %w", args, err)
 	}
 	return nil
 }
 
 // copyFile copies a file from src to dst with the given permissions.
 func copyFile(src, dst string, mode os.FileMode) error {
-	in, err := os.Open(src) //nolint:gosec // src is a controlled path from setup logic
+	// #nosec G304 -- setup runs as root and copies between resolved install paths.
+	in, err := os.Open(src)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = in.Close() }()
 
-	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode) //nolint:gosec // dst is controlled
+	// #nosec G304 -- setup runs as root and writes to the selected install path.
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = out.Close() }()
 
-	if _, err := io.Copy(out, in); err != nil {
-		return err
+	if _, copyErr := io.Copy(out, in); copyErr != nil {
+		_ = out.Close()
+		return copyErr
 	}
 	return out.Close()
 }
 
 // exampleConfig returns a YAML configuration template with sensible defaults.
 func exampleConfig() string {
-	return `# cs-routeros-bouncer configuration
+	return strings.ReplaceAll(`# cs-routeros-bouncer configuration
 # Documentation: https://github.com/jmrplens/cs-routeros-bouncer
 
 crowdsec:
   api_url: "http://localhost:8080/"
-  api_key: ""          # Required: cscli bouncers add cs-routeros-bouncer
+	# Environment variables in config values are expanded at runtime.
+	api_key: "${CROWDSEC_BOUNCER_API_KEY}" # Required: cscli bouncers add cs-routeros-bouncer
   update_frequency: "10s"
   reconciliation_interval: "15m"
 
 mikrotik:
   address: "192.168.0.1:8728"
   username: "crowdsec"
-  password: ""         # Required: RouterOS API password
+	password: "${MIKROTIK_PASS}" # Required: RouterOS API password
 
 firewall:
   ipv4:
@@ -218,5 +249,5 @@ logging:
 metrics:
   enabled: false
   listen_port: 2112
-`
+`, "\t", "  ")
 }

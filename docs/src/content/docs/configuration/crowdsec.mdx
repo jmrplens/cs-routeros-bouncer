@@ -3,7 +3,7 @@ title: CrowdSec Configuration
 description: LAPI connection, polling interval, and decision filtering settings.
 ---
 
-import { Badge } from '@astrojs/starlight/components';
+import { Badge } from "@astrojs/starlight/components";
 
 Settings for the CrowdSec LAPI connection and decision filtering.
 
@@ -90,11 +90,11 @@ crowdsec:
 
 Filter decisions by their origin. Empty means all decisions are processed.
 
-| Origin | Description |
-|--------|-------------|
-| `crowdsec` | Decisions from CrowdSec detection engine |
-| `cscli` | Manual decisions via `cscli decisions add` |
-| `CAPI` | Community blocklists from CrowdSec Central API |
+| Origin     | Description                                    |
+| ---------- | ---------------------------------------------- |
+| `crowdsec` | Decisions from CrowdSec detection engine       |
+| `cscli`    | Manual decisions via `cscli decisions add`     |
+| `CAPI`     | Community blocklists from CrowdSec Central API |
 
 ```yaml
 # Only local decisions (no community blocklists)

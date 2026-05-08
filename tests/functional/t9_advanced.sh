@@ -46,13 +46,37 @@ fi
 # leave the config in an inconsistent state.
 
 _t9_write_config() {
+    local origins pool_size
+    origins=$(config_get_crowdsec_origins_json)
+    pool_size=$(config_get_mikrotik_pool_size)
+
+    if ! python3 - "$origins" <<'PY'
+import json
+import sys
+
+try:
+    origins = json.loads(sys.argv[1])
+except Exception:
+    sys.exit(1)
+if not isinstance(origins, list) or not origins or not all(isinstance(origin, str) and origin for origin in origins):
+    sys.exit(1)
+PY
+    then
+      echo "FAIL: invalid crowdsec origins from config_get_crowdsec_origins_json: $origins" >&2
+      return 1
+    fi
+    if ! [[ "$pool_size" =~ ^[1-9][0-9]*$ ]]; then
+      echo "FAIL: invalid mikrotik pool_size from config_get_mikrotik_pool_size: $pool_size" >&2
+      return 1
+    fi
+
     # Base config values from .env
     cat > "$_BOUNCER_CONFIG" <<YAML
 crowdsec:
   api_url: "${CROWDSEC_URL}"
   api_key: "${CROWDSEC_BOUNCER_API_KEY}"
   update_frequency: "10s"
-  origins: ["crowdsec", "cscli"]
+  origins: ${origins}
   scopes: ["ip", "range"]
   supported_decisions_types: ["ban"]
   retry_initial_connect: true
@@ -64,7 +88,7 @@ mikrotik:
   tls: false
   connection_timeout: "10s"
   command_timeout: "30s"
-  pool_size: 4
+  pool_size: ${pool_size}
 
 firewall:
   ipv4:
@@ -84,6 +108,7 @@ metrics:
   listen_addr: "0.0.0.0"
   listen_port: 2112
 YAML
+    return 0
 }
 
 # ─── T9.1 — deny_action=reject + reject_with ───────────────────────────────

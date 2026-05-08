@@ -1,7 +1,8 @@
 package metrics
 
 import (
-	"fmt"
+	"maps"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -18,11 +19,13 @@ var activeDecisionCounts struct {
 	ipv6 atomic.Int64
 }
 
+// healthConnectedCallback lets tests and optional callers observe SetConnected updates.
 var healthConnectedCallback struct {
 	mu sync.RWMutex
 	fn func(bool)
 }
 
+// Prometheus collectors registered by this package on the default registry.
 var (
 	decisionsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "crowdsec_bouncer_decisions_total",
@@ -240,11 +243,7 @@ func SetActiveDecisionsByOrigin(origin string, count int64) {
 func GetActiveDecisionsByOrigin() map[string]int64 {
 	originDecisionsMu.RLock()
 	defer originDecisionsMu.RUnlock()
-	result := make(map[string]int64, len(originDecisions))
-	for k, v := range originDecisions {
-		result[k] = v
-	}
-	return result
+	return maps.Clone(originDecisions)
 }
 
 // IncrActiveDecisionsByOrigin increments the active count for a given origin.
@@ -290,8 +289,13 @@ type ProtoCounters struct {
 	IPv6Pkts  uint64
 }
 
+// droppedCountersMu protects the cumulative dropped counter state used for LAPI deltas.
 var droppedCountersMu sync.Mutex
+
+// droppedCounters stores the latest total dropped counters read from RouterOS.
 var droppedCounters DroppedCounters
+
+// lastSentCounters stores the previous dropped baseline sent to CrowdSec LAPI.
 var lastSentCounters DroppedCounters
 
 // Per-ip_type dropped counters for LAPI (delta tracking).
@@ -549,7 +553,7 @@ func SetConfigInfo(p ConfigParams) {
 		{"CrowdSec", "TLS Enabled", b(p.CrowdSecTLS)},
 		{"MikroTik", "Address", p.MikroTikAddress},
 		{"MikroTik", "TLS Enabled", b(p.MikroTikTLS)},
-		{"MikroTik", "Connection Pool Size", fmt.Sprintf("%d", p.MikroTikPoolSize)},
+		{"MikroTik", "Connection Pool Size", strconv.Itoa(p.MikroTikPoolSize)},
 		{"MikroTik", "Connection Timeout", p.MikroTikConnTimeout},
 		{"MikroTik", "Command Timeout", p.MikroTikCmdTimeout},
 		{"Firewall", "IPv4 Enabled", b(p.FWIPv4Enabled)},
@@ -569,7 +573,7 @@ func SetConfigInfo(p ConfigParams) {
 		{"Logging", "Format", p.LogFormat},
 		{"Metrics", "Enabled", b(p.MetricsEnabled)},
 		{"Metrics", "Listen Address", p.MetricsListenAddr},
-		{"Metrics", "Listen Port", fmt.Sprintf("%d", p.MetricsListenPort)},
+		{"Metrics", "Listen Port", strconv.Itoa(p.MetricsListenPort)},
 		{"Metrics", "RouterOS Poll Interval", p.MetricsPollInterval},
 		{"Metrics", "Track Processed", b(p.MetricsTrackProcessed)},
 	}

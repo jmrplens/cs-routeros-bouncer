@@ -3,7 +3,7 @@ title: Decision Processing
 description: How the bouncer processes CrowdSec decisions — filtering, deduplication, and scope handling.
 ---
 
-import { Steps, LinkCard } from '@astrojs/starlight/components';
+import { Steps, LinkCard } from "@astrojs/starlight/components";
 
 How the bouncer processes incoming CrowdSec decisions.
 
@@ -17,11 +17,11 @@ How the bouncer processes incoming CrowdSec decisions.
 
 2. **Check scope**
 
-   | Scope | Action | Example |
-   |-------|--------|---------|
-   | `Ip` | Added directly to address list | `192.168.1.1` |
-   | `Range` | Added as CIDR to address list | `10.0.0.0/24` |
-   | Other | Logged as warning, skipped | — |
+   | Scope   | Action                         | Example       |
+   | ------- | ------------------------------ | ------------- |
+   | `Ip`    | Added directly to address list | `192.168.1.1` |
+   | `Range` | Added as CIDR to address list  | `10.0.0.0/24` |
+   | Other   | Logged as warning, skipped     | —             |
 
 3. **Filter by origin**
 
@@ -32,7 +32,6 @@ How the bouncer processes incoming CrowdSec decisions.
    If `scenarios` is configured, only decisions matching the specified patterns pass through. Supports `*` and `?` wildcards.
 
 5. **Apply action**
-
    - **Ban** → Add IP/range to the MikroTik address list
    - **Unban** → Remove IP/range from the address list
 
@@ -42,16 +41,16 @@ How the bouncer processes incoming CrowdSec decisions.
 
 When `origins` is configured, the bouncer only processes decisions from the specified origins:
 
-| Origin | Source |
-|--------|--------|
-| `crowdsec` | Local CrowdSec engine detections |
-| `cscli` | Manual bans via `cscli decisions add` |
-| `CAPI` | CrowdSec Central API community blocklists |
-| `lists:*` | Third-party blocklist subscriptions |
+| Origin     | Source                                    |
+| ---------- | ----------------------------------------- |
+| `crowdsec` | Local CrowdSec engine detections          |
+| `cscli`    | Manual bans via `cscli decisions add`     |
+| `CAPI`     | CrowdSec Central API community blocklists |
+| `lists:*`  | Third-party blocklist subscriptions       |
 
 ```yaml
 crowdsec:
-  origins: ["crowdsec", "cscli"]  # Ignore CAPI community lists
+  origins: ["crowdsec", "cscli"] # Ignore CAPI community lists
 ```
 
 When `origins` is empty (default), **all origins are accepted**.
@@ -82,4 +81,8 @@ When the same IP appears in multiple decisions (e.g., different scenarios or ori
 Duplicate handling is transparent — the address list only ever contains one entry per IP regardless of how many decisions reference it. Cached duplicate ban events do not refresh the RouterOS timeout during the same run; this avoids repeated RouterOS writes during stream churn. Periodic reconciliation repairs real drift by re-adding addresses that are still active in CrowdSec but missing on MikroTik.
 :::
 
-<LinkCard title="CrowdSec Configuration" description="Configure origins, scenarios, and LAPI connection settings." href="/cs-routeros-bouncer/configuration/crowdsec/" />
+<LinkCard
+  title="CrowdSec Configuration"
+  description="Configure origins, scenarios, and LAPI connection settings."
+  href="/cs-routeros-bouncer/configuration/crowdsec/"
+/>

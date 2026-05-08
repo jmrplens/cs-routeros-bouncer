@@ -82,10 +82,27 @@ func TestAPIClientNil(t *testing.T) {
 	}
 }
 
+// TestActiveDecisionsRequiresInitializedClient verifies snapshots require Init first.
+func TestActiveDecisionsRequiresInitializedClient(t *testing.T) {
+	mb := NewMockBouncer()
+	s := newTestStream(mb)
+
+	decisions, err := s.ActiveDecisions(context.Background())
+	if err == nil {
+		t.Fatal("expected uninitialized API client error")
+	}
+	if decisions != nil {
+		t.Fatalf("expected nil decisions, got %v", decisions)
+	}
+	if !strings.Contains(err.Error(), "API client is not initialized") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 // TestActiveDecisionsUsesDecisionListEndpoint verifies that periodic
 // reconciliation snapshots use the active-decision listing endpoint instead of
 // the delta stream's startup mode.
-func TestActiveDecisionsUsesDecisionListEndpoint(t *testing.T) {
+func TestActiveDecisionsUsesDecisionListEndpoint(t *testing.T) { // NOSONAR: HTTP fixture and endpoint assertions share one scenario.
 	var requestOffsets []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/decisions" {
@@ -116,20 +133,20 @@ func TestActiveDecisionsUsesDecisionListEndpoint(t *testing.T) {
 		response := models.GetDecisionsResponse{}
 		switch offset {
 		case "0":
-			for i := 0; i < activeDecisionPageSize; i++ {
+			for i := range activeDecisionPageSize {
 				value := fmt.Sprintf("10.%d.%d.%d", i/65536, (i/256)%256, i%256)
 				response = append(response, &models.Decision{
-					Value:    strPtr(value),
-					Type:     strPtr("ban"),
-					Duration: strPtr("1h"),
-					Origin:   strPtr("crowdsec"),
-					Scenario: strPtr("ssh-bf"),
+					Value:    new(value),
+					Type:     new("ban"),
+					Duration: new("1h"),
+					Origin:   new("crowdsec"),
+					Scenario: new("ssh-bf"),
 				})
 			}
 		case fmt.Sprintf("%d", activeDecisionPageSize):
 			response = append(response,
-				&models.Decision{Value: strPtr("192.0.2.55"), Type: strPtr("ban"), Duration: strPtr("1h"), Origin: strPtr("crowdsec"), Scenario: strPtr("ssh-bf")},
-				&models.Decision{Value: strPtr("5.6.7.8"), Type: strPtr("captcha"), Duration: strPtr("1h")},
+				&models.Decision{Value: new("192.0.2.55"), Type: new("ban"), Duration: new("1h"), Origin: new("crowdsec"), Scenario: new("ssh-bf")},
+				&models.Decision{Value: new("5.6.7.8"), Type: new("captcha"), Duration: new("1h")},
 			)
 		default:
 			t.Errorf("unexpected offset %q", offset)
@@ -194,11 +211,11 @@ func TestRunNewBanDecisions(t *testing.T) {
 	mb.DecisionCh <- &models.DecisionsStreamResponse{
 		New: models.GetDecisionsResponse{
 			{
-				Value:    strPtr("1.2.3.4"),
-				Type:     strPtr("ban"),
-				Duration: strPtr("4h"),
-				Origin:   strPtr("crowdsec"),
-				Scenario: strPtr("http-probing"),
+				Value:    new("1.2.3.4"),
+				Type:     new("ban"),
+				Duration: new("4h"),
+				Origin:   new("crowdsec"),
+				Scenario: new("http-probing"),
 			},
 		},
 	}
@@ -243,10 +260,10 @@ func TestRunDeleteDecisions(t *testing.T) {
 	mb.DecisionCh <- &models.DecisionsStreamResponse{
 		Deleted: models.GetDecisionsResponse{
 			{
-				Value:    strPtr("10.0.0.1"),
-				Type:     strPtr("ban"),
-				Duration: strPtr("1h"),
-				Origin:   strPtr("cscli"),
+				Value:    new("10.0.0.1"),
+				Type:     new("ban"),
+				Duration: new("1h"),
+				Origin:   new("cscli"),
 			},
 		},
 	}
@@ -282,16 +299,16 @@ func TestRunNilDecisionFieldsSkipped(t *testing.T) {
 	mb.DecisionCh <- &models.DecisionsStreamResponse{
 		New: models.GetDecisionsResponse{
 			nil, // nil decision
-			{Value: nil, Type: strPtr("ban"), Duration: strPtr("1h")},      // nil Value
-			{Value: strPtr("1.1.1.1"), Type: nil, Duration: strPtr("1h")},  // nil Type
-			{Value: strPtr("1.1.1.1"), Type: strPtr("ban"), Duration: nil}, // nil Duration
+			{Value: nil, Type: new("ban"), Duration: new("1h")},      // nil Value
+			{Value: new("1.1.1.1"), Type: nil, Duration: new("1h")},  // nil Type
+			{Value: new("1.1.1.1"), Type: new("ban"), Duration: nil}, // nil Duration
 		},
 	}
 
 	// Send a valid decision so we know processing reached it.
 	mb.DecisionCh <- &models.DecisionsStreamResponse{
 		New: models.GetDecisionsResponse{
-			{Value: strPtr("9.9.9.9"), Type: strPtr("ban"), Duration: strPtr("1h")},
+			{Value: new("9.9.9.9"), Type: new("ban"), Duration: new("1h")},
 		},
 	}
 
@@ -324,13 +341,13 @@ func TestRunNonBanTypeSkipped(t *testing.T) {
 	// Captcha type should be skipped.
 	mb.DecisionCh <- &models.DecisionsStreamResponse{
 		New: models.GetDecisionsResponse{
-			{Value: strPtr("1.1.1.1"), Type: strPtr("captcha"), Duration: strPtr("1h")},
+			{Value: new("1.1.1.1"), Type: new("captcha"), Duration: new("1h")},
 		},
 	}
 	// Follow with a valid ban to confirm we're still processing.
 	mb.DecisionCh <- &models.DecisionsStreamResponse{
 		New: models.GetDecisionsResponse{
-			{Value: strPtr("2.2.2.2"), Type: strPtr("ban"), Duration: strPtr("1h")},
+			{Value: new("2.2.2.2"), Type: new("ban"), Duration: new("1h")},
 		},
 	}
 
@@ -355,8 +372,7 @@ func TestRunChannelClosed(t *testing.T) {
 
 	banCh := make(chan *Decision, 10)
 	deleteCh := make(chan *Decision, 10)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- s.Run(ctx, banCh, deleteCh) }()
@@ -404,6 +420,67 @@ func TestRunContextCancel(t *testing.T) {
 	}
 }
 
+// TestRunBouncerRunCanceledError verifies bouncer cancellation is a clean shutdown.
+func TestRunBouncerRunCanceledError(t *testing.T) {
+	mb := NewMockBouncer()
+	mb.RunErr = context.Canceled
+	s := newTestStream(mb)
+
+	banCh := make(chan *Decision, 10)
+	deleteCh := make(chan *Decision, 10)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- s.Run(ctx, banCh, deleteCh) }()
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Errorf("expected nil error on ctx cancel, got: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for Run to return")
+	}
+}
+
+// TestRunBouncerRunUnexpectedError verifies unexpected bouncer stops surface as stream errors.
+func TestRunBouncerRunUnexpectedError(t *testing.T) {
+	mb := NewMockBouncer()
+	mb.RunReturnsImmediately = true
+	mb.RunErr = fmt.Errorf("bouncer stopped")
+	s := newTestStream(mb)
+
+	banCh := make(chan *Decision, 10)
+	deleteCh := make(chan *Decision, 10)
+	ctx := t.Context()
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- s.Run(ctx, banCh, deleteCh) }()
+	waitForMockRun(t, mb)
+	close(mb.DecisionCh)
+
+	select {
+	case err := <-errCh:
+		if err == nil || !strings.Contains(err.Error(), "stream channel closed") {
+			t.Fatalf("expected channel closed error, got %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for Run to return")
+	}
+}
+
+// waitForMockRun waits until the mock bouncer has entered its Run method.
+func waitForMockRun(t *testing.T, mb *MockBouncer) {
+	t.Helper()
+	select {
+	case <-mb.RunStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("mock bouncer Run was not called")
+	}
+}
+
 // TestRunIPv6Decision verifies that IPv6 decisions are detected correctly.
 func TestRunIPv6Decision(t *testing.T) {
 	mb := NewMockBouncer()
@@ -420,10 +497,10 @@ func TestRunIPv6Decision(t *testing.T) {
 	mb.DecisionCh <- &models.DecisionsStreamResponse{
 		New: models.GetDecisionsResponse{
 			{
-				Value:    strPtr("2001:db8::1"),
-				Type:     strPtr("ban"),
-				Duration: strPtr("2h"),
-				Origin:   strPtr("CAPI"),
+				Value:    new("2001:db8::1"),
+				Type:     new("ban"),
+				Duration: new("2h"),
+				Origin:   new("CAPI"),
 			},
 		},
 	}
@@ -460,9 +537,9 @@ func TestRunCIDRRange(t *testing.T) {
 	mb.DecisionCh <- &models.DecisionsStreamResponse{
 		New: models.GetDecisionsResponse{
 			{
-				Value:    strPtr("10.0.0.0/24"),
-				Type:     strPtr("ban"),
-				Duration: strPtr("1h"),
+				Value:    new("10.0.0.0/24"),
+				Type:     new("ban"),
+				Duration: new("1h"),
 			},
 		},
 	}
@@ -496,10 +573,10 @@ func TestRunMixedNewAndDeleted(t *testing.T) {
 
 	mb.DecisionCh <- &models.DecisionsStreamResponse{
 		New: models.GetDecisionsResponse{
-			{Value: strPtr("5.5.5.5"), Type: strPtr("ban"), Duration: strPtr("1h")},
+			{Value: new("5.5.5.5"), Type: new("ban"), Duration: new("1h")},
 		},
 		Deleted: models.GetDecisionsResponse{
-			{Value: strPtr("6.6.6.6"), Type: strPtr("ban"), Duration: strPtr("1h")},
+			{Value: new("6.6.6.6"), Type: new("ban"), Duration: new("1h")},
 		},
 	}
 
@@ -545,7 +622,7 @@ func TestRunEmptyDecisionBatch(t *testing.T) {
 	// Follow with a valid ban to confirm processing continues.
 	mb.DecisionCh <- &models.DecisionsStreamResponse{
 		New: models.GetDecisionsResponse{
-			{Value: strPtr("7.7.7.7"), Type: strPtr("ban"), Duration: strPtr("1h")},
+			{Value: new("7.7.7.7"), Type: new("ban"), Duration: new("1h")},
 		},
 	}
 
@@ -578,16 +655,16 @@ func TestRunDeletedNilFields(t *testing.T) {
 
 	mb.DecisionCh <- &models.DecisionsStreamResponse{
 		Deleted: models.GetDecisionsResponse{
-			nil,                                   // nil decision
-			{Value: nil, Type: strPtr("ban")},     // nil Value
-			{Value: strPtr("1.1.1.1"), Type: nil}, // nil Type
+			nil,                                // nil decision
+			{Value: nil, Type: new("ban")},     // nil Value
+			{Value: new("1.1.1.1"), Type: nil}, // nil Type
 		},
 	}
 
 	// Follow with valid delete to confirm processing continues.
 	mb.DecisionCh <- &models.DecisionsStreamResponse{
 		Deleted: models.GetDecisionsResponse{
-			{Value: strPtr("8.8.8.8"), Type: strPtr("ban"), Duration: strPtr("1h")},
+			{Value: new("8.8.8.8"), Type: new("ban"), Duration: new("1h")},
 		},
 	}
 
@@ -621,7 +698,7 @@ func TestRunBanDuringContextCancel(t *testing.T) {
 	// Send a decision — Run will try to write to banCh but it's unbuffered.
 	mb.DecisionCh <- &models.DecisionsStreamResponse{
 		New: models.GetDecisionsResponse{
-			{Value: strPtr("3.3.3.3"), Type: strPtr("ban"), Duration: strPtr("1h")},
+			{Value: new("3.3.3.3"), Type: new("ban"), Duration: new("1h")},
 		},
 	}
 
@@ -654,7 +731,7 @@ func TestRunDeleteDuringContextCancel(t *testing.T) {
 
 	mb.DecisionCh <- &models.DecisionsStreamResponse{
 		Deleted: models.GetDecisionsResponse{
-			{Value: strPtr("4.4.4.4"), Type: strPtr("ban"), Duration: strPtr("1h")},
+			{Value: new("4.4.4.4"), Type: new("ban"), Duration: new("1h")},
 		},
 	}
 

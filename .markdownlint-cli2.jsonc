@@ -1,0 +1,35 @@
+{
+    // markdownlint-cli2 configuration
+    // https://github.com/DavidAnson/markdownlint-cli2
+    // Run: npx markdownlint-cli2 "**/*.md"
+    // Fix: npx markdownlint-cli2 --fix "**/*.md"
+    "config": {
+        "default": true,
+        // MD013 - Line length: disabled (tables, URLs, and command examples are often longer)
+        "MD013": false,
+        // MD010 - Hard tabs: disabled because some generated snippets preserve tabs
+        "MD010": false,
+        // MD024 - Multiple headings with same content: allowed in changelog-style docs
+        "MD024": false,
+        // MD025 - Single top-level heading: disabled for composite GitHub templates
+        "MD025": false,
+        // MD033 - Inline HTML: allowed for badges, details/summary, and Starlight markup
+        "MD033": false,
+        // MD041 - First line heading: disabled for files with front matter or badges
+        "MD041": false,
+        // MD046 - Code block style: disabled for nested admonitions and examples
+        "MD046": false,
+        // MD060 - Native syntax should be used instead of HTML: disabled for docs components
+        "MD060": false
+    },
+    "ignores": [
+        "**/*.mdx",
+        "**/node_modules/**",
+        "**/dist/**",
+        "site/**",
+        "plan/**",
+        "vendor/**",
+        "local/**"
+    ],
+    "noProgress": true
+}

@@ -5,4 +5,7 @@
 // variable overrides (prefixed with CS_ROUTEROS_BOUNCER_), and sensible
 // defaults. The package validates required fields (API keys, router address)
 // and enforces that at least one protocol (IPv4 or IPv6) is enabled.
+//
+// Use [Load] for normal application startup and [Config.Validate] when tests
+// or tooling need to check an already assembled configuration value.
 package config

@@ -3,7 +3,7 @@ title: Logging & Metrics
 description: Bouncer logging and Prometheus metrics configuration parameters.
 ---
 
-import { Badge, LinkCard } from '@astrojs/starlight/components';
+import { Badge, LinkCard } from "@astrojs/starlight/components";
 
 Settings for bouncer logging and Prometheus metrics.
 
@@ -15,16 +15,16 @@ Settings for bouncer logging and Prometheus metrics.
 
 Log verbosity level:
 
-| Level | Description |
-|-------|-------------|
+| Level   | Description                                |
+| ------- | ------------------------------------------ |
 | `debug` | Detailed information for debugging (noisy) |
-| `info` | Normal operation messages |
-| `warn` | Warning conditions |
-| `error` | Error conditions only |
+| `info`  | Normal operation messages                  |
+| `warn`  | Warning conditions                         |
+| `error` | Error conditions only                      |
 
 ```yaml
 logging:
-  level: "debug"  # Useful for troubleshooting
+  level: "debug" # Useful for troubleshooting
 ```
 
 ### `logging.format` <Badge text="Optional" variant="note" />
@@ -100,7 +100,11 @@ metrics:
 
 ### Available metrics
 
-<LinkCard title="Prometheus Metrics Reference" description="Full list of all exported metrics with PromQL examples" href="/cs-routeros-bouncer/monitoring/prometheus/" />
+<LinkCard
+  title="Prometheus Metrics Reference"
+  description="Full list of all exported metrics with PromQL examples"
+  href="/cs-routeros-bouncer/monitoring/prometheus/"
+/>
 
 :::caution[Security]
 The metrics endpoint should not be exposed to the internet. Use firewall rules or network segmentation to restrict access.

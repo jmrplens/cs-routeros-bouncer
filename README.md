@@ -1,7 +1,10 @@
 # cs-routeros-bouncer
 
 [![CI](https://github.com/jmrplens/cs-routeros-bouncer/actions/workflows/ci.yml/badge.svg)](https://github.com/jmrplens/cs-routeros-bouncer/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/jmrplens/cs-routeros-bouncer.svg)](https://pkg.go.dev/github.com/jmrplens/cs-routeros-bouncer)
 [![Go Report Card](https://goreportcard.com/badge/github.com/jmrplens/cs-routeros-bouncer)](https://goreportcard.com/report/github.com/jmrplens/cs-routeros-bouncer)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=jmrplens_cs-routeros-bouncer&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=jmrplens_cs-routeros-bouncer)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=jmrplens_cs-routeros-bouncer&metric=coverage)](https://sonarcloud.io/summary/new_code?id=jmrplens_cs-routeros-bouncer)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/jmrplens/cs-routeros-bouncer)](https://go.dev/)
 
@@ -12,7 +15,7 @@ A [CrowdSec](https://www.crowdsec.net/) remediation component (bouncer) for [Mik
 - **Zero manual router configuration** — auto-creates and auto-removes firewall filter/raw rules on start/stop
 - **Individual IP management** — adds on ban, removes on unban (no bulk re-upload, no duplicates)
 - **State reconciliation** — on start/restart and periodically, syncs CrowdSec decisions with MikroTik state (adds missing, removes stale)
-- **High-performance sync** — connection pool, script-based bulk add, in-memory cache (~1,500 IPs in ~9 s, ~25,000 IPs in ~2 min 50 s)
+- **High-performance sync** — connection pool, script-based bulk add, in-memory cache (~28,700 IPs in ~58 s wall-clock on RB5009 with CAPI)
 - **Graceful shutdown** — removes firewall rules on stop (address list entries expire via MikroTik timeout)
 - **IPv4 + IPv6** — independently toggleable
 - **Input + Output blocking** — output blocking optional with configurable interface/interface-list
@@ -160,6 +163,7 @@ Type=simple
 ExecStart=/usr/local/bin/cs-routeros-bouncer -c /etc/cs-routeros-bouncer/cs-routeros-bouncer.yaml
 Restart=on-failure
 RestartSec=10
+TimeoutStopSec=90
 
 [Install]
 WantedBy=multi-user.target
@@ -422,31 +426,30 @@ Rules are placed at the **top** of the chain by default (`rule_placement: top`) 
 
 ### Performance
 
-Tested on a **MikroTik RB5009UG+S+** (ARM64, 4 cores @ 1400 MHz, 1 GB RAM, RouterOS 7.21.3) with the bouncer running on a separate Linux host connected via the RouterOS API (plaintext, port 8728).
+Tested on a **MikroTik RB5009UG+S+** (ARM64, 4 cores @ 1400 MHz, 1 GB RAM, RouterOS 7.22.1) with the bouncer running on a separate Linux host connected via the RouterOS API (plaintext, port 8728). The CAPI measurements below used `mikrotik.pool_size: 10` and `crowdsec.reconciliation_interval: 1m`.
 
 Router CPU can spike during reconciliation, especially at startup or whenever real drift requires add/remove work. Sustained high RouterOS CPU after reconciliation is not expected from simply keeping entries in memory; it usually points to repeated RouterOS API writes/reconnects, duplicate-decision churn, or unrelated router workload.
 
-The bouncer uses a **connection pool** (4 parallel API connections), **script-based bulk add** (chunks of 100 entries), and an **in-memory address cache** for O(1) lookups during unban operations.
+The bouncer uses a configurable **connection pool** (default 4 parallel API connections), **script-based bulk add** (chunks of 100 entries), and an **in-memory address cache** for O(1) lookups during unban operations.
 
 #### Initial reconciliation (cold start, empty router)
 
 | Scenario | IPs synced | Time | Throughput | Router CPU peak |
 |----------|-----------|------|------------|-----------------|
-| Local decisions only | **1,510** (IPv4 + IPv6) | **~9 s** | ~168 IPs/s | 14% |
-| Local + CAPI community | **25,059** (24,490 IPv4 + 569 IPv6) | **~2 min 50 s** | ~147 IPs/s | 23% |
+| Local + CAPI community | **28,686** (28,269 IPv4 + 417 IPv6) | **~58 s** test wall-clock; **~36 s** RouterOS bulk work | ~500 IPs/s wall-clock; ~790 IPs/s bulk add | 39% observed |
 
 #### Restart with existing entries on router
 
-| Scenario | Existing IPs | Time | Router CPU peak |
-|----------|-------------|------|-----------------|
-| Restart, all IPs already present | **25,065** | **~10 s** | 16% |
-| Restart, 5 expired during downtime | **25,065** (added 1, removed 4) | **~10 s** | 16% |
+| Scenario | Existing IPs | Time | Notes |
+|----------|-------------|------|-------|
+| Restart, all IPs already present | **~28,700** | **~75–77 s** functional wall-clock | Includes service restart, rule cleanup, list scan, and reconciliation wait |
+| Periodic reconciliation, no drift | **~28,700** | **~3–4 s** internal reconciliation | Performs list/read/diff only, no add/remove writes |
 
 #### Mass removal (switching from CAPI to local-only)
 
 | Removed | Remaining | Time | Throughput | Router CPU peak |
 |---------|-----------|------|------------|-----------------|
-| **23,548** (22,980 IPv4 + 568 IPv6) | 1,519 IPv4 + 1 IPv6 | **~3 min 45 s** | ~105 removes/s | 22% |
+| **26,810** (26,396 IPv4 + 414 IPv6) | 1,873 IPv4 + 3 IPv6 | **~77 s** RouterOS removal work | ~348 removes/s | ~30–39% observed during large churn |
 
 #### Live operation (individual ban/unban)
 
@@ -642,7 +645,7 @@ tests/functional/run_tests.sh
 # Run specific groups
 tests/functional/run_tests.sh t1 t2
 
-# Include CAPI stress test (~25k IPs — takes several minutes)
+# Include CAPI stress test (~28k IPs — takes several minutes)
 tests/functional/run_tests.sh --capi
 
 # List available groups
@@ -652,14 +655,14 @@ tests/functional/run_tests.sh --list
 | Group | Tests | Description |
 |-------|-------|-------------|
 | `t1`  | 7     | Data integrity — IP completeness, format, comments |
-| `t2`  | 7     | Cache consistency — live ban/unban, expiry, fast-path |
+| `t2`  | 6     | Cache consistency — live ban/unban, expiry, fast-path |
 | `t3`  | 6     | Bulk operations — reconciliation, partial sync, orphans |
 | `t4`  | 3     | Connection pool — establishment, shutdown |
 | `t5`  | 6     | Edge cases — duplicates, rapid cycle, restart idempotency |
 | `t6`  | 3     | CPU monitoring — steady-state, peak, recovery |
 | `t7`  | 5     | Timing — reconciliation time, ban/unban latency |
-| `t8`  | 10    | CAPI stress ~25k IPs (requires `--capi`) |
-| `t9`  | 13    | Advanced firewall config — reject-with, connection-state, log-prefix, whitelist, passthrough |
+| `t8`  | 8     | CAPI stress ~28k IPs (requires `--capi`) |
+| `t9`  | 12    | Advanced firewall config — reject-with, connection-state, log-prefix, whitelist, passthrough |
 
 ## Security
 

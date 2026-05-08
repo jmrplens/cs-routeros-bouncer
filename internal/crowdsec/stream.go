@@ -2,6 +2,7 @@ package crowdsec
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -37,6 +38,7 @@ type Stream struct {
 	logger  zerolog.Logger
 }
 
+// activeDecisionPageSize caps each CrowdSec active-decision page request.
 const activeDecisionPageSize = 1000
 
 // NewStream creates a new CrowdSec stream client.
@@ -101,7 +103,7 @@ func (s *Stream) APIClient() *apiclient.ApiClient {
 func (s *Stream) ActiveDecisions(ctx context.Context) ([]*Decision, error) {
 	client := s.bouncer.Client()
 	if client == nil {
-		return nil, fmt.Errorf("CrowdSec API client is not initialized")
+		return nil, errors.New("CrowdSec API client is not initialized")
 	}
 
 	var data models.GetDecisionsResponse
@@ -160,11 +162,18 @@ func (s *Stream) activeDecisionListPath(client *apiclient.ApiClient, limit, offs
 // Run starts the stream bouncer and returns channels for new and deleted decisions.
 // The banCh receives decisions to add, deleteCh receives decisions to remove.
 // The function blocks until ctx is canceled.
-func (s *Stream) Run(ctx context.Context, banCh chan<- *Decision, deleteCh chan<- *Decision) error {
+func (s *Stream) Run(ctx context.Context, banCh, deleteCh chan<- *Decision) error {
 	s.logger.Info().Msg("starting CrowdSec decision stream")
 
 	go func() {
-		_ = s.bouncer.Run(ctx) //nolint:errcheck // error is logged internally by the bouncer
+		if err := s.bouncer.Run(ctx); err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) ||
+				errors.Is(ctx.Err(), context.Canceled) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				s.logger.Debug().Err(err).Msg("CrowdSec bouncer run loop stopped")
+				return
+			}
+			s.logger.Error().Err(err).Msg("CrowdSec bouncer run loop stopped unexpectedly")
+		}
 	}()
 
 	for {
@@ -175,7 +184,7 @@ func (s *Stream) Run(ctx context.Context, banCh chan<- *Decision, deleteCh chan<
 
 		case decisions, ok := <-s.bouncer.DecisionStream():
 			if !ok {
-				return fmt.Errorf("CrowdSec stream channel closed")
+				return errors.New("CrowdSec stream channel closed")
 			}
 
 			// Process new decisions (bans)
@@ -285,8 +294,8 @@ func parseDecision(d *models.Decision) *Decision {
 func DetectProto(address string) string {
 	// Remove CIDR prefix if present
 	host := address
-	if idx := strings.Index(address, "/"); idx != -1 {
-		host = address[:idx]
+	if before, _, found := strings.Cut(address, "/"); found {
+		host = before
 	}
 
 	ip := net.ParseIP(host)

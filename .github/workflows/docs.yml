@@ -4,12 +4,14 @@ on:
   push:
     branches: [main]
     paths:
-      - 'docs/**'
-      - '.github/workflows/docs.yml'
+      - ".github/workflows/docs.yml"
+      - "docs/astro.config.mjs"
+      - "docs/package.json"
+      - "docs/pnpm-lock.yaml"
+      - "docs/public/**"
+      - "docs/src/**"
+      - "docs/tsconfig.json"
   workflow_dispatch:
-
-permissions:
-  contents: read
 
 concurrency:
   group: pages
@@ -18,14 +20,16 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@c5ba7f7862a0f64c1b1a05fbac13e0b8e86ba08c # v4
+      - uses: pnpm/action-setup@v4
         with:
           version: 10
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: pnpm
@@ -33,13 +37,21 @@ jobs:
 
       - name: Install dependencies
         working-directory: docs
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Install Playwright browser
+        working-directory: docs
+        run: ./node_modules/.bin/playwright install --with-deps chromium
+
+      - name: Check documentation
+        working-directory: docs
+        run: pnpm check
 
       - name: Build documentation
         working-directory: docs
         run: pnpm build
 
-      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: docs/dist
 
@@ -55,4 +67,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+        uses: actions/deploy-pages@v5

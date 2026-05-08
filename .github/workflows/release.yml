@@ -14,13 +14,23 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+
+      - id: syft
+        uses: anchore/sbom-action/download-syft@v0.24.0
+
+      - name: Add Syft to PATH
+        run: dirname "${SYFT_CMD}" >> "$GITHUB_PATH"
+        env:
+          SYFT_CMD: ${{ steps.syft.outputs.cmd }}
+
+      - uses: sigstore/cosign-installer@v4.1.2
 
       - uses: docker/setup-qemu-action@v3
 

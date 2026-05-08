@@ -11,10 +11,6 @@ import (
 	"github.com/jmrplens/cs-routeros-bouncer/internal/config"
 )
 
-// strPtr returns a pointer to the given string. It is a test helper for
-// constructing models.Decision structs that use pointer fields.
-func strPtr(s string) *string { return &s }
-
 // TestDetectProtoIPv4 verifies that IPv4 addresses are correctly identified
 // as protocol "ip" regardless of CIDR notation.
 func TestDetectProtoIPv4(t *testing.T) {
@@ -109,12 +105,12 @@ func TestParseDurationCrowdSecFormat(t *testing.T) {
 // is correctly converted to the internal Decision type.
 func TestParseDecisionValid(t *testing.T) {
 	d := parseDecision(&models.Decision{
-		Duration: strPtr("4h"),
-		Origin:   strPtr("crowdsec"),
-		Scenario: strPtr("ssh-bf"),
-		Scope:    strPtr("Ip"),
-		Value:    strPtr("1.2.3.4"),
-		Type:     strPtr("ban"),
+		Duration: new("4h"),
+		Origin:   new("crowdsec"),
+		Scenario: new("ssh-bf"),
+		Scope:    new("Ip"),
+		Value:    new("1.2.3.4"),
+		Type:     new("ban"),
 	})
 
 	if d == nil {
@@ -137,10 +133,10 @@ func TestParseDecisionValid(t *testing.T) {
 // TestParseDecisionIPv6 verifies that an IPv6 decision is correctly detected.
 func TestParseDecisionIPv6(t *testing.T) {
 	d := parseDecision(&models.Decision{
-		Duration: strPtr("1h"),
-		Scope:    strPtr("Ip"),
-		Value:    strPtr("2001:db8::1"),
-		Type:     strPtr("ban"),
+		Duration: new("1h"),
+		Scope:    new("Ip"),
+		Value:    new("2001:db8::1"),
+		Type:     new("ban"),
 	})
 
 	if d == nil {
@@ -155,10 +151,10 @@ func TestParseDecisionIPv6(t *testing.T) {
 // does not panic and produces sensible zero values.
 func TestParseDecisionNilFields(t *testing.T) {
 	d := parseDecision(&models.Decision{
-		Duration: strPtr("1h"),
-		Scope:    strPtr("Ip"),
-		Value:    strPtr("10.0.0.1"),
-		Type:     strPtr("ban"),
+		Duration: new("1h"),
+		Scope:    new("Ip"),
+		Value:    new("10.0.0.1"),
+		Type:     new("ban"),
 		Origin:   nil,
 		Scenario: nil,
 	})
@@ -177,10 +173,10 @@ func TestParseDecisionNilFields(t *testing.T) {
 // TestParseDecisionNilValue verifies that a decision with nil Value returns nil.
 func TestParseDecisionNilValue(t *testing.T) {
 	d := parseDecision(&models.Decision{
-		Duration: strPtr("1h"),
-		Scope:    strPtr("Ip"),
+		Duration: new("1h"),
+		Scope:    new("Ip"),
 		Value:    nil,
-		Type:     strPtr("ban"),
+		Type:     new("ban"),
 	})
 	if d != nil {
 		t.Error("expected nil decision for nil Value")
@@ -190,9 +186,9 @@ func TestParseDecisionNilValue(t *testing.T) {
 // TestParseDecisionNilType verifies that a decision with nil Type returns nil.
 func TestParseDecisionNilType(t *testing.T) {
 	d := parseDecision(&models.Decision{
-		Duration: strPtr("1h"),
-		Scope:    strPtr("Ip"),
-		Value:    strPtr("10.0.0.1"),
+		Duration: new("1h"),
+		Scope:    new("Ip"),
+		Value:    new("10.0.0.1"),
 		Type:     nil,
 	})
 	if d != nil {
@@ -204,10 +200,10 @@ func TestParseDecisionNilType(t *testing.T) {
 // "captcha") are filtered out and return nil.
 func TestParseDecisionNonBanType(t *testing.T) {
 	d := parseDecision(&models.Decision{
-		Duration: strPtr("1h"),
-		Scope:    strPtr("Ip"),
-		Value:    strPtr("10.0.0.1"),
-		Type:     strPtr("captcha"),
+		Duration: new("1h"),
+		Scope:    new("Ip"),
+		Value:    new("10.0.0.1"),
+		Type:     new("captcha"),
 	})
 	if d != nil {
 		t.Error("expected nil decision for non-ban type")
@@ -337,10 +333,10 @@ func TestParseDurationComplex(t *testing.T) {
 // correctly marked as IsRange.
 func TestParseDecisionWithRange(t *testing.T) {
 	d := parseDecision(&models.Decision{
-		Duration: strPtr("2h"),
-		Scope:    strPtr("Range"),
-		Value:    strPtr("10.0.0.0/8"),
-		Type:     strPtr("ban"),
+		Duration: new("2h"),
+		Scope:    new("Range"),
+		Value:    new("10.0.0.0/8"),
+		Type:     new("ban"),
 	})
 	if d == nil {
 		t.Fatal("expected non-nil decision")
@@ -356,10 +352,10 @@ func TestParseDecisionWithRange(t *testing.T) {
 // TestParseDecisionIPv6Range verifies IPv6 CIDR range detection.
 func TestParseDecisionIPv6Range(t *testing.T) {
 	d := parseDecision(&models.Decision{
-		Duration: strPtr("1h"),
-		Scope:    strPtr("Range"),
-		Value:    strPtr("2001:db8::/32"),
-		Type:     strPtr("ban"),
+		Duration: new("1h"),
+		Scope:    new("Range"),
+		Value:    new("2001:db8::/32"),
+		Type:     new("ban"),
 	})
 	if d == nil {
 		t.Fatal("expected non-nil decision")
@@ -376,10 +372,10 @@ func TestParseDecisionIPv6Range(t *testing.T) {
 // falls back to 4 hours.
 func TestParseDecisionBadDurationFallback(t *testing.T) {
 	d := parseDecision(&models.Decision{
-		Duration: strPtr("invalid-duration"),
-		Scope:    strPtr("Ip"),
-		Value:    strPtr("1.2.3.4"),
-		Type:     strPtr("ban"),
+		Duration: new("invalid-duration"),
+		Scope:    new("Ip"),
+		Value:    new("1.2.3.4"),
+		Type:     new("ban"),
 	})
 	if d == nil {
 		t.Fatal("expected non-nil decision")
@@ -393,9 +389,9 @@ func TestParseDecisionBadDurationFallback(t *testing.T) {
 func TestParseDecisionNilDuration(t *testing.T) {
 	d := parseDecision(&models.Decision{
 		Duration: nil,
-		Scope:    strPtr("Ip"),
-		Value:    strPtr("10.0.0.1"),
-		Type:     strPtr("ban"),
+		Scope:    new("Ip"),
+		Value:    new("10.0.0.1"),
+		Type:     new("ban"),
 	})
 	if d == nil {
 		t.Fatal("expected non-nil decision")
@@ -410,9 +406,9 @@ func TestParseDecisionCaseInsensitiveBan(t *testing.T) {
 	tests := []string{"ban", "Ban", "BAN", "bAn"}
 	for _, banType := range tests {
 		d := parseDecision(&models.Decision{
-			Duration: strPtr("1h"),
-			Value:    strPtr("1.2.3.4"),
-			Type:     strPtr(banType),
+			Duration: new("1h"),
+			Value:    new("1.2.3.4"),
+			Type:     new(banType),
 		})
 		if d == nil {
 			t.Errorf("expected non-nil decision for type %q", banType)
@@ -431,7 +427,7 @@ func TestNewStreamWithTLS(t *testing.T) {
 		KeyPath:         "/etc/ssl/key.pem",
 		CACertPath:      "/etc/ssl/ca.pem",
 	}
-	s := NewStream(cfg, "1.0.0")
+	s := NewStream(cfg, "1.4.0")
 	if s == nil {
 		t.Fatal("expected non-nil stream")
 	}
@@ -457,7 +453,7 @@ func TestNewStreamWithInsecureSkipVerify(t *testing.T) {
 		UpdateFrequency:    10 * time.Second,
 		InsecureSkipVerify: true,
 	}
-	s := NewStream(cfg, "1.0.0")
+	s := NewStream(cfg, "1.4.0")
 	if s == nil {
 		t.Fatal("expected non-nil stream")
 	}
@@ -475,7 +471,7 @@ func TestNewStreamInsecureSkipVerifyFalse(t *testing.T) {
 		UpdateFrequency:    10 * time.Second,
 		InsecureSkipVerify: false,
 	}
-	s := NewStream(cfg, "1.0.0")
+	s := NewStream(cfg, "1.4.0")
 	if s == nil {
 		t.Fatal("expected non-nil stream")
 	}

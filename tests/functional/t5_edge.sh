@@ -107,7 +107,7 @@ t5_3_stress() {
     # Count how many appeared
     local found=0
     for i in $(seq 60 79); do
-        if ssh_list_addresses "${TEST_IPV4_LIST}" | grep -qF "${base_ip}.${i}"; then
+        if ssh_address_exists "${TEST_IPV4_LIST}" "${base_ip}.${i}"; then
             found=$((found + 1))
         fi
     done
@@ -148,8 +148,12 @@ t5_4_restart_idempotency() {
     # All counts should be within ±10 of each other
     local min=${counts[0]} max=${counts[0]}
     for c in "${counts[@]}"; do
-        (( c < min )) && min=$c
-        (( c > max )) && max=$c
+        if (( c < min )); then
+            min=$c
+        fi
+        if (( c > max )); then
+            max=$c
+        fi
     done
     local spread=$(( max - min ))
     if (( spread > 10 )); then
@@ -200,7 +204,7 @@ t5_6_ipv6_lifecycle() {
     local found=false
     for i in $(seq 1 12); do
         sleep 5
-        if ssh_list_addresses "${TEST_IPV6_LIST}" | grep -qF "2001:db8::dead:beef"; then
+        if ssh_address_exists "${TEST_IPV6_LIST}" "$ipv6"; then
             found=true; break
         fi
     done
@@ -212,7 +216,7 @@ t5_6_ipv6_lifecycle() {
         lapi_remove_decision "$ipv6"
         sleep 20
 
-        if ssh_list_addresses "${TEST_IPV6_LIST}" | grep -qF "2001:db8::dead:beef"; then
+        if ssh_address_exists "${TEST_IPV6_LIST}" "$ipv6"; then
             warn "IPv6 still on router (may be timeout-based removal)"
         else
             log "IPv6 unban confirmed"

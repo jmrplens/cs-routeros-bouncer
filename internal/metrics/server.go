@@ -3,9 +3,11 @@ package metrics
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -47,7 +49,7 @@ func NewServer(cfg config.MetricsConfig, version string) *Server {
 	}
 
 	s.httpServer = &http.Server{
-		Addr:              net.JoinHostPort(cfg.ListenAddr, fmt.Sprintf("%d", cfg.ListenPort)),
+		Addr:              net.JoinHostPort(cfg.ListenAddr, strconv.Itoa(cfg.ListenPort)),
 		Handler:           mux,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
@@ -74,8 +76,8 @@ func (s *Server) Start() error {
 	logger.Info().Str("addr", ln.Addr().String()).Msg("starting health/metrics server")
 
 	go func() {
-		if err := s.httpServer.Serve(ln); err != nil && err != http.ErrServerClosed {
-			logger.Error().Err(err).Msg("health/metrics server error")
+		if serveErr := s.httpServer.Serve(ln); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+			logger.Error().Err(serveErr).Msg("health/metrics server error")
 		}
 	}()
 
@@ -87,12 +89,22 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return s.httpServer.Shutdown(ctx)
 }
 
+// handleHealth writes the JSON liveness payload used by container health checks.
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	resp := map[string]interface{}{
+	resp := map[string]any{
 		"status":             "ok",
 		"routeros_connected": s.connected.Load(),
 		"version":            s.version,
 	}
-	_ = json.NewEncoder(w).Encode(resp)
+	payload, err := json.Marshal(resp)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to encode health response")
+		http.Error(w, "failed to encode health response", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if _, writeErr := w.Write(append(payload, '\n')); writeErr != nil {
+		log.Error().Err(writeErr).Msg("failed to write health response")
+	}
 }

@@ -319,15 +319,15 @@ func TestFind_ReturnsFirst(t *testing.T) {
 	}
 }
 
-// TestFind_ReturnsNilWhenEmpty verifies Find returns nil when no results.
-func TestFind_ReturnsNilWhenEmpty(t *testing.T) {
+// TestFind_ReturnsErrNotFoundWhenEmpty verifies Find returns ErrNotFound when no results.
+func TestFind_ReturnsErrNotFoundWhenEmpty(t *testing.T) {
 	mc := newMockConn()
 	c := newTestClient(mc)
 	mc.pushReply(emptyReply())
 
 	result, err := c.Find("/path", nil, nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 	if result != nil {
 		t.Fatalf("expected nil, got %v", result)
@@ -647,6 +647,20 @@ func TestAddAddress_Error(t *testing.T) {
 	}
 }
 
+// TestIsDuplicateEntryErrorSentinel verifies wrapped ErrAddressDuplicate matches duplicates.
+func TestIsDuplicateEntryErrorSentinel(t *testing.T) {
+	if !isDuplicateEntryError(fmt.Errorf("bulk fallback: %w", ErrAddressDuplicate)) {
+		t.Fatal("expected ErrAddressDuplicate to be recognized as duplicate")
+	}
+}
+
+// TestIsNoSuchItemErrorNil verifies nil errors do not match RouterOS missing-item traps.
+func TestIsNoSuchItemErrorNil(t *testing.T) {
+	if isNoSuchItemError(nil) {
+		t.Fatal("nil error should not match no such item")
+	}
+}
+
 // TestAddAddress_DuplicateUpdatesTimeout verifies that when Add returns
 // "already have such entry", AddAddress finds the existing entry and updates
 // its timeout and comment instead of failing (fixes issue #14).
@@ -733,6 +747,19 @@ func TestRemoveAddress_IPv6Path(t *testing.T) {
 	}
 }
 
+// TestRemoveAddress_NoSuchItemMapsErrNotFound verifies missing removals return ErrNotFound.
+func TestRemoveAddress_NoSuchItemMapsErrNotFound(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+	mc.pushError(errors.New("no such item"))
+	mc.pushError(errors.New("no such item"))
+
+	err := c.RemoveAddress("ip", "*gone")
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
 // TestListAddresses_FiltersCommentPrefix verifies comment prefix filtering.
 func TestListAddresses_FiltersCommentPrefix(t *testing.T) {
 	mc := newMockConn()
@@ -807,15 +834,15 @@ func TestFindAddress_Found(t *testing.T) {
 	}
 }
 
-// TestFindAddress_NotFound verifies FindAddress returns nil.
+// TestFindAddress_NotFound verifies FindAddress returns ErrNotFound.
 func TestFindAddress_NotFound(t *testing.T) {
 	mc := newMockConn()
 	c := newTestClient(mc)
 	mc.pushReply(emptyReply())
 
 	entry, err := c.FindAddress("ip", "blocked", "10.0.0.99")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 	if entry != nil {
 		t.Fatalf("expected nil, got %+v", entry)
@@ -1222,15 +1249,15 @@ func TestFindFirewallRuleByComment_Found(t *testing.T) {
 	}
 }
 
-// TestFindFirewallRuleByComment_NotFound verifies nil return.
+// TestFindFirewallRuleByComment_NotFound verifies ErrNotFound return.
 func TestFindFirewallRuleByComment_NotFound(t *testing.T) {
 	mc := newMockConn()
 	c := newTestClient(mc)
 	mc.pushReply(emptyReply())
 
 	entry, err := c.FindFirewallRuleByComment("ip", "filter", "nonexistent")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 	if entry != nil {
 		t.Fatalf("expected nil, got %+v", entry)
@@ -1392,6 +1419,30 @@ func TestBulkAddAddresses_FallbackAlreadyHaveIgnored(t *testing.T) {
 	}
 }
 
+// TestBulkAddAddresses_FallbackRealErrorReturned verifies non-duplicate fallback failures surface.
+func TestBulkAddAddresses_FallbackRealErrorReturned(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+
+	entries := []BulkEntry{
+		{Address: "1.1.1.1", Timeout: "1h", Comment: "test"},
+	}
+
+	mc.pushReply(emptyReply())             // Find existing script -> not found
+	mc.pushError(errors.New("script add")) // Add script fails
+	mc.pushError(errors.New("script add")) // reconnect retry fails
+	mc.pushError(errors.New("add failed")) // fallback AddAddress fails
+	mc.pushError(errors.New("add failed")) // reconnect retry fails
+
+	added, err := c.BulkAddAddresses("ip", "list", entries)
+	if err == nil || !strings.Contains(err.Error(), "fallback add errors") {
+		t.Fatalf("expected fallback error, got %v", err)
+	}
+	if added != 0 {
+		t.Fatalf("expected 0 added, got %d", added)
+	}
+}
+
 // TestRemoveAddresses_Success verifies sequential removes.
 func TestRemoveAddresses_Success(t *testing.T) {
 	mc := newMockConn()
@@ -1481,6 +1532,33 @@ func TestRunBulkScript_CleansUpExistingScript(t *testing.T) {
 	}
 	if n != 1 {
 		t.Fatalf("expected 1, got %d", n)
+	}
+}
+
+// TestRunBulkScript_FindExistingError verifies lookup errors stop script execution.
+func TestRunBulkScript_FindExistingError(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+	mc.pushError(errors.New("find failed"))
+	mc.pushError(errors.New("find failed"))
+
+	_, err := c.runBulkScript("test-script")
+	if err == nil || !strings.Contains(err.Error(), "find existing bulk script") {
+		t.Fatalf("expected find existing error, got %v", err)
+	}
+}
+
+// TestRunBulkScript_RemoveExistingError verifies stale script cleanup errors are returned.
+func TestRunBulkScript_RemoveExistingError(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+	mc.pushReply(reReply(map[string]string{".id": "*OLD"}))
+	mc.pushError(errors.New("remove failed"))
+	mc.pushError(errors.New("remove failed"))
+
+	_, err := c.runBulkScript("test-script")
+	if err == nil || !strings.Contains(err.Error(), "remove existing bulk script") {
+		t.Fatalf("expected remove existing error, got %v", err)
 	}
 }
 
@@ -1660,7 +1738,7 @@ func TestParallelExec_WorkersLimitedByItems(t *testing.T) {
 // TestGetFirewallCounters_AllPaths verifies that GetFirewallCounters queries
 // all 4 firewall paths and aggregates bytes/packets per IP type, separating
 // dropped (drop/reject) from processed (all rules).
-func TestGetFirewallCounters_AllPaths(t *testing.T) {
+func TestGetFirewallCounters_AllPaths(t *testing.T) { // NOSONAR: scenario assertions intentionally stay together.
 	mc := newMockConn()
 	c := newTestClient(mc)
 
@@ -1812,6 +1890,37 @@ func TestGetFirewallCounters_InvalidNumbers(t *testing.T) {
 
 	if fc.TotalBytes != 0 || fc.TotalPkts != 0 {
 		t.Errorf("want (0,0) for invalid numbers, got (%d,%d)", fc.TotalBytes, fc.TotalPkts)
+	}
+}
+
+// TestGetFirewallCounters_EmptyActionSkippedFromAggregates verifies malformed rules stay out of totals.
+func TestGetFirewallCounters_EmptyActionSkippedFromAggregates(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+
+	mc.pushReply(reReply(
+		map[string]string{".id": "*1", "bytes": "100", "packets": "1", "comment": "cs:drop", "action": "drop"},
+		map[string]string{".id": "*2", "bytes": "900", "packets": "9", "comment": "cs:missing-action"},
+	))
+	mc.pushReply(reReply())
+	mc.pushReply(reReply())
+	mc.pushReply(reReply())
+
+	fc, err := c.GetFirewallCounters("cs:")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(fc.Rules) != 2 {
+		t.Fatalf("want 2 matching rules, got %d", len(fc.Rules))
+	}
+	if fc.Rules[1].Action != "" {
+		t.Fatalf("empty action rule recorded action %q", fc.Rules[1].Action)
+	}
+	if fc.TotalBytes != 100 || fc.TotalPkts != 1 {
+		t.Fatalf("want aggregates to skip empty action, got (%d,%d)", fc.TotalBytes, fc.TotalPkts)
+	}
+	if fc.DroppedBytes != 100 || fc.DroppedPkts != 1 {
+		t.Fatalf("want dropped counters from drop rule only, got (%d,%d)", fc.DroppedBytes, fc.DroppedPkts)
 	}
 }
 

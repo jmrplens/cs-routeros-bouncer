@@ -3,11 +3,11 @@ title: Building
 description: How to build, test, and lint the bouncer from source.
 ---
 
-import { Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+import { Steps, Tabs, TabItem } from "@astrojs/starlight/components";
 
 ## Prerequisites
 
-- **Go** 1.26.2 or later
+- **Go** 1.26.3 or later
 - **Docker** (for Docker image builds)
 - **golangci-lint** (for linting)
 
@@ -22,13 +22,13 @@ git clone https://github.com/jmrplens/cs-routeros-bouncer.git
 cd cs-routeros-bouncer
 
 # Build
-go build -o cs-routeros-bouncer ./cmd/cs-routeros-bouncer
+CGO_ENABLED=0 go build -o cs-routeros-bouncer ./cmd/cs-routeros-bouncer
 ```
 
 **With version information:**
 
 ```bash
-go build -ldflags "-X main.version=1.3.0 -X main.commit=$(git rev-parse HEAD) -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+CGO_ENABLED=0 go build -ldflags "-X github.com/jmrplens/cs-routeros-bouncer/internal/config.Version=1.4.0 -X github.com/jmrplens/cs-routeros-bouncer/internal/config.Commit=$(git rev-parse --short HEAD) -X github.com/jmrplens/cs-routeros-bouncer/internal/config.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) -X github.com/crowdsecurity/go-cs-lib/version.Version=1.4.0" \
   -o cs-routeros-bouncer ./cmd/cs-routeros-bouncer
 ```
 
@@ -46,13 +46,13 @@ Build for different architectures:
 
 ```bash
 # ARM64 (e.g., Raspberry Pi 4, Apple Silicon)
-GOOS=linux GOARCH=arm64 go build -o cs-routeros-bouncer-arm64 ./cmd/cs-routeros-bouncer
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o cs-routeros-bouncer-arm64 ./cmd/cs-routeros-bouncer
 
 # ARMv7 (e.g., Raspberry Pi 3)
-GOOS=linux GOARCH=arm GOARM=7 go build -o cs-routeros-bouncer-armv7 ./cmd/cs-routeros-bouncer
+CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -o cs-routeros-bouncer-armv7 ./cmd/cs-routeros-bouncer
 
 # AMD64
-GOOS=linux GOARCH=amd64 go build -o cs-routeros-bouncer-amd64 ./cmd/cs-routeros-bouncer
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o cs-routeros-bouncer-amd64 ./cmd/cs-routeros-bouncer
 ```
 
   </TabItem>
@@ -137,11 +137,11 @@ The project uses `.golangci.yml` for linter configuration.
 
 ## CI/CD
 
-| Workflow | Trigger | Purpose |
-|----------|---------|---------|
-| `test.yml` | Push, PR | Run tests and linting |
-| `release.yml` | Tag push | Build binaries, Docker images, create GitHub release |
-| `docker.yml` | Push to main | Build and push Docker image to GHCR |
+| Workflow      | Trigger                  | Purpose                                              |
+| ------------- | ------------------------ | ---------------------------------------------------- |
+| `ci.yml`      | Push, PR                 | Run linting, tests, docs analysis, and build checks  |
+| `docs.yml`    | Docs changes, manual run | Build and deploy the Astro documentation site        |
+| `release.yml` | Tag push                 | Build binaries, Docker images, create GitHub release |
 
 ### Release process
 
@@ -152,8 +152,8 @@ The project uses `.golangci.yml` for linter configuration.
 2. **Create and push a git tag**
 
    ```bash
-   git tag v1.3.0
-   git push origin v1.3.0
+   git tag v1.4.0
+   git push origin v1.4.0
    ```
 
 3. **GitHub Actions automatically:**

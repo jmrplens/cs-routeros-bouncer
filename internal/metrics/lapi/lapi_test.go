@@ -4,10 +4,14 @@
 package lapi
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/crowdsecurity/crowdsec/pkg/models"
+	"github.com/rs/zerolog"
+	"github.com/sirupsen/logrus"
 
 	"github.com/jmrplens/cs-routeros-bouncer/internal/metrics"
 )
@@ -24,6 +28,35 @@ func callUpdater(p *Provider, interval time.Duration) *models.RemediationCompone
 	payload := &models.RemediationComponentsMetrics{}
 	p.metricsUpdater(payload, interval)
 	return payload
+}
+
+// metricValue finds a metric item by name, unit, and exact label set.
+func metricValue(items []*models.MetricsDetailItem, name, unit string, labels map[string]string) (float64, bool) {
+	for _, item := range items {
+		if item.Name == nil || *item.Name != name || item.Unit == nil || *item.Unit != unit || item.Value == nil {
+			continue
+		}
+		if metricLabelsMatch(item.Labels, labels) {
+			return *item.Value, true
+		}
+	}
+	return 0, false
+}
+
+// metricLabelsMatch reports whether got exactly matches the wanted label set.
+func metricLabelsMatch(got, want map[string]string) bool {
+	if want == nil {
+		return len(got) == 0
+	}
+	if got == nil || len(got) != len(want) {
+		return false
+	}
+	for key, wantValue := range want {
+		if got[key] != wantValue {
+			return false
+		}
+	}
+	return true
 }
 
 // resetMetrics sets a known metrics state for test isolation.
@@ -163,18 +196,9 @@ func TestMetricsUpdaterDroppedDelta(t *testing.T) {
 	// First push: gets full delta (1000-0=1000, 50-0=50).
 	payload1 := callUpdater(p, time.Minute)
 	dm1 := payload1.Metrics[0]
-	var bytes1, pkts1 float64
-	for _, item := range dm1.Items {
-		if item.Name != nil && *item.Name == "dropped" && item.Labels["ip_type"] == "ipv4" {
-			if *item.Unit == "byte" {
-				bytes1 = *item.Value
-			}
-			if *item.Unit == "packet" {
-				pkts1 = *item.Value
-			}
-		}
-	}
-	if bytes1 != 1000 || pkts1 != 50 {
+	bytes1, foundBytes1 := metricValue(dm1.Items, "dropped", "byte", map[string]string{"ip_type": "ipv4"})
+	pkts1, foundPkts1 := metricValue(dm1.Items, "dropped", "packet", map[string]string{"ip_type": "ipv4"})
+	if !foundBytes1 || !foundPkts1 || bytes1 != 1000 || pkts1 != 50 {
 		t.Errorf("first push: expected bytes=1000 pkts=50, got bytes=%v pkts=%v", bytes1, pkts1)
 	}
 
@@ -184,18 +208,9 @@ func TestMetricsUpdaterDroppedDelta(t *testing.T) {
 	// Second push: delta should be 500 bytes, 30 pkts.
 	payload2 := callUpdater(p, time.Minute)
 	dm2 := payload2.Metrics[0]
-	var bytes2, pkts2 float64
-	for _, item := range dm2.Items {
-		if item.Name != nil && *item.Name == "dropped" && item.Labels["ip_type"] == "ipv4" {
-			if *item.Unit == "byte" {
-				bytes2 = *item.Value
-			}
-			if *item.Unit == "packet" {
-				pkts2 = *item.Value
-			}
-		}
-	}
-	if bytes2 != 500 || pkts2 != 30 {
+	bytes2, foundBytes2 := metricValue(dm2.Items, "dropped", "byte", map[string]string{"ip_type": "ipv4"})
+	pkts2, foundPkts2 := metricValue(dm2.Items, "dropped", "packet", map[string]string{"ip_type": "ipv4"})
+	if !foundBytes2 || !foundPkts2 || bytes2 != 500 || pkts2 != 30 {
 		t.Errorf("second push: expected bytes=500 pkts=30, got bytes=%v pkts=%v", bytes2, pkts2)
 	}
 }
@@ -242,18 +257,9 @@ func TestMetricsUpdaterProcessedDelta(t *testing.T) {
 	// First push: gets full delta.
 	payload1 := callUpdater(p, time.Minute)
 	dm1 := payload1.Metrics[0]
-	var bytes1, pkts1 float64
-	for _, item := range dm1.Items {
-		if item.Name != nil && *item.Name == "processed" && item.Labels["ip_type"] == "ipv4" {
-			if *item.Unit == "byte" {
-				bytes1 = *item.Value
-			}
-			if *item.Unit == "packet" {
-				pkts1 = *item.Value
-			}
-		}
-	}
-	if bytes1 != 5000 || pkts1 != 100 {
+	bytes1, foundBytes1 := metricValue(dm1.Items, "processed", "byte", map[string]string{"ip_type": "ipv4"})
+	pkts1, foundPkts1 := metricValue(dm1.Items, "processed", "packet", map[string]string{"ip_type": "ipv4"})
+	if !foundBytes1 || !foundPkts1 || bytes1 != 5000 || pkts1 != 100 {
 		t.Errorf("first push: expected bytes=5000 pkts=100, got bytes=%v pkts=%v", bytes1, pkts1)
 	}
 
@@ -263,18 +269,9 @@ func TestMetricsUpdaterProcessedDelta(t *testing.T) {
 	// Second push: delta should be 2500 bytes, 60 pkts.
 	payload2 := callUpdater(p, time.Minute)
 	dm2 := payload2.Metrics[0]
-	var bytes2, pkts2 float64
-	for _, item := range dm2.Items {
-		if item.Name != nil && *item.Name == "processed" && item.Labels["ip_type"] == "ipv4" {
-			if *item.Unit == "byte" {
-				bytes2 = *item.Value
-			}
-			if *item.Unit == "packet" {
-				pkts2 = *item.Value
-			}
-		}
-	}
-	if bytes2 != 2500 || pkts2 != 60 {
+	bytes2, foundBytes2 := metricValue(dm2.Items, "processed", "byte", map[string]string{"ip_type": "ipv4"})
+	pkts2, foundPkts2 := metricValue(dm2.Items, "processed", "packet", map[string]string{"ip_type": "ipv4"})
+	if !foundBytes2 || !foundPkts2 || bytes2 != 2500 || pkts2 != 60 {
 		t.Errorf("second push: expected bytes=2500 pkts=60, got bytes=%v pkts=%v", bytes2, pkts2)
 	}
 }
@@ -422,6 +419,46 @@ func TestMetricItemNilLabels(t *testing.T) {
 func TestBouncerTypeConstant(t *testing.T) {
 	if bouncerType != "cs-routeros-bouncer" {
 		t.Errorf("expected bouncerType='cs-routeros-bouncer', got %q", bouncerType)
+	}
+}
+
+// TestNewProviderAndRun verifies provider construction and graceful Run exits.
+func TestNewProviderAndRun(t *testing.T) {
+	tests := []struct {
+		name     string
+		interval time.Duration
+		ctx      func() context.Context
+		wantErr  error
+	}{
+		{name: "disabled interval", interval: 0, ctx: func() context.Context { return context.Background() }},
+		{name: "enabled canceled before run", interval: time.Millisecond, ctx: func() context.Context {
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			return ctx
+		}, wantErr: context.Canceled},
+		{name: "canceled context", interval: 0, ctx: func() context.Context {
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			return ctx
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p, err := NewProvider(nil, tt.interval, logrus.New(), zerolog.Nop())
+			if err != nil {
+				t.Fatalf("NewProvider: %v", err)
+			}
+			if p.mp == nil {
+				t.Fatal("expected MetricsProvider to be configured")
+			}
+			if p.mp.Interval != tt.interval {
+				t.Fatalf("expected interval %v, got %v", tt.interval, p.mp.Interval)
+			}
+			if runErr := p.Run(tt.ctx()); !errors.Is(runErr, tt.wantErr) {
+				t.Fatalf("Run: got %v, want %v", runErr, tt.wantErr)
+			}
+		})
 	}
 }
 

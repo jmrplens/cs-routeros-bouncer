@@ -3,7 +3,7 @@ title: Reconciliation
 description: How the bouncer keeps MikroTik address-list membership synchronized with CrowdSec decisions.
 ---
 
-import { Steps, LinkCard, CardGrid } from '@astrojs/starlight/components';
+import { Steps, LinkCard, CardGrid } from "@astrojs/starlight/components";
 
 How the bouncer keeps MikroTik address-list membership synchronized with CrowdSec decisions.
 
@@ -32,7 +32,7 @@ By default, reconciliation runs at startup and then every `15m`. Configure `crow
 
 3. **Apply**
 
-   Execute additions (via bulk scripts, 100 IPs/batch) and deletions (via parallel API calls with 4-connection pool).
+   Execute additions (via bulk scripts, 100 IPs/batch) and deletions (via parallel API calls using the configured connection pool).
 
 4. **Populate cache and verify**
 
@@ -42,14 +42,15 @@ By default, reconciliation runs at startup and then every `15m`. Configure `crow
 
 ## Performance
 
-Measured on a MikroTik RB5009UG+S+ (ARM64, 4 cores @ 1400 MHz, 1 GB RAM):
+Measured on a MikroTik RB5009UG+S+ (ARM64, 4 cores @ 1400 MHz, 1 GB RAM, RouterOS 7.22.1) with `mikrotik.pool_size: 10`:
 
-| Metric | Local-only (~1,500 IPs) | Full CAPI (~25,000 IPs) |
-|--------|------------------------|------------------------|
-| Reconciliation time | ~9 s | ~2 min 50 s |
-| CPU peak | ~14% | ~23% |
-| IPs/second (add) | ~166 | ~147 |
-| IPs/second (delete) | ~168 | ~168 |
+| Metric                         | Full CAPI (~28,700 IPs)                            |
+| ------------------------------ | -------------------------------------------------- |
+| Cold reconciliation wall-clock | ~58 s                                              |
+| RouterOS bulk add work         | ~35–36 s                                           |
+| Router CPU peak observed       | ~39% during large add/remove churn                 |
+| No-drift periodic check        | ~3–4 s, with no add/remove writes                  |
+| CAPI → local-only mass removal | ~26,800 removals in ~77 s of RouterOS removal work |
 
 :::note[Router CPU]
 Router CPU spikes are expected during reconciliation because the bouncer is adding or removing many address-list entries. After reconciliation, RouterOS CPU should settle back near normal idle/traffic levels. Sustained high CPU usually indicates repeated API writes/reconnects or unrelated router workload, not the address-list entries simply existing in memory.
@@ -71,17 +72,25 @@ Each script adds up to 100 IPs using `:do { ... } on-error={}` to handle duplica
 
 ### Parallel deletion
 
-Deletions use a 4-connection pool with concurrent API calls, achieving ~168 IPs/second throughput via the generic `ParallelExec` helper.
+Deletions use the configured connection pool with concurrent API calls. In the RB5009 CAPI test, removing ~26,800 CAPI-only entries took ~77 s of RouterOS removal work.
 
 ### Pre-filtering
 
 During initial decision collection, if a ban and corresponding unban are received for the same IP, the unban pre-filters the ban out of the pending set. This avoids adding and immediately removing the same IP.
 
 :::tip
-If reconciliation takes too long, consider using `origins` filtering to limit the number of synced decisions. Local-only (~1,500 IPs) reconciles ~19× faster than full CAPI (~25,000 IPs).
+If reconciliation takes too long, consider using `origins` filtering to limit the number of synced decisions. Local-only deployments are much smaller than full CAPI blocklists and cause less startup and restart churn.
 :::
 
 <CardGrid>
-  <LinkCard title="Prometheus Metrics" description="Reconciliation-related metrics for monitoring." href="/cs-routeros-bouncer/monitoring/prometheus/" />
-  <LinkCard title="Grafana Dashboard" description="Visual reconciliation monitoring." href="/cs-routeros-bouncer/monitoring/grafana/" />
+  <LinkCard
+    title="Prometheus Metrics"
+    description="Reconciliation-related metrics for monitoring."
+    href="/cs-routeros-bouncer/monitoring/prometheus/"
+  />
+  <LinkCard
+    title="Grafana Dashboard"
+    description="Visual reconciliation monitoring."
+    href="/cs-routeros-bouncer/monitoring/grafana/"
+  />
 </CardGrid>

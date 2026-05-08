@@ -24,10 +24,12 @@ import (
 
 	"github.com/crowdsecurity/crowdsec/pkg/apiclient"
 
+	"github.com/rs/zerolog"
+
 	"github.com/jmrplens/cs-routeros-bouncer/internal/config"
 	"github.com/jmrplens/cs-routeros-bouncer/internal/crowdsec"
+	"github.com/jmrplens/cs-routeros-bouncer/internal/metrics"
 	ros "github.com/jmrplens/cs-routeros-bouncer/internal/routeros"
-	"github.com/rs/zerolog"
 )
 
 // ===========================================================================
@@ -160,6 +162,7 @@ func TestReconcileActiveDecisions_AddsMissingAddress(t *testing.T) {
 // Connect → pool (skipped, no real pool) → identity → createFirewallRules →
 // stream.Init → collect initial decisions → reconcile → live processing → cancel.
 func TestStart_HappyPath(t *testing.T) {
+	setTestInitialCollectionTimings(t, time.Millisecond, time.Millisecond)
 	mock := &mockROS{
 		identityName: "TestRouter",
 		maxSessions:  20,
@@ -182,22 +185,20 @@ func TestStart_HappyPath(t *testing.T) {
 	cfg := baseConfig()
 	cfg.Firewall.Filter.Enabled = true
 	cfg.Firewall.Filter.Chains = []string{"forward"}
+	cfg.CrowdSec.ReconciliationInterval = time.Millisecond
+	ctx, cancel := context.WithCancel(context.Background())
+	stream.ActiveDecisionsFunc = func(context.Context) ([]*crowdsec.Decision, error) {
+		cancel()
+		return nil, nil
+	}
 	mgr := newTestManagerWithStream(mock, stream, cfg)
 
-	ctx, cancel := context.WithCancel(context.Background())
-
-	// Run Start in a goroutine (it blocks processing live decisions)
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- mgr.Start(ctx)
 	}()
 
-	// Wait for reconciliation + live loop to start processing
-	time.Sleep(5 * time.Second)
-	cancel()
-
-	err := <-errCh
-	if err != nil {
+	if err := waitForManagerResult(t, errCh); err != nil {
 		t.Fatalf("Start returned unexpected error: %v", err)
 	}
 
@@ -238,6 +239,49 @@ func setTestRetryTimings(t *testing.T, interval, timeout time.Duration) {
 	})
 }
 
+// setTestInitialCollectionTimings temporarily shortens startup drain timers.
+func setTestInitialCollectionTimings(t *testing.T, firstIdle, nextIdle time.Duration) {
+	t.Helper()
+	origFirstIdle := initialDecisionCollectionTimeout
+	origNextIdle := initialDecisionIdleTimeout
+	initialDecisionCollectionTimeout = firstIdle
+	initialDecisionIdleTimeout = nextIdle
+	t.Cleanup(func() {
+		initialDecisionCollectionTimeout = origFirstIdle
+		initialDecisionIdleTimeout = origNextIdle
+	})
+}
+
+// waitForManagerResult waits for a manager goroutine to finish during tests.
+func waitForManagerResult(t *testing.T, errCh <-chan error) error {
+	t.Helper()
+	select {
+	case err := <-errCh:
+		return err
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for manager")
+		return nil
+	}
+}
+
+// waitForManagerCondition polls a manager-related condition until true or timed out.
+func waitForManagerCondition(t *testing.T, name string, condition func() bool) {
+	t.Helper()
+	deadline := time.After(2 * time.Second)
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if condition() {
+			return
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("timed out waiting for %s", name)
+		case <-ticker.C:
+		}
+	}
+}
+
 // TestStart_ConnectError verifies that Start returns an error when
 // the initial RouterOS connection fails after exhausting all retries.
 func TestStart_ConnectError(t *testing.T) {
@@ -274,12 +318,13 @@ func TestStart_ConnectError(t *testing.T) {
 // TestStart_ConnectRetrySuccess verifies that Start succeeds when
 // connection fails initially but succeeds on a subsequent retry.
 func TestStart_ConnectRetrySuccess(t *testing.T) {
-	setTestRetryTimings(t, 10*time.Millisecond, 1*time.Second)
+	setTestRetryTimings(t, time.Millisecond, time.Second)
+	setTestInitialCollectionTimings(t, time.Millisecond, time.Millisecond)
 
-	var callCount int32
+	var callCount atomic.Int32
 	mock := &mockROS{
 		connectFunc: func() error {
-			n := atomic.AddInt32(&callCount, 1)
+			n := callCount.Add(1)
 			if n < 3 {
 				return errors.New("connection refused")
 			}
@@ -303,14 +348,17 @@ func TestStart_ConnectRetrySuccess(t *testing.T) {
 	errCh := make(chan error, 1)
 	go func() { errCh <- mgr.Start(ctx) }()
 
-	time.Sleep(500 * time.Millisecond)
+	waitForManagerCondition(t, "successful retry", func() bool {
+		return callCount.Load() >= 3
+	})
 	cancel()
 
-	if err := <-errCh; err != nil {
+	if err := waitForManagerResult(t, errCh); err != nil {
 		t.Fatalf("Start should succeed after retry, got: %v", err)
 	}
-	if atomic.LoadInt32(&callCount) < 3 {
-		t.Errorf("expected at least 3 connect calls, got %d", atomic.LoadInt32(&callCount))
+	count := callCount.Load()
+	if count < 3 {
+		t.Errorf("expected at least 3 connect calls, got %d", count)
 	}
 }
 
@@ -329,8 +377,11 @@ func TestStart_ConnectRetryContextCancel(t *testing.T) {
 	errCh := make(chan error, 1)
 	go func() { errCh <- mgr.Start(ctx) }()
 
-	// Cancel after a brief moment (during retry wait)
-	time.Sleep(100 * time.Millisecond)
+	waitForManagerCondition(t, "first failed connect attempt", func() bool {
+		mock.mu.Lock()
+		defer mock.mu.Unlock()
+		return mock.connectCalls > 0
+	})
 	cancel()
 
 	select {
@@ -349,6 +400,7 @@ func TestStart_ConnectRetryContextCancel(t *testing.T) {
 // TestStart_IdentityError verifies that Start continues (with a warning)
 // when GetIdentity fails — it's not fatal.
 func TestStart_IdentityError(t *testing.T) {
+	setTestInitialCollectionTimings(t, time.Millisecond, time.Millisecond)
 	mock := &mockROS{
 		identityErr: errors.New("identity error"),
 		maxSessions: 20,
@@ -364,16 +416,18 @@ func TestStart_IdentityError(t *testing.T) {
 	cfg := baseConfig()
 	cfg.Firewall.Filter.Enabled = true
 	cfg.Firewall.Filter.Chains = []string{"forward"}
+	ctx, cancel := context.WithCancel(context.Background())
+	cfg.CrowdSec.ReconciliationInterval = time.Millisecond
+	stream.ActiveDecisionsFunc = func(context.Context) ([]*crowdsec.Decision, error) {
+		cancel()
+		return nil, nil
+	}
 	mgr := newTestManagerWithStream(mock, stream, cfg)
 
-	ctx, cancel := context.WithCancel(context.Background())
 	errCh := make(chan error, 1)
 	go func() { errCh <- mgr.Start(ctx) }()
 
-	time.Sleep(5 * time.Second)
-	cancel()
-
-	if err := <-errCh; err != nil {
+	if err := waitForManagerResult(t, errCh); err != nil {
 		t.Fatalf("Start should continue despite identity error, got: %v", err)
 	}
 }
@@ -455,21 +509,21 @@ func TestStart_StreamRunError(t *testing.T) {
 // TestStart_ContextCancelDuringCollect verifies that canceling the context
 // during the initial decision collection phase causes Start to return nil.
 func TestStart_ContextCancelDuringCollect(t *testing.T) {
+	decisionSent := make(chan struct{})
 	mock := &mockROS{
 		maxSessions: 20,
 		addRuleID:   "*1",
 	}
 	stream := &mockStream{
 		RunFunc: func(ctx context.Context, banCh chan<- *crowdsec.Decision, deleteCh chan<- *crowdsec.Decision) error {
-			// Keep sending decisions until canceled
-			for {
-				select {
-				case <-ctx.Done():
-					return nil
-				case banCh <- &crowdsec.Decision{Proto: "ip", Value: "1.2.3.4", Origin: "test", Type: "ban"}:
-					time.Sleep(100 * time.Millisecond)
-				}
+			select {
+			case <-ctx.Done():
+				return nil
+			case banCh <- &crowdsec.Decision{Proto: "ip", Value: "1.2.3.4", Origin: "test", Type: "ban"}:
+				close(decisionSent)
 			}
+			<-ctx.Done()
+			return nil
 		},
 	}
 
@@ -483,11 +537,14 @@ func TestStart_ContextCancelDuringCollect(t *testing.T) {
 	errCh := make(chan error, 1)
 	go func() { errCh <- mgr.Start(ctx) }()
 
-	// Cancel almost immediately (during collect phase)
-	time.Sleep(500 * time.Millisecond)
+	select {
+	case <-decisionSent:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for initial decision")
+	}
 	cancel()
 
-	if err := <-errCh; err != nil {
+	if err := waitForManagerResult(t, errCh); err != nil {
 		t.Fatalf("expected nil on context cancel, got: %v", err)
 	}
 }
@@ -496,52 +553,39 @@ func TestStart_ContextCancelDuringCollect(t *testing.T) {
 // Start — live decision processing
 // ===========================================================================
 
-// TestStart_ProcessesLiveBanAndUnban verifies that after reconciliation,
-// the live loop correctly processes ban and unban decisions.
-func TestStart_ProcessesLiveBanAndUnban(t *testing.T) {
+// TestProcessLiveDecisionsProcessesLiveBan verifies that the live loop routes
+// ban decisions to handleBan without waiting for startup collection timers.
+func TestProcessLiveDecisionsProcessesLiveBan(t *testing.T) {
 	mock := &mockROS{
-		maxSessions:  20,
-		addRuleID:    "*1",
 		addAddressID: "*100",
 	}
-	// Track when reconciliation is done by checking if the live loop has started.
-	// The collect phase has 10s initial idle timeout. With no decisions during collect,
-	// it finishes at ~10s. Reconciliation with empty decisions is instant.
-	// So the live loop starts at ~10s. We send the ban at 11s to ensure it's processed live.
-	stream := &mockStream{
-		RunFunc: func(ctx context.Context, banCh chan<- *crowdsec.Decision, deleteCh chan<- *crowdsec.Decision) error {
-			// Wait for collect phase (10s idle) + reconciliation to complete
-			time.Sleep(11 * time.Second)
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	mgr := newTestManager(mock, cfg)
+	banCh := make(chan *crowdsec.Decision, 1)
+	deleteCh := make(chan *crowdsec.Decision)
+	errCh := make(chan error)
+	ctx, cancel := context.WithCancel(context.Background())
+	resultCh := make(chan error, 1)
+	go func() { resultCh <- mgr.processLiveDecisions(ctx, banCh, deleteCh, errCh, nil) }()
 
-			// Send a live ban — this should be processed by the live loop (handleBan)
-			select {
-			case banCh <- &crowdsec.Decision{
-				Proto:    "ip",
-				Value:    "192.168.1.100",
-				Origin:   "test",
-				Type:     "ban",
-				Duration: 3600 * time.Second,
-			}:
-			case <-ctx.Done():
-				return ctx.Err()
-			}
-
-			// Give time for processing
-			time.Sleep(1 * time.Second)
-			return nil
-		},
+	banCh <- &crowdsec.Decision{
+		Proto:    "ip",
+		Value:    "192.168.1.100",
+		Origin:   "test",
+		Type:     "ban",
+		Duration: time.Hour,
 	}
 
-	cfg := baseConfig()
-	cfg.Firewall.Filter.Enabled = true
-	cfg.Firewall.Filter.Chains = []string{"forward"}
-	cfg.Firewall.IPv6.Enabled = false
-	mgr := newTestManagerWithStream(mock, stream, cfg)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-
-	_ = mgr.Start(ctx)
+	waitForManagerCondition(t, "live ban processing", func() bool {
+		mock.mu.Lock()
+		defer mock.mu.Unlock()
+		return len(mock.addAddressCalls) > 0
+	})
+	cancel()
+	if err := waitForManagerResult(t, resultCh); err != nil {
+		t.Fatalf("expected nil after context cancellation, got %v", err)
+	}
 
 	mock.mu.Lock()
 	addCount := len(mock.addAddressCalls)
@@ -557,37 +601,25 @@ func TestStart_ProcessesLiveBanAndUnban(t *testing.T) {
 // collected in deleteCh during the initial batch are used to filter
 // out immediately-expired bans.
 func TestStart_DeleteChDrainFiltersDuringCollect(t *testing.T) {
+	setTestInitialCollectionTimings(t, time.Millisecond, time.Millisecond)
 	mock := &mockROS{
-		maxSessions:  20,
-		addRuleID:    "*1",
 		bulkAddCount: 1,
 	}
-	stream := &mockStream{
-		RunFunc: func(ctx context.Context, banCh chan<- *crowdsec.Decision, deleteCh chan<- *crowdsec.Decision) error {
-			// Send a ban and immediately a delete for the same IP
-			banCh <- &crowdsec.Decision{Proto: "ip", Value: "10.0.0.99", Origin: "cscli", Type: "ban"}
-			deleteCh <- &crowdsec.Decision{Proto: "ip", Value: "10.0.0.99", Origin: "cscli", Type: "ban"}
-			// Also send a ban that should survive
-			banCh <- &crowdsec.Decision{Proto: "ip", Value: "10.0.0.100", Origin: "cscli", Type: "ban"}
-			<-ctx.Done()
-			return nil
-		},
-	}
-
 	cfg := baseConfig()
-	cfg.Firewall.Filter.Enabled = true
-	cfg.Firewall.Filter.Chains = []string{"forward"}
 	cfg.Firewall.IPv6.Enabled = false
-	mgr := newTestManagerWithStream(mock, stream, cfg)
-
-	ctx, cancel := context.WithCancel(context.Background())
+	mgr := newTestManager(mock, cfg)
+	banCh := make(chan *crowdsec.Decision, 2)
+	deleteCh := make(chan *crowdsec.Decision, 1)
 	errCh := make(chan error, 1)
-	go func() { errCh <- mgr.Start(ctx) }()
+	banCh <- &crowdsec.Decision{Proto: "ip", Value: "10.0.0.99", Origin: "cscli", Type: "ban"}
+	deleteCh <- &crowdsec.Decision{Proto: "ip", Value: "10.0.0.99", Origin: "cscli", Type: "ban"}
+	banCh <- &crowdsec.Decision{Proto: "ip", Value: "10.0.0.100", Origin: "cscli", Type: "ban"}
 
-	// Wait for reconciliation to complete
-	time.Sleep(5 * time.Second)
-	cancel()
-	<-errCh
+	initialBans, initialDeletes, err := mgr.collectInitialDecisions(context.Background(), banCh, deleteCh, errCh)
+	if err != nil {
+		t.Fatalf("collectInitialDecisions: %v", err)
+	}
+	mgr.reconcileAddresses(context.Background(), mgr.filterInitialBans(initialBans, initialDeletes))
 
 	// The bulk add should have been called with only the surviving ban (10.0.0.100)
 	mock.mu.Lock()
@@ -1048,7 +1080,7 @@ func TestReconcileAddresses_BulkAddPartialError(t *testing.T) {
 	}
 
 	// This should not panic despite the error
-	mgr.reconcileAddresses(decisions)
+	mgr.reconcileAddresses(context.Background(), decisions)
 
 	// Cache should still be populated (all entries added optimistically)
 	mgr.cacheMu.RLock()
@@ -1075,7 +1107,7 @@ func TestReconcileAddresses_SequentialRemoveFallback(t *testing.T) {
 	mgr.pool = nil // Force sequential fallback
 
 	// No decisions = all existing addresses should be removed
-	mgr.reconcileAddresses(nil)
+	mgr.reconcileAddresses(context.Background(), nil)
 
 	mock.mu.Lock()
 	defer mock.mu.Unlock()
@@ -1085,7 +1117,7 @@ func TestReconcileAddresses_SequentialRemoveFallback(t *testing.T) {
 	}
 }
 
-// TestReconcileAddresses_SequentialRemoveNoSuchItem verifies that "no such item"
+// TestReconcileAddresses_SequentialRemoveNoSuchItem verifies that ErrNotFound
 // errors during sequential remove are treated as success (expired items).
 func TestReconcileAddresses_SequentialRemoveNoSuchItem(t *testing.T) {
 	mock := &mockROS{
@@ -1093,18 +1125,17 @@ func TestReconcileAddresses_SequentialRemoveNoSuchItem(t *testing.T) {
 			{ID: "*1", Address: "10.0.0.1", Comment: "crowdsec-bouncer|old"},
 		},
 	}
-	// Override RemoveAddress to return "no such item"
+	// Override RemoveAddress to return ErrNotFound.
 	cfg := baseConfig()
 	cfg.Firewall.IPv6.Enabled = false
 	mgr := newTestManager(mock, cfg)
 	mgr.pool = nil
 
-	// Set error to "no such item"
-	mock.removeAddressErr = errors.New("no such item")
+	mock.removeAddressErr = fmt.Errorf("router remove failed: %w", ros.ErrNotFound)
 
-	mgr.reconcileAddresses(nil)
+	mgr.reconcileAddresses(context.Background(), nil)
 
-	// Should complete without error (no such item is treated as success)
+	// Should complete without error (ErrNotFound is treated as success).
 	mock.mu.Lock()
 	defer mock.mu.Unlock()
 
@@ -1128,7 +1159,7 @@ func TestReconcileAddresses_SequentialRemoveRealError(t *testing.T) {
 	mgr.pool = nil
 
 	// Should not panic — errors are logged, not returned
-	mgr.reconcileAddresses(nil)
+	mgr.reconcileAddresses(context.Background(), nil)
 
 	mock.mu.Lock()
 	defer mock.mu.Unlock()
@@ -1149,7 +1180,7 @@ func TestReconcileAddresses_ListAddressesError(t *testing.T) {
 	mgr := newTestManager(mock, cfg)
 
 	// Should not panic — error is logged, then continue
-	mgr.reconcileAddresses([]*crowdsec.Decision{
+	mgr.reconcileAddresses(context.Background(), []*crowdsec.Decision{
 		{Proto: "ip", Value: "1.2.3.4", Origin: "test"},
 	})
 
@@ -1175,7 +1206,7 @@ func TestReconcileAddresses_EmptyDecisions(t *testing.T) {
 	mgr := newTestManager(mock, cfg)
 	mgr.pool = nil
 
-	mgr.reconcileAddresses(nil)
+	mgr.reconcileAddresses(context.Background(), nil)
 
 	mock.mu.Lock()
 	defer mock.mu.Unlock()
@@ -1601,7 +1632,7 @@ func TestReconcileAddresses_OriginTracking(t *testing.T) {
 		{Value: "2.2.2.2", Proto: "ip", Duration: time.Hour, Origin: "CAPI", Scenario: "http-scan"},
 	}
 
-	mgr.reconcileAddresses(decisions)
+	mgr.reconcileAddresses(context.Background(), decisions)
 
 	// Verify that bulk add was called with both entries.
 	if len(mock.bulkAddCalls) != 1 {
@@ -1628,7 +1659,7 @@ func TestReconcileAddresses_ExistingAddressesUnchanged(t *testing.T) {
 		{Value: "1.1.1.1", Proto: "ip", Duration: time.Hour, Origin: "crowdsec", Scenario: "ssh-bf"},
 	}
 
-	mgr.reconcileAddresses(decisions)
+	mgr.reconcileAddresses(context.Background(), decisions)
 
 	// No bulk add should occur — address already exists.
 	if len(mock.bulkAddCalls) != 0 {
@@ -1654,7 +1685,7 @@ func TestReconcileAddresses_RemoveStaleAddress(t *testing.T) {
 		{Value: "1.1.1.1", Proto: "ip", Duration: time.Hour, Origin: "crowdsec", Scenario: "ssh-bf"},
 	}
 
-	mgr.reconcileAddresses(decisions)
+	mgr.reconcileAddresses(context.Background(), decisions)
 
 	// 2.2.2.2 should be removed.
 	if len(mock.removeAddressCalls) != 1 {
@@ -1677,7 +1708,7 @@ func TestReconcileAddresses_ZeroDurationNoTimeout(t *testing.T) {
 		{Value: "1.1.1.1", Proto: "ip", Duration: 0, Origin: "manual", Scenario: "manual"},
 	}
 
-	mgr.reconcileAddresses(decisions)
+	mgr.reconcileAddresses(context.Background(), decisions)
 
 	if len(mock.bulkAddCalls) != 1 {
 		t.Fatalf("expected 1 BulkAddAddresses call, got %d", len(mock.bulkAddCalls))
@@ -1737,5 +1768,194 @@ func TestHandleUnban_IPv6Disabled(t *testing.T) {
 
 	if len(mock.findAddressCalls) != 0 {
 		t.Error("expected no FindAddress calls for disabled IPv6")
+	}
+}
+
+// TestHandleUnban_NotFoundErrorClearsCache verifies expired cache entries are forgotten.
+func TestHandleUnban_NotFoundErrorClearsCache(t *testing.T) {
+	mock := &mockROS{findAddressErr: fmt.Errorf("wrapped: %w", ros.ErrNotFound)}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	mgr := newTestManager(mock, cfg)
+	mgr.cacheMu.Lock()
+	mgr.addressCache["10.0.0.10"] = struct{}{}
+	mgr.cacheMu.Unlock()
+
+	mgr.handleUnban(&crowdsec.Decision{Value: "10.0.0.10", Proto: "ip"})
+
+	if len(mock.removeAddressCalls) != 0 {
+		t.Fatalf("expected no RemoveAddress calls, got %d", len(mock.removeAddressCalls))
+	}
+	mgr.cacheMu.RLock()
+	_, inCache := mgr.addressCache["10.0.0.10"]
+	mgr.cacheMu.RUnlock()
+	if inCache {
+		t.Fatal("expected expired address to be removed from cache")
+	}
+}
+
+// TestCollectLAPIFirewallCounters verifies RouterOS counters populate LAPI deltas.
+func TestCollectLAPIFirewallCounters(t *testing.T) {
+	resetLAPICounterDeltas()
+	t.Cleanup(resetLAPICounterDeltas)
+	mock := &mockROS{
+		getCountersResult: &ros.FirewallCounters{
+			DroppedBytes:       10,
+			DroppedPkts:        1,
+			DroppedIPv4Bytes:   6,
+			DroppedIPv4Pkts:    1,
+			DroppedIPv6Bytes:   4,
+			ProcessedIPv4Bytes: 100,
+			ProcessedIPv4Pkts:  2,
+			ProcessedIPv6Bytes: 200,
+			ProcessedIPv6Pkts:  3,
+		},
+	}
+	mgr := newTestManager(mock, baseConfig())
+
+	mgr.collectLAPIFirewallCounters()
+
+	if mock.getCountersCalls != 1 {
+		t.Fatalf("expected one GetFirewallCounters call, got %d", mock.getCountersCalls)
+	}
+	droppedBytes, droppedPkts := metrics.GetAndResetDroppedDeltas()
+	if droppedBytes != 10 || droppedPkts != 1 {
+		t.Fatalf("dropped counters = (%d, %d), want (10, 1)", droppedBytes, droppedPkts)
+	}
+	droppedIPv4Bytes, droppedIPv4Pkts, droppedIPv6Bytes, droppedIPv6Pkts := metrics.GetAndResetDroppedDeltasByIPType()
+	if droppedIPv4Bytes != 6 || droppedIPv4Pkts != 1 || droppedIPv6Bytes != 4 || droppedIPv6Pkts != 0 {
+		t.Fatalf("dropped ip counters = (%d, %d, %d, %d), want (6, 1, 4, 0)", droppedIPv4Bytes, droppedIPv4Pkts, droppedIPv6Bytes, droppedIPv6Pkts)
+	}
+	processedIPv4Bytes, processedIPv4Pkts, processedIPv6Bytes, processedIPv6Pkts := metrics.GetAndResetProcessedDeltas()
+	if processedIPv4Bytes != 100 || processedIPv4Pkts != 2 || processedIPv6Bytes != 200 || processedIPv6Pkts != 3 {
+		t.Fatalf("processed counters = (%d, %d, %d, %d), want (100, 2, 200, 3)", processedIPv4Bytes, processedIPv4Pkts, processedIPv6Bytes, processedIPv6Pkts)
+	}
+}
+
+// TestCollectLAPIFirewallCountersError verifies failed counter reads leave deltas unchanged.
+func TestCollectLAPIFirewallCountersError(t *testing.T) {
+	resetLAPICounterDeltas()
+	t.Cleanup(resetLAPICounterDeltas)
+	mock := &mockROS{getCountersErr: errors.New("counter read failed")}
+	mgr := newTestManager(mock, baseConfig())
+
+	mgr.collectLAPIFirewallCounters()
+
+	if mock.getCountersCalls != 1 {
+		t.Fatalf("expected one GetFirewallCounters call, got %d", mock.getCountersCalls)
+	}
+	droppedBytes, droppedPkts := metrics.GetAndResetDroppedDeltas()
+	droppedIPv4Bytes, droppedIPv4Pkts, droppedIPv6Bytes, droppedIPv6Pkts := metrics.GetAndResetDroppedDeltasByIPType()
+	processedIPv4Bytes, processedIPv4Pkts, processedIPv6Bytes, processedIPv6Pkts := metrics.GetAndResetProcessedDeltas()
+	if droppedBytes != 0 || droppedPkts != 0 || droppedIPv4Bytes != 0 || droppedIPv4Pkts != 0 || droppedIPv6Bytes != 0 || droppedIPv6Pkts != 0 ||
+		processedIPv4Bytes != 0 || processedIPv4Pkts != 0 || processedIPv6Bytes != 0 || processedIPv6Pkts != 0 {
+		t.Fatalf("expected counters to remain unchanged on error")
+	}
+}
+
+// TestStartLAPIMetricsEnabledWithCanceledContext verifies startLAPIMetrics
+// handles a pre-canceled context without panicking or blocking.
+func TestStartLAPIMetricsEnabledWithCanceledContext(t *testing.T) {
+	cfg := baseConfig()
+	cfg.CrowdSec.LapiMetricsInterval = time.Millisecond
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	mgr := newTestManagerWithStream(&mockROS{}, &mockStream{}, cfg)
+
+	mgr.startLAPIMetrics(ctx)
+}
+
+// resetLAPICounterDeltas clears process-global LAPI metric delta state between tests.
+func resetLAPICounterDeltas() {
+	metrics.SetDroppedCounters(0, 0)
+	_, _ = metrics.GetAndResetDroppedDeltas()
+	metrics.SetDroppedCountersByIPType(0, 0, 0, 0)
+	_, _, _, _ = metrics.GetAndResetDroppedDeltasByIPType()
+	metrics.SetProcessedCounters(0, 0, 0, 0)
+	_, _, _, _ = metrics.GetAndResetProcessedDeltas()
+}
+
+// TestReconciliationChannelEnabled verifies positive intervals create a ticker channel.
+func TestReconciliationChannelEnabled(t *testing.T) {
+	mgr := newTestManager(&mockROS{}, baseConfig())
+	mgr.cfg.CrowdSec.ReconciliationInterval = time.Millisecond
+
+	reconcileC, stop := mgr.reconciliationChannel()
+	defer stop()
+	if reconcileC == nil {
+		t.Fatal("expected reconciliation ticker channel")
+	}
+	select {
+	case <-reconcileC:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for reconciliation tick")
+	}
+}
+
+// TestReconciliationChannelDisabled verifies zero intervals disable periodic reconciliation.
+func TestReconciliationChannelDisabled(t *testing.T) {
+	mgr := newTestManager(&mockROS{}, baseConfig())
+	mgr.cfg.CrowdSec.ReconciliationInterval = 0
+
+	reconcileC, stop := mgr.reconciliationChannel()
+	defer stop()
+	if reconcileC != nil {
+		t.Fatal("expected nil reconciliation channel when disabled")
+	}
+}
+
+// TestProcessLiveDecisionsReturnsStreamError verifies stream errors stop live processing.
+func TestProcessLiveDecisionsReturnsStreamError(t *testing.T) {
+	mgr := newTestManager(&mockROS{}, baseConfig())
+	banCh := make(chan *crowdsec.Decision)
+	deleteCh := make(chan *crowdsec.Decision)
+	errCh := make(chan error, 1)
+	errCh <- errors.New("stream failed")
+
+	err := mgr.processLiveDecisions(context.Background(), banCh, deleteCh, errCh, nil)
+	if err == nil || !strings.Contains(err.Error(), "CrowdSec stream error") {
+		t.Fatalf("expected stream error, got %v", err)
+	}
+}
+
+// TestProcessLiveDecisionsRunsPeriodicReconciliation verifies ticker events fetch snapshots.
+func TestProcessLiveDecisionsRunsPeriodicReconciliation(t *testing.T) {
+	mock := &mockROS{}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	ctx, cancel := context.WithCancel(context.Background())
+	stream := &mockStream{
+		ActiveDecisionsFunc: func(context.Context) ([]*crowdsec.Decision, error) {
+			cancel()
+			return nil, nil
+		},
+	}
+	mgr := newTestManagerWithStream(mock, stream, cfg)
+	banCh := make(chan *crowdsec.Decision)
+	deleteCh := make(chan *crowdsec.Decision)
+	errCh := make(chan error)
+	reconcileC := make(chan time.Time, 1)
+	reconcileC <- time.Now()
+
+	if err := mgr.processLiveDecisions(ctx, banCh, deleteCh, errCh, reconcileC); err != nil {
+		t.Fatalf("expected nil after context cancellation, got %v", err)
+	}
+	stream.mu.Lock()
+	activeCalled := stream.activeCalled
+	stream.mu.Unlock()
+	if activeCalled != 1 {
+		t.Fatalf("expected one ActiveDecisions call, got %d", activeCalled)
+	}
+}
+
+// TestOutputRuleTopPlacement verifies output-blocking rules honor top placement.
+func TestOutputRuleTopPlacement(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Firewall.RulePlacement = "top"
+	mgr := newTestManager(&mockROS{}, cfg)
+
+	rule := mgr.outputRule("ip", "crowdsec-banned")
+	if rule.PlaceBefore != "0" {
+		t.Fatalf("expected output rule PlaceBefore=0, got %q", rule.PlaceBefore)
 	}
 }

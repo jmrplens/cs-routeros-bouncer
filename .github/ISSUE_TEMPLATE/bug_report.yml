@@ -1,39 +1,60 @@
-name: 🐛 Bug Report
+name: Bug Report
 description: Report a bug or unexpected behavior
-labels: ["bug", "triage"]
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for reporting a bug! Please fill in as much detail as possible.
+        Thanks for taking the time to report this bug.
+
+        For security vulnerabilities, do not use this form. Please use [GitHub Security Advisories](https://github.com/jmrplens/cs-routeros-bouncer/security/advisories/new).
+
+  - type: checkboxes
+    id: prereqs
+    attributes:
+      label: Prerequisites
+      description: Please confirm before submitting.
+      options:
+        - label: I have searched [existing issues](https://github.com/jmrplens/cs-routeros-bouncer/issues?q=is%3Aissue) and this bug has not been reported.
+          required: true
+        - label: I have read the [README](https://github.com/jmrplens/cs-routeros-bouncer#readme) and [troubleshooting guide](https://jmrplens.github.io/cs-routeros-bouncer/troubleshooting/).
+          required: true
 
   - type: input
     id: version
     attributes:
       label: Bouncer version
-      description: "Output of `cs-routeros-bouncer --version` or Docker image tag"
-      placeholder: "v0.1.0"
+      description: Output of `cs-routeros-bouncer --version` or Docker image tag.
+      placeholder: "v1.4.0"
     validations:
       required: true
 
   - type: input
-    id: routeros_version
+    id: routeros-version
     attributes:
       label: RouterOS version
-      description: "MikroTik RouterOS version (e.g., 7.21.3)"
-      placeholder: "7.21.3"
+      description: MikroTik RouterOS version.
+      placeholder: "7.22.1"
     validations:
       required: true
 
   - type: input
-    id: routeros_model
+    id: routeros-model
     attributes:
       label: Router model
-      description: "MikroTik router model (e.g., RB5009, hAP ax3)"
+      description: MikroTik router model.
       placeholder: "RB5009UG+S+"
 
+  - type: input
+    id: crowdsec-version
+    attributes:
+      label: CrowdSec version
+      description: Output of `cscli version`.
+      placeholder: "1.7.7"
+
   - type: dropdown
-    id: install_method
+    id: install-method
     attributes:
       label: Installation method
       options:
@@ -45,10 +66,38 @@ body:
       required: true
 
   - type: textarea
-    id: description
+    id: summary
     attributes:
-      label: Bug description
-      description: "What happened? What did you expect to happen?"
+      label: Summary
+      description: Brief description of the bug.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: How can we reproduce this issue?
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happens?
     validations:
       required: true
 
@@ -56,28 +105,18 @@ body:
     id: config
     attributes:
       label: Configuration
-      description: "Relevant parts of your config (redact passwords/API keys!)"
+      description: Relevant config only. Redact API keys, passwords, tokens, and router credentials.
       render: yaml
 
   - type: textarea
     id: logs
     attributes:
-      label: Logs
-      description: "Relevant log output (set `logging.level: debug` for more detail)"
+      label: Logs / error output
+      description: "Paste relevant logs. Use `logging.level: debug` if possible."
       render: text
 
   - type: textarea
-    id: reproduce
-    attributes:
-      label: Steps to reproduce
-      description: "How can we reproduce this issue?"
-      placeholder: |
-        1. Configure bouncer with ...
-        2. Start bouncer
-        3. Observe ...
-
-  - type: textarea
-    id: additional
+    id: context
     attributes:
       label: Additional context
-      description: "Any other relevant information (screenshots, router config, etc.)"
+      description: Screenshots, metrics, router CPU observations, related issues, etc.

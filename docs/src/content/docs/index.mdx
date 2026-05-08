@@ -18,8 +18,8 @@ hero:
       variant: minimal
 ---
 
-import { Card, CardGrid, LinkCard, Badge } from '@astrojs/starlight/components';
-import VersionBadge from '../../components/VersionBadge.astro';
+import { Card, CardGrid, LinkCard, Badge } from "@astrojs/starlight/components";
+import VersionBadge from "../../components/VersionBadge.astro";
 
 ## How it works
 
@@ -27,39 +27,60 @@ import VersionBadge from '../../components/VersionBadge.astro';
   <div class="flow-step">
     <div class="flow-step__icon">🛡️</div>
     <div class="flow-step__title">CrowdSec detects</div>
-    <div class="flow-step__desc">LAPI receives threat intelligence and community decisions</div>
+    <div class="flow-step__desc">
+      LAPI receives threat intelligence and community decisions
+    </div>
   </div>
   <div class="flow-step">
+    <span class="flow-step__arrow" aria-hidden="true">
+      →
+    </span>
     <div class="flow-step__icon">🔄</div>
     <div class="flow-step__title">Bouncer syncs</div>
-    <div class="flow-step__desc">Polls LAPI for new and expired decisions in real-time</div>
+    <div class="flow-step__desc">
+      Polls LAPI for new and expired decisions in real-time
+    </div>
   </div>
   <div class="flow-step">
+    <span class="flow-step__arrow" aria-hidden="true">
+      →
+    </span>
     <div class="flow-step__icon">🔥</div>
     <div class="flow-step__title">RouterOS blocks</div>
-    <div class="flow-step__desc">Firewall rules are created or removed via the RouterOS API</div>
+    <div class="flow-step__desc">
+      Firewall rules are created or removed via the RouterOS API
+    </div>
   </div>
   <div class="flow-step">
+    <span class="flow-step__arrow" aria-hidden="true">
+      →
+    </span>
     <div class="flow-step__icon">📊</div>
     <div class="flow-step__title">You monitor</div>
-    <div class="flow-step__desc">Prometheus metrics and Grafana dashboards for full visibility</div>
+    <div class="flow-step__desc">
+      Prometheus metrics and Grafana dashboards for full visibility
+    </div>
   </div>
 </div>
 
-## Why cs-routeros-bouncer? <VersionBadge version="1.0" />
+## Why cs-routeros-bouncer? <VersionBadge version="1.4.0" />
 
 <CardGrid stagger>
   <Card title="Zero Manual Configuration" icon="approve-check">
-    Auto-creates and auto-removes firewall filter/raw rules on start/stop — no manual router setup needed.
+    Auto-creates and auto-removes firewall filter/raw rules on start/stop — no
+    manual router setup needed.
   </Card>
   <Card title="Real-time IP Management" icon="list-format">
-    Adds IPs on ban, removes on unban. No bulk re-upload, no duplicates. **~1–3 ms per operation**.
+    Adds IPs on ban, removes on unban. No bulk re-upload, no duplicates. **~1–3
+    ms per operation**.
   </Card>
   <Card title="Self-Healing State" icon="sync">
-    On start or restart, syncs CrowdSec decisions with MikroTik state — adds missing, removes stale entries automatically.
+    On start or restart, syncs CrowdSec decisions with MikroTik state — adds
+    missing, removes stale entries automatically.
   </Card>
   <Card title="Full Observability" icon="line-chart">
-    Prometheus metrics, structured logging, health endpoint, and a ready-to-use Grafana dashboard.
+    Prometheus metrics, structured logging, health endpoint, and a ready-to-use
+    Grafana dashboard.
   </Card>
 </CardGrid>
 
@@ -67,19 +88,19 @@ import VersionBadge from '../../components/VersionBadge.astro';
 
 <div class="comparison-table">
 
-| Feature | funkolab <Badge text="archived" variant="danger" /> | nvtkaszpir-alt | **cs-routeros-bouncer** |
-|---------|:---:|:---:|:---:|
-| Auto-create firewall rules | ❌ | ❌ | ✅ |
-| Individual IP add/remove | ✅ | ❌ | ✅ |
-| No duplicate IPs | ✅ | ❌ | ✅ |
-| State reconciliation on restart | ❌ | ❌ | ✅ |
-| Remove rules on shutdown | ❌ | ❌ | ✅ |
-| IPv6 support | ✅ | ✅ | ✅ |
-| Output blocking | ❌ | ✅ | ✅ |
-| Origin filtering (local-only mode) | ❌ | ❌ | ✅ |
-| Prometheus metrics | ❌ | ✅ | ✅ |
-| Health endpoint | ❌ | ❌ | ✅ |
-| Go (compiled, low resource) | ❌ | ❌ | ✅ |
+| Feature                            | funkolab <Badge text="archived" variant="danger" /> | nvtkaszpir-alt | **cs-routeros-bouncer** |
+| ---------------------------------- | :-------------------------------------------------: | :------------: | :---------------------: |
+| Auto-create firewall rules         |                         ❌                          |       ❌       |           ✅            |
+| Individual IP add/remove           |                         ✅                          |       ❌       |           ✅            |
+| No duplicate IPs                   |                         ✅                          |       ❌       |           ✅            |
+| State reconciliation on restart    |                         ❌                          |       ❌       |           ✅            |
+| Remove rules on shutdown           |                         ❌                          |       ❌       |           ✅            |
+| IPv6 support                       |                         ✅                          |       ✅       |           ✅            |
+| Output blocking                    |                         ❌                          |       ✅       |           ✅            |
+| Origin filtering (local-only mode) |                         ❌                          |       ❌       |           ✅            |
+| Prometheus metrics                 |                         ❌                          |       ✅       |           ✅            |
+| Health endpoint                    |                         ❌                          |       ❌       |           ✅            |
+| Go (compiled, low resource)        |                         ❌                          |       ❌       |           ✅            |
 
 </div>
 

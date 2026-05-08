@@ -56,7 +56,7 @@ log()  { echo -e "${CYAN}[$(date +%H:%M:%S)]${NC} $*"; }
 # warn — warning message highlighted in yellow.
 warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
 # err — error message highlighted in red.
-err()  { echo -e "${RED}[ERROR]${NC} $*"; }
+err()  { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 
 # ─── Test framework ─────────────────────────────────────────────────────────
 # Minimal TAP-like test harness.  Each test is a callable (function or
@@ -185,6 +185,7 @@ require_var() {
 #                MIKROTIK_SSH_HOST.
 # shellcheck disable=SC2153
 ssh_cmd() {
+    local router_command="${1:-}"
     local ssh_key_opt=()
     local batch_opt=()
     if [[ -n "${MIKROTIK_SSH_KEY:-}" && -f "${MIKROTIK_SSH_KEY}" ]]; then
@@ -193,7 +194,7 @@ ssh_cmd() {
     fi
     ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no \
         "${batch_opt[@]}" "${ssh_key_opt[@]}" -p "${MIKROTIK_SSH_PORT}" \
-        "${MIKROTIK_SSH_USER}@${MIKROTIK_SSH_HOST}" "$1" 2>/dev/null | tr -d '\r'
+        "${MIKROTIK_SSH_USER}@${MIKROTIK_SSH_HOST}" "$router_command" 2>/dev/null | tr -d '\r'
 }
 
 # ssh_available — quick connectivity check; returns 0 if SSH to the router works.
@@ -217,6 +218,25 @@ ssh_count_addresses() {
     local count
     count=$(ssh_cmd "${path}/print count-only where list=$list" 2>/dev/null)
     echo "${count:-0}"
+}
+
+# ssh_address_exists — return 0 if an address exists in a RouterOS address-list.
+#
+# Uses RouterOS `print count-only` with an address filter so latency tests do
+# not repeatedly download large CAPI lists over SSH.
+#
+# Args:
+#   $1 — address-list name
+#   $2 — IP address or CIDR to look up
+ssh_address_exists() {
+    local list="$1" address="$2"
+    local path="/ip/firewall/address-list"
+    [[ "$list" == *"6-"* ]] && path="/ipv6/firewall/address-list"
+    local count
+    if ! count=$(ssh_cmd "${path}/print count-only where list=$list address=$address" 2>/dev/null); then
+        return 2
+    fi
+    [[ "${count:-0}" -gt 0 ]]
 }
 
 # ssh_list_addresses — list the IP/prefix values in a RouterOS address-list.
@@ -430,6 +450,62 @@ config_write() {
     cat > "$_BOUNCER_CONFIG"
 }
 
+config_get_crowdsec_origins_csv() {
+    python3 - "$_BOUNCER_CONFIG" 2>/dev/null <<'PY'
+import sys
+
+config_path = sys.argv[1]
+try:
+    import yaml
+    with open(config_path, "r", encoding="utf-8") as config_file:
+        config = yaml.safe_load(config_file) or {}
+    origins = ((config.get("crowdsec") or {}).get("origins")) or ["crowdsec", "cscli"]
+    if isinstance(origins, str):
+        origins = [origin.strip() for origin in origins.split(",") if origin.strip()]
+    print(",".join(str(origin) for origin in origins))
+except Exception:
+    print("crowdsec,cscli")
+PY
+}
+
+config_get_crowdsec_origins_json() {
+    python3 - "$_BOUNCER_CONFIG" 2>/dev/null <<'PY'
+import json
+import sys
+
+config_path = sys.argv[1]
+try:
+    import yaml
+    with open(config_path, "r", encoding="utf-8") as config_file:
+        config = yaml.safe_load(config_file) or {}
+    origins = ((config.get("crowdsec") or {}).get("origins")) or ["crowdsec", "cscli"]
+    if isinstance(origins, str):
+        origins = [origin.strip() for origin in origins.split(",") if origin.strip()]
+    print(json.dumps([str(origin) for origin in origins]))
+except Exception:
+    print('["crowdsec", "cscli"]')
+PY
+}
+
+config_get_mikrotik_pool_size() {
+    python3 - "$_BOUNCER_CONFIG" 2>/dev/null <<'PY'
+import sys
+
+config_path = sys.argv[1]
+try:
+    import yaml
+    with open(config_path, "r", encoding="utf-8") as config_file:
+        config = yaml.safe_load(config_file) or {}
+    pool_val = (config.get("mikrotik") or {}).get("pool_size")
+    if pool_val is None:
+        print(4)
+    else:
+        print(int(pool_val))
+except Exception:
+    print(4)
+PY
+}
+
 # config_restart_and_wait — restart bouncer and wait for reconciliation.
 # Convenience wrapper for test functions.  Includes a brief pause before
 # the restart so that the recorded _BOUNCER_START_TS is safely after any
@@ -455,16 +531,22 @@ lapi_available() {
 
 # lapi_get_ips — return unique IP values of all active "ban" decisions.
 #
-# Filters decisions by origin (default: "crowdsec,cscli") to exclude CAPI
-# community blocklist entries unless explicitly requested.  Uses jq to parse
-# the JSON output from `cscli decisions list`.
+# Filters decisions by origin.  By default it reads crowdsec.origins from the
+# active bouncer config, so integrity tests compare against the same origins
+# that the service is actually synchronising.  Uses jq to parse the JSON output
+# from `cscli decisions list`.
 #
 # Args:
-#   $1 — (optional) comma-separated list of origins, default "crowdsec,cscli"
+#   $1 — (optional) comma-separated list of origins
 #
 # Returns (stdout): one IP/CIDR per line, sorted unique.
 lapi_get_ips() {
-    local origins="${1:-crowdsec,cscli}"
+    local origins
+    if [[ $# -gt 0 && -n "${1:-}" ]]; then
+        origins="$1"
+    else
+        origins=$(config_get_crowdsec_origins_csv)
+    fi
     cscli decisions list --all -o json 2>/dev/null \
         | jq -r --arg origins "$origins" '
             [.[] | select(.decisions != null) | .decisions[]
@@ -477,38 +559,50 @@ lapi_get_ips() {
 # Filters out any line containing ':' (i.e. IPv6 addresses).
 #
 # Args:
-#   $1 — (optional) comma-separated origins, default "crowdsec,cscli"
+#   $1 — (optional) comma-separated origins
 lapi_get_ipv4() {
-    lapi_get_ips "${1:-crowdsec,cscli}" | grep -v ':' || true
+    if [[ $# -gt 0 && -n "${1:-}" ]]; then
+        lapi_get_ips "$1" | grep -v ':' || true
+    else
+        lapi_get_ips | grep -v ':' || true
+    fi
 }
 
 # lapi_get_ipv6 — return only IPv6 addresses from active ban decisions.
 # Keeps only lines containing ':'.
 #
 # Args:
-#   $1 — (optional) comma-separated origins, default "crowdsec,cscli"
+#   $1 — (optional) comma-separated origins
 lapi_get_ipv6() {
-    lapi_get_ips "${1:-crowdsec,cscli}" | grep ':' || true
+    if [[ $# -gt 0 && -n "${1:-}" ]]; then
+        lapi_get_ips "$1" | grep ':' || true
+    else
+        lapi_get_ips | grep ':' || true
+    fi
 }
 
 # lapi_count — count active ban decisions (IPv4 + IPv6).
 #
 # Args:
-#   $1 — (optional) comma-separated origins, default "crowdsec,cscli"
+#   $1 — (optional) comma-separated origins
 #
 # Returns (stdout): integer count.
 lapi_count() {
-    lapi_get_ips "${1:-crowdsec,cscli}" | grep -c . || echo 0
+    if [[ $# -gt 0 && -n "${1:-}" ]]; then
+        lapi_get_ips "$1" | awk 'END { print NR }'
+    else
+        lapi_get_ips | awk 'END { print NR }'
+    fi
 }
 
 # lapi_count_all — count ALL active ban decisions including CAPI (community) origin.
 lapi_count_all() {
-    lapi_get_ips "crowdsec,cscli,CAPI" | grep -c . || echo 0
+    lapi_get_ips "crowdsec,cscli,CAPI" | awk 'END { print NR }'
 }
 
 # lapi_ipv6_count_all — count ALL active IPv6 ban decisions including CAPI origin.
 lapi_ipv6_count_all() {
-    lapi_get_ipv6 "crowdsec,cscli,CAPI" | grep -c . || echo 0
+    lapi_get_ipv6 "crowdsec,cscli,CAPI" | awk 'END { print NR }'
 }
 
 # lapi_add_decision — create a new ban decision in CrowdSec LAPI.
@@ -591,9 +685,11 @@ bouncer_wait_reconciliation() {
     local timeout="${1:-120}"
     local since="${_BOUNCER_START_TS:-30s ago}"
     local start; start=$(date +%s)
+    local marker_pattern="reconciliation complete|reconciliation finished|initial sync complete"
     while true; do
-        if journalctl -u cs-routeros-bouncer --since "$since" --no-pager 2>/dev/null \
-            | grep -q "reconciliation complete\|reconciliation finished\|initial sync complete"; then
+        local marker
+        marker=$(journalctl -u cs-routeros-bouncer --since "$since" --no-pager --grep "$marker_pattern" -n 1 -q 2>/dev/null || true)
+        if [[ -n "$marker" ]]; then
             return 0
         fi
         if (( $(date +%s) - start > timeout )); then
@@ -688,12 +784,15 @@ snmp_cpu_avg() {
 #
 # Returns (stdout): "avg max" — two space-separated integers (percentages).
 query_cpu() {
-    local samples="${1:-6}" interval="${2:-5}"
+    local samples="${1:-6}"
+    local interval="${2:-5}"
     local sum=0 max_val=0 current
     for _ in $(seq 1 "$samples"); do
         current=$(snmp_cpu_avg)
         sum=$((sum + current))
-        (( current > max_val )) && max_val=$current
+        if (( current > max_val )); then
+            max_val=$current
+        fi
         sleep "$interval"
     done
     local avg=$((sum / samples))

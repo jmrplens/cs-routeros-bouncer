@@ -1,6 +1,3 @@
-// conn_iface.go defines the low-level RouterOS connection interface.
-// By depending on this interface instead of the concrete *routeros.Client,
-// all Client methods become unit-testable with a mock connection.
 package routeros
 
 import (
@@ -8,7 +5,10 @@ import (
 )
 
 // RouterConn abstracts the low-level RouterOS API connection.
-// The concrete implementation is *routeros.Client from go-routeros.
+//
+// By depending on this interface instead of the concrete *routeros.Client, all
+// [Client] methods remain unit-testable with a mock connection. The concrete
+// production implementation is *routeros.Client from go-routeros.
 type RouterConn interface {
 	// RunArgs sends a command sentence and waits for the reply.
 	RunArgs(args []string) (*routeros.Reply, error)

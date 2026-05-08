@@ -1,8 +1,11 @@
 package config
 
 import (
+	"errors"
 	"fmt"
+	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -15,6 +18,8 @@ var (
 	Commit    = "unknown"
 	BuildDate = "unknown"
 )
+
+var bracedEnvPlaceholder = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
 // Config holds the complete bouncer configuration.
 type Config struct {
@@ -264,6 +269,7 @@ func Load(configPath string) (*Config, error) {
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshaling config: %w", err)
 	}
+	expandConfigEnv(&cfg)
 
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("validating config: %w", err)
@@ -272,37 +278,158 @@ func Load(configPath string) (*Config, error) {
 	return &cfg, nil
 }
 
+// expandConfigEnv resolves ${VAR} placeholders in string-based configuration
+// values after Viper has merged YAML, defaults, and direct environment overrides.
+func expandConfigEnv(cfg *Config) {
+	cfg.CrowdSec.APIURL = expandConfigValue(cfg.CrowdSec.APIURL, "CROWDSEC_URL")
+	cfg.CrowdSec.APIKey = expandConfigValue(cfg.CrowdSec.APIKey, "CROWDSEC_BOUNCER_API_KEY")
+	cfg.CrowdSec.CertPath = expandConfigValue(cfg.CrowdSec.CertPath, "CROWDSEC_CERT_PATH")
+	cfg.CrowdSec.KeyPath = expandConfigValue(cfg.CrowdSec.KeyPath, "CROWDSEC_KEY_PATH")
+	cfg.CrowdSec.CACertPath = expandConfigValue(cfg.CrowdSec.CACertPath, "CROWDSEC_CA_CERT_PATH")
+	cfg.CrowdSec.Origins = expandEnvSlice(cfg.CrowdSec.Origins, "CROWDSEC_ORIGINS")
+	cfg.CrowdSec.Scopes = expandEnvSlice(cfg.CrowdSec.Scopes, "CROWDSEC_SCOPES")
+	cfg.CrowdSec.ScenariosContaining = expandEnvSlice(cfg.CrowdSec.ScenariosContaining, "CROWDSEC_SCENARIOS_CONTAINING")
+	cfg.CrowdSec.ScenariosNotContaining = expandEnvSlice(cfg.CrowdSec.ScenariosNotContaining, "CROWDSEC_SCENARIOS_NOT_CONTAINING")
+	cfg.CrowdSec.SupportedDecisionTypes = expandEnvSlice(cfg.CrowdSec.SupportedDecisionTypes, "CROWDSEC_DECISIONS_TYPES")
+
+	cfg.MikroTik.Address = expandConfigValue(cfg.MikroTik.Address, "MIKROTIK_HOST")
+	cfg.MikroTik.Username = expandConfigValue(cfg.MikroTik.Username, "MIKROTIK_USER")
+	cfg.MikroTik.Password = expandConfigValue(cfg.MikroTik.Password, "MIKROTIK_PASS")
+
+	cfg.Firewall.IPv4.AddressList = expandConfigValue(cfg.Firewall.IPv4.AddressList, "FIREWALL_IPV4_ADDRESS_LIST")
+	cfg.Firewall.IPv6.AddressList = expandConfigValue(cfg.Firewall.IPv6.AddressList, "FIREWALL_IPV6_ADDRESS_LIST")
+	cfg.Firewall.Filter.Chains = expandEnvSlice(cfg.Firewall.Filter.Chains, "FIREWALL_FILTER_CHAINS")
+	cfg.Firewall.Filter.LogPrefix = expandConfigValue(cfg.Firewall.Filter.LogPrefix, "FIREWALL_FILTER_LOG_PREFIX")
+	cfg.Firewall.Filter.ConnectionState = expandConfigValue(cfg.Firewall.Filter.ConnectionState, "FIREWALL_FILTER_CONNECTION_STATE")
+	cfg.Firewall.Raw.Chains = expandEnvSlice(cfg.Firewall.Raw.Chains, "FIREWALL_RAW_CHAINS")
+	cfg.Firewall.Raw.LogPrefix = expandConfigValue(cfg.Firewall.Raw.LogPrefix, "FIREWALL_RAW_LOG_PREFIX")
+	cfg.Firewall.DenyAction = expandConfigValue(cfg.Firewall.DenyAction, "FIREWALL_DENY_ACTION")
+	cfg.Firewall.RejectWith = expandConfigValue(cfg.Firewall.RejectWith, "FIREWALL_REJECT_WITH")
+	cfg.Firewall.BlockInput.Interface = expandConfigValue(cfg.Firewall.BlockInput.Interface, "FIREWALL_INPUT_INTERFACE")
+	cfg.Firewall.BlockInput.InterfaceList = expandConfigValue(cfg.Firewall.BlockInput.InterfaceList, "FIREWALL_INPUT_INTERFACE_LIST")
+	cfg.Firewall.BlockInput.Whitelist = expandConfigValue(cfg.Firewall.BlockInput.Whitelist, "FIREWALL_INPUT_WHITELIST")
+	cfg.Firewall.BlockOutput.Interface = expandConfigValue(cfg.Firewall.BlockOutput.Interface, "FIREWALL_OUTPUT_INTERFACE")
+	cfg.Firewall.BlockOutput.InterfaceList = expandConfigValue(cfg.Firewall.BlockOutput.InterfaceList, "FIREWALL_OUTPUT_INTERFACE_LIST")
+	cfg.Firewall.BlockOutput.LogPrefix = expandConfigValue(cfg.Firewall.BlockOutput.LogPrefix, "FIREWALL_OUTPUT_LOG_PREFIX")
+	cfg.Firewall.BlockOutput.PassthroughV4 = expandConfigValue(cfg.Firewall.BlockOutput.PassthroughV4, "FIREWALL_OUTPUT_PASSTHROUGH_V4")
+	cfg.Firewall.BlockOutput.PassthroughV4List = expandConfigValue(cfg.Firewall.BlockOutput.PassthroughV4List, "FIREWALL_OUTPUT_PASSTHROUGH_V4_LIST")
+	cfg.Firewall.BlockOutput.PassthroughV6 = expandConfigValue(cfg.Firewall.BlockOutput.PassthroughV6, "FIREWALL_OUTPUT_PASSTHROUGH_V6")
+	cfg.Firewall.BlockOutput.PassthroughV6List = expandConfigValue(cfg.Firewall.BlockOutput.PassthroughV6List, "FIREWALL_OUTPUT_PASSTHROUGH_V6_LIST")
+	cfg.Firewall.RulePlacement = expandConfigValue(cfg.Firewall.RulePlacement, "FIREWALL_RULE_PLACEMENT")
+	cfg.Firewall.CommentPrefix = expandConfigValue(cfg.Firewall.CommentPrefix, "FIREWALL_COMMENT_PREFIX")
+	cfg.Firewall.LogPrefix = expandConfigValue(cfg.Firewall.LogPrefix, "FIREWALL_LOG_PREFIX")
+
+	cfg.Logging.Level = expandConfigValue(cfg.Logging.Level, "LOG_LEVEL")
+	cfg.Logging.Format = expandConfigValue(cfg.Logging.Format, "LOG_FORMAT")
+	cfg.Logging.File = expandConfigValue(cfg.Logging.File, "LOG_FILE")
+	cfg.Metrics.ListenAddr = expandConfigValue(cfg.Metrics.ListenAddr, "METRICS_ADDR")
+}
+
+func expandConfigValue(value, envName string) string {
+	if envName != "" && envHasValue(envName) {
+		return value
+	}
+	return expandBracedEnv(value)
+}
+
+func envHasValue(envName string) bool {
+	value, ok := os.LookupEnv(envName)
+	return ok && value != ""
+}
+
+// expandBracedEnv expands explicit ${VAR} placeholders while preserving bare
+// dollar signs that commonly appear in secrets and RouterOS values.
+func expandBracedEnv(value string) string {
+	return bracedEnvPlaceholder.ReplaceAllStringFunc(value, func(match string) string {
+		name := match[2 : len(match)-1]
+		return os.Getenv(name)
+	})
+}
+
+// expandEnvSlice applies expandBracedEnv to each item in a configuration slice.
+func expandEnvSlice(values []string, envName string) []string {
+	if envName != "" && envHasValue(envName) {
+		return values
+	}
+	for i, value := range values {
+		values[i] = expandBracedEnv(value)
+	}
+	return values
+}
+
 // Validate checks that all required configuration fields are set.
 func (c *Config) Validate() error {
+	if err := c.validateCrowdSec(); err != nil {
+		return err
+	}
+	if err := c.validateMikroTik(); err != nil {
+		return err
+	}
+	if err := c.validateFirewall(); err != nil {
+		return err
+	}
+	return c.validateIntervals()
+}
+
+// validateCrowdSec checks the required LAPI URL and bouncer API key settings.
+func (c *Config) validateCrowdSec() error {
 	if c.CrowdSec.APIKey == "" {
-		return fmt.Errorf("crowdsec.api_key is required")
+		return errors.New("crowdsec.api_key is required")
 	}
 	if c.CrowdSec.APIURL == "" {
-		return fmt.Errorf("crowdsec.api_url is required")
+		return errors.New("crowdsec.api_url is required")
 	}
+	parsedAPIURL, err := url.ParseRequestURI(c.CrowdSec.APIURL)
+	if err != nil {
+		return fmt.Errorf("crowdsec.api_url is invalid: %w", err)
+	}
+	if parsedAPIURL.Scheme == "" || parsedAPIURL.Host == "" {
+		return fmt.Errorf("crowdsec.api_url must include scheme and host, got %q", c.CrowdSec.APIURL)
+	}
+	return nil
+}
+
+// validateMikroTik checks RouterOS connection credentials and pool bounds.
+func (c *Config) validateMikroTik() error {
 	if c.MikroTik.Address == "" {
-		return fmt.Errorf("mikrotik.address is required")
+		return errors.New("mikrotik.address is required")
 	}
 	if c.MikroTik.Username == "" {
-		return fmt.Errorf("mikrotik.username is required")
+		return errors.New("mikrotik.username is required")
 	}
 	if c.MikroTik.Password == "" {
-		return fmt.Errorf("mikrotik.password is required")
+		return errors.New("mikrotik.password is required")
 	}
 	if c.MikroTik.PoolSize < 1 || c.MikroTik.PoolSize > 20 {
 		return fmt.Errorf("mikrotik.pool_size must be between 1 and 20, got %d", c.MikroTik.PoolSize)
 	}
+	return nil
+}
+
+// validateFirewall checks protocol, table, action, and option compatibility.
+func (c *Config) validateFirewall() error {
 	if !c.Firewall.IPv4.Enabled && !c.Firewall.IPv6.Enabled {
-		return fmt.Errorf("at least one of firewall.ipv4 or firewall.ipv6 must be enabled")
+		return errors.New("at least one of firewall.ipv4 or firewall.ipv6 must be enabled")
 	}
 	if !c.Firewall.Filter.Enabled && !c.Firewall.Raw.Enabled {
-		return fmt.Errorf("at least one of firewall.filter or firewall.raw must be enabled")
+		return errors.New("at least one of firewall.filter or firewall.raw must be enabled")
 	}
 	if c.Firewall.DenyAction != "drop" && c.Firewall.DenyAction != "reject" {
 		return fmt.Errorf("firewall.deny_action must be 'drop' or 'reject', got '%s'", c.Firewall.DenyAction)
 	}
+	if err := c.validateRejectOptions(); err != nil {
+		return err
+	}
+	if err := c.validateFilterOptions(); err != nil {
+		return err
+	}
+	return c.validateBlockOutputOptions()
+}
+
+// validateRejectOptions checks reject-only firewall options and allowed reject reasons.
+func (c *Config) validateRejectOptions() error {
 	if c.Firewall.RejectWith != "" && c.Firewall.DenyAction != "reject" {
-		return fmt.Errorf("firewall.reject_with requires deny_action='reject'")
+		return errors.New("firewall.reject_with requires deny_action='reject'")
 	}
 	if c.Firewall.RejectWith != "" {
 		valid := map[string]bool{
@@ -319,31 +446,46 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("firewall.reject_with invalid value '%s'", c.Firewall.RejectWith)
 		}
 	}
+	return nil
+}
+
+// validateFilterOptions checks optional filter-table match settings.
+func (c *Config) validateFilterOptions() error {
 	if c.Firewall.Filter.ConnectionState != "" {
 		valid := map[string]bool{
 			"established": true, "related": true, "new": true,
 			"invalid": true, "untracked": true,
 		}
-		for _, s := range strings.Split(c.Firewall.Filter.ConnectionState, ",") {
+		for s := range strings.SplitSeq(c.Firewall.Filter.ConnectionState, ",") {
 			if !valid[strings.TrimSpace(s)] {
 				return fmt.Errorf("firewall.filter.connection_state invalid value '%s'", s)
 			}
 		}
 	}
+	return nil
+}
+
+// validateBlockOutputOptions ensures output blocking has a concrete interface target.
+func (c *Config) validateBlockOutputOptions() error {
 	if c.Firewall.BlockOutput.Enabled {
 		if c.Firewall.BlockOutput.Interface == "" && c.Firewall.BlockOutput.InterfaceList == "" {
-			return fmt.Errorf("firewall.block_output requires interface or interface_list when enabled")
+			return errors.New("firewall.block_output requires interface or interface_list when enabled")
 		}
 	}
+	return nil
+}
+
+// validateIntervals enforces minimum values for periodic background work.
+func (c *Config) validateIntervals() error {
 	if c.CrowdSec.ReconciliationInterval < 0 {
-		return fmt.Errorf("crowdsec.reconciliation_interval must be >= 0 (0 disables)")
+		return errors.New("crowdsec.reconciliation_interval must be >= 0 (0 disables)")
 	}
 	if c.CrowdSec.ReconciliationInterval > 0 && c.CrowdSec.ReconciliationInterval < time.Minute {
-		return fmt.Errorf("crowdsec.reconciliation_interval must be >= 1m (0 disables)")
+		return errors.New("crowdsec.reconciliation_interval must be >= 1m (0 disables)")
 	}
 
 	if c.Metrics.RouterOSPollInterval < 0 {
-		return fmt.Errorf("metrics.routeros_poll_interval must be >= 0 (0 disables)")
+		return errors.New("metrics.routeros_poll_interval must be >= 0 (0 disables)")
 	}
 
 	return nil

@@ -20,6 +20,7 @@
 package manager
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"sync"
@@ -27,10 +28,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
+
 	"github.com/jmrplens/cs-routeros-bouncer/internal/config"
 	"github.com/jmrplens/cs-routeros-bouncer/internal/crowdsec"
 	ros "github.com/jmrplens/cs-routeros-bouncer/internal/routeros"
-	"github.com/rs/zerolog"
 )
 
 // ---------------------------------------------------------------------------
@@ -42,7 +44,7 @@ import (
 // mock is safe for concurrent use (e.g. reconcileAddresses iterates protos
 // sequentially but could be extended to parallel in the future).
 type mockROS struct {
-	mu sync.Mutex
+	mu sync.RWMutex
 
 	// Return values — set these before calling the method under test.
 	connectErr       error
@@ -160,7 +162,11 @@ func (m *mockROS) Close() {
 
 // GetAPIMaxSessions implements RouterOSClient.GetAPIMaxSessions and returns the
 // configured maxSessions value.
-func (m *mockROS) GetAPIMaxSessions() int { return m.maxSessions }
+func (m *mockROS) GetAPIMaxSessions() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.maxSessions
+}
 
 // GetIdentity implements RouterOSClient.GetIdentity and returns the configured
 // identity name and error.
@@ -1075,7 +1081,7 @@ func TestReconcileAddresses_Empty(t *testing.T) {
 	mock := &mockROS{listAddresses: []ros.AddressEntry{}}
 	mgr := newTestManager(mock, baseConfig())
 
-	mgr.reconcileAddresses(nil)
+	mgr.reconcileAddresses(context.Background(), nil)
 
 	if len(mock.bulkAddCalls) != 0 {
 		t.Error("expected no bulk add calls for nil decisions")
@@ -1096,7 +1102,7 @@ func TestReconcileAddresses_AddOnly(t *testing.T) {
 		{Proto: "ip", Value: "10.0.0.2", Duration: 3600 * time.Second, Origin: "cscli"},
 	}
 
-	mgr.reconcileAddresses(decisions)
+	mgr.reconcileAddresses(context.Background(), decisions)
 
 	if len(mock.bulkAddCalls) != 1 {
 		t.Fatalf("expected 1 BulkAddAddresses call for IPv4, got %d", len(mock.bulkAddCalls))
@@ -1119,7 +1125,7 @@ func TestReconcileAddresses_RemoveOnly(t *testing.T) {
 	cfg.Firewall.IPv6.Enabled = false
 	mgr := newTestManager(mock, cfg)
 
-	mgr.reconcileAddresses([]*crowdsec.Decision{})
+	mgr.reconcileAddresses(context.Background(), []*crowdsec.Decision{})
 
 	if len(mock.removeAddressCalls) != 1 {
 		t.Fatalf("expected 1 RemoveAddress call, got %d", len(mock.removeAddressCalls))
@@ -1135,7 +1141,7 @@ func TestReconcileAddresses_ListError(t *testing.T) {
 	mock := &mockROS{listAddressesErr: errors.New("connection reset")}
 	mgr := newTestManager(mock, baseConfig())
 
-	mgr.reconcileAddresses([]*crowdsec.Decision{
+	mgr.reconcileAddresses(context.Background(), []*crowdsec.Decision{
 		{Proto: "ip", Value: "10.0.0.1"},
 	})
 
@@ -1164,7 +1170,7 @@ func TestReconcileAddresses_MixedAddRemove(t *testing.T) {
 		{Proto: "ip", Value: "10.0.0.2", Origin: "cscli"}, // New → add
 	}
 
-	mgr.reconcileAddresses(decisions)
+	mgr.reconcileAddresses(context.Background(), decisions)
 
 	if len(mock.bulkAddCalls) != 1 {
 		t.Fatalf("expected 1 BulkAdd call, got %d", len(mock.bulkAddCalls))
@@ -1196,7 +1202,7 @@ func TestReconcileAddresses_PopulatesCache(t *testing.T) {
 		{Proto: "ip", Value: "10.0.0.2", Origin: "cscli"},
 	}
 
-	mgr.reconcileAddresses(decisions)
+	mgr.reconcileAddresses(context.Background(), decisions)
 
 	mgr.cacheMu.RLock()
 	_, has1 := mgr.addressCache["10.0.0.1"]
@@ -1227,7 +1233,7 @@ func TestReconcileAddresses_PurgesStaleCacheEntries(t *testing.T) {
 	mgr.addressCache["10.0.0.99"] = struct{}{}
 	mgr.cacheMu.Unlock()
 
-	mgr.reconcileAddresses([]*crowdsec.Decision{
+	mgr.reconcileAddresses(context.Background(), []*crowdsec.Decision{
 		{Proto: "ip", Value: "10.0.0.1", Origin: "cscli"},
 	})
 
@@ -1491,7 +1497,7 @@ func TestCreateFirewallRules_LogPrefixGlobal(t *testing.T) {
 // TestCreateFirewallRules_LogPrefixPerType verifies that per-type log_prefix
 // overrides (filter, raw, output) take precedence over the global log_prefix
 // for their respective rule types.
-func TestCreateFirewallRules_LogPrefixPerType(t *testing.T) {
+func TestCreateFirewallRules_LogPrefixPerType(t *testing.T) { // NOSONAR: scenario assertions intentionally stay together.
 	mock := &mockROS{addRuleID: "*R1"}
 	cfg := baseConfig()
 	cfg.Firewall.LogPrefix = "global"
@@ -1655,7 +1661,7 @@ func TestCreateFirewallRules_RejectWithNotOnAccept(t *testing.T) {
 // TestCreateFirewallRules_RawForcesDropOnReject verifies that raw rules always
 // use action=drop even when DenyAction is "reject", because the RouterOS raw
 // table does not support the reject action or reject-with parameter.
-func TestCreateFirewallRules_RawForcesDropOnReject(t *testing.T) {
+func TestCreateFirewallRules_RawForcesDropOnReject(t *testing.T) { // NOSONAR: scenario assertions intentionally stay together.
 	mock := &mockROS{addRuleID: "*R1"}
 	cfg := baseConfig()
 	cfg.Firewall.DenyAction = "reject"
@@ -1690,7 +1696,7 @@ func TestCreateFirewallRules_RawForcesDropOnReject(t *testing.T) {
 // TestCreateFirewallRules_FilterRejectRawDrop verifies that when both filter
 // and raw are enabled with deny_action=reject, filter rules use reject while
 // raw rules are forced to drop.
-func TestCreateFirewallRules_FilterRejectRawDrop(t *testing.T) {
+func TestCreateFirewallRules_FilterRejectRawDrop(t *testing.T) { // NOSONAR: scenario assertions intentionally stay together.
 	mock := &mockROS{addRuleID: "*R1"}
 	cfg := baseConfig()
 	cfg.Firewall.DenyAction = "reject"
@@ -1784,7 +1790,7 @@ func TestResolveLogPrefix_Overrides(t *testing.T) {
 // connection-state, input whitelist, and output passthrough (IPv4 single IP and
 // IPv6 address list). It verifies the correct number of rules and spot-checks
 // key properties on whitelist, reject, and output rules.
-func TestCreateFirewallRules_AllFeaturesCombined(t *testing.T) {
+func TestCreateFirewallRules_AllFeaturesCombined(t *testing.T) { // NOSONAR: scenario assertions intentionally stay together.
 	mock := &mockROS{addRuleID: "*R1"}
 	cfg := baseConfig()
 	cfg.Firewall.DenyAction = "reject"

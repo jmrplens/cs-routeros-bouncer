@@ -1,23 +1,6 @@
 // Copyright (c) 2025 jmrplens
 // SPDX-License-Identifier: MIT
 
-// Package lapi provides CrowdSec LAPI usage metrics integration.
-// It uses the go-cs-bouncer MetricsProvider to periodically report
-// bouncer metrics to the CrowdSec LAPI /v1/usage-metrics endpoint.
-//
-// The provider sends three metric types per the CrowdSec bouncer spec:
-//   - active_decisions: current count of active decisions (by origin + ip_type)
-//   - dropped: bytes and packets blocked by drop/reject rules (delta, by ip_type)
-//   - processed: total bytes and packets through all bouncer rules (delta, by ip_type)
-//
-// The metricsUpdater callback runs on each tick and gathers data from:
-//   - metrics.GetActiveDecisionsByOrigin() for per-origin decision counts
-//   - metrics.GetActiveDecisionsByIPType() for per-protocol decision counts
-//   - metrics.GetAndResetDroppedDeltasByIPType() for per-ip_type firewall drop deltas
-//   - metrics.GetAndResetProcessedDeltas() for per-ip_type processed deltas
-//
-// An optional CounterCollector can be registered by the manager to refresh
-// firewall counters from MikroTik just before each LAPI push.
 package lapi
 
 import (
@@ -33,6 +16,7 @@ import (
 	"github.com/jmrplens/cs-routeros-bouncer/internal/metrics"
 )
 
+// bouncerType is the remediation component name reported to CrowdSec LAPI.
 const bouncerType = "cs-routeros-bouncer"
 
 // CounterCollector is called before each metrics push to refresh firewall

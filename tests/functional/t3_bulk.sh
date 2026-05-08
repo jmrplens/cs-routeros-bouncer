@@ -139,7 +139,7 @@ t3_3_orphan_removal() {
 
     sleep 5
     # Verify the orphan was removed
-    if ssh_list_addresses "${TEST_IPV4_LIST}" | grep -qF "$fake_ip"; then
+    if ssh_address_exists "${TEST_IPV4_LIST}" "$fake_ip"; then
         echo "FAIL: orphan $fake_ip still on router after reconciliation"
         return 1
     fi
@@ -202,11 +202,18 @@ t3_6_batch_remove() {
     # Verify at least some arrived
     local on_router=0
     for ip in "${test_ips[@]}"; do
-        if ssh_list_addresses "${TEST_IPV4_LIST}" | grep -qF "$ip"; then
+        if ssh_address_exists "${TEST_IPV4_LIST}" "$ip"; then
             on_router=$((on_router + 1))
         fi
     done
     log "$on_router/${#test_ips[@]} test IPs on router"
+    if (( on_router == 0 )); then
+        for ip in "${test_ips[@]}"; do
+            lapi_remove_decision "$ip"
+        done
+        echo "FAIL: no batch-remove test IPs reached the router"
+        return 1
+    fi
 
     # Remove from LAPI
     for ip in "${test_ips[@]}"; do
@@ -217,7 +224,7 @@ t3_6_batch_remove() {
     # Verify removal
     local remaining=0
     for ip in "${test_ips[@]}"; do
-        if ssh_list_addresses "${TEST_IPV4_LIST}" | grep -qF "$ip"; then
+        if ssh_address_exists "${TEST_IPV4_LIST}" "$ip"; then
             remaining=$((remaining + 1))
         fi
     done

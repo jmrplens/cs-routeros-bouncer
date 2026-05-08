@@ -30,6 +30,7 @@ TEST_IP_EXPIRE="198.51.100.2"
 _cleanup_test_ips() {
     lapi_remove_decision "$TEST_IP_BAN"
     lapi_remove_decision "$TEST_IP_EXPIRE"
+    return 0
 }
 
 # T2.1 — Metrics vs router count.
@@ -74,7 +75,7 @@ t2_2_live_ban() {
     local found=false
     for i in $(seq 1 12); do
         sleep 5
-        if ssh_list_addresses "${TEST_IPV4_LIST}" | grep -qF "$TEST_IP_BAN"; then
+        if ssh_address_exists "${TEST_IPV4_LIST}" "$TEST_IP_BAN"; then
             found=true; break
         fi
     done
@@ -95,18 +96,41 @@ t2_3_live_unban() {
     bouncer_running || skip_test "bouncer not running"
 
     # Ensure the test IP from T2.2 is present
-    if ! ssh_list_addresses "${TEST_IPV4_LIST}" | grep -qF "$TEST_IP_BAN"; then
-        skip_test "$TEST_IP_BAN not on router (T2.2 may have been skipped)"
+    local present=false rc=1
+    for i in $(seq 1 3); do
+        if ssh_address_exists "${TEST_IPV4_LIST}" "$TEST_IP_BAN"; then
+            present=true
+            break
+        fi
+        rc=$?
+        if (( rc == 2 )); then
+            warn "SSH check failed for $TEST_IP_BAN (attempt $i/3)"
+        fi
+        sleep 2
+    done
+    if ! $present; then
+        if (( rc == 1 )); then
+            skip_test "$TEST_IP_BAN not on router (T2.2 may have been skipped)"
+        fi
+        echo "FAIL: could not verify $TEST_IP_BAN on router after SSH retries"
+        return 1
     fi
 
     lapi_remove_decision "$TEST_IP_BAN"
     log "Removed $TEST_IP_BAN, waiting for bouncer poll..."
 
-    local removed=false
+    local removed=false rc
     for i in $(seq 1 12); do
         sleep 5
-        if ! ssh_list_addresses "${TEST_IPV4_LIST}" | grep -qF "$TEST_IP_BAN"; then
-            removed=true; break
+        ssh_address_exists "${TEST_IPV4_LIST}" "$TEST_IP_BAN"
+        rc=$?
+        if (( rc == 1 )); then
+            removed=true
+            break
+        fi
+        if (( rc == 2 )); then
+            warn "SSH check failed while waiting for $TEST_IP_BAN removal (attempt $i/12)"
+            continue
         fi
     done
 
@@ -133,7 +157,7 @@ t2_4_expired_resilience() {
 
     local _found=false
     for _ in $(seq 1 8); do
-        if ssh_list_addresses "${TEST_IPV4_LIST}" | grep -qF "$TEST_IP_EXPIRE" 2>/dev/null; then
+        if ssh_address_exists "${TEST_IPV4_LIST}" "$TEST_IP_EXPIRE" 2>/dev/null; then
             _found=true; break
         fi
         sleep 5

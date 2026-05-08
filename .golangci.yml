@@ -1,51 +1,152 @@
+# golangci-lint v2 configuration for cs-routeros-bouncer.
+# Run: golangci-lint run ./cmd/... ./internal/...
+
 version: "2"
 
-run:
-  timeout: 5m
+issues:
+  max-same-issues: 50
 
-formatters:
-  enable:
-    - gofmt
-    - goimports
+run:
+  go: "1.26"
+  timeout: 10m
+  tests: true
 
 linters:
+  default: none
   enable:
-    - errcheck
+    # Bug detection
     - govet
-    - ineffassign
     - staticcheck
-    - unused
-    - misspell
-    - unconvert
-    - gocritic
-    - revive
+    - errcheck
+    - ineffassign
     - bodyclose
     - noctx
+    - durationcheck
+    - nilerr
+    - nilnesserr
+    - nilnil
+    - errname
+    - errorlint
+    - fatcontext
+    - reassign
+
+    # Security
     - gosec
+
+    # Code quality
+    - revive
+    - gocritic
+    - unconvert
+    - unparam
+    - unused
+    - wastedassign
+    - predeclared
+    - recvcheck
+    - asciicheck
+    - nolintlint
+    - whitespace
+
+    # Style and modernization
+    - misspell
+    - usestdlibvars
+    - intrange
+    - modernize
+    - usetesting
+
+    # Performance
+    - perfsprint
     - prealloc
+
+    # Defensive checks
+    - bidichk
+    - copyloopvar
+    - exptostd
+    - iotamixing
+    - loggercheck
+    - makezero
+    - mirror
+    - nakedret
+    - nosprintfhostport
+    - testableexamples
+
+    # Tests
+    - goprintffuncname
+    - tparallel
+    - thelper
+    - contextcheck
+    - errchkjson
+
   settings:
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+      settings:
+        shadow:
+          strict: true
+
+    staticcheck:
+      checks:
+        - "all"
+        - "-ST1000"
+        - "-ST1016"
+        - "-QF1008"
+
+    errcheck:
+      check-type-assertions: true
+      check-blank: false
+
+    gosec:
+      excludes:
+        - G104
+        - G304
+      config:
+        global:
+          audit: "false"
+
     revive:
+      severity: warning
+      enable-all-rules: false
+      enable-default-rules: true
       rules:
         - name: blank-imports
         - name: context-as-argument
+        - name: context-keys-type
         - name: dot-imports
         - name: error-return
         - name: error-strings
+        - name: error-naming
         - name: exported
+          arguments:
+            - "checkPublicInterface"
         - name: increment-decrement
+        - name: indent-error-flow
         - name: var-naming
-          disabled: true
+        - name: var-declaration
         - name: range
         - name: receiver-naming
         - name: time-naming
         - name: unexported-return
-        - name: indent-error-flow
         - name: errorf
-    gosec:
-      excludes:
-        - G104
-        - G101
-        - G117
+        - name: empty-block
+        - name: superfluous-else
+        - name: unreachable-code
+        - name: redefines-builtin-id
+        - name: struct-tag
+        - name: unused-parameter
+        - name: unnecessary-stmt
+
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+        - style
+      disabled-checks:
+        - hugeParam
+        - rangeValCopy
+        - ifElseChain
+        - sloppyReassign
+
     misspell:
       locale: US
       extra-words:
@@ -54,12 +155,56 @@ linters:
         - typo: ROUTEROS
           correction: ROUTEROS
 
-issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - gosec
-        - errcheck
-    - linters:
-        - prealloc
-      path: internal/routeros/
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+
+    usetesting:
+      os-temp-dir: true
+
+    perfsprint:
+      int-conversion: true
+      err-error: true
+      errorf: true
+      sprintf1: true
+      strconcat: false
+
+  exclusions:
+    warn-unused: true
+    presets:
+      - comments
+      - std-error-handling
+      - common-false-positives
+    rules:
+      - path: "_test\\.go"
+        linters:
+          - errcheck
+          - gosec
+          - bodyclose
+          - gocritic
+          - revive
+          - unparam
+          - perfsprint
+          - noctx
+          - wastedassign
+          - fatcontext
+          - nilnil
+
+output:
+  formats:
+    text:
+      path: stdout
+  sort-order:
+    - linter
+    - severity
+    - file
+  show-stats: false
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/jmrplens/cs-routeros-bouncer

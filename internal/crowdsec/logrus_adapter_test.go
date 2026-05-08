@@ -96,6 +96,72 @@ func TestLogrusAdapterInfo(t *testing.T) {
 	}
 }
 
+// TestLogrusAdapterInfoMultiArgFormatting verifies logrus-style formatting for
+// multi-argument Info calls.
+func TestLogrusAdapterInfoMultiArgFormatting(t *testing.T) {
+	tests := []struct {
+		name     string
+		args     []any
+		expected string
+	}{
+		{name: "single arg", args: []any{"info message"}, expected: "info message"},
+		{name: "multiple args", args: []any{"count=", 2}, expected: "count=2"},
+		{name: "mixed types", args: []any{"status ", 200, " ok"}, expected: "status 200 ok"},
+		{name: "empty and zero", args: []any{"", 0}, expected: "0"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			zl := zerolog.New(&buf).Level(zerolog.InfoLevel)
+			adapter := NewLogrusAdapter(zl)
+
+			adapter.Info(tt.args...)
+			if output := buf.String(); !strings.Contains(output, tt.expected) {
+				t.Errorf("expected %q in output, got: %s", tt.expected, output)
+			}
+		})
+	}
+}
+
+// TestLogrusAdapterPrintlnTrimming verifies that Println output does not keep
+// the trailing newline added by fmt.Sprintln.
+func TestLogrusAdapterPrintlnTrimming(t *testing.T) {
+	tests := []struct {
+		name            string
+		args            []string
+		wantContains    string
+		wantNotContains string
+	}{
+		{name: "single argument", args: []string{"hello"}, wantContains: "hello", wantNotContains: "hello\\n"},
+		{name: "multiple arguments", args: []string{"hello", "world"}, wantContains: "hello world", wantNotContains: "hello world\\n"},
+		{name: "empty string", args: []string{""}, wantContains: `"level":"info"`, wantNotContains: "\\n"},
+		{name: "trailing newline input", args: []string{"hello\n"}, wantContains: "hello", wantNotContains: "hello\\n\\n"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			zl := zerolog.New(&buf).Level(zerolog.InfoLevel)
+			adapter := NewLogrusAdapter(zl)
+
+			stringArgs := make([]any, len(tt.args))
+			for i, arg := range tt.args {
+				stringArgs[i] = arg
+			}
+
+			adapter.Println(stringArgs...)
+			output := buf.String()
+			if !strings.Contains(output, tt.wantContains) {
+				t.Errorf("expected %q in output, got: %s", tt.wantContains, output)
+			}
+			if strings.Contains(output, tt.wantNotContains) {
+				t.Errorf("expected output not to contain %q, got: %s", tt.wantNotContains, output)
+			}
+		})
+	}
+}
+
 // TestLogrusAdapterWarningf verifies the Warningf alias for Warnf.
 func TestLogrusAdapterWarningf(t *testing.T) {
 	var buf bytes.Buffer
@@ -165,6 +231,52 @@ func TestLogrusAdapterWithField(t *testing.T) {
 	}
 }
 
+// TestLogrusAdapterWithFieldDebugPreservesLevel verifies that logrus entries
+// created from the adapter keep their log level and fields when forwarded.
+func TestLogrusAdapterWithFieldDebugPreservesLevel(t *testing.T) {
+	tests := []struct {
+		name            string
+		level           string
+		fields          logrus.Fields
+		message         string
+		expectedStrings []string
+	}{
+		{name: "debug single field", level: "debug", fields: logrus.Fields{"key": "value"}, message: "debug with field", expectedStrings: []string{`"level":"debug"`, `"key":"value"`, "debug with field"}},
+		{name: "info multiple fields", level: "info", fields: logrus.Fields{"user": "crowdsec", "count": 2}, message: "info with fields", expectedStrings: []string{`"level":"info"`, `"user":"crowdsec"`, `"count":2`, "info with fields"}},
+		{name: "warn bool field", level: "warn", fields: logrus.Fields{"enabled": true}, message: "warn with fields", expectedStrings: []string{`"level":"warn"`, `"enabled":true`, "warn with fields"}},
+		{name: "error string field", level: "error", fields: logrus.Fields{"component": "stream"}, message: "error with fields", expectedStrings: []string{`"level":"error"`, `"component":"stream"`, "error with fields"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			zl := zerolog.New(&buf).Level(zerolog.DebugLevel)
+			adapter := NewLogrusAdapter(zl)
+			entry := adapter.WithFields(tt.fields)
+
+			switch tt.level {
+			case "debug":
+				entry.Debug(tt.message)
+			case "info":
+				entry.Info(tt.message)
+			case "warn":
+				entry.Warn(tt.message)
+			case "error":
+				entry.Error(tt.message)
+			default:
+				t.Fatalf("unsupported level %q", tt.level)
+			}
+
+			output := buf.String()
+			for _, expected := range tt.expectedStrings {
+				if !strings.Contains(output, expected) {
+					t.Errorf("expected %q in output, got: %s", expected, output)
+				}
+			}
+		})
+	}
+}
+
 // TestLogrusAdapterWithFields verifies that WithFields returns a logrus.Entry.
 func TestLogrusAdapterWithFields(t *testing.T) {
 	zl := zerolog.New(zerolog.NewTestWriter(t))
@@ -226,24 +338,6 @@ func TestLogrusAdapterLnVariants(t *testing.T) {
 	adapter.Println("println msg")
 	if !strings.Contains(buf.String(), "println msg") {
 		t.Error("Println output missing")
-	}
-}
-
-// TestZerologWriterWrite verifies the zerologWriter routes bytes to zerolog.
-func TestZerologWriterWrite(t *testing.T) {
-	var buf bytes.Buffer
-	zl := zerolog.New(&buf).Level(zerolog.InfoLevel)
-	w := zerologWriter{zl: zl}
-
-	n, err := w.Write([]byte("test write"))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if n != 10 {
-		t.Errorf("expected n=10, got %d", n)
-	}
-	if !strings.Contains(buf.String(), "test write") {
-		t.Errorf("expected 'test write' in output, got: %s", buf.String())
 	}
 }
 
@@ -342,6 +436,32 @@ func TestLogrusAdapterPanicln(t *testing.T) {
 		}
 	}()
 	adapter.Panicln("panicln msg")
+}
+
+// TestLogrusToZerologLevel verifies every logrus level maps to the expected zerolog level.
+func TestLogrusToZerologLevel(t *testing.T) {
+	tests := []struct {
+		name  string
+		level logrus.Level
+		want  zerolog.Level
+	}{
+		{"panic", logrus.PanicLevel, zerolog.PanicLevel},
+		{"fatal", logrus.FatalLevel, zerolog.FatalLevel},
+		{"error", logrus.ErrorLevel, zerolog.ErrorLevel},
+		{"warn", logrus.WarnLevel, zerolog.WarnLevel},
+		{"info", logrus.InfoLevel, zerolog.InfoLevel},
+		{"debug", logrus.DebugLevel, zerolog.DebugLevel},
+		{"trace", logrus.TraceLevel, zerolog.TraceLevel},
+		{"default", logrus.Level(99), zerolog.InfoLevel},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := logrusToZerologLevel(tt.level); got != tt.want {
+				t.Fatalf("logrusToZerologLevel(%v) = %v, want %v", tt.level, got, tt.want)
+			}
+		})
+	}
 }
 
 // Note: Fatalf, Fatal, and Fatalln call zerolog.Fatal() which invokes os.Exit(1).

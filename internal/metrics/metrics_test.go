@@ -7,6 +7,7 @@ package metrics
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -173,8 +174,8 @@ func TestRecordReconciliation(t *testing.T) {
 // TestSetInfo verifies that SetInfo sets the bouncer info gauge with version
 // and identity labels.
 func TestSetInfo(t *testing.T) {
-	SetInfo("1.0.0", "myrouter")
-	if got := testutil.ToFloat64(bouncerInfo.WithLabelValues("1.0.0", "myrouter")); got != 1 {
+	SetInfo("1.4.0", "myrouter")
+	if got := testutil.ToFloat64(bouncerInfo.WithLabelValues("1.4.0", "myrouter")); got != 1 {
 		t.Errorf("expected 1, got %v", got)
 	}
 }
@@ -208,7 +209,7 @@ func TestHandleHealthEndpoint(t *testing.T) {
 		t.Errorf("expected Content-Type application/json, got %s", ct)
 	}
 
-	var body map[string]interface{}
+	var body map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatalf("failed to decode JSON: %v", err)
 	}
@@ -233,12 +234,52 @@ func TestHandleHealthDisconnected(t *testing.T) {
 	w := httptest.NewRecorder()
 	srv.handleHealth(w, req)
 
-	var body map[string]interface{}
+	var body map[string]any
 	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if body["routeros_connected"] != false {
 		t.Errorf("expected false, got %v", body["routeros_connected"])
+	}
+}
+
+// failingResponseWriter records writes while forcing body writes to fail.
+type failingResponseWriter struct {
+	header      http.Header
+	wroteHeader bool
+	wroteBody   bool
+}
+
+// Header implements http.ResponseWriter.Header.
+func (w *failingResponseWriter) Header() http.Header {
+	if w.header == nil {
+		w.header = http.Header{}
+	}
+	return w.header
+}
+
+// Write implements http.ResponseWriter.Write and always returns an error.
+func (w *failingResponseWriter) Write([]byte) (int, error) {
+	w.wroteBody = true
+	return 0, errors.New("write failed")
+}
+
+// WriteHeader implements http.ResponseWriter.WriteHeader and records the call.
+func (w *failingResponseWriter) WriteHeader(int) {
+	w.wroteHeader = true
+}
+
+// TestHandleHealthWriteError verifies write failures are logged without panicking.
+func TestHandleHealthWriteError(t *testing.T) {
+	srv := &Server{version: "test-v1"}
+	w := &failingResponseWriter{}
+	srv.handleHealth(w, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/health", nil))
+
+	if !w.wroteBody {
+		t.Fatal("expected health handler to attempt response write")
+	}
+	if w.wroteHeader {
+		t.Fatal("expected no explicit error header on response write failure")
 	}
 }
 
@@ -268,7 +309,7 @@ func TestSetConnectedUpdatesHealthEndpoint(t *testing.T) {
 	w := httptest.NewRecorder()
 	srv.handleHealth(w, req)
 
-	var body map[string]interface{}
+	var body map[string]any
 	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -280,7 +321,7 @@ func TestSetConnectedUpdatesHealthEndpoint(t *testing.T) {
 	req = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/health", nil)
 	w = httptest.NewRecorder()
 	srv.handleHealth(w, req)
-	body = map[string]interface{}{}
+	body = map[string]any{}
 	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -296,12 +337,12 @@ func TestNewServerCreatesInstance(t *testing.T) {
 		ListenAddr: "127.0.0.1",
 		ListenPort: 0, // will use ephemeral
 	}
-	srv := NewServer(cfg, "v1.0.0")
+	srv := NewServer(cfg, "v1.4.0")
 	if srv == nil {
 		t.Fatal("expected non-nil server")
 	}
-	if srv.version != "v1.0.0" {
-		t.Errorf("expected version v1.0.0, got %s", srv.version)
+	if srv.version != "v1.4.0" {
+		t.Errorf("expected version v1.4.0, got %s", srv.version)
 	}
 	if srv.httpServer == nil {
 		t.Fatal("expected non-nil http server")
@@ -315,11 +356,11 @@ func waitForServer(t *testing.T, url string) {
 	for time.Now().Before(deadline) {
 		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-		resp, err := http.DefaultClient.Do(req) //nolint:gosec // test-only localhost
+		resp, err := http.DefaultClient.Do(req)
 		cancel()
 		if err == nil {
 			_ = resp.Body.Close()
-			if resp.StatusCode == 200 {
+			if resp.StatusCode == http.StatusOK {
 				return
 			}
 		}
@@ -347,8 +388,8 @@ func TestServerStartAndShutdown(t *testing.T) {
 	}
 	srv := NewServer(cfg, "test")
 
-	if err := srv.Start(); err != nil {
-		t.Fatalf("Start() error: %v", err)
+	if startErr := srv.Start(); startErr != nil {
+		t.Fatalf("Start() error: %v", startErr)
 	}
 
 	base := fmt.Sprintf("http://127.0.0.1:%d", port)
@@ -359,16 +400,16 @@ func TestServerStartAndShutdown(t *testing.T) {
 		t.Helper()
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-		if err != nil {
-			t.Fatalf("NewRequest(%s) error: %v", url, err)
+		req, reqErr := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if reqErr != nil {
+			t.Fatalf("NewRequest(%s) error: %v", url, reqErr)
 		}
 		if client == nil {
 			client = http.DefaultClient
 		}
-		resp, err := client.Do(req) //nolint:gosec // test-only code with localhost URLs
-		if err != nil {
-			t.Fatalf("GET %s failed: %v", url, err)
+		resp, doErr := client.Do(req)
+		if doErr != nil {
+			t.Fatalf("GET %s failed: %v", url, doErr)
 		}
 		return resp
 	}
@@ -376,14 +417,14 @@ func TestServerStartAndShutdown(t *testing.T) {
 	// Verify /health responds
 	resp := doGet(base+"/health", nil)
 	_ = resp.Body.Close()
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected 200, got %d", resp.StatusCode)
 	}
 
 	// Verify /metrics responds
 	resp = doGet(base+"/metrics", nil)
 	_ = resp.Body.Close()
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected 200, got %d", resp.StatusCode)
 	}
 
@@ -400,15 +441,15 @@ func TestServerStartAndShutdown(t *testing.T) {
 	// Verify 404 for unknown paths
 	resp = doGet(base+"/unknown", nil)
 	_ = resp.Body.Close()
-	if resp.StatusCode != 404 {
+	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("expected 404, got %d", resp.StatusCode)
 	}
 
 	// Graceful shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
-		t.Errorf("Shutdown() error: %v", err)
+	if shutdownErr := srv.Shutdown(ctx); shutdownErr != nil {
+		t.Errorf("Shutdown() error: %v", shutdownErr)
 	}
 }
 
@@ -431,8 +472,8 @@ func TestServerHealthWithoutMetrics(t *testing.T) {
 	}
 	srv := NewServer(cfg, "test")
 
-	if err := srv.Start(); err != nil {
-		t.Fatalf("Start() error: %v", err)
+	if startErr := srv.Start(); startErr != nil {
+		t.Fatalf("Start() error: %v", startErr)
 	}
 
 	base := fmt.Sprintf("http://127.0.0.1:%d", port)
@@ -442,13 +483,13 @@ func TestServerHealthWithoutMetrics(t *testing.T) {
 		t.Helper()
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-		if err != nil {
-			t.Fatalf("NewRequest(%s) error: %v", url, err)
+		req, reqErr := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if reqErr != nil {
+			t.Fatalf("NewRequest(%s) error: %v", url, reqErr)
 		}
-		resp, err := http.DefaultClient.Do(req) //nolint:gosec // test-only code with localhost URLs
-		if err != nil {
-			t.Fatalf("GET %s failed: %v", url, err)
+		resp, doErr := http.DefaultClient.Do(req)
+		if doErr != nil {
+			t.Fatalf("GET %s failed: %v", url, doErr)
 		}
 		return resp
 	}
@@ -456,21 +497,21 @@ func TestServerHealthWithoutMetrics(t *testing.T) {
 	// /health must work even without metrics
 	resp := doGet(base + "/health")
 	_ = resp.Body.Close()
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		t.Errorf("/health: expected 200, got %d", resp.StatusCode)
 	}
 
 	// /metrics should NOT be registered
 	resp = doGet(base + "/metrics")
 	_ = resp.Body.Close()
-	if resp.StatusCode != 404 {
+	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("/metrics: expected 404 when disabled, got %d", resp.StatusCode)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
-		t.Errorf("Shutdown() error: %v", err)
+	if shutdownErr := srv.Shutdown(ctx); shutdownErr != nil {
+		t.Errorf("Shutdown() error: %v", shutdownErr)
 	}
 }
 
@@ -564,7 +605,7 @@ func TestOriginDecisionsConcurrency(t *testing.T) {
 	resetOriginAndDropped()
 
 	var wg sync.WaitGroup
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		wg.Add(2)
 		go func(n int) {
 			defer wg.Done()
@@ -772,7 +813,7 @@ func TestIncrDecrConcurrency(t *testing.T) {
 	SetActiveDecisions("ipv4", 0)
 
 	var wg sync.WaitGroup
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
@@ -860,7 +901,7 @@ func TestDroppedCountersConcurrency(t *testing.T) {
 	resetOriginAndDropped()
 
 	var wg sync.WaitGroup
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		wg.Add(2)
 		go func(n uint64) {
 			defer wg.Done()
@@ -904,7 +945,7 @@ func TestSetRouterOSCPUTemperature(t *testing.T) {
 // TestSetRouterOSSystemMetricsConcurrency exercises concurrent access (run with -race).
 func TestSetRouterOSSystemMetricsConcurrency(t *testing.T) {
 	var wg sync.WaitGroup
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		wg.Add(2)
 		go func(n float64) {
 			defer wg.Done()
@@ -1166,7 +1207,7 @@ func TestSetConfigInfoMultipleChains(t *testing.T) {
 // TestSetConfigInfoConcurrency exercises concurrent SetConfigInfo calls (run with -race).
 func TestSetConfigInfoConcurrency(t *testing.T) {
 	var wg sync.WaitGroup
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
@@ -1379,7 +1420,7 @@ func TestDroppedByIPTypeConcurrency(t *testing.T) {
 	droppedProtoState.mu.Unlock()
 
 	var wg sync.WaitGroup
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		wg.Add(2)
 		go func(n uint64) {
 			defer wg.Done()
@@ -1402,7 +1443,7 @@ func TestProcessedConcurrency(t *testing.T) {
 	processedProtoState.mu.Unlock()
 
 	var wg sync.WaitGroup
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		wg.Add(2)
 		go func(n uint64) {
 			defer wg.Done()
