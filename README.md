@@ -430,6 +430,14 @@ Rules are placed at the **top** of the RouterOS firewall menu by default (`rule_
 
 You can also place the managed rule block after or before an existing rule comment, or at a zero-based RouterOS position:
 
+| Strategy | Behavior |
+|---|---|
+| `top` | Move before the first usable non-bouncer rule, retrying lower positions when RouterOS rejects a dynamic/built-in target |
+| `bottom` | Append at the end of the RouterOS firewall menu |
+| `position` | Insert at a zero-based RouterOS `print` position, before the rule currently shown at that index; out-of-range positions append at bottom and ignore `fallback` |
+| `before_comment` | Insert before the first matching non-bouncer rule comment |
+| `after_comment` | Insert after the first matching non-bouncer rule comment |
+
 ```yaml
 firewall:
   rule_placement:
@@ -442,6 +450,8 @@ firewall:
 ```
 
 For numeric placement, positions follow RouterOS `print` numbering. If `position: 15` is configured but only 10 existing non-bouncer rules are present, the block is left at the bottom. If the requested position cannot be used because RouterOS refuses to move before a dynamic/built-in rule, the bouncer retries lower positions.
+
+Comment placement uses `comment_match: "exact"` by default. Use `contains` for a case-sensitive literal substring match. Missing anchors use `fallback` (`top` by default, or `bottom`). Table-specific `filter` and `raw` overrides inherit unspecified fields from the global placement.
 
 ### Performance
 
@@ -606,10 +616,12 @@ The dashboard provides real-time visibility into the bouncer's operation:
 </details>
 
 <details>
-<summary><b>Firewall rules not at the top of the chain</b></summary>
+<summary><b>Firewall rules are not in the expected position</b></summary>
 
-- RouterOS dynamic/built-in rules (e.g., fasttrack counters) cannot be moved — the bouncer iterates through positions until it finds one where the managed block can be placed
+- RouterOS dynamic/built-in rules (e.g., fasttrack counters) cannot be moved. With `top` or `position`, the bouncer iterates through lower positions until it finds one where the managed block can be placed
 - Verify with: `/ip/firewall/filter/print` on the router
+- For comment placement, verify the anchor comment and `comment_match`; matching is case-sensitive
+- Check logs for placement fallback messages: `journalctl -u cs-routeros-bouncer -f | grep -i placement`
 - Ensure `firewall.rule_placement: "top"` is set, or use structured placement with `strategy: "position"`, `before_comment`, or `after_comment`
 
 </details>

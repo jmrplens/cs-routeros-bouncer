@@ -91,24 +91,40 @@ Action for firewall rules:
 
 **Env:** `FIREWALL_RULE_PLACEMENT` · **Default:** `top`
 
-Where to place new firewall rule blocks:
+Where to place new firewall rule blocks. Placement is evaluated per RouterOS firewall menu (`filter` or `raw`) and protocol (`ip` or `ipv6`).
 
-- `top` — at position 0, retrying lower positions if RouterOS refuses to move before dynamic/built-in rules
-- `bottom` — at the end of the RouterOS firewall menu
-- `position` — before a zero-based RouterOS `print` position
-- `before_comment` — before a rule whose comment matches `comment`
-- `after_comment` — after a rule whose comment matches `comment`
+| Strategy         | Extra fields                                             | Fallback           | Retry behavior                                                  | Use case                                                 |
+| ---------------- | -------------------------------------------------------- | ------------------ | --------------------------------------------------------------- | -------------------------------------------------------- |
+| `top`            | None                                                     | No                 | Yes, tries lower positions if RouterOS refuses the first target | Highest priority while tolerating dynamic/built-in rules |
+| `bottom`         | None                                                     | No                 | No                                                              | Append after existing rules                              |
+| `position`       | `position`                                               | No, ignored if set | Yes, retries lower positions when the target cannot be used     | Place at a RouterOS `print` position                     |
+| `before_comment` | `comment`, optional `comment_match`, optional `fallback` | Yes, default `top` | Fallback only                                                   | Place before a known user rule                           |
+| `after_comment`  | `comment`, optional `comment_match`, optional `fallback` | Yes, default `top` | Fallback only                                                   | Place after a known user rule                            |
 
 :::note
 The bouncer places related rules as a block so whitelist, counting, and deny/reject rules keep their internal order.
 :::
 
-Legacy shorthand remains supported:
+Simple string values remain fully supported and are recommended for simple deployments:
 
 ```yaml
 firewall:
   rule_placement: "top"
+# or:
+# rule_placement: "bottom"
 ```
+
+Structured placement accepts these fields:
+
+| Field           | Default | Applies to                        | Description                                                                                                                     |
+| --------------- | ------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `strategy`      | `top`   | All modes                         | One of `top`, `bottom`, `position`, `before_comment`, or `after_comment`                                                        |
+| `position`      |         | `position`                        | Zero-based RouterOS `print` position. Negative values are invalid.                                                              |
+| `comment`       |         | `before_comment`, `after_comment` | RouterOS rule comment used as the anchor. Required for comment strategies.                                                      |
+| `comment_match` | `exact` | `before_comment`, `after_comment` | `exact` uses a case-sensitive full-string match. `contains` uses a case-sensitive literal substring match. This is not a regex. |
+| `fallback`      | `top`   | `before_comment`, `after_comment` | `top` or `bottom` when the anchor is missing or cannot be used. Ignored for `position`.                                         |
+| `filter`        |         | Structured config only            | Override the global placement for `/ip firewall filter` and `/ipv6 firewall filter`, including optional output rules.           |
+| `raw`           |         | Structured config only            | Override the global placement for `/ip firewall raw` and `/ipv6 firewall raw`.                                                  |
 
 Place filter rules after an existing user rule while keeping raw rules at the top:
 
@@ -136,12 +152,26 @@ firewall:
 
 `position` uses zero-based RouterOS `print` numbering. If the configured position is greater than the number of existing non-bouncer rules, the block is appended at the bottom. `fallback` is ignored for `strategy: "position"`.
 
+For example, if RouterOS shows existing non-bouncer rules at positions `0`, `1`, `2`, and `3`, then `position: 2` inserts the managed block before the rule currently shown as `2`. The bouncer excludes its own `@cs-routeros-bouncer` rules before calculating the target position, so restarts are stable.
+
+If both global placement and `filter` or `raw` overrides are configured, the table-specific override wins for that table and inherits any fields it does not set from the global placement.
+
 Additional environment variables for structured global placement:
 
-- `FIREWALL_RULE_PLACEMENT_COMMENT`
-- `FIREWALL_RULE_PLACEMENT_COMMENT_MATCH`
-- `FIREWALL_RULE_PLACEMENT_POSITION`
-- `FIREWALL_RULE_PLACEMENT_FALLBACK`
+- `FIREWALL_RULE_PLACEMENT` - global strategy (`top`, `bottom`, `position`, `before_comment`, or `after_comment`)
+- `FIREWALL_RULE_PLACEMENT_COMMENT` - anchor comment for comment strategies
+- `FIREWALL_RULE_PLACEMENT_COMMENT_MATCH` - `exact` or `contains`
+- `FIREWALL_RULE_PLACEMENT_POSITION` - zero-based numeric position for `position`
+- `FIREWALL_RULE_PLACEMENT_FALLBACK` - `top` or `bottom` for comment strategies
+
+```bash
+FIREWALL_RULE_PLACEMENT="after_comment"
+FIREWALL_RULE_PLACEMENT_COMMENT="drop invalid"
+FIREWALL_RULE_PLACEMENT_COMMENT_MATCH="contains"
+FIREWALL_RULE_PLACEMENT_FALLBACK="top"
+```
+
+Environment variables configure the global placement only. Use YAML when you need different `filter` and `raw` placement strategies.
 
 ### `firewall.comment_prefix` <Badge text="Optional" variant="note" />
 

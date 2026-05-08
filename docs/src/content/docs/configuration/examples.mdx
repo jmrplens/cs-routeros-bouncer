@@ -129,6 +129,51 @@ Using `deny_action: reject` with `reject_with: icmp-host-prohibited` sends an IC
 :::
 
   </TabItem>
+  <TabItem label="Rule Placement">
+
+Place bouncer-managed filter rules after an existing router rule while keeping raw rules near the top:
+
+```yaml
+firewall:
+  filter:
+    enabled: true
+    chains: ["input"]
+  raw:
+    enabled: true
+    chains: ["prerouting"]
+  rule_placement:
+    strategy: "top"
+    filter:
+      strategy: "after_comment"
+      comment: "defconf: drop invalid"
+      comment_match: "exact"
+      fallback: "top"
+    raw:
+      strategy: "position"
+      position: 2
+```
+
+Use `before_comment` when the bouncer block must stay ahead of a known drop rule:
+
+```yaml
+firewall:
+  rule_placement:
+    strategy: "before_comment"
+    comment: "PortScanners: Filter Drop Input"
+    comment_match: "exact"
+    fallback: "bottom"
+```
+
+The same global strategy can be configured with environment variables. Table-specific `filter` and `raw` overrides require YAML.
+
+```bash
+FIREWALL_RULE_PLACEMENT="after_comment"
+FIREWALL_RULE_PLACEMENT_COMMENT="drop invalid"
+FIREWALL_RULE_PLACEMENT_COMMENT_MATCH="contains"
+FIREWALL_RULE_PLACEMENT_FALLBACK="top"
+```
+
+  </TabItem>
   <TabItem label="Local-only">
 
 Syncs only locally-generated decisions (from your CrowdSec engine and manual `cscli` bans). No CAPI community blocklists.
@@ -179,6 +224,11 @@ services:
       FIREWALL_IPV6_ENABLED: "true"
       FIREWALL_DENY_ACTION: "drop"
       FIREWALL_RULE_PLACEMENT: "top"
+      # Advanced global placement example:
+      # FIREWALL_RULE_PLACEMENT: "after_comment"
+      # FIREWALL_RULE_PLACEMENT_COMMENT: "drop invalid"
+      # FIREWALL_RULE_PLACEMENT_COMMENT_MATCH: "contains"
+      # FIREWALL_RULE_PLACEMENT_FALLBACK: "top"
 
       # Logging
       LOG_LEVEL: "info"

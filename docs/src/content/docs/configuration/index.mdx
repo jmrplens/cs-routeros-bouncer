@@ -104,31 +104,35 @@ Fine-tuning options for decision filtering, TLS, performance, firewall customiza
 
 #### [Firewall](/cs-routeros-bouncer/configuration/firewall/) — rules, interfaces & logging
 
-| Config Key                                  | Env Variable                          | Default            | Description                                                                  |
-| ------------------------------------------- | ------------------------------------- | ------------------ | ---------------------------------------------------------------------------- |
-| `firewall.ipv4.address_list`                | `FIREWALL_IPV4_ADDRESS_LIST`          | `crowdsec-banned`  | IPv4 list name                                                               |
-| `firewall.ipv6.address_list`                | `FIREWALL_IPV6_ADDRESS_LIST`          | `crowdsec6-banned` | IPv6 list name                                                               |
-| `firewall.filter.chains`                    | `FIREWALL_FILTER_CHAINS`              | `["input"]`        | Filter chains                                                                |
-| `firewall.raw.chains`                       | `FIREWALL_RAW_CHAINS`                 | `["prerouting"]`   | Raw chains                                                                   |
-| `firewall.rule_placement`                   | `FIREWALL_RULE_PLACEMENT`             | `top`              | Placement: `top`, `bottom`, `position`, `before_comment`, or `after_comment` |
-| `firewall.comment_prefix`                   | `FIREWALL_COMMENT_PREFIX`             | `crowdsec-bouncer` | Comment prefix                                                               |
-| `firewall.log`                              | `FIREWALL_LOG`                        | `false`            | Enable rule logging                                                          |
-| `firewall.log_prefix`                       | `FIREWALL_LOG_PREFIX`                 | `crowdsec-bouncer` | Global log prefix                                                            |
-| `firewall.reject_with`                      | `FIREWALL_REJECT_WITH`                |                    | Reject type when `deny_action=reject`                                        |
-| `firewall.filter.log_prefix`                | `FIREWALL_FILTER_LOG_PREFIX`          |                    | Override log prefix for filter rules                                         |
-| `firewall.filter.connection_state`          | `FIREWALL_FILTER_CONNECTION_STATE`    |                    | Connection-state matcher for filter rules                                    |
-| `firewall.raw.log_prefix`                   | `FIREWALL_RAW_LOG_PREFIX`             |                    | Override log prefix for raw rules                                            |
-| `firewall.block_input.interface`            | `FIREWALL_INPUT_INTERFACE`            |                    | Restrict input/raw rules to interface (empty = all)                          |
-| `firewall.block_input.interface_list`       | `FIREWALL_INPUT_INTERFACE_LIST`       |                    | Restrict input/raw rules to interface list (empty = all)                     |
-| `firewall.block_input.whitelist`            | `FIREWALL_INPUT_WHITELIST`            |                    | Address-list for input whitelist (accept before drop)                        |
-| `firewall.block_output.enabled`             | `FIREWALL_BLOCK_OUTPUT`               | `false`            | Block outbound                                                               |
-| `firewall.block_output.interface`           | `FIREWALL_OUTPUT_INTERFACE`           |                    | WAN interface                                                                |
-| `firewall.block_output.interface_list`      | `FIREWALL_OUTPUT_INTERFACE_LIST`      |                    | WAN interface list                                                           |
-| `firewall.block_output.log_prefix`          | `FIREWALL_OUTPUT_LOG_PREFIX`          |                    | Override log prefix for output rules                                         |
-| `firewall.block_output.passthrough_v4`      | `FIREWALL_OUTPUT_PASSTHROUGH_V4`      |                    | IPv4 client to bypass output blocking                                        |
-| `firewall.block_output.passthrough_v4_list` | `FIREWALL_OUTPUT_PASSTHROUGH_V4_LIST` |                    | IPv4 list to bypass output blocking                                          |
-| `firewall.block_output.passthrough_v6`      | `FIREWALL_OUTPUT_PASSTHROUGH_V6`      |                    | IPv6 client to bypass output blocking                                        |
-| `firewall.block_output.passthrough_v6_list` | `FIREWALL_OUTPUT_PASSTHROUGH_V6_LIST` |                    | IPv6 list to bypass output blocking                                          |
+| Config Key                                  | Env Variable                            | Default            | Description                                                                  |
+| ------------------------------------------- | --------------------------------------- | ------------------ | ---------------------------------------------------------------------------- |
+| `firewall.ipv4.address_list`                | `FIREWALL_IPV4_ADDRESS_LIST`            | `crowdsec-banned`  | IPv4 list name                                                               |
+| `firewall.ipv6.address_list`                | `FIREWALL_IPV6_ADDRESS_LIST`            | `crowdsec6-banned` | IPv6 list name                                                               |
+| `firewall.filter.chains`                    | `FIREWALL_FILTER_CHAINS`                | `["input"]`        | Filter chains                                                                |
+| `firewall.raw.chains`                       | `FIREWALL_RAW_CHAINS`                   | `["prerouting"]`   | Raw chains                                                                   |
+| `firewall.rule_placement`                   | `FIREWALL_RULE_PLACEMENT`               | `top`              | Placement: `top`, `bottom`, `position`, `before_comment`, or `after_comment` |
+| `firewall.rule_placement.comment`           | `FIREWALL_RULE_PLACEMENT_COMMENT`       |                    | Anchor comment for comment placement                                         |
+| `firewall.rule_placement.comment_match`     | `FIREWALL_RULE_PLACEMENT_COMMENT_MATCH` | `exact`            | Comment match mode: `exact` or `contains`                                    |
+| `firewall.rule_placement.position`          | `FIREWALL_RULE_PLACEMENT_POSITION`      |                    | Zero-based RouterOS `print` position                                         |
+| `firewall.rule_placement.fallback`          | `FIREWALL_RULE_PLACEMENT_FALLBACK`      | `top`              | Fallback for comment placement: `top` or `bottom`                            |
+| `firewall.comment_prefix`                   | `FIREWALL_COMMENT_PREFIX`               | `crowdsec-bouncer` | Comment prefix                                                               |
+| `firewall.log`                              | `FIREWALL_LOG`                          | `false`            | Enable rule logging                                                          |
+| `firewall.log_prefix`                       | `FIREWALL_LOG_PREFIX`                   | `crowdsec-bouncer` | Global log prefix                                                            |
+| `firewall.reject_with`                      | `FIREWALL_REJECT_WITH`                  |                    | Reject type when `deny_action=reject`                                        |
+| `firewall.filter.log_prefix`                | `FIREWALL_FILTER_LOG_PREFIX`            |                    | Override log prefix for filter rules                                         |
+| `firewall.filter.connection_state`          | `FIREWALL_FILTER_CONNECTION_STATE`      |                    | Connection-state matcher for filter rules                                    |
+| `firewall.raw.log_prefix`                   | `FIREWALL_RAW_LOG_PREFIX`               |                    | Override log prefix for raw rules                                            |
+| `firewall.block_input.interface`            | `FIREWALL_INPUT_INTERFACE`              |                    | Restrict input/raw rules to interface (empty = all)                          |
+| `firewall.block_input.interface_list`       | `FIREWALL_INPUT_INTERFACE_LIST`         |                    | Restrict input/raw rules to interface list (empty = all)                     |
+| `firewall.block_input.whitelist`            | `FIREWALL_INPUT_WHITELIST`              |                    | Address-list for input whitelist (accept before drop)                        |
+| `firewall.block_output.enabled`             | `FIREWALL_BLOCK_OUTPUT`                 | `false`            | Block outbound                                                               |
+| `firewall.block_output.interface`           | `FIREWALL_OUTPUT_INTERFACE`             |                    | WAN interface                                                                |
+| `firewall.block_output.interface_list`      | `FIREWALL_OUTPUT_INTERFACE_LIST`        |                    | WAN interface list                                                           |
+| `firewall.block_output.log_prefix`          | `FIREWALL_OUTPUT_LOG_PREFIX`            |                    | Override log prefix for output rules                                         |
+| `firewall.block_output.passthrough_v4`      | `FIREWALL_OUTPUT_PASSTHROUGH_V4`        |                    | IPv4 client to bypass output blocking                                        |
+| `firewall.block_output.passthrough_v4_list` | `FIREWALL_OUTPUT_PASSTHROUGH_V4_LIST`   |                    | IPv4 list to bypass output blocking                                          |
+| `firewall.block_output.passthrough_v6`      | `FIREWALL_OUTPUT_PASSTHROUGH_V6`        |                    | IPv6 client to bypass output blocking                                        |
+| `firewall.block_output.passthrough_v6_list` | `FIREWALL_OUTPUT_PASSTHROUGH_V6_LIST`   |                    | IPv6 list to bypass output blocking                                          |
 
 #### [Logging & Metrics](/cs-routeros-bouncer/configuration/logging-metrics/) — format, file output & Prometheus
 

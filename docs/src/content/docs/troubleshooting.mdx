@@ -141,7 +141,7 @@ IPs are added to the address list but no firewall rules exist.
 
 </Steps>
 
-### Rules in wrong position
+### Rules are not in the expected position
 
 :::note[Firewall rules appear at the bottom]
 Rules may be placed after existing rules.
@@ -149,16 +149,20 @@ Rules may be placed after existing rules.
 
 <Steps>
 
-1. **Verify** `rule_placement` in configuration. Use `"top"` for highest priority, or structured placement (`position`, `before_comment`, `after_comment`) when existing router rules must stay first.
+1. **Verify** `rule_placement` in configuration. Use `"top"` for highest priority, `"bottom"` to append, or structured placement (`position`, `before_comment`, `after_comment`) when existing router rules must stay first.
 
-2. **Check for dynamic rules** at position 0. The bouncer skips these and retries lower positions.
+2. **Check for dynamic rules** at position 0. Retry only applies to `top` and `position`; the bouncer tries lower positions when RouterOS refuses a dynamic or built-in target.
 
-3. **Inspect positions manually**
+3. **Check comment anchors** for `before_comment` and `after_comment`. Matching is case-sensitive; `comment_match: "contains"` is a literal substring match, not a regular expression.
+
+4. **Inspect positions manually**
 
    ```routeros
    /ip/firewall/filter print
    /ip/firewall/raw print
    ```
+
+5. **Check bouncer logs** with `journalctl -u cs-routeros-bouncer -f | grep -i placement`. Missing comment anchors use `fallback` (`top` by default, or `bottom`); out-of-range numeric positions are appended at the bottom.
 
 </Steps>
 

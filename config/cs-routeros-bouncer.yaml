@@ -141,6 +141,9 @@ firewall:
   #   comment: "drop invalid"
   #   comment_match: "contains" # exact or contains
   #   fallback: "top" # only for comment strategies
+  #   # For numeric placement:
+  #   # strategy: "position"
+  #   # position: 2 # zero-based RouterOS print position; out-of-range appends
   #   filter:
   #     strategy: "after_comment"
   #     comment: "drop invalid"

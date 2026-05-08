@@ -39,7 +39,7 @@ On startup, the bouncer follows this sequence:
 
 4. **Place at configured position**
 
-   Inserts rules at `top` (position 0) or `bottom` of each chain.
+   Places the managed block according to `rule_placement`: top, bottom, a numeric RouterOS position, or an anchor comment.
 
 </Steps>
 
@@ -66,7 +66,19 @@ Example rule as seen in RouterOS:
 
 ## Rule placement
 
-With `rule_placement: "top"`, the bouncer places managed rule blocks at position 0 for maximum priority. If a dynamic/built-in rule occupies position 0, the bouncer iterates through positions until finding a valid placement. Structured placement can also target a zero-based position or an existing rule comment.
+The bouncer places related rules as ordered blocks. A typical input block is `whitelist` (when configured), `counting` (when processed metrics are enabled), then the deny/reject rule. Placement happens after all rules in the block exist, so the internal order stays stable.
+
+Placement is menu-local. A `filter` block is positioned within `/ip firewall filter` or `/ipv6 firewall filter`; a `raw` block is positioned within `/ip firewall raw` or `/ipv6 firewall raw`.
+
+| Strategy         | Behavior                                                                                                                                      |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `top`            | Moves the block before the first usable non-bouncer rule. If RouterOS refuses a dynamic/built-in target, the bouncer retries lower positions. |
+| `bottom`         | Leaves newly-created rules appended at the end.                                                                                               |
+| `position`       | Uses zero-based RouterOS `print` numbering, excluding existing bouncer rules. Out-of-range positions append at bottom.                        |
+| `before_comment` | Moves the block before the first non-bouncer rule whose comment matches the configured anchor.                                                |
+| `after_comment`  | Moves the block after the matched anchor by inserting before the next non-bouncer rule; if the anchor is last, the block remains appended.    |
+
+Comment placement uses `fallback` (`top` by default, or `bottom`) when the anchor is missing or cannot be used. Numeric `position` ignores `fallback` because an out-of-range position naturally means append.
 
 ```routeros
 # Rules appear near the configured location in the firewall:
