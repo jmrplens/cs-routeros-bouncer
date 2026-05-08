@@ -42,7 +42,7 @@ func loadTestConfig(t *testing.T) config.MikroTikConfig {
 	return cfg.MikroTik
 }
 
-func TestRouterOSIntegration(t *testing.T) {
+func TestRouterOSIntegration(t *testing.T) { // NOSONAR: integration flow intentionally validates the full router lifecycle.
 	mikrotikCfg := loadTestConfig(t)
 
 	client := routeros.NewClient(mikrotikCfg)

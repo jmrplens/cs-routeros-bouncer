@@ -34,6 +34,7 @@ t4_1_pool_established() {
     fi
     log "Pool log messages found: $pool_msg"
     # Not a hard failure — the pool may have started >10 min ago
+    return 0
 }
 run_test "T4.1 Pool establishment (logs)" t4_1_pool_established
 
@@ -59,6 +60,7 @@ t4_2_concurrent_ops() {
     local recon_line
     recon_line=$(echo "$logs" | grep -i "reconcil" | tail -1 || true)
     log "Last reconciliation: $recon_line"
+    return 0
 }
 run_test "T4.2 Concurrent operations (logs)" t4_2_concurrent_ops
 

@@ -30,6 +30,7 @@ TEST_IP_EXPIRE="198.51.100.2"
 _cleanup_test_ips() {
     lapi_remove_decision "$TEST_IP_BAN"
     lapi_remove_decision "$TEST_IP_EXPIRE"
+    return 0
 }
 
 # T2.1 — Metrics vs router count.

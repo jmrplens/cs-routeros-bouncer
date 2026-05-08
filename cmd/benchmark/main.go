@@ -15,14 +15,35 @@ import (
 	rosClient "github.com/jmrplens/cs-routeros-bouncer/internal/routeros"
 )
 
+const (
+	benchmarkIPv4Address = "198.51.100.1" // NOSONAR: RFC 5737 TEST-NET-2 benchmark address.
+	benchmarkFindAddress = "198.51.0.1"   // NOSONAR: RFC 5737 TEST-NET-2 benchmark address.
+	benchmarkIPv4List    = "crowdsec-banned"
+	benchmarkIPv6List    = "crowdsec6-banned"
+)
+
 func main() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.Kitchen})
+	cfg := loadConfig(configPath())
 
+	client := rosClient.NewClient(cfg.MikroTik)
+	if err := client.Connect(); err != nil {
+		log.Fatal().Err(err).Msg("failed to connect")
+	}
+	defer client.Close()
+
+	runBenchmarks(client)
+}
+
+func configPath() string {
 	configPath := "config/test.yaml"
 	if len(os.Args) > 1 {
 		configPath = os.Args[1]
 	}
+	return configPath
+}
 
+func loadConfig(configPath string) config.Config {
 	viper.SetConfigFile(configPath)
 	if err := viper.ReadInConfig(); err != nil {
 		log.Fatal().Err(err).Msg("failed to read config")
@@ -31,34 +52,37 @@ func main() {
 	if err := viper.Unmarshal(&cfg); err != nil {
 		log.Fatal().Err(err).Msg("failed to parse config")
 	}
+	return cfg
+}
 
-	client := rosClient.NewClient(cfg.MikroTik)
-	if err := client.Connect(); err != nil {
-		log.Fatal().Err(err).Msg("failed to connect")
-	}
-	defer client.Close()
-
+func runBenchmarks(client *rosClient.Client) {
 	identity, _ := client.GetIdentity()
 	fmt.Printf("Connected to: %s\n\n", identity)
+	benchmarkSingleOperations(client)
+	benchmarkFirewallRules(client)
+	benchmarkBatchAdds(client)
+	fmt.Println("=== BENCHMARK COMPLETE ===")
+}
 
+func benchmarkSingleOperations(client *rosClient.Client) {
 	fmt.Println("=== SINGLE OPERATION BENCHMARKS (RouterOS API) ===")
 
 	bench("Add single IPv4", func() error {
-		_, err := client.AddAddress("ip", "crowdsec-banned", "198.51.100.1", "1m", "benchmark-test")
+		_, err := client.AddAddress("ip", benchmarkIPv4List, benchmarkIPv4Address, "1m", "benchmark-test")
 		return err
 	})
 
 	bench("Find IPv4 (1 entry)", func() error {
-		_, err := client.FindAddress("ip", "crowdsec-banned", "198.51.100.1")
+		_, err := client.FindAddress("ip", benchmarkIPv4List, benchmarkIPv4Address)
 		return err
 	})
 
 	bench("List IPv4 (1 entry)", func() error {
-		_, err := client.ListAddresses("ip", "crowdsec-banned", "")
+		_, err := client.ListAddresses("ip", benchmarkIPv4List, "")
 		return err
 	})
 
-	entry, findErr := client.FindAddress("ip", "crowdsec-banned", "198.51.100.1")
+	entry, findErr := client.FindAddress("ip", benchmarkIPv4List, benchmarkIPv4Address)
 	if findErr != nil && !errors.Is(findErr, rosClient.ErrNotFound) {
 		log.Warn().Err(findErr).Msg("failed to find IPv4 entry before removal benchmark")
 	}
@@ -69,11 +93,11 @@ func main() {
 	}
 
 	bench("Add single IPv6", func() error {
-		_, err := client.AddAddress("ipv6", "crowdsec6-banned", "2001:db8::1", "1m", "benchmark-test")
+		_, err := client.AddAddress("ipv6", benchmarkIPv6List, "2001:db8::1", "1m", "benchmark-test")
 		return err
 	})
 
-	entry6, findErr := client.FindAddress("ipv6", "crowdsec6-banned", "2001:db8::1/128")
+	entry6, findErr := client.FindAddress("ipv6", benchmarkIPv6List, "2001:db8::1/128")
 	if findErr != nil && !errors.Is(findErr, rosClient.ErrNotFound) {
 		log.Warn().Err(findErr).Msg("failed to find IPv6 entry before removal benchmark")
 	}
@@ -82,20 +106,17 @@ func main() {
 			return client.RemoveAddress("ipv6", entry6.ID)
 		})
 	}
+}
 
+func benchmarkFirewallRules(client *rosClient.Client) {
 	fmt.Println()
 	fmt.Println("=== FIREWALL RULE BENCHMARKS ===")
 
-	var ruleID string
-	bench("Create filter rule (v4)", func() error {
-		id, err := client.AddFirewallRule("ip", "filter", rosClient.FirewallRule{
-			Chain: "input", Action: "drop",
-			SrcAddressList: "crowdsec-banned",
-			Comment:        "benchmark-filter-v4",
-			PlaceBefore:    "0",
-		})
-		ruleID = id
-		return err
+	benchmarkFirewallRule(client, "ip", "filter", "Create filter rule (v4)", "Remove filter rule (v4)", rosClient.FirewallRule{
+		Chain: "input", Action: "drop",
+		SrcAddressList: benchmarkIPv4List,
+		Comment:        "benchmark-filter-v4",
+		PlaceBefore:    "0",
 	})
 
 	bench("Find rule by comment", func() error {
@@ -103,92 +124,81 @@ func main() {
 		return err
 	})
 
-	if ruleID != "" {
-		bench("Remove filter rule (v4)", func() error {
-			return client.RemoveFirewallRule("ip", "filter", ruleID)
-		})
-	}
+	benchmarkFirewallRule(client, "ip", "raw", "Create raw rule (v4)", "Remove raw rule (v4)", rosClient.FirewallRule{
+		Chain: "prerouting", Action: "drop",
+		SrcAddressList: benchmarkIPv4List,
+		Comment:        "benchmark-raw-v4",
+		PlaceBefore:    "0",
+	})
 
-	bench("Create raw rule (v4)", func() error {
-		id, err := client.AddFirewallRule("ip", "raw", rosClient.FirewallRule{
-			Chain: "prerouting", Action: "drop",
-			SrcAddressList: "crowdsec-banned",
-			Comment:        "benchmark-raw-v4",
-			PlaceBefore:    "0",
-		})
+	benchmarkFirewallRule(client, "ipv6", "filter", "Create filter rule (v6)", "Remove filter rule (v6)", rosClient.FirewallRule{
+		Chain: "input", Action: "drop",
+		SrcAddressList: benchmarkIPv6List,
+		Comment:        "benchmark-filter-v6",
+	})
+
+	benchmarkFirewallRule(client, "ipv6", "raw", "Create raw rule (v6)", "Remove raw rule (v6)", rosClient.FirewallRule{
+		Chain: "prerouting", Action: "drop",
+		SrcAddressList: benchmarkIPv6List,
+		Comment:        "benchmark-raw-v6",
+	})
+}
+
+func benchmarkFirewallRule(client *rosClient.Client, proto, mode, createLabel, removeLabel string, rule rosClient.FirewallRule) {
+	var ruleID string
+	bench(createLabel, func() error {
+		id, err := client.AddFirewallRule(proto, mode, rule)
 		ruleID = id
 		return err
 	})
 	if ruleID != "" {
-		bench("Remove raw rule (v4)", func() error {
-			return client.RemoveFirewallRule("ip", "raw", ruleID)
+		bench(removeLabel, func() error {
+			return client.RemoveFirewallRule(proto, mode, ruleID)
 		})
 	}
+}
 
-	bench("Create filter rule (v6)", func() error {
-		id, err := client.AddFirewallRule("ipv6", "filter", rosClient.FirewallRule{
-			Chain: "input", Action: "drop",
-			SrcAddressList: "crowdsec6-banned",
-			Comment:        "benchmark-filter-v6",
-		})
-		ruleID = id
-		return err
-	})
-	if ruleID != "" {
-		bench("Remove filter rule (v6)", func() error {
-			return client.RemoveFirewallRule("ipv6", "filter", ruleID)
-		})
-	}
-
-	bench("Create raw rule (v6)", func() error {
-		id, err := client.AddFirewallRule("ipv6", "raw", rosClient.FirewallRule{
-			Chain: "prerouting", Action: "drop",
-			SrcAddressList: "crowdsec6-banned",
-			Comment:        "benchmark-raw-v6",
-		})
-		ruleID = id
-		return err
-	})
-	if ruleID != "" {
-		bench("Remove raw rule (v6)", func() error {
-			return client.RemoveFirewallRule("ipv6", "raw", ruleID)
-		})
-	}
-
+func benchmarkBatchAdds(client *rosClient.Client) {
 	fmt.Println()
 	fmt.Println("=== BATCH ADD BENCHMARKS (sequential via API) ===")
 
 	sizes := []int{10, 50, 100, 500}
 	for _, n := range sizes {
-		label := fmt.Sprintf("Add %d IPv4 (sequential)", n)
-		start := time.Now()
-		failureCount := 0
-		for i := 1; i <= n; i++ {
-			addr := fmt.Sprintf("198.51.%d.%d", i/256, i%256)
-			if _, err := client.AddAddress("ip", "crowdsec-banned", addr, "1m", "batch"); err != nil {
-				failureCount++
-			}
-		}
-		elapsed := time.Since(start)
-		fmt.Printf("  %-35s %8s  (%s/ip, failures=%d)\n", label, elapsed.Round(time.Millisecond), (elapsed / time.Duration(n)).Round(time.Millisecond), failureCount)
-
-		start2 := time.Now()
-		entries, _ := client.ListAddresses("ip", "crowdsec-banned", "")
-		fmt.Printf("  %-35s %8s  (entries=%d)\n", fmt.Sprintf("List %d entries", n), time.Since(start2).Round(time.Millisecond), len(entries))
-
-		start3 := time.Now()
-		_, _ = client.FindAddress("ip", "crowdsec-banned", "198.51.0.1")
-		fmt.Printf("  %-35s %8s\n", fmt.Sprintf("Find 1 in %d entries", n), time.Since(start3).Round(time.Millisecond))
-
-		cleanStart := time.Now()
-		for _, e := range entries {
-			_ = client.RemoveAddress("ip", e.ID)
-		}
-		fmt.Printf("  %-35s %8s  (%s/ip)\n", fmt.Sprintf("Remove %d entries", len(entries)), time.Since(cleanStart).Round(time.Millisecond), (time.Since(cleanStart) / time.Duration(len(entries))).Round(time.Millisecond))
+		benchmarkBatchSize(client, n)
 		fmt.Println()
 	}
+}
 
-	fmt.Println("=== BENCHMARK COMPLETE ===")
+func benchmarkBatchSize(client *rosClient.Client, n int) {
+	start := time.Now()
+	failureCount := 0
+	for i := 1; i <= n; i++ {
+		addr := fmt.Sprintf("198.51.%d.%d", i/256, i%256)
+		if _, err := client.AddAddress("ip", benchmarkIPv4List, addr, "1m", "batch"); err != nil {
+			failureCount++
+		}
+	}
+	elapsed := time.Since(start)
+	fmt.Printf("  %-35s %8s  (%s/ip, failures=%d)\n", fmt.Sprintf("Add %d IPv4 (sequential)", n), elapsed.Round(time.Millisecond), (elapsed / time.Duration(n)).Round(time.Millisecond), failureCount)
+
+	listStart := time.Now()
+	entries, _ := client.ListAddresses("ip", benchmarkIPv4List, "")
+	fmt.Printf("  %-35s %8s  (entries=%d)\n", fmt.Sprintf("List %d entries", n), time.Since(listStart).Round(time.Millisecond), len(entries))
+
+	findStart := time.Now()
+	_, _ = client.FindAddress("ip", benchmarkIPv4List, benchmarkFindAddress)
+	fmt.Printf("  %-35s %8s\n", fmt.Sprintf("Find 1 in %d entries", n), time.Since(findStart).Round(time.Millisecond))
+
+	cleanStart := time.Now()
+	for _, entry := range entries {
+		_ = client.RemoveAddress("ip", entry.ID)
+	}
+	cleanElapsed := time.Since(cleanStart)
+	perEntry := time.Duration(0)
+	if len(entries) > 0 {
+		perEntry = cleanElapsed / time.Duration(len(entries))
+	}
+	fmt.Printf("  %-35s %8s  (%s/ip)\n", fmt.Sprintf("Remove %d entries", len(entries)), cleanElapsed.Round(time.Millisecond), perEntry.Round(time.Millisecond))
 }
 
 func bench(label string, fn func() error) {

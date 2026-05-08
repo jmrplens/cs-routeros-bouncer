@@ -34,6 +34,36 @@
 	--sl-color-black: #0d1117;
 
 	--sl-color-text-accent: #9fa8da;
+
+	/* Semantic tokens — callout / aside tints that harmonise with the palette */
+	--sl-color-green-low: #1b3d1f;
+	--sl-color-green-high: #66bb6a;
+	--sl-color-orange-low: #3d2800;
+	--sl-color-orange-high: #ffb74d;
+	--sl-color-red-low: #3d1010;
+	--sl-color-red-high: #ef5350;
+	--sl-color-blue-low: #0d2137;
+	--sl-color-blue-high: #64b5f6;
+	--sl-color-purple-low: #1a0a33;
+	--sl-color-purple-high: #b39ddb;
+
+	/* Typography — system font stack + fluid headings */
+	--sl-font:
+		system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+		"Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+	--sl-font-mono:
+		ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas,
+		"DejaVu Sans Mono", monospace;
+
+	--sl-text-h1: clamp(1.75rem, 1.25rem + 2vw, 2.5rem);
+	--sl-text-h2: clamp(1.375rem, 1rem + 1.5vw, 1.875rem);
+	--sl-text-h3: clamp(1.125rem, 0.95rem + 0.75vw, 1.375rem);
+	--sl-text-body: clamp(0.9375rem, 0.875rem + 0.25vw, 1.0625rem);
+	--sl-line-height-headings: 1.25;
+
+	/* Spacing & radius */
+	--sl-border-radius: 0.5rem;
+	--sl-content-pad-x: clamp(1rem, 3vw, 2rem);
 }
 
 /* Light mode overrides (Starlight uses [data-theme="light"]) */
@@ -57,26 +87,7 @@
 	--sl-color-black: #ffffff;
 
 	--sl-color-text-accent: rgb(var(--brand-primary));
-}
 
-/* ------------------------------------------------------------------
-   2. SEMANTIC TOKENS  (TASK-002)
-   Callout / aside tints that harmonise with the palette
-   ------------------------------------------------------------------ */
-:root {
-	--sl-color-green-low: #1b3d1f;
-	--sl-color-green-high: #66bb6a;
-	--sl-color-orange-low: #3d2800;
-	--sl-color-orange-high: #ffb74d;
-	--sl-color-red-low: #3d1010;
-	--sl-color-red-high: #ef5350;
-	--sl-color-blue-low: #0d2137;
-	--sl-color-blue-high: #64b5f6;
-	--sl-color-purple-low: #1a0a33;
-	--sl-color-purple-high: #b39ddb;
-}
-
-:root[data-theme="light"] {
 	--sl-color-green-low: #e8f5e9;
 	--sl-color-green-high: #2e7d32;
 	--sl-color-orange-low: #fff3e0;
@@ -89,25 +100,6 @@
 	--sl-color-purple-high: #4527a0;
 }
 
-/* ------------------------------------------------------------------
-   3. TYPOGRAPHY  (TASK-003)
-   System font stack + fluid headings
-   ------------------------------------------------------------------ */
-:root {
-	--sl-font:
-		system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
-		"Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
-	--sl-font-mono:
-		ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas,
-		"DejaVu Sans Mono", monospace;
-
-	--sl-text-h1: clamp(1.75rem, 1.25rem + 2vw, 2.5rem);
-	--sl-text-h2: clamp(1.375rem, 1rem + 1.5vw, 1.875rem);
-	--sl-text-h3: clamp(1.125rem, 0.95rem + 0.75vw, 1.375rem);
-	--sl-text-body: clamp(0.9375rem, 0.875rem + 0.25vw, 1.0625rem);
-	--sl-line-height-headings: 1.25;
-}
-
 h1 {
 	font-size: var(--sl-text-h1);
 }
@@ -116,14 +108,6 @@ h2 {
 }
 h3 {
 	font-size: var(--sl-text-h3);
-}
-
-/* ------------------------------------------------------------------
-   4. SPACING & RADIUS  (TASK-004)
-   ------------------------------------------------------------------ */
-:root {
-	--sl-border-radius: 0.5rem;
-	--sl-content-pad-x: clamp(1rem, 3vw, 2rem);
 }
 
 /* ------------------------------------------------------------------

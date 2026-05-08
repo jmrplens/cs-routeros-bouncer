@@ -10,13 +10,8 @@ permissions:
   contents: read
 
 env:
-  ACTIONLINT_VERSION: v1.7.12
-  GOLANGCI_LINT_VERSION: v2.12.2
   GO_VERSION: "1.26.3"
-  GOSEC_VERSION: latest
   GOTOOLCHAIN: go1.26.3
-  MODERNIZE_VERSION: latest
-  STATICCHECK_VERSION: v0.7.0
 
 jobs:
   workflows:
@@ -27,10 +22,9 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
-      - name: Install actionlint
-        run: go install "github.com/rhysd/actionlint/cmd/actionlint@${ACTIONLINT_VERSION}"
+      - run: go mod download
       - name: Lint GitHub workflows
-        run: actionlint
+        run: go tool actionlint
 
   markdown:
     name: Markdown
@@ -40,8 +34,15 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 22
+          cache: pnpm
+          cache-dependency-path: docs/pnpm-lock.yaml
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - name: Install Markdown linter
+        run: pnpm --dir docs install --frozen-lockfile --ignore-scripts
       - name: Lint Markdown
-        run: npx --yes markdownlint-cli2 "**/*.md"
+        run: pnpm --dir docs exec markdownlint-cli2 --config ../.markdownlint-cli2.yaml "../**/*.md"
 
   go-format:
     name: Go formatting
@@ -51,8 +52,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
-      - name: Install goimports
-        run: go install golang.org/x/tools/cmd/goimports@latest
+      - run: go mod download
       - name: Check gofmt
         run: |
           issues=$(gofmt -l -s cmd internal tests)
@@ -63,7 +63,7 @@ jobs:
           fi
       - name: Check goimports
         run: |
-          issues=$(goimports -local github.com/jmrplens/cs-routeros-bouncer -l cmd internal tests)
+          issues=$(go tool goimports -local github.com/jmrplens/cs-routeros-bouncer -l cmd internal tests)
           if [ -n "$issues" ]; then
             echo "Files needing goimports:"
             echo "$issues"
@@ -79,24 +79,16 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
       - run: go mod download
-      - name: Install modernize
-        run: go install "golang.org/x/tools/go/analysis/passes/modernize/cmd/modernize@${MODERNIZE_VERSION}"
-      - name: Install golangci-lint
-        run: go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}"
-      - name: Install gosec
-        run: go install "github.com/securego/gosec/v2/cmd/gosec@${GOSEC_VERSION}"
-      - name: Install Staticcheck
-        run: go install "honnef.co/go/tools/cmd/staticcheck@${STATICCHECK_VERSION}"
       - name: Run go vet
         run: go vet ./cmd/... ./internal/...
       - name: Run modernize
-        run: modernize ./cmd/... ./internal/...
+        run: go tool modernize ./cmd/... ./internal/...
       - name: Run golangci-lint
-        run: golangci-lint run ./cmd/... ./internal/...
+        run: go tool golangci-lint run ./cmd/... ./internal/...
       - name: Run gosec
-        run: gosec -quiet -severity medium -confidence medium -exclude-generated -fmt text ./cmd/... ./internal/...
+        run: go tool gosec -quiet -severity medium -confidence medium -exclude-generated -fmt text ./cmd/... ./internal/...
       - name: Run Staticcheck
-        run: staticcheck ./cmd/... ./internal/...
+        run: go tool staticcheck ./cmd/... ./internal/...
 
   vulncheck:
     name: govulncheck
@@ -107,10 +99,8 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
       - run: go mod download
-      - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
       - name: Run govulncheck
-        run: govulncheck ./cmd/... ./internal/...
+        run: go tool govulncheck ./cmd/... ./internal/...
 
   shellcheck:
     name: ShellCheck
@@ -140,7 +130,10 @@ jobs:
           cache-dependency-path: docs/pnpm-lock.yaml
       - name: Install documentation dependencies
         working-directory: docs
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Install Playwright browser
+        working-directory: docs
+        run: ./node_modules/.bin/playwright install --with-deps chromium
       - name: Analyze documentation
         working-directory: docs
         run: pnpm analyze
@@ -178,6 +171,18 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           name: coverage
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: docs/pnpm-lock.yaml
+      - name: Install docs dependencies for analysis
+        run: pnpm --dir docs install --frozen-lockfile --ignore-scripts
+      - name: Generate Astro types for analysis
+        run: pnpm --dir docs exec astro sync
       - name: SonarCloud Scan
         if: env.SONAR_TOKEN != ''
         uses: SonarSource/sonarqube-scan-action@v8

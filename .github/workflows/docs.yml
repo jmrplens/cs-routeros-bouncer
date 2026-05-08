@@ -13,9 +13,6 @@ on:
       - "docs/tsconfig.json"
   workflow_dispatch:
 
-permissions:
-  contents: read
-
 concurrency:
   group: pages
   cancel-in-progress: false
@@ -23,6 +20,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
 
@@ -38,7 +37,11 @@ jobs:
 
       - name: Install dependencies
         working-directory: docs
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Install Playwright browser
+        working-directory: docs
+        run: ./node_modules/.bin/playwright install --with-deps chromium
 
       - name: Check documentation
         working-directory: docs

@@ -21,6 +21,7 @@ const (
 	defaultConfigFile  = "cs-routeros-bouncer.yaml"
 	defaultServicePath = "/etc/systemd/system/cs-routeros-bouncer.service"
 	serviceName        = "cs-routeros-bouncer"
+	systemctlPath      = "/usr/bin/systemctl"
 )
 
 // serviceTemplate is the systemd unit file content.
@@ -158,7 +159,7 @@ func systemctl(args ...string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	// #nosec G204 -- systemctl arguments are controlled by setup/uninstall callers.
-	cmd := exec.CommandContext(ctx, "systemctl", args...)
+	cmd := exec.CommandContext(ctx, systemctlPath, args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {

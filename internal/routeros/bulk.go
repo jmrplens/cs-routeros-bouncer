@@ -12,6 +12,8 @@ import (
 // bulkScriptName is the temporary script used for bulk operations.
 const bulkScriptName = "crowdsec-bulk-import"
 
+const systemScriptPath = "/system/script"
+
 // bulkChunkSize limits addresses per script to keep within RouterOS API message size limits.
 // 100 entries ≈ 12 KB script source, well within the ~32 KB safe limit.
 const bulkChunkSize = 100
@@ -36,20 +38,11 @@ func (c *Client) BulkAddAddresses(proto, list string, entries []BulkEntry) (adde
 
 		n, scriptErr := c.runBulkScript(script)
 		if scriptErr != nil {
-			// Fall back to individual adds for this chunk
 			log.Warn().Err(scriptErr).Int("chunk_size", len(chunk)).Msg("bulk script failed, falling back to individual adds")
-			var fallbackErrs []error
-			for _, e := range chunk {
-				if _, addErr := c.AddAddress(proto, list, e.Address, e.Timeout, e.Comment); addErr != nil {
-					if !strings.Contains(addErr.Error(), "already have") {
-						fallbackErrs = append(fallbackErrs, addErr)
-					}
-				} else {
-					total++
-				}
-			}
-			if len(fallbackErrs) > 0 {
-				err = fmt.Errorf("%d fallback add errors (last: %w)", len(fallbackErrs), fallbackErrs[len(fallbackErrs)-1])
+			fallbackAdded, fallbackErr := c.bulkAddFallback(proto, list, chunk)
+			total += fallbackAdded
+			if fallbackErr != nil {
+				err = fallbackErr
 			}
 			continue
 		}
@@ -57,6 +50,24 @@ func (c *Client) BulkAddAddresses(proto, list string, entries []BulkEntry) (adde
 	}
 
 	return total, err
+}
+
+func (c *Client) bulkAddFallback(proto, list string, chunk []BulkEntry) (int, error) {
+	added := 0
+	var fallbackErrs []error
+	for _, entry := range chunk {
+		if _, addErr := c.AddAddress(proto, list, entry.Address, entry.Timeout, entry.Comment); addErr != nil {
+			if !strings.Contains(addErr.Error(), "already have") {
+				fallbackErrs = append(fallbackErrs, addErr)
+			}
+			continue
+		}
+		added++
+	}
+	if len(fallbackErrs) == 0 {
+		return added, nil
+	}
+	return added, fmt.Errorf("%d fallback add errors (last: %w)", len(fallbackErrs), fallbackErrs[len(fallbackErrs)-1])
 }
 
 // BulkEntry represents an address to add in bulk.
@@ -100,18 +111,18 @@ func buildBulkAddScript(proto, list string, entries []BulkEntry) string {
 // Returns the number of addresses added (parsed from script output).
 func (c *Client) runBulkScript(source string) (int, error) {
 	// Remove any existing script with same name
-	existing, err := c.Find("/system/script", []string{"?name=" + bulkScriptName}, []string{".id"})
+	existing, err := c.Find(systemScriptPath, []string{"?name=" + bulkScriptName}, []string{".id"})
 	if err != nil && !errors.Is(err, ErrNotFound) {
 		return 0, fmt.Errorf("find existing bulk script: %w", err)
 	}
 	if err == nil {
-		if removeErr := c.Remove("/system/script", existing[".id"]); removeErr != nil {
+		if removeErr := c.Remove(systemScriptPath, existing[".id"]); removeErr != nil {
 			return 0, fmt.Errorf("remove existing bulk script: %w", removeErr)
 		}
 	}
 
 	// Create script
-	scriptID, err := c.Add("/system/script", map[string]string{
+	scriptID, err := c.Add(systemScriptPath, map[string]string{
 		"name":   bulkScriptName,
 		"source": source,
 	})
@@ -125,7 +136,7 @@ func (c *Client) runBulkScript(source string) (int, error) {
 	elapsed := time.Since(start)
 
 	// Clean up script regardless of execution result
-	_ = c.Remove("/system/script", scriptID)
+	_ = c.Remove(systemScriptPath, scriptID)
 
 	if err != nil {
 		return 0, fmt.Errorf("run bulk script: %w", err)

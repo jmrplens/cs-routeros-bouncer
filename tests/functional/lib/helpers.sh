@@ -56,7 +56,7 @@ log()  { echo -e "${CYAN}[$(date +%H:%M:%S)]${NC} $*"; }
 # warn — warning message highlighted in yellow.
 warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
 # err — error message highlighted in red.
-err()  { echo -e "${RED}[ERROR]${NC} $*"; }
+err()  { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 
 # ─── Test framework ─────────────────────────────────────────────────────────
 # Minimal TAP-like test harness.  Each test is a callable (function or
@@ -185,6 +185,7 @@ require_var() {
 #                MIKROTIK_SSH_HOST.
 # shellcheck disable=SC2153
 ssh_cmd() {
+    local router_command="${1:-}"
     local ssh_key_opt=()
     local batch_opt=()
     if [[ -n "${MIKROTIK_SSH_KEY:-}" && -f "${MIKROTIK_SSH_KEY}" ]]; then
@@ -193,7 +194,7 @@ ssh_cmd() {
     fi
     ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no \
         "${batch_opt[@]}" "${ssh_key_opt[@]}" -p "${MIKROTIK_SSH_PORT}" \
-        "${MIKROTIK_SSH_USER}@${MIKROTIK_SSH_HOST}" "$1" 2>/dev/null | tr -d '\r'
+        "${MIKROTIK_SSH_USER}@${MIKROTIK_SSH_HOST}" "$router_command" 2>/dev/null | tr -d '\r'
 }
 
 # ssh_available — quick connectivity check; returns 0 if SSH to the router works.
@@ -783,12 +784,15 @@ snmp_cpu_avg() {
 #
 # Returns (stdout): "avg max" — two space-separated integers (percentages).
 query_cpu() {
-    local samples="${1:-6}" interval="${2:-5}"
+    local samples="${1:-6}"
+    local interval="${2:-5}"
     local sum=0 max_val=0 current
     for _ in $(seq 1 "$samples"); do
         current=$(snmp_cpu_avg)
         sum=$((sum + current))
-        (( current > max_val )) && max_val=$current
+        if (( current > max_val )); then
+            max_val=$current
+        fi
         sleep "$interval"
     done
     local avg=$((sum / samples))

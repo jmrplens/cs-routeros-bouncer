@@ -21,35 +21,52 @@ import (
 )
 
 func main() {
-	// Handle subcommands before flag parsing
+	if handleSubcommand() {
+		return
+	}
+	runBouncer()
+}
+
+func handleSubcommand() bool {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "setup":
-			fs := flag.NewFlagSet("setup", flag.ExitOnError)
-			binPath := fs.String("bin", defaultBinPath, "installation path for the binary")
-			cfgDir := fs.String("config-dir", defaultConfigDir, "directory for configuration files")
-			_ = fs.Parse(os.Args[2:])
-			if err := runSetup(*binPath, *cfgDir); err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				os.Exit(1)
-			}
-			return
+			runSetupCommand(os.Args[2:])
+			return true
 		case "uninstall":
-			fs := flag.NewFlagSet("uninstall", flag.ExitOnError)
-			binPath := fs.String("bin", defaultBinPath, "path of the installed binary")
-			purge := fs.Bool("purge", false, "also remove configuration files")
-			_ = fs.Parse(os.Args[2:])
-			if err := runUninstall(*binPath, *purge); err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				os.Exit(1)
-			}
-			return
+			runUninstallCommand(os.Args[2:])
+			return true
 		case "help":
 			printUsage()
-			return
+			return true
 		}
 	}
+	return false
+}
 
+func runSetupCommand(args []string) {
+	fs := flag.NewFlagSet("setup", flag.ExitOnError)
+	binPath := fs.String("bin", defaultBinPath, "installation path for the binary")
+	cfgDir := fs.String("config-dir", defaultConfigDir, "directory for configuration files")
+	_ = fs.Parse(args)
+	if err := runSetup(*binPath, *cfgDir); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func runUninstallCommand(args []string) {
+	fs := flag.NewFlagSet("uninstall", flag.ExitOnError)
+	binPath := fs.String("bin", defaultBinPath, "path of the installed binary")
+	purge := fs.Bool("purge", false, "also remove configuration files")
+	_ = fs.Parse(args)
+	if err := runUninstall(*binPath, *purge); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func runBouncer() {
 	configPath := flag.String("c", "", "path to configuration file")
 	showVersion := flag.Bool("version", false, "show version and exit")
 	flag.Parse()

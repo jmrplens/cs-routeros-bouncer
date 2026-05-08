@@ -48,7 +48,7 @@ func TestLoadFromEnv(t *testing.T) {
 
 // TestLoadDefaults verifies that all default values are correctly applied
 // when loading a minimal configuration.
-func TestLoadDefaults(t *testing.T) {
+func TestLoadDefaults(t *testing.T) { // NOSONAR: table-style default assertions are intentionally grouped.
 	setMinimalEnv(t)
 
 	cfg, err := Load("")

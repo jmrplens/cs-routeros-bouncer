@@ -1660,7 +1660,7 @@ func TestParallelExec_WorkersLimitedByItems(t *testing.T) {
 // TestGetFirewallCounters_AllPaths verifies that GetFirewallCounters queries
 // all 4 firewall paths and aggregates bytes/packets per IP type, separating
 // dropped (drop/reject) from processed (all rules).
-func TestGetFirewallCounters_AllPaths(t *testing.T) {
+func TestGetFirewallCounters_AllPaths(t *testing.T) { // NOSONAR: scenario assertions intentionally stay together.
 	mc := newMockConn()
 	c := newTestClient(mc)
 

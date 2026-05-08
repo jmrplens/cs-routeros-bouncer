@@ -78,43 +78,46 @@ func (c *Client) AddAddress(proto, list, address, timeout, comment string) (stri
 
 	id, err := c.Add(path, attrs)
 	if err != nil {
-		// If the address already exists, find it and update its attributes.
 		if isDuplicateEntryError(err) {
-			existing, findErr := c.FindAddress(proto, list, address)
-			if errors.Is(findErr, ErrNotFound) {
-				return "", fmt.Errorf("add address %s to %s: %w", address, list, ErrDuplicateReportedButNotFound)
-			}
-			if findErr != nil {
-				return "", fmt.Errorf("add address %s to %s: duplicate entry and lookup failed: %w", address, list, findErr)
-			}
-
-			updateAttrs := make(map[string]string)
-			if timeout != "" {
-				updateAttrs["timeout"] = timeout
-			}
-			if comment != "" {
-				updateAttrs["comment"] = comment
-			}
-			if len(updateAttrs) > 0 {
-				if updErr := c.Set(path, existing.ID, updateAttrs); updErr != nil {
-					return "", fmt.Errorf("add address %s to %s: duplicate entry and update failed: %w", address, list, updErr)
-				}
-				log.Debug().
-					Str("address", address).
-					Str("list", list).
-					Msg("address already exists, updated existing entry")
-			} else {
-				log.Debug().
-					Str("address", address).
-					Str("list", list).
-					Msg("address already exists, no update needed")
-			}
-			return existing.ID, nil
+			return c.updateDuplicateAddress(path, proto, list, address, timeout, comment)
 		}
 		return "", fmt.Errorf("add address %s to %s: %w", address, list, err)
 	}
 
 	return id, nil
+}
+
+func (c *Client) updateDuplicateAddress(path, proto, list, address, timeout, comment string) (string, error) {
+	existing, findErr := c.FindAddress(proto, list, address)
+	if errors.Is(findErr, ErrNotFound) {
+		return "", fmt.Errorf("add address %s to %s: %w", address, list, ErrDuplicateReportedButNotFound)
+	}
+	if findErr != nil {
+		return "", fmt.Errorf("add address %s to %s: duplicate entry and lookup failed: %w", address, list, findErr)
+	}
+
+	updateAttrs := duplicateAddressUpdateAttrs(timeout, comment)
+	if len(updateAttrs) == 0 {
+		log.Debug().Str("address", address).Str("list", list).Msg("address already exists, no update needed")
+		return existing.ID, nil
+	}
+
+	if updErr := c.Set(path, existing.ID, updateAttrs); updErr != nil {
+		return "", fmt.Errorf("add address %s to %s: duplicate entry and update failed: %w", address, list, updErr)
+	}
+	log.Debug().Str("address", address).Str("list", list).Msg("address already exists, updated existing entry")
+	return existing.ID, nil
+}
+
+func duplicateAddressUpdateAttrs(timeout, comment string) map[string]string {
+	updateAttrs := make(map[string]string)
+	if timeout != "" {
+		updateAttrs["timeout"] = timeout
+	}
+	if comment != "" {
+		updateAttrs["comment"] = comment
+	}
+	return updateAttrs
 }
 
 // RemoveAddress removes an address-list entry by its MikroTik .id.

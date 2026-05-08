@@ -85,7 +85,7 @@ func TestAPIClientNil(t *testing.T) {
 // TestActiveDecisionsUsesDecisionListEndpoint verifies that periodic
 // reconciliation snapshots use the active-decision listing endpoint instead of
 // the delta stream's startup mode.
-func TestActiveDecisionsUsesDecisionListEndpoint(t *testing.T) {
+func TestActiveDecisionsUsesDecisionListEndpoint(t *testing.T) { // NOSONAR: HTTP fixture and endpoint assertions share one scenario.
 	var requestOffsets []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/decisions" {

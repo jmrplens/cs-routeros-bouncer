@@ -1496,7 +1496,7 @@ func TestCreateFirewallRules_LogPrefixGlobal(t *testing.T) {
 // TestCreateFirewallRules_LogPrefixPerType verifies that per-type log_prefix
 // overrides (filter, raw, output) take precedence over the global log_prefix
 // for their respective rule types.
-func TestCreateFirewallRules_LogPrefixPerType(t *testing.T) {
+func TestCreateFirewallRules_LogPrefixPerType(t *testing.T) { // NOSONAR: scenario assertions intentionally stay together.
 	mock := &mockROS{addRuleID: "*R1"}
 	cfg := baseConfig()
 	cfg.Firewall.LogPrefix = "global"
@@ -1660,7 +1660,7 @@ func TestCreateFirewallRules_RejectWithNotOnAccept(t *testing.T) {
 // TestCreateFirewallRules_RawForcesDropOnReject verifies that raw rules always
 // use action=drop even when DenyAction is "reject", because the RouterOS raw
 // table does not support the reject action or reject-with parameter.
-func TestCreateFirewallRules_RawForcesDropOnReject(t *testing.T) {
+func TestCreateFirewallRules_RawForcesDropOnReject(t *testing.T) { // NOSONAR: scenario assertions intentionally stay together.
 	mock := &mockROS{addRuleID: "*R1"}
 	cfg := baseConfig()
 	cfg.Firewall.DenyAction = "reject"
@@ -1695,7 +1695,7 @@ func TestCreateFirewallRules_RawForcesDropOnReject(t *testing.T) {
 // TestCreateFirewallRules_FilterRejectRawDrop verifies that when both filter
 // and raw are enabled with deny_action=reject, filter rules use reject while
 // raw rules are forced to drop.
-func TestCreateFirewallRules_FilterRejectRawDrop(t *testing.T) {
+func TestCreateFirewallRules_FilterRejectRawDrop(t *testing.T) { // NOSONAR: scenario assertions intentionally stay together.
 	mock := &mockROS{addRuleID: "*R1"}
 	cfg := baseConfig()
 	cfg.Firewall.DenyAction = "reject"
@@ -1789,7 +1789,7 @@ func TestResolveLogPrefix_Overrides(t *testing.T) {
 // connection-state, input whitelist, and output passthrough (IPv4 single IP and
 // IPv6 address list). It verifies the correct number of rules and spot-checks
 // key properties on whitelist, reject, and output rules.
-func TestCreateFirewallRules_AllFeaturesCombined(t *testing.T) {
+func TestCreateFirewallRules_AllFeaturesCombined(t *testing.T) { // NOSONAR: scenario assertions intentionally stay together.
 	mock := &mockROS{addRuleID: "*R1"}
 	cfg := baseConfig()
 	cfg.Firewall.DenyAction = "reject"

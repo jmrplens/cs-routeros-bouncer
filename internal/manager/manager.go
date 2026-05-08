@@ -129,18 +129,47 @@ func (m *Manager) connectWithRetry(ctx context.Context) error {
 
 // Start initializes all components and begins processing decisions.
 func (m *Manager) Start(ctx context.Context) error {
-	// Record startup metrics
 	metrics.SetStartTime()
-
-	// 1. Connect to MikroTik (with retry)
 	if err := m.connectWithRetry(ctx); err != nil {
 		return err
 	}
+	m.configureConnectionPool()
+	m.recordRouterIdentity()
+	m.recordConfigInfo()
 
-	// 1b. Determine effective pool size (configured value capped by router limit)
+	m.cleanupStaleRules()
+	if err := m.createFirewallRules(); err != nil {
+		return fmt.Errorf("creating firewall rules: %w", err)
+	}
+	if err := m.stream.Init(); err != nil {
+		return fmt.Errorf("initializing CrowdSec stream: %w", err)
+	}
+
+	m.startLAPIMetrics(ctx)
+	m.startRouterOSMetrics(ctx)
+
+	banCh, deleteCh, errCh := m.startCrowdSecStream(ctx)
+	initialBans, initialDeletes, err := m.collectInitialDecisions(ctx, banCh, deleteCh, errCh)
+	if err != nil {
+		return err
+	}
+	if ctx.Err() != nil {
+		return nil
+	}
+
+	m.logInitialDecisions(initialBans, initialDeletes)
+	m.reconcileAddresses(m.filterInitialBans(initialBans, initialDeletes))
+
+	reconcileC, stopReconcile := m.reconciliationChannel()
+	defer stopReconcile()
+
+	m.logger.Info().Msg("reconciliation complete, processing live decisions")
+	return m.processLiveDecisions(ctx, banCh, deleteCh, errCh, reconcileC)
+}
+
+func (m *Manager) configureConnectionPool() {
 	poolSize := m.cfg.MikroTik.PoolSize
 	if maxSessions := m.ros.GetAPIMaxSessions(); maxSessions > 0 {
-		// Reserve 1 session for the main client + external tools
 		limit := max(maxSessions-2, 1)
 		if poolSize > limit {
 			m.logger.Info().
@@ -151,14 +180,14 @@ func (m *Manager) Start(ctx context.Context) error {
 			poolSize = limit
 		}
 	}
-
-	// 1c. Connect the parallel pool for bulk operations
 	m.pool = rosClient.NewPool(m.cfg.MikroTik, poolSize)
 	if err := m.pool.Connect(); err != nil {
 		m.logger.Warn().Err(err).Msg("could not create connection pool, falling back to single connection")
 		m.pool = nil
 	}
+}
 
+func (m *Manager) recordRouterIdentity() {
 	identity, identityErr := m.ros.GetIdentity()
 	if identityErr != nil {
 		m.logger.Warn().Err(identityErr).Msg("could not retrieve RouterOS identity")
@@ -167,8 +196,9 @@ func (m *Manager) Start(ctx context.Context) error {
 		m.logger.Info().Str("identity", identity).Msg("connected to RouterOS")
 		metrics.SetInfo(m.version, identity)
 	}
+}
 
-	// 2. Expose non-sensitive configuration as Prometheus info metric
+func (m *Manager) recordConfigInfo() {
 	metrics.SetConfigInfo(metrics.ConfigParams{
 		CrowdSecAPIURL:           m.cfg.CrowdSec.APIURL,
 		CrowdSecUpdateFrequency:  m.cfg.CrowdSec.UpdateFrequency.String(),
@@ -203,89 +233,75 @@ func (m *Manager) Start(ctx context.Context) error {
 		MetricsPollInterval:      m.cfg.Metrics.RouterOSPollInterval.String(),
 		MetricsTrackProcessed:    m.cfg.Metrics.TrackProcessed,
 	})
+}
 
-	// 4. Clean up stale firewall rules from a previous run or prefix change
-	m.cleanupStaleRules()
-
-	// 5. Create firewall rules
-	if err := m.createFirewallRules(); err != nil {
-		return fmt.Errorf("creating firewall rules: %w", err)
-	}
-
-	// 6. Initialize CrowdSec stream
-	if err := m.stream.Init(); err != nil {
-		return fmt.Errorf("initializing CrowdSec stream: %w", err)
-	}
-
-	// 3b. Start LAPI usage metrics reporting (if enabled)
-	if m.cfg.CrowdSec.LapiMetricsInterval > 0 {
-		apiClient := m.stream.APIClient()
-		logrusAdapter := crowdsec.NewLogrusAdapter(m.logger)
-
-		metricsLogger := log.With().Str("component", "lapi-metrics").Logger()
-		lapiProvider, providerErr := lapi.NewProvider(apiClient, m.cfg.CrowdSec.LapiMetricsInterval, logrusAdapter, metricsLogger)
-		if providerErr != nil {
-			m.logger.Warn().Err(providerErr).Msg("failed to initialize LAPI metrics, continuing without metrics reporting")
-		} else {
-			// Register firewall counter collector so LAPI metrics include
-			// dropped bytes/packets from MikroTik firewall rules.
-			lapiProvider.SetCounterCollector(func() {
-				fc, countersErr := m.ros.GetFirewallCounters(m.commentPrefix() + ":")
-				if countersErr != nil {
-					m.logger.Debug().Err(countersErr).Msg("failed to collect firewall counters for LAPI metrics")
-					return
-				}
-				// Dropped: only drop/reject rule counters.
-				metrics.SetDroppedCounters(fc.DroppedBytes, fc.DroppedPkts)
-				metrics.SetDroppedCountersByIPType(
-					fc.DroppedIPv4Bytes, fc.DroppedIPv4Pkts,
-					fc.DroppedIPv6Bytes, fc.DroppedIPv6Pkts,
-				)
-				// Processed: passthrough counting rule counters (total chain traffic).
-				if m.cfg.Metrics.TrackProcessed {
-					metrics.SetProcessedCounters(
-						fc.ProcessedIPv4Bytes, fc.ProcessedIPv4Pkts,
-						fc.ProcessedIPv6Bytes, fc.ProcessedIPv6Pkts,
-					)
-				}
-			})
-
-			m.logger.Info().Dur("interval", m.cfg.CrowdSec.LapiMetricsInterval).Msg("LAPI usage metrics reporting enabled")
-			go func() {
-				if runErr := lapiProvider.Run(ctx); runErr != nil {
-					m.logger.Warn().Err(runErr).Msg("LAPI metrics provider stopped")
-				}
-			}()
-		}
-	} else {
+func (m *Manager) startLAPIMetrics(ctx context.Context) {
+	if m.cfg.CrowdSec.LapiMetricsInterval <= 0 {
 		m.logger.Info().Msg("LAPI usage metrics reporting disabled")
+		return
 	}
 
-	// 3c. Start RouterOS system metrics collector (if enabled)
+	apiClient := m.stream.APIClient()
+	logrusAdapter := crowdsec.NewLogrusAdapter(m.logger)
+	metricsLogger := log.With().Str("component", "lapi-metrics").Logger()
+	lapiProvider, providerErr := lapi.NewProvider(apiClient, m.cfg.CrowdSec.LapiMetricsInterval, logrusAdapter, metricsLogger)
+	if providerErr != nil {
+		m.logger.Warn().Err(providerErr).Msg("failed to initialize LAPI metrics, continuing without metrics reporting")
+		return
+	}
+
+	lapiProvider.SetCounterCollector(m.collectLAPIFirewallCounters)
+	m.logger.Info().Dur("interval", m.cfg.CrowdSec.LapiMetricsInterval).Msg("LAPI usage metrics reporting enabled")
+	go func() {
+		if runErr := lapiProvider.Run(ctx); runErr != nil {
+			m.logger.Warn().Err(runErr).Msg("LAPI metrics provider stopped")
+		}
+	}()
+}
+
+func (m *Manager) collectLAPIFirewallCounters() {
+	fc, countersErr := m.ros.GetFirewallCounters(m.commentPrefix() + ":")
+	if countersErr != nil {
+		m.logger.Debug().Err(countersErr).Msg("failed to collect firewall counters for LAPI metrics")
+		return
+	}
+	metrics.SetDroppedCounters(fc.DroppedBytes, fc.DroppedPkts)
+	metrics.SetDroppedCountersByIPType(
+		fc.DroppedIPv4Bytes, fc.DroppedIPv4Pkts,
+		fc.DroppedIPv6Bytes, fc.DroppedIPv6Pkts,
+	)
+	if m.cfg.Metrics.TrackProcessed {
+		metrics.SetProcessedCounters(
+			fc.ProcessedIPv4Bytes, fc.ProcessedIPv4Pkts,
+			fc.ProcessedIPv6Bytes, fc.ProcessedIPv6Pkts,
+		)
+	}
+}
+
+func (m *Manager) startRouterOSMetrics(ctx context.Context) {
 	if m.cfg.Metrics.Enabled && m.cfg.Metrics.RouterOSPollInterval > 0 {
 		interval := m.cfg.Metrics.RouterOSPollInterval
 		m.logger.Info().Dur("interval", interval).Msg("RouterOS system metrics polling enabled")
 		go m.collectSystemMetrics(ctx, interval)
 	}
+}
 
-	// 5. Start CrowdSec stream and collect initial batch for reconciliation
-	banCh := make(chan *crowdsec.Decision, channelBuffer)
-	deleteCh := make(chan *crowdsec.Decision, channelBuffer)
-
-	errCh := make(chan error, 1)
+func (m *Manager) startCrowdSecStream(ctx context.Context) (banCh, deleteCh chan *crowdsec.Decision, errCh chan error) {
+	banCh = make(chan *crowdsec.Decision, channelBuffer)
+	deleteCh = make(chan *crowdsec.Decision, channelBuffer)
+	errCh = make(chan error, 1)
 	go func() {
 		if streamErr := m.stream.Run(ctx, banCh, deleteCh); streamErr != nil {
 			errCh <- streamErr
 		}
 	}()
+	return banCh, deleteCh, errCh
+}
 
+func (m *Manager) collectInitialDecisions(ctx context.Context, banCh, deleteCh <-chan *crowdsec.Decision, errCh <-chan error) ([]*crowdsec.Decision, map[string]struct{}, error) {
 	m.logger.Info().Msg("bouncer started, collecting initial decisions for reconciliation")
-
-	// Collect first-poll decisions (CrowdSec sends ALL active decisions on first poll).
-	// We use a short idle timeout to detect when the initial batch is complete.
-	// Both bans AND deletes are collected to avoid processing stale deletes after reconciliation.
 	var initialBans []*crowdsec.Decision
-	initialDeletes := make(map[string]struct{}) // addresses to skip (already expired)
+	initialDeletes := make(map[string]struct{})
 	idleTimeout := time.NewTimer(10 * time.Second)
 	defer idleTimeout.Stop()
 
@@ -303,9 +319,9 @@ collectLoop:
 	for {
 		select {
 		case <-ctx.Done():
-			return nil
+			return nil, nil, nil
 		case streamErr := <-errCh:
-			return fmt.Errorf("CrowdSec stream error: %w", streamErr)
+			return nil, nil, fmt.Errorf("CrowdSec stream error: %w", streamErr)
 		case d := <-banCh:
 			initialBans = append(initialBans, d)
 			resetIdleTimer()
@@ -319,14 +335,17 @@ collectLoop:
 			break collectLoop
 		}
 	}
+	return initialBans, initialDeletes, nil
+}
 
+func (m *Manager) logInitialDecisions(initialBans []*crowdsec.Decision, initialDeletes map[string]struct{}) {
 	m.logger.Info().
 		Int("bans", len(initialBans)).
 		Int("deletes", len(initialDeletes)).
 		Msg("initial decisions collected, starting reconciliation")
+}
 
-	// 6. Reconcile: compare CrowdSec state with router state
-	// Filter out bans that are immediately followed by deletes (expired decisions)
+func (m *Manager) filterInitialBans(initialBans []*crowdsec.Decision, initialDeletes map[string]struct{}) []*crowdsec.Decision {
 	filteredBans := make([]*crowdsec.Decision, 0, len(initialBans))
 	skipped := 0
 	for _, d := range initialBans {
@@ -340,24 +359,23 @@ collectLoop:
 	if skipped > 0 {
 		m.logger.Info().Int("skipped", skipped).Msg("skipped decisions that were immediately deleted")
 	}
+	return filteredBans
+}
 
-	m.reconcileAddresses(filteredBans)
-
+func (m *Manager) reconciliationChannel() (reconcileC <-chan time.Time, stop func()) {
 	reconcileInterval := m.cfg.CrowdSec.ReconciliationInterval
-	var reconcileC <-chan time.Time
-	var reconcileTicker *time.Ticker
-	if reconcileInterval > 0 {
-		reconcileTicker = time.NewTicker(reconcileInterval)
-		defer reconcileTicker.Stop()
-		reconcileC = reconcileTicker.C
-		m.logger.Info().Dur("interval", reconcileInterval).Msg("periodic reconciliation enabled")
-	} else {
+	if reconcileInterval <= 0 {
 		m.logger.Info().Msg("periodic reconciliation disabled")
+		return nil, func() {
+			// No ticker was created when reconciliation is disabled.
+		}
 	}
+	reconcileTicker := time.NewTicker(reconcileInterval)
+	m.logger.Info().Dur("interval", reconcileInterval).Msg("periodic reconciliation enabled")
+	return reconcileTicker.C, reconcileTicker.Stop
+}
 
-	m.logger.Info().Msg("reconciliation complete, processing live decisions")
-
-	// 7. Process live decision events (deltas)
+func (m *Manager) processLiveDecisions(ctx context.Context, banCh, deleteCh <-chan *crowdsec.Decision, errCh <-chan error, reconcileC <-chan time.Time) error {
 	for {
 		select {
 		case <-ctx.Done():
@@ -710,175 +728,13 @@ func (m *Manager) cleanupStaleRules() {
 func (m *Manager) createFirewallRules() error {
 	m.logger.Info().Msg("creating firewall rules")
 
-	protos := m.enabledProtos()
-
-	for _, proto := range protos {
+	for _, proto := range m.enabledProtos() {
 		listName := m.getAddressListName(proto)
-
-		// Filter rules
-		if m.cfg.Firewall.Filter.Enabled {
-			for _, chain := range m.cfg.Firewall.Filter.Chains {
-				// Whitelist accept rule (before drop/reject rule)
-				if m.cfg.Firewall.BlockInput.Whitelist != "" {
-					wlComment := buildRuleComment(m.commentPrefix(), "filter", chain, "whitelist", proto)
-					wlRule := rosClient.FirewallRule{
-						Chain:          chain,
-						Action:         "accept",
-						SrcAddressList: m.cfg.Firewall.BlockInput.Whitelist,
-						Comment:        wlComment,
-						Log:            m.cfg.Firewall.Log,
-						LogPrefix:      m.resolveLogPrefix("filter"),
-					}
-					m.applyInputRuleOptions(&wlRule)
-					if m.cfg.Firewall.Filter.ConnectionState != "" {
-						wlRule.ConnectionState = m.cfg.Firewall.Filter.ConnectionState
-					}
-					if err := m.ensureFirewallRule(proto, "filter", wlRule); err != nil {
-						return err
-					}
-				}
-
-				// Input rule (src-address-list = drop/reject)
-				comment := buildRuleComment(m.commentPrefix(), "filter", chain, "input", proto)
-				rule := rosClient.FirewallRule{
-					Chain:          chain,
-					Action:         m.cfg.Firewall.DenyAction,
-					SrcAddressList: listName,
-					Comment:        comment,
-					Log:            m.cfg.Firewall.Log,
-					LogPrefix:      m.resolveLogPrefix("filter"),
-				}
-				if m.cfg.Firewall.Filter.ConnectionState != "" {
-					rule.ConnectionState = m.cfg.Firewall.Filter.ConnectionState
-				}
-				if m.cfg.Firewall.DenyAction == "reject" && m.cfg.Firewall.RejectWith != "" {
-					rule.RejectWith = m.cfg.Firewall.RejectWith
-				}
-				m.applyInputRuleOptions(&rule)
-
-				if err := m.ensureFirewallRule(proto, "filter", rule); err != nil {
-					return err
-				}
-
-				// Passthrough counting rule: measures total traffic evaluated by the
-				// bouncer at this chain position. Placed just before the drop/reject
-				// rule so its counters represent ALL packets the bouncer processes.
-				if m.cfg.Metrics.TrackProcessed {
-					countComment := buildRuleComment(m.commentPrefix(), "filter", chain, "counting", proto)
-					countRule := rosClient.FirewallRule{
-						Chain:   chain,
-						Action:  "passthrough",
-						Comment: countComment,
-					}
-					m.applyInputRuleOptions(&countRule)
-					if err := m.ensureCountingRule(proto, "filter", countRule, comment); err != nil {
-						return err
-					}
-				}
-
-				// Output rule (dst-address-list) — only if block_output enabled
-				if m.cfg.Firewall.BlockOutput.Enabled {
-					outComment := buildRuleComment(m.commentPrefix(), "filter", "output", "output", proto)
-					outRule := rosClient.FirewallRule{
-						Chain:          "output",
-						Action:         m.cfg.Firewall.DenyAction,
-						DstAddressList: listName,
-						Comment:        outComment,
-						Log:            m.cfg.Firewall.Log,
-						LogPrefix:      m.resolveLogPrefix("output"),
-					}
-					if m.cfg.Firewall.DenyAction == "reject" && m.cfg.Firewall.RejectWith != "" {
-						outRule.RejectWith = m.cfg.Firewall.RejectWith
-					}
-					// Passthrough: list negation takes precedence over single IP
-					if proto == "ip" {
-						if m.cfg.Firewall.BlockOutput.PassthroughV4List != "" {
-							outRule.SrcAddressList = "!" + m.cfg.Firewall.BlockOutput.PassthroughV4List
-						} else if m.cfg.Firewall.BlockOutput.PassthroughV4 != "" {
-							outRule.SrcAddress = "!" + m.cfg.Firewall.BlockOutput.PassthroughV4
-						}
-					} else {
-						if m.cfg.Firewall.BlockOutput.PassthroughV6List != "" {
-							outRule.SrcAddressList = "!" + m.cfg.Firewall.BlockOutput.PassthroughV6List
-						} else if m.cfg.Firewall.BlockOutput.PassthroughV6 != "" {
-							outRule.SrcAddress = "!" + m.cfg.Firewall.BlockOutput.PassthroughV6
-						}
-					}
-					if m.cfg.Firewall.BlockOutput.Interface != "" {
-						outRule.OutInterface = m.cfg.Firewall.BlockOutput.Interface
-					}
-					if m.cfg.Firewall.BlockOutput.InterfaceList != "" {
-						outRule.OutInterfaceList = m.cfg.Firewall.BlockOutput.InterfaceList
-					}
-					if m.cfg.Firewall.RulePlacement == "top" {
-						outRule.PlaceBefore = "0"
-					}
-
-					if err := m.ensureFirewallRule(proto, "filter", outRule); err != nil {
-						return err
-					}
-				}
-			}
+		if err := m.createFilterRules(proto, listName); err != nil {
+			return err
 		}
-
-		// Raw rules
-		if m.cfg.Firewall.Raw.Enabled {
-			for _, chain := range m.cfg.Firewall.Raw.Chains {
-				// Whitelist accept rule (before drop rule)
-				if m.cfg.Firewall.BlockInput.Whitelist != "" {
-					wlComment := buildRuleComment(m.commentPrefix(), "raw", chain, "whitelist", proto)
-					wlRule := rosClient.FirewallRule{
-						Chain:          chain,
-						Action:         "accept",
-						SrcAddressList: m.cfg.Firewall.BlockInput.Whitelist,
-						Comment:        wlComment,
-						Log:            m.cfg.Firewall.Log,
-						LogPrefix:      m.resolveLogPrefix("raw"),
-					}
-					m.applyInputRuleOptions(&wlRule)
-					if err := m.ensureFirewallRule(proto, "raw", wlRule); err != nil {
-						return err
-					}
-				}
-
-				comment := buildRuleComment(m.commentPrefix(), "raw", chain, "input", proto)
-
-				// Raw table does NOT support action=reject or reject-with in RouterOS;
-				// force "drop" regardless of the configured deny_action.
-				rawAction := m.cfg.Firewall.DenyAction
-				if rawAction == "reject" {
-					rawAction = "drop"
-				}
-
-				rule := rosClient.FirewallRule{
-					Chain:          chain,
-					Action:         rawAction,
-					SrcAddressList: listName,
-					Comment:        comment,
-					Log:            m.cfg.Firewall.Log,
-					LogPrefix:      m.resolveLogPrefix("raw"),
-				}
-				// Raw does NOT support connection-state or reject-with
-				m.applyInputRuleOptions(&rule)
-
-				if err := m.ensureFirewallRule(proto, "raw", rule); err != nil {
-					return err
-				}
-
-				// Passthrough counting rule for raw table.
-				if m.cfg.Metrics.TrackProcessed {
-					countComment := buildRuleComment(m.commentPrefix(), "raw", chain, "counting", proto)
-					countRule := rosClient.FirewallRule{
-						Chain:   chain,
-						Action:  "passthrough",
-						Comment: countComment,
-					}
-					m.applyInputRuleOptions(&countRule)
-					if err := m.ensureCountingRule(proto, "raw", countRule, comment); err != nil {
-						return err
-					}
-				}
-			}
+		if err := m.createRawRules(proto, listName); err != nil {
+			return err
 		}
 	}
 
@@ -887,6 +743,171 @@ func (m *Manager) createFirewallRules() error {
 		Msg("firewall rules ready")
 
 	return nil
+}
+
+func (m *Manager) createFilterRules(proto, listName string) error {
+	if !m.cfg.Firewall.Filter.Enabled {
+		return nil
+	}
+	for _, chain := range m.cfg.Firewall.Filter.Chains {
+		if err := m.createFilterChainRules(proto, listName, chain); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *Manager) createFilterChainRules(proto, listName, chain string) error {
+	if err := m.ensureInputWhitelistRule(proto, "filter", chain); err != nil {
+		return err
+	}
+	comment := buildRuleComment(m.commentPrefix(), "filter", chain, "input", proto)
+	if err := m.ensureFirewallRule(proto, "filter", m.filterInputRule(listName, chain, comment)); err != nil {
+		return err
+	}
+	if err := m.ensureProcessedCountingRule(proto, "filter", chain, comment); err != nil {
+		return err
+	}
+	if !m.cfg.Firewall.BlockOutput.Enabled {
+		return nil
+	}
+	outRule := m.outputRule(proto, listName)
+	return m.ensureFirewallRule(proto, "filter", outRule)
+}
+
+func (m *Manager) createRawRules(proto, listName string) error {
+	if !m.cfg.Firewall.Raw.Enabled {
+		return nil
+	}
+	for _, chain := range m.cfg.Firewall.Raw.Chains {
+		if err := m.createRawChainRules(proto, listName, chain); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *Manager) createRawChainRules(proto, listName, chain string) error {
+	if err := m.ensureInputWhitelistRule(proto, "raw", chain); err != nil {
+		return err
+	}
+	comment := buildRuleComment(m.commentPrefix(), "raw", chain, "input", proto)
+	rule := rosClient.FirewallRule{
+		Chain:          chain,
+		Action:         m.rawDenyAction(),
+		SrcAddressList: listName,
+		Comment:        comment,
+		Log:            m.cfg.Firewall.Log,
+		LogPrefix:      m.resolveLogPrefix("raw"),
+	}
+	m.applyInputRuleOptions(&rule)
+	if err := m.ensureFirewallRule(proto, "raw", rule); err != nil {
+		return err
+	}
+	return m.ensureProcessedCountingRule(proto, "raw", chain, comment)
+}
+
+func (m *Manager) ensureInputWhitelistRule(proto, mode, chain string) error {
+	if m.cfg.Firewall.BlockInput.Whitelist == "" {
+		return nil
+	}
+	comment := buildRuleComment(m.commentPrefix(), mode, chain, "whitelist", proto)
+	rule := rosClient.FirewallRule{
+		Chain:          chain,
+		Action:         "accept",
+		SrcAddressList: m.cfg.Firewall.BlockInput.Whitelist,
+		Comment:        comment,
+		Log:            m.cfg.Firewall.Log,
+		LogPrefix:      m.resolveLogPrefix(mode),
+	}
+	m.applyInputRuleOptions(&rule)
+	if mode == "filter" && m.cfg.Firewall.Filter.ConnectionState != "" {
+		rule.ConnectionState = m.cfg.Firewall.Filter.ConnectionState
+	}
+	return m.ensureFirewallRule(proto, mode, rule)
+}
+
+func (m *Manager) filterInputRule(listName, chain, comment string) rosClient.FirewallRule {
+	rule := rosClient.FirewallRule{
+		Chain:          chain,
+		Action:         m.cfg.Firewall.DenyAction,
+		SrcAddressList: listName,
+		Comment:        comment,
+		Log:            m.cfg.Firewall.Log,
+		LogPrefix:      m.resolveLogPrefix("filter"),
+	}
+	if m.cfg.Firewall.Filter.ConnectionState != "" {
+		rule.ConnectionState = m.cfg.Firewall.Filter.ConnectionState
+	}
+	m.applyRejectOptions(&rule)
+	m.applyInputRuleOptions(&rule)
+	return rule
+}
+
+func (m *Manager) outputRule(proto, listName string) rosClient.FirewallRule {
+	rule := rosClient.FirewallRule{
+		Chain:          "output",
+		Action:         m.cfg.Firewall.DenyAction,
+		DstAddressList: listName,
+		Comment:        buildRuleComment(m.commentPrefix(), "filter", "output", "output", proto),
+		Log:            m.cfg.Firewall.Log,
+		LogPrefix:      m.resolveLogPrefix("output"),
+	}
+	m.applyRejectOptions(&rule)
+	m.applyOutputPassthrough(&rule, proto)
+	if m.cfg.Firewall.BlockOutput.Interface != "" {
+		rule.OutInterface = m.cfg.Firewall.BlockOutput.Interface
+	}
+	if m.cfg.Firewall.BlockOutput.InterfaceList != "" {
+		rule.OutInterfaceList = m.cfg.Firewall.BlockOutput.InterfaceList
+	}
+	if m.cfg.Firewall.RulePlacement == "top" {
+		rule.PlaceBefore = "0"
+	}
+	return rule
+}
+
+func (m *Manager) applyRejectOptions(rule *rosClient.FirewallRule) {
+	if m.cfg.Firewall.DenyAction == "reject" && m.cfg.Firewall.RejectWith != "" {
+		rule.RejectWith = m.cfg.Firewall.RejectWith
+	}
+}
+
+func (m *Manager) applyOutputPassthrough(rule *rosClient.FirewallRule, proto string) {
+	if proto == "ip" {
+		setNegatedAddress(&rule.SrcAddressList, m.cfg.Firewall.BlockOutput.PassthroughV4List)
+		if rule.SrcAddressList == "" {
+			setNegatedAddress(&rule.SrcAddress, m.cfg.Firewall.BlockOutput.PassthroughV4)
+		}
+		return
+	}
+	setNegatedAddress(&rule.SrcAddressList, m.cfg.Firewall.BlockOutput.PassthroughV6List)
+	if rule.SrcAddressList == "" {
+		setNegatedAddress(&rule.SrcAddress, m.cfg.Firewall.BlockOutput.PassthroughV6)
+	}
+}
+
+func setNegatedAddress(target *string, value string) {
+	if value != "" {
+		*target = "!" + value
+	}
+}
+
+func (m *Manager) rawDenyAction() string {
+	if m.cfg.Firewall.DenyAction == "reject" {
+		return "drop"
+	}
+	return m.cfg.Firewall.DenyAction
+}
+
+func (m *Manager) ensureProcessedCountingRule(proto, mode, chain, beforeComment string) error {
+	if !m.cfg.Metrics.TrackProcessed {
+		return nil
+	}
+	comment := buildRuleComment(m.commentPrefix(), mode, chain, "counting", proto)
+	rule := rosClient.FirewallRule{Chain: chain, Action: "passthrough", Comment: comment}
+	m.applyInputRuleOptions(&rule)
+	return m.ensureCountingRule(proto, mode, rule, beforeComment)
 }
 
 // applyInputRuleOptions sets InInterface, InInterfaceList and PlaceBefore on
@@ -1018,198 +1039,260 @@ func (m *Manager) reconcileAddresses(decisions []*crowdsec.Decision) {
 	m.logger.Info().Int("decisions", len(decisions)).Msg("reconciling addresses with MikroTik")
 
 	start := time.Now()
-
-	// Accumulate per-origin counts across all protocols.
 	globalOriginCounts := map[string]int64{}
 
 	for _, proto := range m.enabledProtos() {
-		listName := m.getAddressListName(proto)
-
-		metricsProto := "ipv4"
-		if proto == "ipv6" {
-			metricsProto = "ipv6"
-		}
-
-		// Get current addresses in MikroTik
-		existing, err := m.ros.ListAddresses(proto, listName, m.commentPrefix())
+		result, err := m.reconcileProtocolAddresses(proto, decisions, start)
 		if err != nil {
-			m.logger.Error().Err(err).
-				Str("proto", proto).
-				Msg("error listing current addresses")
-			metrics.RecordError("find")
 			continue
 		}
-
-		// Build map of addresses that should exist
-		shouldExist := make(map[string]*crowdsec.Decision)
-		for _, d := range decisions {
-			if d.Proto == proto {
-				addr := rosClient.NormalizeAddress(d.Value, proto)
-				shouldExist[addr] = d
-			}
-		}
-
-		// Build map of addresses that currently exist
-		currentMap := make(map[string]rosClient.AddressEntry)
-		for _, e := range existing {
-			currentMap[e.Address] = e
-		}
-
-		// Rebuild the cache slice for this protocol from the router snapshot.
-		// This evicts entries that expired or were removed outside the bouncer so
-		// a future live ban cannot be skipped because of stale local state.
-		m.cacheMu.Lock()
-		for addr := range m.addressCache {
-			if strings.Contains(addr, ":") != (proto == "ipv6") {
-				continue
-			}
-			if _, exists := currentMap[addr]; !exists {
-				delete(m.addressCache, addr)
-			}
-		}
-		for addr := range currentMap {
-			m.addressCache[addr] = struct{}{}
-		}
-		m.cacheMu.Unlock()
-
-		// Collect addresses to add
-		var toAdd []rosClient.BulkEntry
-		for addr, d := range shouldExist {
-			if _, exists := currentMap[addr]; !exists {
-				timeout := ""
-				if d.Duration > 0 {
-					timeout = rosClient.DurationToMikroTik(d.Duration)
-				}
-				toAdd = append(toAdd, rosClient.BulkEntry{
-					Address: d.Value,
-					Timeout: timeout,
-					Comment: buildAddressComment(m.commentPrefix(), d),
-				})
-			}
-		}
-
-		// Collect addresses to remove
-		var toRemove []rosClient.AddressEntry
-		for addr, entry := range currentMap {
-			if _, ok := shouldExist[addr]; !ok {
-				toRemove = append(toRemove, entry)
-			}
-		}
-
-		// === BULK ADD via script (fastest) ===
-		added := 0
-		if len(toAdd) > 0 {
-			addStart := time.Now()
-
-			n, addErr := m.ros.BulkAddAddresses(proto, listName, toAdd)
-			if addErr != nil {
-				m.logger.Warn().Err(addErr).Msg("some addresses failed to add during reconciliation")
-			}
-			added = n
-
-			// Update cache with newly added addresses
-			m.cacheMu.Lock()
-			for _, e := range toAdd {
-				addr := rosClient.NormalizeAddress(e.Address, proto)
-				m.addressCache[addr] = struct{}{}
-			}
-			m.cacheMu.Unlock()
-
-			for range added {
-				metrics.RecordDecision("ban", metricsProto, "reconcile")
-			}
-			metrics.ObserveOperationDuration("bulk_add", time.Since(addStart))
-
-			m.logger.Info().
-				Int("added", added).
-				Dur("elapsed", time.Since(addStart)).
-				Msg("bulk add complete")
-		}
-
-		// === PARALLEL REMOVE via pool ===
-		removed := 0
-		if len(toRemove) > 0 {
-			removeStart := time.Now()
-
-			if m.pool != nil {
-				// Use connection pool for parallel removes
-				errs := rosClient.ParallelExec(m.pool, toRemove, func(c *rosClient.Client, entry rosClient.AddressEntry) error {
-					return c.RemoveAddress(proto, entry.ID)
-				})
-				removed = len(toRemove) - len(errs)
-				for _, e := range errs {
-					if !strings.Contains(e.Error(), "no such item") {
-						m.logger.Error().Err(e).Msg("reconcile: error removing address")
-						metrics.RecordError("remove")
-					} else {
-						removed++ // expired items count as removed
-					}
-				}
-			} else {
-				// Fallback to sequential
-				for _, entry := range toRemove {
-					removeErr := m.ros.RemoveAddress(proto, entry.ID)
-					switch {
-					case removeErr == nil:
-						removed++
-					case strings.Contains(removeErr.Error(), "no such item"):
-						removed++ // expired items count as removed
-					default:
-						m.logger.Error().Err(removeErr).Str("address", entry.Address).Msg("reconcile: error removing address")
-						metrics.RecordError("remove")
-					}
-				}
-			}
-
-			// Update cache
-			m.cacheMu.Lock()
-			for _, entry := range toRemove {
-				delete(m.addressCache, entry.Address)
-			}
-			m.cacheMu.Unlock()
-
-			for range removed {
-				metrics.RecordDecision("unban", metricsProto, "reconcile")
-			}
-			metrics.ObserveOperationDuration("bulk_remove", time.Since(removeStart))
-
-			m.logger.Info().
-				Int("removed", removed).
-				Dur("elapsed", time.Since(removeStart)).
-				Msg("bulk remove complete")
-		}
-
-		unchanged := max(len(shouldExist)-added, 0)
-
-		metrics.RecordReconciliation("added", added)
-		metrics.RecordReconciliation("removed", removed)
-		metrics.RecordReconciliation("unchanged", unchanged)
-		metrics.SetActiveDecisions(metricsProto, len(shouldExist))
-
-		// Accumulate per-origin counts (set metrics after all protos).
-		for _, d := range shouldExist {
-			origin := d.Origin
-			if origin == "" {
-				origin = "unknown"
-			}
-			globalOriginCounts[origin]++
-		}
-
-		m.logger.Info().
-			Str("proto", proto).
-			Int("existing", len(existing)).
-			Int("expected", len(shouldExist)).
-			Int("added", added).
-			Int("removed", removed).
-			Dur("elapsed", time.Since(start)).
-			Msg("address reconciliation complete")
+		mergeOriginCounts(globalOriginCounts, result.originCounts)
 	}
 
 	metrics.ObserveOperationDuration("reconcile", time.Since(start))
-
-	// Set per-origin metrics after all protos are processed.
 	for origin, count := range globalOriginCounts {
 		metrics.SetActiveDecisionsByOrigin(origin, count)
+	}
+}
+
+type reconcileDiff struct {
+	shouldExist map[string]*crowdsec.Decision
+	currentMap  map[string]rosClient.AddressEntry
+	toAdd       []rosClient.BulkEntry
+	toRemove    []rosClient.AddressEntry
+}
+
+type reconcileResult struct {
+	originCounts map[string]int64
+}
+
+func (m *Manager) reconcileProtocolAddresses(proto string, decisions []*crowdsec.Decision, start time.Time) (reconcileResult, error) {
+	listName := m.getAddressListName(proto)
+	existing, err := m.ros.ListAddresses(proto, listName, m.commentPrefix())
+	if err != nil {
+		m.logger.Error().Err(err).Str("proto", proto).Msg("error listing current addresses")
+		metrics.RecordError("find")
+		return reconcileResult{}, err
+	}
+
+	diff := buildReconcileDiff(proto, decisions, existing, m.commentPrefix())
+	m.refreshAddressCache(proto, diff.currentMap)
+	metricsProto := metricsProtoName(proto)
+	added := m.addMissingAddresses(proto, listName, metricsProto, diff.toAdd)
+	removed := m.removeStaleAddresses(proto, metricsProto, diff.toRemove)
+	m.recordReconciliationMetrics(metricsProto, len(diff.shouldExist), added, removed)
+
+	m.logger.Info().
+		Str("proto", proto).
+		Int("existing", len(existing)).
+		Int("expected", len(diff.shouldExist)).
+		Int("added", added).
+		Int("removed", removed).
+		Dur("elapsed", time.Since(start)).
+		Msg("address reconciliation complete")
+
+	return reconcileResult{originCounts: originCounts(diff.shouldExist)}, nil
+}
+
+func buildReconcileDiff(proto string, decisions []*crowdsec.Decision, existing []rosClient.AddressEntry, commentPrefix string) reconcileDiff {
+	shouldExist := desiredAddressMap(proto, decisions)
+	currentMap := currentAddressMap(existing)
+	return reconcileDiff{
+		shouldExist: shouldExist,
+		currentMap:  currentMap,
+		toAdd:       missingAddressEntries(shouldExist, currentMap, commentPrefix),
+		toRemove:    staleAddressEntries(shouldExist, currentMap),
+	}
+}
+
+func desiredAddressMap(proto string, decisions []*crowdsec.Decision) map[string]*crowdsec.Decision {
+	shouldExist := make(map[string]*crowdsec.Decision)
+	for _, decision := range decisions {
+		if decision.Proto != proto {
+			continue
+		}
+		addr := rosClient.NormalizeAddress(decision.Value, proto)
+		shouldExist[addr] = decision
+	}
+	return shouldExist
+}
+
+func currentAddressMap(existing []rosClient.AddressEntry) map[string]rosClient.AddressEntry {
+	currentMap := make(map[string]rosClient.AddressEntry)
+	for _, entry := range existing {
+		currentMap[entry.Address] = entry
+	}
+	return currentMap
+}
+
+func missingAddressEntries(shouldExist map[string]*crowdsec.Decision, currentMap map[string]rosClient.AddressEntry, commentPrefix string) []rosClient.BulkEntry {
+	var toAdd []rosClient.BulkEntry
+	for addr, decision := range shouldExist {
+		if _, exists := currentMap[addr]; exists {
+			continue
+		}
+		toAdd = append(toAdd, rosClient.BulkEntry{
+			Address: decision.Value,
+			Timeout: decisionTimeout(decision),
+			Comment: buildAddressComment(commentPrefix, decision),
+		})
+	}
+	return toAdd
+}
+
+func decisionTimeout(decision *crowdsec.Decision) string {
+	if decision.Duration <= 0 {
+		return ""
+	}
+	return rosClient.DurationToMikroTik(decision.Duration)
+}
+
+func staleAddressEntries(shouldExist map[string]*crowdsec.Decision, currentMap map[string]rosClient.AddressEntry) []rosClient.AddressEntry {
+	var toRemove []rosClient.AddressEntry
+	for addr, entry := range currentMap {
+		if _, ok := shouldExist[addr]; !ok {
+			toRemove = append(toRemove, entry)
+		}
+	}
+	return toRemove
+}
+
+func (m *Manager) refreshAddressCache(proto string, currentMap map[string]rosClient.AddressEntry) {
+	m.cacheMu.Lock()
+	defer m.cacheMu.Unlock()
+	for addr := range m.addressCache {
+		if strings.Contains(addr, ":") != (proto == "ipv6") {
+			continue
+		}
+		if _, exists := currentMap[addr]; !exists {
+			delete(m.addressCache, addr)
+		}
+	}
+	for addr := range currentMap {
+		m.addressCache[addr] = struct{}{}
+	}
+}
+
+func (m *Manager) addMissingAddresses(proto, listName, metricsProto string, toAdd []rosClient.BulkEntry) int {
+	if len(toAdd) == 0 {
+		return 0
+	}
+	addStart := time.Now()
+	added, addErr := m.ros.BulkAddAddresses(proto, listName, toAdd)
+	if addErr != nil {
+		m.logger.Warn().Err(addErr).Msg("some addresses failed to add during reconciliation")
+	}
+	m.addEntriesToCache(proto, toAdd)
+	for range added {
+		metrics.RecordDecision("ban", metricsProto, "reconcile")
+	}
+	metrics.ObserveOperationDuration("bulk_add", time.Since(addStart))
+	m.logger.Info().Int("added", added).Dur("elapsed", time.Since(addStart)).Msg("bulk add complete")
+	return added
+}
+
+func (m *Manager) addEntriesToCache(proto string, entries []rosClient.BulkEntry) {
+	m.cacheMu.Lock()
+	defer m.cacheMu.Unlock()
+	for _, entry := range entries {
+		addr := rosClient.NormalizeAddress(entry.Address, proto)
+		m.addressCache[addr] = struct{}{}
+	}
+}
+
+func (m *Manager) removeStaleAddresses(proto, metricsProto string, toRemove []rosClient.AddressEntry) int {
+	if len(toRemove) == 0 {
+		return 0
+	}
+	removeStart := time.Now()
+	removed := m.removeAddresses(proto, toRemove)
+	m.removeEntriesFromCache(toRemove)
+	for range removed {
+		metrics.RecordDecision("unban", metricsProto, "reconcile")
+	}
+	metrics.ObserveOperationDuration("bulk_remove", time.Since(removeStart))
+	m.logger.Info().Int("removed", removed).Dur("elapsed", time.Since(removeStart)).Msg("bulk remove complete")
+	return removed
+}
+
+func (m *Manager) removeAddresses(proto string, entries []rosClient.AddressEntry) int {
+	if m.pool != nil {
+		return m.removeAddressesParallel(proto, entries)
+	}
+	return m.removeAddressesSequential(proto, entries)
+}
+
+func (m *Manager) removeAddressesParallel(proto string, entries []rosClient.AddressEntry) int {
+	errs := rosClient.ParallelExec(m.pool, entries, func(c *rosClient.Client, entry rosClient.AddressEntry) error {
+		return c.RemoveAddress(proto, entry.ID)
+	})
+	removed := len(entries) - len(errs)
+	for _, err := range errs {
+		if strings.Contains(err.Error(), "no such item") {
+			removed++
+			continue
+		}
+		m.logger.Error().Err(err).Msg("reconcile: error removing address")
+		metrics.RecordError("remove")
+	}
+	return removed
+}
+
+func (m *Manager) removeAddressesSequential(proto string, entries []rosClient.AddressEntry) int {
+	removed := 0
+	for _, entry := range entries {
+		removeErr := m.ros.RemoveAddress(proto, entry.ID)
+		switch {
+		case removeErr == nil:
+			removed++
+		case strings.Contains(removeErr.Error(), "no such item"):
+			removed++
+		default:
+			m.logger.Error().Err(removeErr).Str("address", entry.Address).Msg("reconcile: error removing address")
+			metrics.RecordError("remove")
+		}
+	}
+	return removed
+}
+
+func (m *Manager) removeEntriesFromCache(entries []rosClient.AddressEntry) {
+	m.cacheMu.Lock()
+	defer m.cacheMu.Unlock()
+	for _, entry := range entries {
+		delete(m.addressCache, entry.Address)
+	}
+}
+
+func (m *Manager) recordReconciliationMetrics(metricsProto string, expected, added, removed int) {
+	unchanged := max(expected-added, 0)
+	metrics.RecordReconciliation("added", added)
+	metrics.RecordReconciliation("removed", removed)
+	metrics.RecordReconciliation("unchanged", unchanged)
+	metrics.SetActiveDecisions(metricsProto, expected)
+}
+
+func metricsProtoName(proto string) string {
+	if proto == "ipv6" {
+		return "ipv6"
+	}
+	return "ipv4"
+}
+
+func originCounts(shouldExist map[string]*crowdsec.Decision) map[string]int64 {
+	counts := map[string]int64{}
+	for _, decision := range shouldExist {
+		origin := decision.Origin
+		if origin == "" {
+			origin = "unknown"
+		}
+		counts[origin]++
+	}
+	return counts
+}
+
+func mergeOriginCounts(target, source map[string]int64) {
+	for origin, count := range source {
+		target[origin] += count
 	}
 }
 

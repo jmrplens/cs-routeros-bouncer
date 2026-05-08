@@ -276,6 +276,19 @@ func Load(configPath string) (*Config, error) {
 
 // Validate checks that all required configuration fields are set.
 func (c *Config) Validate() error {
+	if err := c.validateCrowdSec(); err != nil {
+		return err
+	}
+	if err := c.validateMikroTik(); err != nil {
+		return err
+	}
+	if err := c.validateFirewall(); err != nil {
+		return err
+	}
+	return c.validateIntervals()
+}
+
+func (c *Config) validateCrowdSec() error {
 	if c.CrowdSec.APIKey == "" {
 		return errors.New("crowdsec.api_key is required")
 	}
@@ -289,6 +302,10 @@ func (c *Config) Validate() error {
 	if parsedAPIURL.Scheme == "" || parsedAPIURL.Host == "" {
 		return fmt.Errorf("crowdsec.api_url must include scheme and host, got %q", c.CrowdSec.APIURL)
 	}
+	return nil
+}
+
+func (c *Config) validateMikroTik() error {
 	if c.MikroTik.Address == "" {
 		return errors.New("mikrotik.address is required")
 	}
@@ -301,6 +318,10 @@ func (c *Config) Validate() error {
 	if c.MikroTik.PoolSize < 1 || c.MikroTik.PoolSize > 20 {
 		return fmt.Errorf("mikrotik.pool_size must be between 1 and 20, got %d", c.MikroTik.PoolSize)
 	}
+	return nil
+}
+
+func (c *Config) validateFirewall() error {
 	if !c.Firewall.IPv4.Enabled && !c.Firewall.IPv6.Enabled {
 		return errors.New("at least one of firewall.ipv4 or firewall.ipv6 must be enabled")
 	}
@@ -310,6 +331,16 @@ func (c *Config) Validate() error {
 	if c.Firewall.DenyAction != "drop" && c.Firewall.DenyAction != "reject" {
 		return fmt.Errorf("firewall.deny_action must be 'drop' or 'reject', got '%s'", c.Firewall.DenyAction)
 	}
+	if err := c.validateRejectOptions(); err != nil {
+		return err
+	}
+	if err := c.validateFilterOptions(); err != nil {
+		return err
+	}
+	return c.validateBlockOutputOptions()
+}
+
+func (c *Config) validateRejectOptions() error {
 	if c.Firewall.RejectWith != "" && c.Firewall.DenyAction != "reject" {
 		return errors.New("firewall.reject_with requires deny_action='reject'")
 	}
@@ -328,6 +359,10 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("firewall.reject_with invalid value '%s'", c.Firewall.RejectWith)
 		}
 	}
+	return nil
+}
+
+func (c *Config) validateFilterOptions() error {
 	if c.Firewall.Filter.ConnectionState != "" {
 		valid := map[string]bool{
 			"established": true, "related": true, "new": true,
@@ -339,11 +374,19 @@ func (c *Config) Validate() error {
 			}
 		}
 	}
+	return nil
+}
+
+func (c *Config) validateBlockOutputOptions() error {
 	if c.Firewall.BlockOutput.Enabled {
 		if c.Firewall.BlockOutput.Interface == "" && c.Firewall.BlockOutput.InterfaceList == "" {
 			return errors.New("firewall.block_output requires interface or interface_list when enabled")
 		}
 	}
+	return nil
+}
+
+func (c *Config) validateIntervals() error {
 	if c.CrowdSec.ReconciliationInterval < 0 {
 		return errors.New("crowdsec.reconciliation_interval must be >= 0 (0 disables)")
 	}

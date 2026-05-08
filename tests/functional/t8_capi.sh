@@ -60,14 +60,17 @@ set_origins() {
     local origins="$1"
     sudo sed -i "s|origins:.*|origins: ${origins}|" "$BOUNCER_CONFIG"
     log "Set origins to $origins"
+    return 0
 }
 
 restore_local_origins() {
     set_origins "$LOCAL_ORIGINS"
+    return 0
 }
 
 restore_original_origins() {
     set_origins "$ORIGINAL_ORIGINS"
+    return 0
 }
 
 # ---- Tests ----
@@ -212,6 +215,7 @@ t8_5_restart_idempotency() {
     if (( elapsed > 60 )); then
         warn "CAPI restart took ${elapsed}s (expected < 60s)"
     fi
+    return 0
 }
 run_test "T8.5 CAPI restart idempotency" t8_5_restart_idempotency
 

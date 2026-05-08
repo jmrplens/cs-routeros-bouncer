@@ -194,5 +194,6 @@ t7_5_bulk_throughput() {
         log "Could not parse throughput from logs (added=$added elapsed=$elapsed_s)"
     fi
     # This is informational — no pass/fail threshold
+    return 0
 }
 run_test "T7.5 Bulk add throughput" t7_5_bulk_throughput

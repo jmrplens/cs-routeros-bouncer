@@ -100,11 +100,11 @@ fmt: goimports
 
 ## goimports: apply import grouping/order
 goimports:
-	goimports -local $(MODULE) -w $(GOFILES)
+	go tool goimports -local $(MODULE) -w $(GOFILES)
 
 ## goimports-check: verify goimports formatting
 goimports-check:
-	@test -z "$$(goimports -local $(MODULE) -l $(GOFILES) | tee /dev/stderr)"
+	@test -z "$$(go tool goimports -local $(MODULE) -l $(GOFILES) | tee /dev/stderr)"
 
 ## gofmt-check: verify gofmt -s formatting
 gofmt-check:
@@ -116,39 +116,39 @@ vet:
 
 ## modernize: run Go's modernize analyzer
 modernize:
-	modernize $(GO_ANALYSIS_PKGS)
+	go tool modernize $(GO_ANALYSIS_PKGS)
 
 ## modernize-fix: apply modernize suggested fixes
 modernize-fix:
-	modernize -fix $(GO_ANALYSIS_PKGS)
+	go tool modernize -fix $(GO_ANALYSIS_PKGS)
 
 ## staticcheck: run Staticcheck
 staticcheck:
-	staticcheck $(GO_ANALYSIS_PKGS)
+	go tool staticcheck $(GO_ANALYSIS_PKGS)
 
 ## golangci-lint: run configured golangci-lint suite
 golangci-lint:
-	golangci-lint run $(GO_ANALYSIS_PKGS)
+	go tool golangci-lint run $(GO_ANALYSIS_PKGS)
 
 ## gosec: run standalone Go security analysis
 gosec:
-	gosec -quiet -severity medium -confidence medium -exclude-generated -fmt text $(GO_ANALYSIS_PKGS)
+	go tool gosec -quiet -severity medium -confidence medium -exclude-generated -fmt text $(GO_ANALYSIS_PKGS)
 
 ## govulncheck: scan reachable Go vulnerabilities
 govulncheck:
-	govulncheck $(GO_ANALYSIS_PKGS)
+	go tool govulncheck $(GO_ANALYSIS_PKGS)
 
 ## actionlint: lint GitHub Actions workflows
 actionlint:
-	actionlint
+	go tool actionlint
 
 ## mdlint: lint Markdown files with markdownlint-cli2
 mdlint:
-	npx --yes markdownlint-cli2 "**/*.md"
+	pnpm --dir docs exec markdownlint-cli2 --config ../.markdownlint-cli2.yaml "../**/*.md"
 
 ## mdlint-fix: auto-fix Markdown files where possible
 mdlint-fix:
-	npx --yes markdownlint-cli2 --fix "**/*.md"
+	pnpm --dir docs exec markdownlint-cli2 --config ../.markdownlint-cli2.yaml --fix "../**/*.md"
 
 ## lint: fast local lint alias
 lint: vet staticcheck golangci-lint
@@ -158,17 +158,12 @@ analyze: gofmt-check goimports-check vet modernize golangci-lint gosec staticche
 
 ## install-tools: install Go analysis tools pinned to CI versions
 install-tools:
-	go install golang.org/x/tools/cmd/goimports@latest
-	go install golang.org/x/tools/go/analysis/passes/modernize/cmd/modernize@$(MODERNIZE_VERSION)
-	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
-	go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION)
-	go install honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION)
-	go install golang.org/x/vuln/cmd/govulncheck@latest
-	go install github.com/rhysd/actionlint/cmd/actionlint@$(ACTIONLINT_VERSION)
+	go mod download
 
 ## docs-install: install documentation dependencies
 docs-install:
-	pnpm --dir docs install --frozen-lockfile
+	pnpm --dir docs install --frozen-lockfile --ignore-scripts
+	docs/node_modules/.bin/playwright install --with-deps chromium
 
 ## docs-check: run Astro/Starlight static checks
 docs-check:

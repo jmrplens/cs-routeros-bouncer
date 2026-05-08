@@ -108,6 +108,7 @@ metrics:
   listen_addr: "0.0.0.0"
   listen_port: 2112
 YAML
+    return 0
 }
 
 # ─── T9.1 — deny_action=reject + reject_with ───────────────────────────────
