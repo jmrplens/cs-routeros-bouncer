@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.4.0] - 2026-05-08
+## [1.4.1] - 2026-05-08
 
 ### Added
 
@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Release preparation** — active version references, issue templates, build examples, metric examples, and version-sensitive tests now point at `1.4.0`; the `v1.4.0` tag is intentionally left for the release merge
+- **Release preparation** — active version references, issue templates, build examples, metric examples, and version-sensitive tests now point at `1.4.1`; the `v1.4.1` tag is intentionally left for the release merge
 - **Tooling and dependencies** — Go tooling now targets the project `go.mod` version (`1.26.3`) via `GOTOOLCHAIN`, and the documentation stack has been refreshed to the Astro 6 / Starlight 0.39 / TypeScript 6 / pnpm 10 generation
 - **Go lint policy** — golangci-lint rules have been tightened with `nilnil`, stale exclusions were removed, and not-found RouterOS paths now use explicit errors instead of `nil, nil` results
 - **GitHub Pages deployment** — docs publishing now runs only when Astro documentation inputs change, avoiding unrelated Pages deploys
