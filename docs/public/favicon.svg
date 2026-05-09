@@ -1,15 +1,49 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#3F51B5"/>
-      <stop offset="100%" stop-color="#1A237E"/>
+    <linearGradient id="background" x1="36" x2="220" y1="24" y2="232" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#152247"/>
+      <stop offset="1" stop-color="#071126"/>
     </linearGradient>
+    <radialGradient id="aura" cx="0" cy="0" r="1" gradientTransform="matrix(0 112 -124 0 128 132)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#009688" stop-opacity="0.26"/>
+      <stop offset="0.58" stop-color="#3F51B5" stop-opacity="0.13"/>
+      <stop offset="1" stop-color="#071126" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="cyan" x1="72" x2="184" y1="52" y2="216" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#C9FFF8"/>
+      <stop offset="0.46" stop-color="#65E9DE"/>
+      <stop offset="1" stop-color="#00A69C"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="86" x2="170" y1="126" y2="166" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7DFFF4"/>
+      <stop offset="1" stop-color="#22C7BF"/>
+    </linearGradient>
+    <filter id="drop" x="-30%" y="-30%" width="160%" height="160%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="11" stdDeviation="12" flood-color="#020817" flood-opacity="0.55"/>
+    </filter>
   </defs>
-  <rect width="64" height="64" rx="12" fill="url(#bg)"/>
-  <text x="32" y="26" font-family="ui-monospace,monospace" font-size="14" font-weight="bold" fill="#fff" text-anchor="middle">CS</text>
-  <text x="32" y="42" font-family="ui-monospace,monospace" font-size="10" fill="#C5CAE9" text-anchor="middle">ROS</text>
-  <path d="M14 50 h36" stroke="#009688" stroke-width="2" stroke-linecap="round"/>
-  <circle cx="20" cy="54" r="2" fill="#009688"/>
-  <circle cx="32" cy="54" r="2" fill="#4DB6AC"/>
-  <circle cx="44" cy="54" r="2" fill="#009688"/>
+  <rect width="256" height="256" rx="42" fill="url(#background)"/>
+  <rect width="256" height="256" rx="42" fill="url(#aura)"/>
+  <g filter="url(#drop)">
+    <path fill="#0B1931" d="M128 50c-19 14-41 23-67 28v37c0 47 26 84 67 106 41-22 67-59 67-106V78c-26-5-48-14-67-28Z"/>
+    <path fill="none" stroke="url(#cyan)" stroke-linejoin="round" stroke-width="12" d="M128 50c-19 14-41 23-67 28v37c0 47 26 84 67 106 41-22 67-59 67-106V78c-26-5-48-14-67-28Z"/>
+    <path fill="none" stroke="#D8FFF9" stroke-linecap="round" stroke-linejoin="round" stroke-width="5" d="M81 92c17-4 33-11 47-21 14 10 30 17 47 21" opacity="0.86"/>
+    <path fill="none" stroke="#2BD5CD" stroke-linecap="round" stroke-linejoin="round" stroke-width="5" d="M83 111c0 34 16 60 45 77 29-17 45-43 45-77" opacity="0.5"/>
+
+    <path fill="none" stroke="url(#cyan)" stroke-linecap="round" stroke-width="9" d="M104 133 91 101"/>
+    <path fill="none" stroke="url(#cyan)" stroke-linecap="round" stroke-width="9" d="M152 133 165 101"/>
+    <path fill="none" stroke="url(#cyan)" stroke-linecap="round" stroke-width="7" d="M108 115c11-9 29-9 40 0"/>
+    <path fill="none" stroke="url(#cyan)" stroke-linecap="round" stroke-width="7" d="M118 126c6-4 14-4 20 0"/>
+    <circle cx="128" cy="136" r="5.5" fill="#66EFE5"/>
+
+    <rect x="84" y="132" width="88" height="38" rx="8" fill="#081B36" stroke="url(#cyan)" stroke-width="7"/>
+    <rect x="95" y="143" width="42" height="8" rx="4" fill="url(#panel)"/>
+    <circle cx="151" cy="147" r="5" fill="#68F0E6"/>
+    <circle cx="165" cy="147" r="5" fill="#5366D6"/>
+    <path fill="none" stroke="url(#cyan)" stroke-linecap="round" stroke-linejoin="round" stroke-width="6" d="M102 170v8h18"/>
+    <path fill="none" stroke="url(#cyan)" stroke-linecap="round" stroke-linejoin="round" stroke-width="6" d="M154 170v8h-18"/>
+    <circle cx="97" cy="181" r="5.5" fill="#0B1931" stroke="#66EFE5" stroke-width="5"/>
+    <circle cx="128" cy="186" r="5.5" fill="#0B1931" stroke="#66EFE5" stroke-width="5"/>
+    <circle cx="159" cy="181" r="5.5" fill="#0B1931" stroke="#66EFE5" stroke-width="5"/>
+  </g>
 </svg>

@@ -81,6 +81,9 @@ export default defineConfig({
 			lastUpdated: true,
 			pagination: true,
 			customCss: ["./src/styles/custom.css"],
+			expressiveCode: {
+				emitExternalStylesheet: false,
+			},
 			components: {
 				Header: "./src/components/overrides/Header.astro",
 				Footer: "./src/components/overrides/Footer.astro",
@@ -185,6 +188,10 @@ export default defineConfig({
 							slug: "getting-started/installation",
 						},
 						{
+							label: "CLI Reference",
+							slug: "getting-started/cli-reference",
+						},
+						{
 							label: "Router Setup",
 							slug: "getting-started/router-setup",
 						},
@@ -196,10 +203,15 @@ export default defineConfig({
 						{ label: "Overview", slug: "configuration" },
 						{ label: "MikroTik", slug: "configuration/mikrotik" },
 						{ label: "CrowdSec", slug: "configuration/crowdsec" },
+						{ label: "CAPI Blocklists", slug: "configuration/capi-blocklists" },
 						{ label: "Firewall", slug: "configuration/firewall" },
 						{
 							label: "Logging & Metrics",
 							slug: "configuration/logging-metrics",
+						},
+						{
+							label: "Performance Tuning",
+							slug: "configuration/performance-tuning",
 						},
 						{ label: "Examples", slug: "configuration/examples" },
 					],
@@ -243,6 +255,14 @@ export default defineConfig({
 						{
 							label: "Building & Testing",
 							slug: "development/building",
+						},
+						{
+							label: "Testing Guide",
+							slug: "development/testing-guide",
+						},
+						{
+							label: "Benchmarking",
+							slug: "development/benchmarking",
 						},
 						{
 							label: "Project Structure",

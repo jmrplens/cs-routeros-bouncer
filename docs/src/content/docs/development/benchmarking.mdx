@@ -1,0 +1,60 @@
+---
+title: Benchmarking
+description: How to run and interpret the RouterOS API benchmark command.
+---
+
+The benchmark command measures RouterOS API operations against a real router. It is intended for development and capacity planning, not for normal deployments.
+
+## Command
+
+Build and run the benchmark:
+
+```bash
+go run ./cmd/benchmark
+```
+
+The config path is optional and defaults to `config/test.yaml`:
+
+```bash
+go run ./cmd/benchmark config/test.yaml
+```
+
+The benchmark reads the MikroTik section from the selected YAML file, connects to RouterOS, then runs API-level operations.
+
+## What it measures
+
+- Single IPv4 and IPv6 address-list adds/removes.
+- Address-list find and list calls.
+- Firewall rule create, find, and remove calls.
+- Sequential IPv4 batch add/list/find/remove timings.
+
+The benchmark uses documentation-prefix test addresses such as `198.51.100.0/24` and `2001:db8::/32`, but it still writes to the configured RouterOS address lists and firewall menus.
+
+:::caution
+Run benchmarks on a lab router or during a maintenance window. The command creates temporary firewall rules and address-list entries and then removes them.
+:::
+
+## Example output
+
+```text
+Connected to: lab-router
+
+=== SINGLE OPERATION BENCHMARKS (RouterOS API) ===
+  Add single IPv4                         35ms  OK
+  Find IPv4 (1 entry)                     12ms  OK
+  Remove IPv4 by .id                      18ms  OK
+
+=== BATCH ADD BENCHMARKS (sequential via API) ===
+  Add 100 IPv4 (sequential)                4s  (40ms/ip, failures=0)
+```
+
+Use the numbers to compare RouterOS versions, hardware models, TLS vs plaintext API, and network latency.
+
+For real bouncer startup performance, prefer the functional CAPI tests because reconciliation uses script-based bulk adds and pool-based removals, not only sequential API calls.
+
+## Safety checklist
+
+- Confirm the target is a lab router.
+- Use dedicated test address lists when possible.
+- Keep `command_timeout` high enough for slow devices.
+- Check the router after interruption and remove any `benchmark-*` comments if a run is stopped midway.

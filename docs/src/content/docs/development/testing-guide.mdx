@@ -1,0 +1,107 @@
+---
+title: Testing Guide
+description: Unit, integration, and functional test suites for cs-routeros-bouncer.
+---
+
+The project has three test layers. Use the smallest layer that proves your change, then move outward when the behavior touches RouterOS, Docker, or service-level workflows.
+
+## Unit tests
+
+Unit tests run without external services:
+
+```bash
+go test ./...
+```
+
+Useful focused runs:
+
+```bash
+go test -v ./internal/config/...
+go test -v ./internal/routeros/...
+go test -v ./internal/manager/...
+```
+
+## Integration tests
+
+Integration tests are Go tests guarded by the `integration` build tag. They exercise Docker builds and live RouterOS API behavior.
+
+Run all integration tests:
+
+```bash
+go test -v -tags integration -count=1 -timeout 300s ./tests/integration/...
+```
+
+Run only Docker integration tests:
+
+```bash
+go test -v -tags integration -run TestDocker -count=1 -timeout 300s ./tests/integration/...
+```
+
+RouterOS integration tests read `ROUTEROS_ADDRESS`, `ROUTEROS_USERNAME`, `ROUTEROS_PASSWORD`, `ROUTEROS_TLS`, and `ROUTEROS_TLS_INSECURE`. If those are not set, they try `config/test.yaml`.
+
+:::caution
+RouterOS integration tests create and remove test firewall rules and address-list entries. Use a lab router or isolated lists.
+:::
+
+## Functional tests
+
+The Bash functional suite in `tests/functional/` is a black-box test of a compiled and installed bouncer. It validates the service through SSH, `cscli`, systemd, SNMP, and the bouncer's own HTTP endpoints.
+
+Prepare the environment:
+
+```bash
+cp tests/functional/.env.example tests/functional/.env
+$EDITOR tests/functional/.env
+```
+
+Required infrastructure:
+
+- MikroTik reachable over SSH.
+- CrowdSec LAPI with `cscli` available.
+- Built bouncer binary.
+- Bouncer configured as a systemd service for service-level tests.
+- SNMP for CPU/memory checks, optional but recommended.
+
+Run the default suite:
+
+```bash
+tests/functional/run_tests.sh
+```
+
+Run selected groups:
+
+```bash
+tests/functional/run_tests.sh t1 t2 t9
+```
+
+Include CAPI stress tests:
+
+```bash
+tests/functional/run_tests.sh --capi
+```
+
+List groups:
+
+```bash
+tests/functional/run_tests.sh --list
+```
+
+| Group | Scope                                                                               |
+| ----- | ----------------------------------------------------------------------------------- |
+| `t1`  | Data integrity: IP completeness, format, comments                                   |
+| `t2`  | Cache consistency: ban/unban, expiry, fast-path                                     |
+| `t3`  | Bulk operations: reconciliation, partial sync, orphan cleanup                       |
+| `t4`  | Connection pool: establishment and shutdown                                         |
+| `t5`  | Edge cases: duplicates, rapid cycles, restart idempotency                           |
+| `t6`  | CPU monitoring: steady state, peak, recovery                                        |
+| `t7`  | Timing: reconciliation and ban/unban latency                                        |
+| `t8`  | CAPI stress test, skipped unless `--capi` is set                                    |
+| `t9`  | Advanced firewall config: reject, connection-state, logging, passthrough, whitelist |
+
+:::danger[Real hardware]
+Functional tests modify firewall rules, address lists, CrowdSec decisions, and the bouncer service. Do not point them at production infrastructure unless you have planned for the changes.
+:::
+
+## Choosing a test layer
+
+Run unit tests for config parsing, decision parsing, metrics, and mocked RouterOS behavior. Run integration tests for Docker build behavior and live RouterOS API primitives. Choose functional tests when the change affects startup, reconciliation, systemd, CrowdSec LAPI behavior, CAPI scale, or end-to-end firewall state.

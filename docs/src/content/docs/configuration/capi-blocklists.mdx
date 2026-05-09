@@ -1,0 +1,73 @@
+---
+title: CAPI Blocklists
+description: How to decide whether to sync CrowdSec community blocklists to RouterOS.
+---
+
+CrowdSec can provide community blocklist decisions from the Central API (CAPI). cs-routeros-bouncer can sync those decisions to RouterOS, but the list size can be large enough to matter on small routers.
+
+## When to use CAPI
+
+Use full CAPI syncing when:
+
+- Your router has enough CPU and memory for tens of thousands of address-list entries.
+- You want proactive blocking of known malicious IPs, not only IPs seen locally.
+- Startup reconciliation taking around a minute on mid-range hardware is acceptable.
+
+Prefer local-only mode when:
+
+- The router is resource constrained.
+- You only want to block attackers detected by your own CrowdSec engine.
+- Reboots and bouncer restarts must be very quick.
+
+## Local-only mode
+
+In YAML, keep only local engine and manual `cscli` decisions:
+
+```yaml
+crowdsec:
+  origins: ["crowdsec", "cscli"]
+```
+
+With environment variables, `CROWDSEC_ORIGINS` is space-separated:
+
+```bash
+CROWDSEC_ORIGINS="crowdsec cscli"
+```
+
+Leaving `origins` empty accepts all origins, including `CAPI` and `lists:*`.
+
+## Expected scale
+
+In the RB5009 benchmark environment, full CAPI synced about 28,700 decisions in about 58 seconds wall-clock, with roughly 35-36 seconds of RouterOS bulk add work and about 39% observed CPU peak.
+
+Your result depends on RouterOS version, model, traffic load, API latency, and address-list size. The cost is concentrated during startup reconciliation or large list changes; normal streaming ban/unban work is much lighter.
+
+## Filtering strategy
+
+Start with local-only mode on small routers, then enable CAPI only after checking startup reconciliation time and CPU. If full CAPI is too heavy, combine origin filters with scenario substring filters:
+
+```yaml
+crowdsec:
+  origins: ["crowdsec", "cscli", "CAPI"]
+  scenarios_containing: ["ssh", "http"]
+```
+
+Multiple values are matched as OR conditions within each key: `origins` accepts decisions from `crowdsec` OR `cscli` OR `CAPI`, and `scenarios_containing` matches scenarios containing `ssh` OR `http`. When `origins`, `scenarios_containing`, and `scenarios_not_containing` are combined, a decision must pass all configured filter groups.
+
+Use `scenarios_not_containing` to exclude noisy scenarios by substring:
+
+```yaml
+crowdsec:
+  scenarios_not_containing: ["test", "honeypot"]
+```
+
+## Monitoring
+
+Watch these signals while testing CAPI:
+
+- `/health` remains reachable and `routeros_connected` stays `true`.
+- `crowdsec_bouncer_active_decisions_by_origin{origin="CAPI"}` shows the CAPI share.
+- RouterOS CPU returns near idle after reconciliation.
+- Logs do not show repeated reconnects or repeated duplicate-entry churn.
+
+If CPU remains high after reconciliation, treat it as a troubleshooting signal rather than normal CAPI behavior.

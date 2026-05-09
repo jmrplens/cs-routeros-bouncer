@@ -9,10 +9,10 @@ services:
       - "2112:2112"  # Prometheus metrics (optional, remove if not needed)
     # Environment variables override config file values:
     # environment:
-    #   CROWDSEC_API_URL: "http://crowdsec:8080/"
-    #   CROWDSEC_API_KEY: "your-api-key"
-    #   MIKROTIK_ADDRESS: "192.168.0.1:8728"
-    #   MIKROTIK_USERNAME: "crowdsec"
-    #   MIKROTIK_PASSWORD: "your-password"
+    #   CROWDSEC_URL: "http://crowdsec:8080/"
+    #   CROWDSEC_BOUNCER_API_KEY: "your-api-key"
+    #   MIKROTIK_HOST: "192.168.0.1:8728"
+    #   MIKROTIK_USER: "crowdsec"
+    #   MIKROTIK_PASS: "your-password"
     #   METRICS_ENABLED: "true"
     # network_mode: host  # Use if CrowdSec is on the host network

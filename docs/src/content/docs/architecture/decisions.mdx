@@ -29,7 +29,7 @@ How the bouncer processes incoming CrowdSec decisions.
 
 4. **Filter by scenario**
 
-   If `scenarios` is configured, only decisions matching the specified patterns pass through. Supports `*` and `?` wildcards.
+   If `scenarios_containing` or `scenarios_not_containing` is configured, only decisions whose scenario name passes those substring filters are processed.
 
 5. **Apply action**
    - **Ban** → Add IP/range to the MikroTik address list
@@ -57,16 +57,18 @@ When `origins` is empty (default), **all origins are accepted**.
 
 ## Scenario filtering
 
-When `scenarios` is configured, the bouncer only processes decisions matching the specified scenarios:
+Scenario filters use CrowdSec's `scenarios_containing` and `scenarios_not_containing` fields. They match literal substrings in the scenario name, such as `ssh`, `http`, or `crowdsecurity/ssh-bf`.
 
 ```yaml
 crowdsec:
-  scenarios:
-    - "crowdsecurity/ssh-bf"
-    - "crowdsecurity/http-*"
+  scenarios_containing:
+    - "ssh"
+    - "http"
+  scenarios_not_containing:
+    - "test"
 ```
 
-Pattern matching with `*` and `?` wildcards is supported.
+Use `scenarios_containing` to keep only matching scenarios. Use `scenarios_not_containing` to exclude noisy or unwanted scenarios when the bouncer processes decisions received from CrowdSec's LAPI.
 
 ## Duplicate IP handling
 
@@ -83,6 +85,6 @@ Duplicate handling is transparent — the address list only ever contains one en
 
 <LinkCard
   title="CrowdSec Configuration"
-  description="Configure origins, scenarios, and LAPI connection settings."
+  description="Configure origins, scenario substring filters, and LAPI connection settings."
   href="/cs-routeros-bouncer/configuration/crowdsec/"
 />

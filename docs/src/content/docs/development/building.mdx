@@ -3,7 +3,13 @@ title: Building
 description: How to build, test, and lint the bouncer from source.
 ---
 
-import { Steps, Tabs, TabItem } from "@astrojs/starlight/components";
+import {
+  Steps,
+  Tabs,
+  TabItem,
+  LinkCard,
+  CardGrid,
+} from "@astrojs/starlight/components";
 
 ## Prerequisites
 
@@ -98,24 +104,38 @@ go tool cover -func=coverage.out | tail -1
 ```
 
   </TabItem>
-  <TabItem label="Functional tests">
+  <TabItem label="Integration & functional tests">
 
-Functional tests run against a real MikroTik router. They are skipped by default.
+Integration tests are guarded by the `integration` build tag. The Bash functional suite runs black-box checks against a real installed bouncer.
 
 ```bash
-FUNCTIONAL_TEST=1 \
-  MIKROTIK_HOST="192.168.0.1:8728" \
-  MIKROTIK_USER="crowdsec" \
-  MIKROTIK_PASS="your-password" \
-  go test -v ./internal/routeros/... -run TestFunctional
+# Go integration tests
+go test -v -tags integration -count=1 -timeout 300s ./tests/integration/...
+
+# Black-box functional suite
+cp tests/functional/.env.example tests/functional/.env
+tests/functional/run_tests.sh
 ```
 
 :::caution
-Functional tests create and delete firewall rules and address list entries on the target router. Use a test router or ensure you understand the impact.
+Integration and functional tests create and delete firewall rules and address-list entries on the target router. Use a test router or ensure you understand the impact.
 :::
 
   </TabItem>
 </Tabs>
+
+<CardGrid>
+  <LinkCard
+    title="Testing Guide"
+    description="Unit, integration, and functional test suites in detail."
+    href="/cs-routeros-bouncer/development/testing-guide/"
+  />
+  <LinkCard
+    title="Benchmarking"
+    description="RouterOS API benchmark command and safety notes."
+    href="/cs-routeros-bouncer/development/benchmarking/"
+  />
+</CardGrid>
 
 ## Linting
 

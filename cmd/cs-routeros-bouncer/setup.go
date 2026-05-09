@@ -33,13 +33,13 @@ var (
 	setupEvalSymlinks = filepath.EvalSymlinks
 	setupMkdirAll     = os.MkdirAll
 	setupStat         = os.Stat
+	setupAbs          = filepath.Abs
 	setupWriteFile    = os.WriteFile
 	setupRemove       = os.Remove
 	setupRemoveAll    = os.RemoveAll
 	setupCopyFile     = copyFile
 	setupSystemctl    = systemctl
 	setupServicePath  = defaultServicePath
-	setupConfigDir    = defaultConfigDir
 )
 
 // serviceTemplate is the systemd unit file content.
@@ -139,9 +139,17 @@ func runSetup(binDst, configDir string) error {
 }
 
 // runUninstall stops and removes the systemd service and binary.
-func runUninstall(binDst string, removeConfig bool) error {
+func runUninstall(binDst, configDir string, removeConfig bool) error {
 	if setupGetuid() != 0 {
 		return errors.New("uninstall must be run as root")
+	}
+	configDirToRemove := ""
+	if removeConfig {
+		var err error
+		configDirToRemove, err = safeConfigDirForRemoval(configDir)
+		if err != nil {
+			return err
+		}
 	}
 
 	fmt.Printf("→ Stopping %s ...\n", serviceName)
@@ -162,14 +170,33 @@ func runUninstall(binDst string, removeConfig bool) error {
 	}
 
 	if removeConfig {
-		fmt.Printf("→ Removing config dir %s ...\n", setupConfigDir)
-		_ = setupRemoveAll(setupConfigDir)
+		fmt.Printf("→ Removing config dir %s ...\n", configDirToRemove)
+		_ = setupRemoveAll(configDirToRemove)
 	} else {
-		fmt.Printf("→ Config dir %s preserved (use -purge to remove).\n", setupConfigDir)
+		fmt.Printf("→ Config dir %s preserved (use -purge to remove).\n", configDir)
 	}
 
 	fmt.Printf("✓ %s uninstalled.\n", serviceName)
 	return nil
+}
+
+func safeConfigDirForRemoval(configDir string) (string, error) {
+	trimmed := strings.TrimSpace(configDir)
+	if trimmed == "" {
+		return "", errors.New("refusing to remove empty config dir")
+	}
+	cleaned := filepath.Clean(trimmed)
+	if cleaned == "." || cleaned == string(os.PathSeparator) {
+		return "", fmt.Errorf("refusing to remove unsafe config dir %q", configDir)
+	}
+	absConfigDir, err := setupAbs(cleaned)
+	if err != nil {
+		return "", fmt.Errorf("resolve config dir %q: %w", configDir, err)
+	}
+	if absConfigDir == string(os.PathSeparator) || filepath.Dir(absConfigDir) == string(os.PathSeparator) {
+		return "", fmt.Errorf("refusing to remove top-level config dir %q", configDir)
+	}
+	return absConfigDir, nil
 }
 
 // systemctl runs a systemctl command with the given arguments.

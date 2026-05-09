@@ -32,6 +32,8 @@ services:
 
 ### With config file
 
+The Docker image runs `cs-routeros-bouncer -c /etc/cs-routeros-bouncer/config.yaml` by default, so mount your file at that path:
+
 ```yaml
 services:
   cs-routeros-bouncer:
@@ -75,8 +77,6 @@ All configuration options can be set via environment variables. See the [Configu
    sudo ./cs-routeros-bouncer setup
    ```
 
-   This copies the binary, creates the config directory, installs and starts the systemd service.
-
 3. **Configure**
 
    ```bash
@@ -86,12 +86,16 @@ All configuration options can be set via environment variables. See the [Configu
 
 </Steps>
 
+The automated setup copies the binary, creates the config directory, writes a hardened systemd unit, enables the service, and starts it.
+
 The `setup` subcommand accepts optional flags:
 
 | Flag          | Default                              | Description                       |
 | ------------- | ------------------------------------ | --------------------------------- |
 | `-bin`        | `/usr/local/bin/cs-routeros-bouncer` | Installation path for the binary  |
 | `-config-dir` | `/etc/cs-routeros-bouncer`           | Directory for configuration files |
+
+The generated config is `/etc/cs-routeros-bouncer/cs-routeros-bouncer.yaml` unless `-config-dir` changes the directory.
 
 ### Manual setup
 
@@ -126,6 +130,14 @@ ExecStart=/usr/local/bin/cs-routeros-bouncer -c /etc/cs-routeros-bouncer/cs-rout
 Restart=on-failure
 RestartSec=10
 TimeoutStopSec=90
+LimitNOFILE=65536
+
+# Hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/log
+PrivateTmp=yes
 
 [Install]
 WantedBy=multi-user.target
@@ -146,6 +158,10 @@ sudo cs-routeros-bouncer uninstall
 # Also remove config
 sudo cs-routeros-bouncer uninstall -purge
 ```
+
+`uninstall` also accepts `-bin` and `-config-dir` if setup used custom paths. Pass the same `-config-dir` with `-purge` to remove that custom configuration directory.
+
+See the [CLI Reference](/cs-routeros-bouncer/getting-started/cli-reference/) for all setup and uninstall flags.
 
   </TabItem>
   <TabItem label="Build from source" icon="seti:go">

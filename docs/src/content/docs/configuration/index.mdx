@@ -10,11 +10,21 @@ cs-routeros-bouncer can be configured via **YAML file** and/or **environment var
 
 ## Config file
 
-The default config file location is `/etc/cs-routeros-bouncer/cs-routeros-bouncer.yaml`. Override with the `-c` flag:
+When running the binary directly, pass the config path with `-c` unless all required settings are supplied via environment variables:
 
 ```bash
 cs-routeros-bouncer -c /path/to/config.yaml
 ```
+
+Deployment helpers choose their own paths:
+
+| Deployment method            | Config path used                                    |
+| ---------------------------- | --------------------------------------------------- |
+| `setup` systemd service      | `/etc/cs-routeros-bouncer/cs-routeros-bouncer.yaml` |
+| Docker image default command | `/etc/cs-routeros-bouncer/config.yaml`              |
+| Direct binary execution      | No implicit file; use `-c`                          |
+
+YAML string values may contain explicit `${VAR}` placeholders. Only braced placeholders are expanded; literal `$` characters in secrets are preserved.
 
 A full annotated reference is included in the repository at [`config/cs-routeros-bouncer.yaml`](https://github.com/jmrplens/cs-routeros-bouncer/blob/main/config/cs-routeros-bouncer.yaml).
 
@@ -25,6 +35,11 @@ A full annotated reference is included in the repository at [`config/cs-routeros
     title="CrowdSec"
     description="LAPI connection, polling, decision filtering."
     href="/cs-routeros-bouncer/configuration/crowdsec/"
+  />
+  <LinkCard
+    title="CAPI Blocklists"
+    description="Community blocklists, local-only mode, and scale guidance."
+    href="/cs-routeros-bouncer/configuration/capi-blocklists/"
   />
   <LinkCard
     title="MikroTik"
@@ -40,6 +55,11 @@ A full annotated reference is included in the repository at [`config/cs-routeros
     title="Logging & Metrics"
     description="Log level/format, Prometheus metrics endpoint."
     href="/cs-routeros-bouncer/configuration/logging-metrics/"
+  />
+  <LinkCard
+    title="Performance Tuning"
+    description="Pool size, bulk operations, timeouts, and reconciliation cadence."
+    href="/cs-routeros-bouncer/configuration/performance-tuning/"
   />
   <LinkCard
     title="Examples"
@@ -92,6 +112,8 @@ Fine-tuning options for decision filtering, TLS, performance, firewall customiza
 | `crowdsec.key_path`                  | `CROWDSEC_KEY_PATH`                 |                  | Client key path                                                     |
 | `crowdsec.ca_cert_path`              | `CROWDSEC_CA_CERT_PATH`             |                  | CA cert path                                                        |
 
+`CROWDSEC_ORIGINS` is space-separated when set as an environment variable, for example `CROWDSEC_ORIGINS="crowdsec cscli"`.
+
 #### [MikroTik](/cs-routeros-bouncer/configuration/mikrotik/) — TLS & performance
 
 | Config Key                    | Env Variable            | Default | Description                     |
@@ -143,13 +165,16 @@ Fine-tuning options for decision filtering, TLS, performance, firewall customiza
 | `firewall.block_output.passthrough_v6`      | `FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V6`      |                    | IPv6 client to bypass output blocking                                                                                                                                                                                                     |
 | `firewall.block_output.passthrough_v6_list` | `FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V6_LIST` |                    | IPv6 list to bypass output blocking                                                                                                                                                                                                       |
 
+Backward-compatible aliases such as `FIREWALL_INPUT_*` and `FIREWALL_OUTPUT_*` are still accepted for older deployments. Prefer the explicit `FIREWALL_BLOCK_INPUT_*` and `FIREWALL_BLOCK_OUTPUT_*` names in new configs.
+
 #### [Logging & Metrics](/cs-routeros-bouncer/configuration/logging-metrics/) — format, file output & Prometheus
 
-| Config Key                       | Env Variable                     | Default   | Description                                          |
-| -------------------------------- | -------------------------------- | --------- | ---------------------------------------------------- |
-| `logging.format`                 | `LOG_FORMAT`                     | `text`    | Log format: `text` or `json`                         |
-| `logging.file`                   | `LOG_FILE`                       |           | Log file path (empty = stdout only)                  |
-| `metrics.enabled`                | `METRICS_ENABLED`                | `false`   | Enable Prometheus `/metrics` endpoint                |
-| `metrics.listen_addr`            | `METRICS_ADDR`                   | `0.0.0.0` | Listen address                                       |
-| `metrics.listen_port`            | `METRICS_PORT`                   | `2112`    | Listen port                                          |
-| `metrics.routeros_poll_interval` | `METRICS_ROUTEROS_POLL_INTERVAL` | `30s`     | RouterOS system metrics poll interval (0 to disable) |
+| Config Key                       | Env Variable                     | Default   | Description                                                     |
+| -------------------------------- | -------------------------------- | --------- | --------------------------------------------------------------- |
+| `logging.format`                 | `LOG_FORMAT`                     | `text`    | Log format: `text` or `json`                                    |
+| `logging.file`                   | `LOG_FILE`                       |           | Log file path (empty = stdout only)                             |
+| `metrics.enabled`                | `METRICS_ENABLED`                | `false`   | Enable Prometheus `/metrics` endpoint                           |
+| `metrics.listen_addr`            | `METRICS_ADDR`                   | `0.0.0.0` | Listen address                                                  |
+| `metrics.listen_port`            | `METRICS_PORT`                   | `2112`    | Listen port                                                     |
+| `metrics.routeros_poll_interval` | `METRICS_ROUTEROS_POLL_INTERVAL` | `30s`     | RouterOS system metrics poll interval (0 to disable)            |
+| `metrics.track_processed`        | `METRICS_TRACK_PROCESSED`        | `true`    | Create passthrough counting rules for processed traffic metrics |

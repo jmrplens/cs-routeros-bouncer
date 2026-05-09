@@ -7,6 +7,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"syscall"
@@ -20,12 +21,19 @@ import (
 	"github.com/jmrplens/cs-routeros-bouncer/internal/metrics"
 )
 
+var (
+	runSetupFn     = runSetup
+	runUninstallFn = runUninstall
+)
+
+const cliErrorFormat = "Error: %v\n"
+
 // main dispatches setup/uninstall subcommands before starting the long-running bouncer.
 func main() {
 	if handleSubcommand() {
 		return
 	}
-	runBouncer()
+	runBouncer(normalizeRunArgs(os.Args[1:]))
 }
 
 // handleSubcommand runs one-shot administrative subcommands and reports whether one matched.
@@ -38,12 +46,23 @@ func handleSubcommand() bool {
 		case "uninstall":
 			runUninstallCommand(os.Args[2:])
 			return true
-		case "help":
+		case "version", "-version", "--version":
+			printVersion()
+			return true
+		case "help", "-h", "--help", "-help":
 			printUsage()
 			return true
 		}
 	}
 	return false
+}
+
+// normalizeRunArgs accepts `run` as a compatibility alias for the default command.
+func normalizeRunArgs(args []string) []string {
+	if len(args) > 0 && args[0] == "run" {
+		return args[1:]
+	}
+	return args
 }
 
 // runSetupCommand parses setup flags and installs the binary as a systemd service.
@@ -52,8 +71,8 @@ func runSetupCommand(args []string) {
 	binPath := fs.String("bin", defaultBinPath, "installation path for the binary")
 	cfgDir := fs.String("config-dir", defaultConfigDir, "directory for configuration files")
 	_ = fs.Parse(args)
-	if err := runSetup(*binPath, *cfgDir); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+	if err := runSetupFn(*binPath, *cfgDir); err != nil {
+		fmt.Fprintf(os.Stderr, cliErrorFormat, err)
 		os.Exit(1)
 	}
 }
@@ -62,23 +81,26 @@ func runSetupCommand(args []string) {
 func runUninstallCommand(args []string) {
 	fs := flag.NewFlagSet("uninstall", flag.ExitOnError)
 	binPath := fs.String("bin", defaultBinPath, "path of the installed binary")
+	cfgDir := fs.String("config-dir", defaultConfigDir, "directory for configuration files")
 	purge := fs.Bool("purge", false, "also remove configuration files")
 	_ = fs.Parse(args)
-	if err := runUninstall(*binPath, *purge); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+	if err := runUninstallFn(*binPath, *cfgDir, *purge); err != nil {
+		fmt.Fprintf(os.Stderr, cliErrorFormat, err)
 		os.Exit(1)
 	}
 }
 
 // runBouncer loads configuration, starts metrics/health endpoints, and blocks on Manager.Start.
-func runBouncer() {
-	configPath := flag.String("c", "", "path to configuration file")
-	showVersion := flag.Bool("version", false, "show version and exit")
-	flag.Parse()
+func runBouncer(args []string) {
+	configPath, showVersion, err := parseRunFlags(args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, cliErrorFormat, err)
+		printUsage()
+		os.Exit(1)
+	}
 
 	if *showVersion {
-		fmt.Printf("cs-routeros-bouncer %s (commit: %s, built: %s)\n",
-			config.Version, config.Commit, config.BuildDate)
+		printVersion()
 		os.Exit(0)
 	}
 
@@ -159,15 +181,38 @@ func runBouncer() {
 	log.Info().Msg("cs-routeros-bouncer stopped")
 }
 
+func parseRunFlags(args []string) (configPath *string, showVersion *bool, err error) {
+	fs := flag.NewFlagSet("cs-routeros-bouncer", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	fs.Usage = printUsage
+	configPath = fs.String("c", "", "path to configuration file")
+	showVersion = fs.Bool("version", false, "show version and exit")
+	err = fs.Parse(args)
+	if err != nil {
+		return nil, nil, err
+	}
+	if fs.NArg() > 0 {
+		return nil, nil, fmt.Errorf("unexpected argument %q", fs.Arg(0))
+	}
+	return configPath, showVersion, nil
+}
+
+// printVersion writes version metadata to standard output.
+func printVersion() {
+	fmt.Printf("cs-routeros-bouncer %s (commit: %s, built: %s)\n",
+		config.Version, config.Commit, config.BuildDate)
+}
+
 // printUsage writes the command help text to standard output.
 func printUsage() {
 	fmt.Printf(`cs-routeros-bouncer %s — CrowdSec bouncer for MikroTik RouterOS
 
 Usage:
-  cs-routeros-bouncer [flags]         Run the bouncer
-  cs-routeros-bouncer setup [flags]   Install as systemd service
-  cs-routeros-bouncer uninstall       Remove systemd service and binary
-  cs-routeros-bouncer help            Show this help message
+	cs-routeros-bouncer [flags]           Run the bouncer
+	cs-routeros-bouncer setup [flags]     Install as systemd service
+	cs-routeros-bouncer uninstall [flags] Remove systemd service and binary
+	cs-routeros-bouncer version           Show version and exit
+	cs-routeros-bouncer help              Show this help message
 
 Run flags:
   -c string    Path to configuration file
@@ -178,7 +223,8 @@ Setup flags:
   -config-dir string Config directory (default: /etc/cs-routeros-bouncer)
 
 Uninstall flags:
-  -bin string  Path of installed binary (default: /usr/local/bin/cs-routeros-bouncer)
-  -purge       Also remove configuration files
+  -bin string        Path of installed binary (default: /usr/local/bin/cs-routeros-bouncer)
+  -config-dir string Config directory to purge (default: /etc/cs-routeros-bouncer)
+  -purge             Also remove configuration files
 `, config.Version)
 }

@@ -61,8 +61,24 @@ The `/metrics` and `/health` endpoints do not require authentication. Restrict a
 - Limit container capabilities
 - Use secrets management for credentials (Docker secrets, Kubernetes secrets)
 
+### Systemd hardening
+
+The `setup` command writes a systemd unit with hardening enabled:
+
+| Setting                   | Purpose                                                            |
+| ------------------------- | ------------------------------------------------------------------ |
+| `NoNewPrivileges=yes`     | Prevents privilege escalation through exec transitions             |
+| `ProtectSystem=strict`    | Mounts system paths read-only for the service                      |
+| `ProtectHome=yes`         | Blocks direct access to home directories                           |
+| `ReadWritePaths=/var/log` | Allows log file writes when `logging.file` points under `/var/log` |
+| `PrivateTmp=yes`          | Gives the service an isolated temporary directory                  |
+| `LimitNOFILE=65536`       | Leaves headroom for RouterOS API sessions and HTTP endpoints       |
+
+If you maintain a manual unit file, keep these settings unless your deployment has a specific reason to relax one.
+
 ### Firewall rule integrity
 
 - The bouncer identifies its rules by structured comments — do not modify these comments manually
 - Use the `comment_prefix` option to avoid conflicts with other tools
 - The bouncer performs cleanup on startup and shutdown to prevent stale rules
+- Every bouncer rule also includes the fixed `@cs-routeros-bouncer` signature. This lets crash-recovery cleanup find old rules even if `comment_prefix` changes later.

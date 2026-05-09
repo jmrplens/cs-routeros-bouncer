@@ -220,6 +220,44 @@ Signs of correct behavior (what to look for):
 
 If you still see repeated duplicate errors and reconnect attempts, upgrade to the first release whose [changelog](https://github.com/jmrplens/cs-routeros-bouncer/blob/main/CHANGELOG.md#unreleased) includes the RouterOS device-error handling and cache fast-path fixes. Until that release is cut, build from a commit that contains that changelog entry.
 
+### Reconciliation timeout or slow startup
+
+Large address lists can make startup reconciliation the slowest part of boot. Check whether the logs show bulk script warnings, command timeouts, or pool fallback messages.
+
+Actions to try:
+
+1. Increase `mikrotik.command_timeout` from its default `"30s"` to `"60s"`.
+2. Keep `crowdsec.origins: ["crowdsec", "cscli"]` on small routers.
+3. Increase `mikrotik.pool_size` from its default `4` only after checking RouterOS API `max-sessions`.
+4. Move full CAPI testing to a maintenance window.
+
+```yaml
+mikrotik:
+  command_timeout: "60s"
+  pool_size: 6
+```
+
+### Duplicate address messages
+
+RouterOS can return `already have such entry` when an address is already present. The bouncer treats this as a device-level duplicate, finds the existing entry, and refreshes timeout/comment when needed. Occasional duplicate messages are harmless.
+
+Repeated duplicate messages every few seconds usually mean the in-memory cache is not matching router state or the service is restarting. Check for restarts, manual address-list edits, and repeated reconciliation failures.
+
+### Bulk script fallback warnings
+
+During reconciliation, additions are sent in RouterOS scripts of up to 100 entries. If a script fails, the bouncer falls back to individual adds for that chunk and keeps going.
+
+If fallback happens often:
+
+1. Check `mikrotik.command_timeout`.
+2. Check RouterOS logs for script or policy errors.
+3. Verify the API user has `read`, `write`, `api`, and `sensitive` policies.
+4. Test with local-only origins to reduce list size.
+
+### IPv6 addresses appear with `/128`
+
+RouterOS stores single IPv6 addresses in address lists with an explicit `/128` prefix. The bouncer normalizes IPv6 single addresses this way before add, find, and reconciliation operations. This is expected and does not mean CrowdSec sent a range.
+
 ## Logging and debugging
 
 <Tabs>
@@ -233,7 +271,7 @@ logging:
 Or via environment variable:
 
 ```bash
-LOG_LEVEL=debug cs-routeros-bouncer run -c config.yml
+LOG_LEVEL=debug cs-routeros-bouncer -c config.yml
 ```
 
   </TabItem>
