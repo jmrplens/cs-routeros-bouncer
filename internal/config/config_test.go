@@ -464,6 +464,113 @@ func TestEnvOverrides(t *testing.T) {
 	}
 }
 
+// TestRouterOSCommandValuesAreTrimmedFromEnv verifies that values copied
+// directly into RouterOS command attributes do not keep accidental outer spaces.
+func TestRouterOSCommandValuesAreTrimmedFromEnv(t *testing.T) {
+	setMinimalEnv(t)
+	t.Setenv("FIREWALL_FILTER_CHAINS", "input, forward")
+	t.Setenv("FIREWALL_RAW_CHAINS", "prerouting, output")
+	t.Setenv("FIREWALL_FILTER_CONNECTION_STATE", " new, invalid ")
+	t.Setenv("FIREWALL_IPV4_ADDRESS_LIST", " crowdsec ")
+	t.Setenv("FIREWALL_IPV6_ADDRESS_LIST", " crowdsec6 ")
+	t.Setenv("FIREWALL_DENY_ACTION", " reject ")
+	t.Setenv("FIREWALL_REJECT_WITH", " tcp-reset ")
+	t.Setenv("FIREWALL_BLOCK_INPUT_INTERFACE", " ether1-WAN ")
+	t.Setenv("FIREWALL_BLOCK_INPUT_INTERFACE_LIST", " WAN-IN ")
+	t.Setenv("FIREWALL_BLOCK_INPUT_WHITELIST", " trusted-input ")
+	t.Setenv("FIREWALL_BLOCK_OUTPUT", "true")
+	t.Setenv("FIREWALL_BLOCK_OUTPUT_INTERFACE", " ether2-LAN ")
+	t.Setenv("FIREWALL_BLOCK_OUTPUT_INTERFACE_LIST", " WAN ")
+	t.Setenv("FIREWALL_OUTPUT_PASSTHROUGH_V4", " 10.0.0.5 ")
+	t.Setenv("FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V4_LIST", " trusted-v4 ")
+	t.Setenv("FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V6", " 2001:db8::1 ")
+	t.Setenv("FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V6_LIST", " trusted-v6 ")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !reflect.DeepEqual(cfg.Firewall.Filter.Chains, []string{"input", "forward"}) {
+		t.Fatalf("expected trimmed filter chains, got %#v", cfg.Firewall.Filter.Chains)
+	}
+	if !reflect.DeepEqual(cfg.Firewall.Raw.Chains, []string{"prerouting", "output"}) {
+		t.Fatalf("expected trimmed raw chains, got %#v", cfg.Firewall.Raw.Chains)
+	}
+	if cfg.Firewall.Filter.ConnectionState != "new,invalid" {
+		t.Fatalf("expected normalized connection_state, got %q", cfg.Firewall.Filter.ConnectionState)
+	}
+	if cfg.Firewall.IPv4.AddressList != "crowdsec" {
+		t.Fatalf("expected trimmed IPv4 address list, got %q", cfg.Firewall.IPv4.AddressList)
+	}
+	if cfg.Firewall.IPv6.AddressList != "crowdsec6" {
+		t.Fatalf("expected trimmed IPv6 address list, got %q", cfg.Firewall.IPv6.AddressList)
+	}
+	if cfg.Firewall.DenyAction != "reject" {
+		t.Fatalf("expected trimmed deny action, got %q", cfg.Firewall.DenyAction)
+	}
+	if cfg.Firewall.RejectWith != "tcp-reset" {
+		t.Fatalf("expected trimmed reject-with value, got %q", cfg.Firewall.RejectWith)
+	}
+	if cfg.Firewall.BlockInput.Interface != "ether1-WAN" {
+		t.Fatalf("expected trimmed input interface, got %q", cfg.Firewall.BlockInput.Interface)
+	}
+	if cfg.Firewall.BlockInput.InterfaceList != "WAN-IN" {
+		t.Fatalf("expected trimmed input interface list, got %q", cfg.Firewall.BlockInput.InterfaceList)
+	}
+	if cfg.Firewall.BlockInput.Whitelist != "trusted-input" {
+		t.Fatalf("expected trimmed input whitelist, got %q", cfg.Firewall.BlockInput.Whitelist)
+	}
+	if cfg.Firewall.BlockOutput.Interface != "ether2-LAN" {
+		t.Fatalf("expected trimmed output interface, got %q", cfg.Firewall.BlockOutput.Interface)
+	}
+	if cfg.Firewall.BlockOutput.InterfaceList != "WAN" {
+		t.Fatalf("expected trimmed output interface list, got %q", cfg.Firewall.BlockOutput.InterfaceList)
+	}
+	if cfg.Firewall.BlockOutput.PassthroughV4 != "10.0.0.5" {
+		t.Fatalf("expected trimmed output passthrough address, got %q", cfg.Firewall.BlockOutput.PassthroughV4)
+	}
+	if cfg.Firewall.BlockOutput.PassthroughV4List != "trusted-v4" {
+		t.Fatalf("expected trimmed output IPv4 passthrough list, got %q", cfg.Firewall.BlockOutput.PassthroughV4List)
+	}
+	if cfg.Firewall.BlockOutput.PassthroughV6 != "2001:db8::1" {
+		t.Fatalf("expected trimmed output IPv6 passthrough address, got %q", cfg.Firewall.BlockOutput.PassthroughV6)
+	}
+	if cfg.Firewall.BlockOutput.PassthroughV6List != "trusted-v6" {
+		t.Fatalf("expected trimmed output IPv6 passthrough list, got %q", cfg.Firewall.BlockOutput.PassthroughV6List)
+	}
+}
+
+func TestRouterOSPrefixesPreserveWhitespaceFromEnv(t *testing.T) {
+	setMinimalEnv(t)
+	t.Setenv("FIREWALL_COMMENT_PREFIX", "CROWDSEC: ")
+	t.Setenv("FIREWALL_LOG_PREFIX", " GLOBAL ")
+	t.Setenv("FIREWALL_FILTER_LOG_PREFIX", " FILTER ")
+	t.Setenv("FIREWALL_RAW_LOG_PREFIX", " RAW ")
+	t.Setenv("FIREWALL_BLOCK_OUTPUT_LOG_PREFIX", " OUTPUT ")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.Firewall.CommentPrefix != "CROWDSEC: " {
+		t.Fatalf("expected comment prefix whitespace to be preserved, got %q", cfg.Firewall.CommentPrefix)
+	}
+	if cfg.Firewall.LogPrefix != " GLOBAL " {
+		t.Fatalf("expected global log prefix whitespace to be preserved, got %q", cfg.Firewall.LogPrefix)
+	}
+	if cfg.Firewall.Filter.LogPrefix != " FILTER " {
+		t.Fatalf("expected filter log prefix whitespace to be preserved, got %q", cfg.Firewall.Filter.LogPrefix)
+	}
+	if cfg.Firewall.Raw.LogPrefix != " RAW " {
+		t.Fatalf("expected raw log prefix whitespace to be preserved, got %q", cfg.Firewall.Raw.LogPrefix)
+	}
+	if cfg.Firewall.BlockOutput.LogPrefix != " OUTPUT " {
+		t.Fatalf("expected output log prefix whitespace to be preserved, got %q", cfg.Firewall.BlockOutput.LogPrefix)
+	}
+}
+
 // TestLoadStructuredRulePlacement verifies loading structured firewall rule
 // placement from a file and its per-mode override.
 func TestLoadStructuredRulePlacement(t *testing.T) {
@@ -1389,10 +1496,15 @@ func TestConnectionStateValid(t *testing.T) {
 // TestConnectionStateInvalid verifies that a connection_state value containing
 // an unrecognized token causes a validation error.
 func TestConnectionStateInvalid(t *testing.T) {
-	cfg := validCfg()
-	cfg.Firewall.Filter.ConnectionState = "new,bogus"
-	if err := cfg.Validate(); err == nil {
-		t.Error("expected error for invalid connection_state value")
+	tests := []string{"new,bogus", "new,,invalid"}
+	for _, v := range tests {
+		t.Run(v, func(t *testing.T) {
+			cfg := validCfg()
+			cfg.Firewall.Filter.ConnectionState = v
+			if err := cfg.Validate(); err == nil {
+				t.Error("expected error for invalid connection_state value")
+			}
+		})
 	}
 }
 

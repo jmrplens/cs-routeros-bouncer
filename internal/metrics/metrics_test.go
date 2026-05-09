@@ -174,8 +174,8 @@ func TestRecordReconciliation(t *testing.T) {
 // TestSetInfo verifies that SetInfo sets the bouncer info gauge with version
 // and identity labels.
 func TestSetInfo(t *testing.T) {
-	SetInfo("1.4.2", "myrouter")
-	if got := testutil.ToFloat64(bouncerInfo.WithLabelValues("1.4.2", "myrouter")); got != 1 {
+	SetInfo("1.4.3", "myrouter")
+	if got := testutil.ToFloat64(bouncerInfo.WithLabelValues("1.4.3", "myrouter")); got != 1 {
 		t.Errorf("expected 1, got %v", got)
 	}
 }
@@ -337,12 +337,12 @@ func TestNewServerCreatesInstance(t *testing.T) {
 		ListenAddr: "127.0.0.1",
 		ListenPort: 0, // will use ephemeral
 	}
-	srv := NewServer(cfg, "v1.4.2")
+	srv := NewServer(cfg, "v1.4.3")
 	if srv == nil {
 		t.Fatal("expected non-nil server")
 	}
-	if srv.version != "v1.4.2" {
-		t.Errorf("expected version v1.4.2, got %s", srv.version)
+	if srv.version != "v1.4.3" {
+		t.Errorf("expected version v1.4.3, got %s", srv.version)
 	}
 	if srv.httpServer == nil {
 		t.Fatal("expected non-nil http server")

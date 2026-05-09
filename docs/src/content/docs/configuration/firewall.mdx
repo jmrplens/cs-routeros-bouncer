@@ -58,6 +58,10 @@ firewall:
     chains: ["input", "forward"]
 ```
 
+For the environment variable form, comma-separated entries may be written as
+`input,forward` or `input, forward`; surrounding whitespace is trimmed before
+values are sent to RouterOS.
+
 ## Raw Rules
 
 ### `firewall.raw.enabled` <Badge text="Optional" variant="note" />
@@ -75,6 +79,9 @@ Enable both filter and raw rules for defense-in-depth. Raw rules block traffic e
 **Env:** `FIREWALL_RAW_CHAINS` · **Default:** `["prerouting"]`
 
 Which chains to create raw rules in. Typically `prerouting`.
+
+Like filter chains, comma-separated environment values tolerate surrounding
+whitespace around each chain name.
 
 ## Rule Behavior
 
@@ -380,6 +387,9 @@ Use `tcp-reset` if you mainly want to reject TCP connections (SSH brute-force, w
 **Env:** `FIREWALL_FILTER_CONNECTION_STATE` · **Default:** — (matches all)
 
 Add a `connection-state` matcher to filter rules. This restricts rule matching to specific connection states, allowing established/related connections to pass through even if the source IP is banned.
+
+Comma-separated values are normalized before RouterOS use, so
+`new, invalid` is treated as `new,invalid`.
 
 | State         | Description                                                |
 | ------------- | ---------------------------------------------------------- |
