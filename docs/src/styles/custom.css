@@ -132,49 +132,74 @@ th {
    6. HERO SECTION  (TASK-006)
    ------------------------------------------------------------------ */
 .hero {
-	background:
-		linear-gradient(
-			135deg,
-			rgba(var(--brand-primary), 0.06) 0%,
-			transparent 60%
-		),
-		linear-gradient(225deg, rgba(var(--brand-accent), 0.04) 0%, transparent 50%);
-	border-radius: var(--sl-border-radius);
-	padding-block: 2rem;
+	padding-block: 4.75rem 5.25rem;
+	background: none;
+	border-radius: 0;
 }
 
 :root[data-theme="dark"] .hero {
-	background:
-		linear-gradient(
-			135deg,
-			rgba(var(--brand-primary), 0.12) 0%,
-			transparent 60%
-		),
-		linear-gradient(225deg, rgba(var(--brand-accent), 0.08) 0%, transparent 50%);
+	background: none;
 }
 
-/* Hero CTA buttons */
-.hero .action-group a[data-variant="primary"] {
-	background: linear-gradient(
-		135deg,
-		rgb(var(--brand-primary)),
-		rgb(var(--brand-dark))
-	);
+.hero .stack {
+	gap: 2rem;
+}
+
+.hero .copy {
+	gap: 1.25rem;
+}
+
+.hero h1 {
+	max-width: 11ch;
+	font-size: 3.75rem;
+	line-height: 1.02;
+	letter-spacing: 0;
+}
+
+.hero .tagline {
+	max-width: 34rem;
+	font-size: 1.2rem;
+	line-height: 1.7;
+	color: var(--sl-color-gray-2);
+}
+
+.hero .actions {
+	gap: 1rem;
+	align-items: center;
+}
+
+.hero .actions a.primary {
 	border: none;
-	font-weight: 600;
-	letter-spacing: 0.02em;
+	border-radius: 999px;
+	background: rgb(var(--brand-primary));
+	box-shadow: 0 0.75rem 1.5rem rgba(var(--brand-primary), 0.18);
+	font-weight: 700;
+	letter-spacing: 0;
 	transition:
 		transform 0.15s ease,
-		box-shadow 0.15s ease;
-}
-.hero .action-group a[data-variant="primary"]:hover {
-	transform: translateY(-1px);
-	box-shadow: 0 4px 16px rgba(var(--brand-primary), 0.35);
+		box-shadow 0.15s ease,
+		background-color 0.15s ease;
 }
 
-/* Hero image (logo) polish */
-.hero img {
-	filter: drop-shadow(0 4px 12px rgba(var(--brand-primary), 0.15));
+.hero .actions a.primary:hover {
+	background: rgb(var(--brand-dark));
+	box-shadow: 0 1rem 2rem rgba(var(--brand-primary), 0.24);
+	transform: translateY(-1px);
+}
+
+.hero .actions a.minimal {
+	font-weight: 650;
+	letter-spacing: 0;
+}
+
+.hero > img {
+	width: 16rem;
+	height: 16rem;
+	filter: drop-shadow(0 1.25rem 2.5rem rgba(13, 17, 23, 0.16));
+}
+
+:root[data-theme="dark"] .hero > img {
+	filter: drop-shadow(0 1.25rem 2.5rem rgba(0, 0, 0, 0.4));
 }
 
 /* ------------------------------------------------------------------
@@ -354,12 +379,23 @@ pre {
    ------------------------------------------------------------------ */
 @media (max-width: 48rem) {
 	.hero {
-		padding-block: 1.25rem;
+		padding-block: 2.5rem 3rem;
 		text-align: center;
 	}
-	.hero .action-group {
+	.hero h1 {
+		max-width: none;
+		font-size: 2.75rem;
+	}
+	.hero .tagline {
+		font-size: 1.05rem;
+	}
+	.hero .actions {
 		flex-direction: column;
 		gap: 0.5rem;
+	}
+	.hero > img {
+		width: 11rem;
+		height: 11rem;
 	}
 }
 
@@ -587,41 +623,72 @@ pre {
    ------------------------------------------------------------------ */
 .flow-steps {
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+	grid-template-columns: repeat(4, minmax(0, 1fr));
 	grid-auto-rows: 1fr;
-	gap: 1.5rem;
+	gap: 1rem;
 	margin-block: 2rem;
 }
 .flow-step {
 	display: flex;
 	box-sizing: border-box;
-	height: 13.5rem;
+	min-height: 11rem;
 	flex-direction: column;
-	align-items: center;
-	justify-content: center;
-	text-align: center;
-	padding: 1.25rem 1rem;
+	align-items: flex-start;
+	justify-content: flex-start;
+	text-align: left;
+	padding: 1rem;
 	border: 1px solid var(--sl-color-gray-5);
 	border-radius: var(--sl-border-radius);
 	position: relative;
+	background: color-mix(in srgb, var(--sl-color-black) 96%, white 4%);
 	transition:
 		border-color 0.2s ease,
-		box-shadow 0.2s ease;
+		box-shadow 0.2s ease,
+		transform 0.2s ease;
 }
 .flow-step:hover {
 	border-color: rgb(var(--brand-primary));
-	box-shadow: 0 2px 8px rgba(var(--brand-primary), 0.1);
+	box-shadow: 0 0.75rem 1.5rem rgba(var(--brand-primary), 0.08);
+	transform: translateY(-2px);
 }
 .flow-step__icon {
-	font-size: 2rem;
-	margin-bottom: 0.5rem;
+	display: grid;
+	width: 2.5rem;
+	height: 2.5rem;
+	place-items: center;
+	margin-bottom: 0.875rem;
+	border: 1px solid rgba(var(--brand-accent), 0.45);
+	border-radius: 0.75rem;
+	background: rgba(var(--brand-accent), 0.08);
+	color: rgb(var(--brand-primary));
+	font-family: var(--sl-font-mono);
+	font-size: 0.8rem;
+	font-weight: 800;
+	letter-spacing: 0;
 }
 .flow-step__title {
 	font-weight: 700;
 	font-size: 0.95rem;
-	margin-bottom: 0.25rem;
+	margin-bottom: 0.4rem;
 }
 .flow-step__desc {
 	font-size: 0.8rem;
+	line-height: 1.6;
 	color: var(--sl-color-gray-3);
+}
+
+:root[data-theme="light"] .flow-step {
+	background: #ffffff;
+}
+
+@media (max-width: 64rem) {
+	.flow-steps {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+@media (max-width: 36rem) {
+	.flow-steps {
+		grid-template-columns: 1fr;
+	}
 }
