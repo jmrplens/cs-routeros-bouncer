@@ -106,6 +106,14 @@ crowdsec:
 Setting `origins: ["crowdsec", "cscli"]` is the recommended way to exclude community blocklists (CAPI). This avoids pushing 20,000+ IPs to the router.
 :::
 
+When set as an environment variable, `CROWDSEC_ORIGINS` is space-separated:
+
+```bash
+CROWDSEC_ORIGINS="crowdsec cscli"
+```
+
+Leaving `origins` empty accepts all origins, including `CAPI` and `lists:*`. See [CAPI Blocklists](/cs-routeros-bouncer/configuration/capi-blocklists/) for scale and router sizing guidance.
+
 ### `crowdsec.scopes` <Badge text="Optional" variant="note" />
 
 **Env:** `CROWDSEC_SCOPES` · **Default:** `["ip", "range"]`
@@ -128,18 +136,27 @@ applicable to a network firewall bouncer and will be silently ignored even if li
 
 **Env:** `CROWDSEC_SCENARIOS_CONTAINING` · **Default:** `[]` (no filter)
 
-Only process decisions from scenarios whose name contains one of these strings. Empty means no filtering.
+Only process decisions from scenarios whose name contains one of these literal substrings. Empty means no include filtering.
 
 ```yaml
 crowdsec:
   scenarios_containing: ["ssh", "http"]
 ```
 
+For example, `"ssh"` matches `crowdsecurity/ssh-bf` and any other scenario name containing `ssh`.
+
 ### `crowdsec.scenarios_not_containing` <Badge text="Optional" variant="note" />
 
 **Env:** `CROWDSEC_SCENARIOS_NOT_CONTAINING` · **Default:** `[]` (no filter)
 
-Exclude decisions from scenarios whose name contains one of these strings.
+Exclude decisions from scenarios whose name contains one of these literal substrings.
+
+```yaml
+crowdsec:
+  scenarios_not_containing: ["test", "honeypot"]
+```
+
+Use include and exclude filters together when you want a narrow subset of decisions. If no decisions appear, first check that the substrings match the scenario names shown by `cscli decisions list -o json`.
 
 ## TLS Authentication
 

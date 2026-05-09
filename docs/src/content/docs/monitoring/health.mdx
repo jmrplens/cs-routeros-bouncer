@@ -35,6 +35,8 @@ The `version` value represents the running release.
 
 A timeout, connection refused error, or other TCP connection failure means the process or listener is unreachable. Monitoring systems should treat those connection failures as process-down signals; the `/health` endpoint itself returns `200` when reachable.
 
+Use the JSON body to distinguish process liveness from RouterOS readiness. `routeros_connected: false` means the process is alive but the RouterOS API connection is currently down or reconnecting.
+
 ## Integration examples
 
 <Tabs>
@@ -118,3 +120,19 @@ groups:
 
   </TabItem>
 </Tabs>
+
+## Docker troubleshooting
+
+If a Docker health check only runs `wget --spider`, it verifies process liveness only. The container remains healthy even if RouterOS is disconnected because `/health` still returns HTTP `200`.
+
+Use the JSON-body check when you want the container to become unhealthy on RouterOS loss:
+
+```yaml
+healthcheck:
+  test:
+    - CMD-SHELL
+    - >-
+      wget -qO- http://localhost:2112/health | grep -q '"routeros_connected":[[:space:]]*true'
+```
+
+Be cautious with automatic restarts on RouterOS connectivity loss. If the router is rebooting or temporarily unreachable, restart loops can make logs noisier without fixing the underlying network issue.

@@ -1,5 +1,7 @@
 # cs-routeros-bouncer configuration
-# All options can also be set via environment variables (see README.md)
+# All options can also be set via environment variables (see README.md).
+# String values may reference environment variables with ${VAR} placeholders.
+# Only braced placeholders are expanded; literal $ characters are preserved.
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Basic parameters — the essential settings to get the bouncer running.
@@ -21,7 +23,12 @@ crowdsec:
   reconciliation_interval: "15m"
   # Filter decisions by origin (empty = all decisions)
   # Use ["crowdsec", "cscli"] for local-only mode (no community blocklists)
+  # If set via CROWDSEC_ORIGINS, use a space-separated value: "crowdsec cscli".
   origins: []
+  # Include only decisions whose scenario contains one of these strings
+  scenarios_containing: []
+  # Exclude decisions whose scenario contains one of these strings
+  scenarios_not_containing: []
   # Filter decisions by scope
   scopes: ["ip", "range"]
   # Only process these decision types
@@ -192,3 +199,6 @@ metrics:
   # Interval for polling RouterOS system metrics (CPU, memory, temperature)
   # Set to 0 to disable system metrics collection
   routeros_poll_interval: "30s"
+  # Track processed (non-blocked) traffic with passthrough counting rules.
+  # Set to false to avoid creating those extra counter rules.
+  track_processed: true

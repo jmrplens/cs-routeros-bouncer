@@ -18,7 +18,7 @@ hero:
       variant: minimal
 ---
 
-import { Card, CardGrid, LinkCard, Badge } from "@astrojs/starlight/components";
+import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
 import VersionBadge from "../../components/VersionBadge.astro";
 
 ## How it works
@@ -32,9 +32,6 @@ import VersionBadge from "../../components/VersionBadge.astro";
     </div>
   </div>
   <div class="flow-step">
-    <span class="flow-step__arrow" aria-hidden="true">
-      →
-    </span>
     <div class="flow-step__icon">🔄</div>
     <div class="flow-step__title">Bouncer syncs</div>
     <div class="flow-step__desc">
@@ -42,9 +39,6 @@ import VersionBadge from "../../components/VersionBadge.astro";
     </div>
   </div>
   <div class="flow-step">
-    <span class="flow-step__arrow" aria-hidden="true">
-      →
-    </span>
     <div class="flow-step__icon">🔥</div>
     <div class="flow-step__title">RouterOS blocks</div>
     <div class="flow-step__desc">
@@ -52,9 +46,6 @@ import VersionBadge from "../../components/VersionBadge.astro";
     </div>
   </div>
   <div class="flow-step">
-    <span class="flow-step__arrow" aria-hidden="true">
-      →
-    </span>
     <div class="flow-step__icon">📊</div>
     <div class="flow-step__title">You monitor</div>
     <div class="flow-step__desc">
@@ -74,35 +65,15 @@ import VersionBadge from "../../components/VersionBadge.astro";
     Adds IPs on ban, removes on unban. No bulk re-upload, no duplicates. **~1–3
     ms per operation**.
   </Card>
-  <Card title="Self-Healing State" icon="sync">
+  <Card title="Self-Healing State" icon="random">
     On start or restart, syncs CrowdSec decisions with MikroTik state — adds
     missing, removes stale entries automatically.
   </Card>
-  <Card title="Full Observability" icon="line-chart">
+  <Card title="Full Observability" icon="analytics">
     Prometheus metrics, structured logging, health endpoint, and a ready-to-use
     Grafana dashboard.
   </Card>
 </CardGrid>
-
-## How it compares
-
-<div class="comparison-table">
-
-| Feature                            | funkolab <Badge text="archived" variant="danger" /> | nvtkaszpir-alt | **cs-routeros-bouncer** |
-| ---------------------------------- | :-------------------------------------------------: | :------------: | :---------------------: |
-| Auto-create firewall rules         |                         ❌                          |       ❌       |           ✅            |
-| Individual IP add/remove           |                         ✅                          |       ❌       |           ✅            |
-| No duplicate IPs                   |                         ✅                          |       ❌       |           ✅            |
-| State reconciliation on restart    |                         ❌                          |       ❌       |           ✅            |
-| Remove rules on shutdown           |                         ❌                          |       ❌       |           ✅            |
-| IPv6 support                       |                         ✅                          |       ✅       |           ✅            |
-| Output blocking                    |                         ❌                          |       ✅       |           ✅            |
-| Origin filtering (local-only mode) |                         ❌                          |       ❌       |           ✅            |
-| Prometheus metrics                 |                         ❌                          |       ✅       |           ✅            |
-| Health endpoint                    |                         ❌                          |       ❌       |           ✅            |
-| Go (compiled, low resource)        |                         ❌                          |       ❌       |           ✅            |
-
-</div>
 
 ## Requirements
 

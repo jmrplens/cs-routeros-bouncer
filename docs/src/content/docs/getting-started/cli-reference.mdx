@@ -1,0 +1,91 @@
+---
+title: CLI Reference
+description: Runtime flags and administrative subcommands for cs-routeros-bouncer.
+---
+
+The `cs-routeros-bouncer` binary has a small command surface: it either runs the bouncer, prints version/help information, or performs systemd setup/removal tasks.
+
+## Run the bouncer
+
+Run with a configuration file:
+
+```bash
+cs-routeros-bouncer -c /etc/cs-routeros-bouncer/cs-routeros-bouncer.yaml
+```
+
+Runtime flags:
+
+| Flag       | Description                         |
+| ---------- | ----------------------------------- |
+| `-c`       | Path to the YAML configuration file |
+| `-version` | Print version, commit, build date   |
+
+The binary does not load a host config path implicitly when run directly. Pass `-c` unless all required settings are supplied via environment variables. The systemd installer and Docker image provide their own `-c` path.
+
+## `setup`
+
+Installs the current binary as a systemd service:
+
+```bash
+sudo ./cs-routeros-bouncer setup
+```
+
+What it does:
+
+1. Copies the binary to the selected install path.
+2. Creates the config directory.
+3. Writes an example config if one does not already exist.
+4. Writes `/etc/systemd/system/cs-routeros-bouncer.service`.
+5. Runs `systemctl daemon-reload`, enables the service, and starts it.
+
+Flags:
+
+| Flag          | Default                              | Description                       |
+| ------------- | ------------------------------------ | --------------------------------- |
+| `-bin`        | `/usr/local/bin/cs-routeros-bouncer` | Installation path for the binary  |
+| `-config-dir` | `/etc/cs-routeros-bouncer`           | Directory for configuration files |
+
+Example with custom paths:
+
+```bash
+sudo ./cs-routeros-bouncer setup \
+  -bin /opt/cs-routeros-bouncer/cs-routeros-bouncer \
+  -config-dir /etc/cs-routeros-bouncer
+```
+
+## `uninstall`
+
+Stops and removes the systemd service and installed binary:
+
+```bash
+sudo cs-routeros-bouncer uninstall
+```
+
+Flags:
+
+| Flag     | Default                              | Description                      |
+| -------- | ------------------------------------ | -------------------------------- |
+| `-bin`   | `/usr/local/bin/cs-routeros-bouncer` | Installed binary path to remove  |
+| `-purge` | `false`                              | Also remove the config directory |
+
+Keep config files:
+
+```bash
+sudo cs-routeros-bouncer uninstall
+```
+
+Remove config files too:
+
+```bash
+sudo cs-routeros-bouncer uninstall -purge
+```
+
+## `help`
+
+Print usage information:
+
+```bash
+cs-routeros-bouncer help
+```
+
+There is no `run` subcommand and no `version` subcommand. Use `cs-routeros-bouncer -c ...` to run and `cs-routeros-bouncer -version` to print build information.

@@ -67,6 +67,7 @@ firewall:
 metrics:
   enabled: true
   listen_port: 2112
+  track_processed: true
 
 logging:
   level: "info"
@@ -96,7 +97,7 @@ firewall:
   filter:
     enabled: true
     chains: ["input"]
-    connection_state: ["new"]
+    connection_state: "new"
     log_prefix: "CS-FILTER"
   raw:
     enabled: true
@@ -127,6 +128,62 @@ logging:
 :::tip[Reject vs Drop]
 Using `deny_action: reject` with `reject_with: icmp-host-prohibited` sends an ICMP unreachable message to the banned IP. Use `drop` (the default) for silent blocking.
 :::
+
+  </TabItem>
+  <TabItem label="Performance Tuning">
+
+Balanced settings for larger local lists or partial CAPI usage on capable RouterOS hardware.
+
+```yaml
+crowdsec:
+  api_url: "http://localhost:8080/"
+  api_key: "your-key"
+  origins: ["crowdsec", "cscli"]
+  reconciliation_interval: "30m"
+
+mikrotik:
+  address: "192.168.0.1:8729"
+  username: "crowdsec"
+  password: "your-password"
+  tls: true
+  command_timeout: "60s"
+  pool_size: 6
+
+metrics:
+  enabled: true
+  routeros_poll_interval: "30s"
+  track_processed: true
+```
+
+Use `pool_size: 1` or `2` on small routers. See [Performance Tuning](/cs-routeros-bouncer/configuration/performance-tuning/) for sizing guidance.
+
+  </TabItem>
+  <TabItem label="CAPI Controlled">
+
+Accept CAPI decisions but keep scenario filtering narrow while measuring router impact.
+
+```yaml
+crowdsec:
+  api_url: "http://localhost:8080/"
+  api_key: "your-key"
+  origins: ["crowdsec", "cscli", "CAPI"]
+  scenarios_containing: ["ssh", "http"]
+  scenarios_not_containing: ["test"]
+
+mikrotik:
+  address: "192.168.0.1:8729"
+  username: "crowdsec"
+  password: "your-password"
+  tls: true
+  command_timeout: "60s"
+  pool_size: 6
+
+metrics:
+  enabled: true
+  track_processed: true
+```
+
+Start with local-only mode on small routers, then enable CAPI after checking reconciliation time and CPU. See [CAPI Blocklists](/cs-routeros-bouncer/configuration/capi-blocklists/).
 
   </TabItem>
   <TabItem label="Rule Placement">
@@ -231,7 +288,7 @@ services:
       CROWDSEC_URL: "http://crowdsec:8080/"
       CROWDSEC_BOUNCER_API_KEY: "your-bouncer-api-key"
       CROWDSEC_UPDATE_FREQUENCY: "10s"
-      CROWDSEC_ORIGINS: "crowdsec,cscli"
+      CROWDSEC_ORIGINS: "crowdsec cscli"
 
       # MikroTik
       MIKROTIK_HOST: "192.168.0.1:8728"

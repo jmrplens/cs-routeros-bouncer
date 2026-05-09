@@ -1,0 +1,102 @@
+---
+title: Performance Tuning
+description: RouterOS API pool, bulk operations, timeouts, and reconciliation tuning.
+---
+
+Most deployments work well with the defaults. Tune these settings when startup reconciliation handles large CAPI lists, a slow router times out, or you need predictable restart windows.
+
+## Connection pool
+
+`mikrotik.pool_size` controls how many RouterOS API sessions the bouncer can use for parallel work such as reconciliation removals.
+
+```yaml
+mikrotik:
+  pool_size: 4
+```
+
+Guidance:
+
+| Router class           | Suggested value |
+| ---------------------- | --------------- |
+| Small home router      | `1`-`2`         |
+| Mid-range RouterOS 7   | `4`             |
+| Large CAPI deployments | `6`-`8`         |
+
+The configured value must be between `1` and `20`. On startup, the bouncer queries RouterOS API `max-sessions` and caps the effective pool to `max-sessions - 2`, with at least one session left available.
+
+Check or raise the RouterOS limit:
+
+```routeros
+/ip/service/print where name=api
+/ip/service/set api max-sessions=1000
+```
+
+## Bulk add behavior
+
+During reconciliation, additions use temporary RouterOS scripts instead of one API call per IP. Each script contains up to 100 addresses, keeping the API message safely below RouterOS size limits.
+
+If a bulk script fails, the bouncer logs a warning and falls back to individual adds for that chunk. Duplicate entries are skipped or refreshed without reconnecting the API session.
+
+## Timeouts
+
+Increase `mikrotik.command_timeout` if RouterOS is slow during large list operations:
+
+```yaml
+mikrotik:
+  command_timeout: "60s"
+```
+
+Increase `mikrotik.connection_timeout` only when the initial TCP/API login itself is slow:
+
+```yaml
+mikrotik:
+  connection_timeout: "20s"
+```
+
+## Reconciliation interval
+
+Startup reconciliation always runs. Periodic reconciliation repairs drift after startup.
+
+```yaml
+crowdsec:
+  reconciliation_interval: "15m"
+```
+
+Use `0` to disable periodic reconciliation, or a value of `1m` or greater to enable it. Values between `0` and `1m` are rejected at startup.
+
+Short intervals repair drift faster but list RouterOS address entries more often. Long intervals reduce background API work.
+
+## Processed traffic metrics
+
+`metrics.track_processed` creates passthrough counting rules so the bouncer can report total evaluated traffic, not only dropped traffic.
+
+```yaml
+metrics:
+  track_processed: true
+```
+
+Set it to `false` to avoid those extra counting rules:
+
+```yaml
+metrics:
+  track_processed: false
+```
+
+## Baseline example
+
+```yaml
+crowdsec:
+  origins: ["crowdsec", "cscli"]
+  reconciliation_interval: "30m"
+
+mikrotik:
+  command_timeout: "60s"
+  pool_size: 6
+
+metrics:
+  enabled: true
+  routeros_poll_interval: "30s"
+  track_processed: true
+```
+
+For small routers, prefer local-only mode, `pool_size: 1` or `2`, and avoid full CAPI until you have measured reconciliation time.
