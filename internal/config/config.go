@@ -777,6 +777,8 @@ func normalizeCommaSeparatedValue(value string) string {
 	if value == "" {
 		return ""
 	}
+	// Preserve empty tokens so validation rejects malformed comma lists instead
+	// of silently changing user input such as "new,,invalid".
 	parts := strings.Split(value, ",")
 	for i, part := range parts {
 		parts[i] = strings.TrimSpace(part)

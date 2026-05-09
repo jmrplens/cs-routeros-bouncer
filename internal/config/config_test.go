@@ -472,10 +472,19 @@ func TestRouterOSCommandValuesAreTrimmedFromEnv(t *testing.T) {
 	t.Setenv("FIREWALL_RAW_CHAINS", "prerouting, output")
 	t.Setenv("FIREWALL_FILTER_CONNECTION_STATE", " new, invalid ")
 	t.Setenv("FIREWALL_IPV4_ADDRESS_LIST", " crowdsec ")
+	t.Setenv("FIREWALL_IPV6_ADDRESS_LIST", " crowdsec6 ")
+	t.Setenv("FIREWALL_DENY_ACTION", " reject ")
+	t.Setenv("FIREWALL_REJECT_WITH", " tcp-reset ")
 	t.Setenv("FIREWALL_BLOCK_INPUT_INTERFACE", " ether1-WAN ")
+	t.Setenv("FIREWALL_BLOCK_INPUT_INTERFACE_LIST", " WAN-IN ")
+	t.Setenv("FIREWALL_BLOCK_INPUT_WHITELIST", " trusted-input ")
 	t.Setenv("FIREWALL_BLOCK_OUTPUT", "true")
+	t.Setenv("FIREWALL_BLOCK_OUTPUT_INTERFACE", " ether2-LAN ")
 	t.Setenv("FIREWALL_BLOCK_OUTPUT_INTERFACE_LIST", " WAN ")
 	t.Setenv("FIREWALL_OUTPUT_PASSTHROUGH_V4", " 10.0.0.5 ")
+	t.Setenv("FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V4_LIST", " trusted-v4 ")
+	t.Setenv("FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V6", " 2001:db8::1 ")
+	t.Setenv("FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V6_LIST", " trusted-v6 ")
 
 	cfg, err := Load("")
 	if err != nil {
@@ -494,14 +503,41 @@ func TestRouterOSCommandValuesAreTrimmedFromEnv(t *testing.T) {
 	if cfg.Firewall.IPv4.AddressList != "crowdsec" {
 		t.Fatalf("expected trimmed IPv4 address list, got %q", cfg.Firewall.IPv4.AddressList)
 	}
+	if cfg.Firewall.IPv6.AddressList != "crowdsec6" {
+		t.Fatalf("expected trimmed IPv6 address list, got %q", cfg.Firewall.IPv6.AddressList)
+	}
+	if cfg.Firewall.DenyAction != "reject" {
+		t.Fatalf("expected trimmed deny action, got %q", cfg.Firewall.DenyAction)
+	}
+	if cfg.Firewall.RejectWith != "tcp-reset" {
+		t.Fatalf("expected trimmed reject-with value, got %q", cfg.Firewall.RejectWith)
+	}
 	if cfg.Firewall.BlockInput.Interface != "ether1-WAN" {
 		t.Fatalf("expected trimmed input interface, got %q", cfg.Firewall.BlockInput.Interface)
+	}
+	if cfg.Firewall.BlockInput.InterfaceList != "WAN-IN" {
+		t.Fatalf("expected trimmed input interface list, got %q", cfg.Firewall.BlockInput.InterfaceList)
+	}
+	if cfg.Firewall.BlockInput.Whitelist != "trusted-input" {
+		t.Fatalf("expected trimmed input whitelist, got %q", cfg.Firewall.BlockInput.Whitelist)
+	}
+	if cfg.Firewall.BlockOutput.Interface != "ether2-LAN" {
+		t.Fatalf("expected trimmed output interface, got %q", cfg.Firewall.BlockOutput.Interface)
 	}
 	if cfg.Firewall.BlockOutput.InterfaceList != "WAN" {
 		t.Fatalf("expected trimmed output interface list, got %q", cfg.Firewall.BlockOutput.InterfaceList)
 	}
 	if cfg.Firewall.BlockOutput.PassthroughV4 != "10.0.0.5" {
 		t.Fatalf("expected trimmed output passthrough address, got %q", cfg.Firewall.BlockOutput.PassthroughV4)
+	}
+	if cfg.Firewall.BlockOutput.PassthroughV4List != "trusted-v4" {
+		t.Fatalf("expected trimmed output IPv4 passthrough list, got %q", cfg.Firewall.BlockOutput.PassthroughV4List)
+	}
+	if cfg.Firewall.BlockOutput.PassthroughV6 != "2001:db8::1" {
+		t.Fatalf("expected trimmed output IPv6 passthrough address, got %q", cfg.Firewall.BlockOutput.PassthroughV6)
+	}
+	if cfg.Firewall.BlockOutput.PassthroughV6List != "trusted-v6" {
+		t.Fatalf("expected trimmed output IPv6 passthrough list, got %q", cfg.Firewall.BlockOutput.PassthroughV6List)
 	}
 }
 
