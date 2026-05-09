@@ -651,6 +651,7 @@ func expandConfigEnv(cfg *Config) error {
 	expandRulePlacementPlaceholders(cfg.Firewall.IPv6.RulePlacement)
 	cfg.Firewall.CommentPrefix = expandConfigValue(cfg.Firewall.CommentPrefix, "FIREWALL_COMMENT_PREFIX")
 	cfg.Firewall.LogPrefix = expandConfigValue(cfg.Firewall.LogPrefix, "FIREWALL_LOG_PREFIX")
+	normalizeRouterOSCommandValues(&cfg.Firewall)
 
 	cfg.Logging.Level = expandConfigValue(cfg.Logging.Level, "LOG_LEVEL")
 	cfg.Logging.Format = expandConfigValue(cfg.Logging.Format, "LOG_FORMAT")
@@ -738,6 +739,49 @@ func expandEnvSlice(values []string, envName string) []string {
 		values[i] = expandBracedEnv(value)
 	}
 	return values
+}
+
+func normalizeRouterOSCommandValues(firewall *FirewallConfig) {
+	firewall.IPv4.AddressList = strings.TrimSpace(firewall.IPv4.AddressList)
+	firewall.IPv6.AddressList = strings.TrimSpace(firewall.IPv6.AddressList)
+	firewall.Filter.Chains = trimStringSlice(firewall.Filter.Chains)
+	firewall.Filter.ConnectionState = normalizeCommaSeparatedValue(firewall.Filter.ConnectionState)
+	firewall.Raw.Chains = trimStringSlice(firewall.Raw.Chains)
+	firewall.DenyAction = strings.TrimSpace(firewall.DenyAction)
+	firewall.RejectWith = strings.TrimSpace(firewall.RejectWith)
+	firewall.BlockInput.Interface = strings.TrimSpace(firewall.BlockInput.Interface)
+	firewall.BlockInput.InterfaceList = strings.TrimSpace(firewall.BlockInput.InterfaceList)
+	firewall.BlockInput.Whitelist = strings.TrimSpace(firewall.BlockInput.Whitelist)
+	firewall.BlockOutput.Interface = strings.TrimSpace(firewall.BlockOutput.Interface)
+	firewall.BlockOutput.InterfaceList = strings.TrimSpace(firewall.BlockOutput.InterfaceList)
+	firewall.BlockOutput.PassthroughV4 = strings.TrimSpace(firewall.BlockOutput.PassthroughV4)
+	firewall.BlockOutput.PassthroughV4List = strings.TrimSpace(firewall.BlockOutput.PassthroughV4List)
+	firewall.BlockOutput.PassthroughV6 = strings.TrimSpace(firewall.BlockOutput.PassthroughV6)
+	firewall.BlockOutput.PassthroughV6List = strings.TrimSpace(firewall.BlockOutput.PassthroughV6List)
+}
+
+func trimStringSlice(values []string) []string {
+	trimmed := values[:0]
+	for _, value := range values {
+		item := strings.TrimSpace(value)
+		if item == "" {
+			continue
+		}
+		trimmed = append(trimmed, item)
+	}
+	return trimmed
+}
+
+func normalizeCommaSeparatedValue(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	parts := strings.Split(value, ",")
+	for i, part := range parts {
+		parts[i] = strings.TrimSpace(part)
+	}
+	return strings.Join(parts, ",")
 }
 
 // Validate checks that all required configuration fields are set.

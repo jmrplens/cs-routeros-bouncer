@@ -464,6 +464,47 @@ func TestEnvOverrides(t *testing.T) {
 	}
 }
 
+// TestRouterOSCommandValuesAreTrimmedFromEnv verifies that values copied
+// directly into RouterOS command attributes do not keep accidental outer spaces.
+func TestRouterOSCommandValuesAreTrimmedFromEnv(t *testing.T) {
+	setMinimalEnv(t)
+	t.Setenv("FIREWALL_FILTER_CHAINS", "input, forward")
+	t.Setenv("FIREWALL_RAW_CHAINS", "prerouting, output")
+	t.Setenv("FIREWALL_FILTER_CONNECTION_STATE", " new, invalid ")
+	t.Setenv("FIREWALL_IPV4_ADDRESS_LIST", " crowdsec ")
+	t.Setenv("FIREWALL_BLOCK_INPUT_INTERFACE", " ether1-WAN ")
+	t.Setenv("FIREWALL_BLOCK_OUTPUT", "true")
+	t.Setenv("FIREWALL_BLOCK_OUTPUT_INTERFACE_LIST", " WAN ")
+	t.Setenv("FIREWALL_OUTPUT_PASSTHROUGH_V4", " 10.0.0.5 ")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !reflect.DeepEqual(cfg.Firewall.Filter.Chains, []string{"input", "forward"}) {
+		t.Fatalf("expected trimmed filter chains, got %#v", cfg.Firewall.Filter.Chains)
+	}
+	if !reflect.DeepEqual(cfg.Firewall.Raw.Chains, []string{"prerouting", "output"}) {
+		t.Fatalf("expected trimmed raw chains, got %#v", cfg.Firewall.Raw.Chains)
+	}
+	if cfg.Firewall.Filter.ConnectionState != "new,invalid" {
+		t.Fatalf("expected normalized connection_state, got %q", cfg.Firewall.Filter.ConnectionState)
+	}
+	if cfg.Firewall.IPv4.AddressList != "crowdsec" {
+		t.Fatalf("expected trimmed IPv4 address list, got %q", cfg.Firewall.IPv4.AddressList)
+	}
+	if cfg.Firewall.BlockInput.Interface != "ether1-WAN" {
+		t.Fatalf("expected trimmed input interface, got %q", cfg.Firewall.BlockInput.Interface)
+	}
+	if cfg.Firewall.BlockOutput.InterfaceList != "WAN" {
+		t.Fatalf("expected trimmed output interface list, got %q", cfg.Firewall.BlockOutput.InterfaceList)
+	}
+	if cfg.Firewall.BlockOutput.PassthroughV4 != "10.0.0.5" {
+		t.Fatalf("expected trimmed output passthrough address, got %q", cfg.Firewall.BlockOutput.PassthroughV4)
+	}
+}
+
 // TestLoadStructuredRulePlacement verifies loading structured firewall rule
 // placement from a file and its per-mode override.
 func TestLoadStructuredRulePlacement(t *testing.T) {
