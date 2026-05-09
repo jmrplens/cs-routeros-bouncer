@@ -3,7 +3,7 @@ title: CLI Reference
 description: Runtime flags and administrative subcommands for cs-routeros-bouncer.
 ---
 
-The `cs-routeros-bouncer` binary has a small command surface: it either runs the bouncer, prints version/help information, or performs systemd setup/removal tasks.
+The `cs-routeros-bouncer` binary has a small command surface: it runs the bouncer, prints version/help information, or performs systemd setup/removal tasks.
 
 ## Run the bouncer
 
@@ -21,6 +21,20 @@ Runtime flags:
 | `-version` | Print version, commit, build date   |
 
 The binary does not load a host config path implicitly when run directly. Pass `-c` unless all required settings are supplied via environment variables. The systemd installer and Docker image provide their own `-c` path.
+
+## `version`
+
+Print build information:
+
+```bash
+cs-routeros-bouncer version
+```
+
+The flag form is also supported:
+
+```bash
+cs-routeros-bouncer -version
+```
 
 ## `setup`
 
@@ -88,4 +102,9 @@ Print usage information:
 cs-routeros-bouncer help
 ```
 
-There is no `run` subcommand and no `version` subcommand. Use `cs-routeros-bouncer -c ...` to run and `cs-routeros-bouncer -version` to print build information.
+The usual help flags are also supported:
+
+```bash
+cs-routeros-bouncer -h
+cs-routeros-bouncer --help
+```

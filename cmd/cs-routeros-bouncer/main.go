@@ -25,7 +25,7 @@ func main() {
 	if handleSubcommand() {
 		return
 	}
-	runBouncer()
+	runBouncer(normalizeRunArgs(os.Args[1:]))
 }
 
 // handleSubcommand runs one-shot administrative subcommands and reports whether one matched.
@@ -38,12 +38,23 @@ func handleSubcommand() bool {
 		case "uninstall":
 			runUninstallCommand(os.Args[2:])
 			return true
-		case "help":
+		case "version", "-version", "--version":
+			printVersion()
+			return true
+		case "help", "-h", "--help", "-help":
 			printUsage()
 			return true
 		}
 	}
 	return false
+}
+
+// normalizeRunArgs accepts `run` as a compatibility alias for the default command.
+func normalizeRunArgs(args []string) []string {
+	if len(args) > 0 && args[0] == "run" {
+		return args[1:]
+	}
+	return args
 }
 
 // runSetupCommand parses setup flags and installs the binary as a systemd service.
@@ -71,14 +82,14 @@ func runUninstallCommand(args []string) {
 }
 
 // runBouncer loads configuration, starts metrics/health endpoints, and blocks on Manager.Start.
-func runBouncer() {
-	configPath := flag.String("c", "", "path to configuration file")
-	showVersion := flag.Bool("version", false, "show version and exit")
-	flag.Parse()
+func runBouncer(args []string) {
+	fs := flag.NewFlagSet("cs-routeros-bouncer", flag.ExitOnError)
+	configPath := fs.String("c", "", "path to configuration file")
+	showVersion := fs.Bool("version", false, "show version and exit")
+	_ = fs.Parse(args)
 
 	if *showVersion {
-		fmt.Printf("cs-routeros-bouncer %s (commit: %s, built: %s)\n",
-			config.Version, config.Commit, config.BuildDate)
+		printVersion()
 		os.Exit(0)
 	}
 
@@ -159,15 +170,22 @@ func runBouncer() {
 	log.Info().Msg("cs-routeros-bouncer stopped")
 }
 
+// printVersion writes version metadata to standard output.
+func printVersion() {
+	fmt.Printf("cs-routeros-bouncer %s (commit: %s, built: %s)\n",
+		config.Version, config.Commit, config.BuildDate)
+}
+
 // printUsage writes the command help text to standard output.
 func printUsage() {
 	fmt.Printf(`cs-routeros-bouncer %s — CrowdSec bouncer for MikroTik RouterOS
 
 Usage:
-  cs-routeros-bouncer [flags]         Run the bouncer
-  cs-routeros-bouncer setup [flags]   Install as systemd service
-  cs-routeros-bouncer uninstall       Remove systemd service and binary
-  cs-routeros-bouncer help            Show this help message
+	cs-routeros-bouncer [flags]           Run the bouncer
+	cs-routeros-bouncer setup [flags]     Install as systemd service
+	cs-routeros-bouncer uninstall [flags] Remove systemd service and binary
+	cs-routeros-bouncer version           Show version and exit
+	cs-routeros-bouncer help              Show this help message
 
 Run flags:
   -c string    Path to configuration file
