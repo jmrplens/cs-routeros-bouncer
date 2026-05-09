@@ -6,6 +6,7 @@ package routeros
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -967,6 +968,52 @@ func TestAddFirewallRule_TopPlacement_MoveSucceeds(t *testing.T) {
 	}
 }
 
+// TestAddFirewallRule_PlaceBeforeTarget verifies specific target placement uses move directly.
+func TestAddFirewallRule_PlaceBeforeTarget(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+
+	mc.pushReply(doneReply(map[string]string{"ret": "*R8"}))
+	mc.pushReply(emptyReply())
+
+	rule := FirewallRule{Chain: "forward", Action: "drop", PlaceBefore: "*TARGET", Comment: "test"}
+	id, err := c.AddFirewallRule("ip", "filter", rule)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if id != "*R8" {
+		t.Fatalf("expected *R8, got %s", id)
+	}
+	if mc.callCount() != 2 {
+		t.Fatalf("expected add + move calls, got %d", mc.callCount())
+	}
+	args := mc.lastArgs()
+	if !slices.Contains(args, "/ip/firewall/filter/move") || !slices.Contains(args, "=numbers=*R8") || !slices.Contains(args, "=destination=*TARGET") {
+		t.Fatalf("unexpected move args: %v", args)
+	}
+}
+
+// TestAddFirewallRule_PlaceBeforeTargetMoveError verifies move failures do not fail creation.
+func TestAddFirewallRule_PlaceBeforeTargetMoveError(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+
+	mc.pushReply(doneReply(map[string]string{"ret": "*R9"}))
+	mc.pushError(errors.New("cannot move before target"))
+
+	rule := FirewallRule{Chain: "forward", Action: "drop", PlaceBefore: "*TARGET", Comment: "test"}
+	id, err := c.AddFirewallRule("ip", "filter", rule)
+	if err != nil {
+		t.Fatalf("move failure should leave created rule in place, got %v", err)
+	}
+	if id != "*R9" {
+		t.Fatalf("expected *R9, got %s", id)
+	}
+	if mc.callCount() != 2 {
+		t.Fatalf("expected add + attempted move calls, got %d", mc.callCount())
+	}
+}
+
 // TestAddFirewallRule_TopPlacement_MoveRetries verifies position retry loop.
 func TestAddFirewallRule_TopPlacement_MoveRetries(t *testing.T) {
 	mc := newMockConn()
@@ -1825,6 +1872,7 @@ func TestGetFirewallCounters_AllPaths(t *testing.T) { // NOSONAR: scenario asser
 	// Path 2: ip/firewall/raw — reject rule
 	mc.pushReply(reReply(
 		map[string]string{".id": "*3", "bytes": "2000", "packets": "20", "comment": "crowdsec-bouncer:raw-prerouting-v4", "action": "reject"},
+		map[string]string{".id": "*P", "bytes": "400", "packets": "4", "comment": "crowdsec-bouncer:raw-count-v4", "action": "passthrough"},
 	))
 	// Path 3: ipv6/firewall/filter — drop rule
 	mc.pushReply(reReply(
@@ -1840,14 +1888,14 @@ func TestGetFirewallCounters_AllPaths(t *testing.T) { // NOSONAR: scenario asser
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// 5 rules should match (not "other-rule").
-	if len(fc.Rules) != 5 {
-		t.Errorf("want 5 matching rules, got %d", len(fc.Rules))
+	// 6 rules should match (not "other-rule").
+	if len(fc.Rules) != 6 {
+		t.Errorf("want 6 matching rules, got %d", len(fc.Rules))
 	}
 
-	// IPv4 totals (processed): 1000 + 200 + 2000 = 3200 bytes, 10 + 2 + 20 = 32 packets.
-	if fc.IPv4Bytes != 3200 || fc.IPv4Pkts != 32 {
-		t.Errorf("IPv4: want (3200,32), got (%d,%d)", fc.IPv4Bytes, fc.IPv4Pkts)
+	// IPv4 totals (processed): 1000 + 200 + 2000 + 400 = 3600 bytes, 10 + 2 + 20 + 4 = 36 packets.
+	if fc.IPv4Bytes != 3600 || fc.IPv4Pkts != 36 {
+		t.Errorf("IPv4: want (3600,36), got (%d,%d)", fc.IPv4Bytes, fc.IPv4Pkts)
 	}
 
 	// IPv6 totals (processed): 300 + 700 = 1000 bytes, 3 + 7 = 10 packets.
@@ -1855,9 +1903,9 @@ func TestGetFirewallCounters_AllPaths(t *testing.T) { // NOSONAR: scenario asser
 		t.Errorf("IPv6: want (1000,10), got (%d,%d)", fc.IPv6Bytes, fc.IPv6Pkts)
 	}
 
-	// Grand totals (processed): 3200 + 1000 = 4200 bytes, 32 + 10 = 42 packets.
-	if fc.TotalBytes != 4200 || fc.TotalPkts != 42 {
-		t.Errorf("Total: want (4200,42), got (%d,%d)", fc.TotalBytes, fc.TotalPkts)
+	// Grand totals (processed): 3600 + 1000 = 4600 bytes, 36 + 10 = 46 packets.
+	if fc.TotalBytes != 4600 || fc.TotalPkts != 46 {
+		t.Errorf("Total: want (4600,46), got (%d,%d)", fc.TotalBytes, fc.TotalPkts)
 	}
 
 	// Dropped IPv4: drop(1000,10) + reject(2000,20) = (3000,30). Accept is excluded.
@@ -1875,9 +1923,9 @@ func TestGetFirewallCounters_AllPaths(t *testing.T) { // NOSONAR: scenario asser
 		t.Errorf("DroppedTotal: want (3300,33), got (%d,%d)", fc.DroppedBytes, fc.DroppedPkts)
 	}
 
-	// Processed: only passthrough rules. IPv4 has none, IPv6 has (700,7).
-	if fc.ProcessedIPv4Bytes != 0 || fc.ProcessedIPv4Pkts != 0 {
-		t.Errorf("ProcessedIPv4: want (0,0), got (%d,%d)", fc.ProcessedIPv4Bytes, fc.ProcessedIPv4Pkts)
+	// Processed: only passthrough rules. IPv4 has (400,4), IPv6 has (700,7).
+	if fc.ProcessedIPv4Bytes != 400 || fc.ProcessedIPv4Pkts != 4 {
+		t.Errorf("ProcessedIPv4: want (400,4), got (%d,%d)", fc.ProcessedIPv4Bytes, fc.ProcessedIPv4Pkts)
 	}
 	if fc.ProcessedIPv6Bytes != 700 || fc.ProcessedIPv6Pkts != 7 {
 		t.Errorf("ProcessedIPv6: want (700,7), got (%d,%d)", fc.ProcessedIPv6Bytes, fc.ProcessedIPv6Pkts)

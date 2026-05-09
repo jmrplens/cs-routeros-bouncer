@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	rosClient "github.com/jmrplens/cs-routeros-bouncer/internal/routeros"
+
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 )
@@ -105,6 +107,89 @@ func TestBenchReportsStatus(t *testing.T) {
 	assert.Contains(t, output, "OK")
 	assert.Contains(t, output, "failure")
 	assert.Contains(t, output, "ERR: boom")
+}
+
+// TestRunBenchmarksExercisesClientFlow verifies the standalone benchmark runner without RouterOS.
+func TestRunBenchmarksExercisesClientFlow(t *testing.T) {
+	client := &fakeBenchmarkClient{}
+
+	output := captureBenchmarkStdout(t, func() {
+		runBenchmarks(client)
+	})
+
+	assert.Contains(t, output, "Connected to: test-router")
+	assert.Contains(t, output, "SINGLE OPERATION BENCHMARKS")
+	assert.Contains(t, output, "FIREWALL RULE BENCHMARKS")
+	assert.Contains(t, output, "BATCH ADD BENCHMARKS")
+	assert.Contains(t, output, "Add 500 IPv4 (sequential)")
+	assert.Contains(t, output, "SKIPPED")
+	assert.Contains(t, output, "BENCHMARK COMPLETE")
+	assert.Positive(t, client.addAddressCalls)
+	assert.Positive(t, client.removeAddressCalls)
+	assert.Positive(t, client.addFirewallRuleCalls)
+	assert.Positive(t, client.removeFirewallRuleCalls)
+}
+
+// TestRunBenchmarksUsesUnknownIdentityOnError verifies identity read failures do not stop benchmarks.
+func TestRunBenchmarksUsesUnknownIdentityOnError(t *testing.T) {
+	client := &fakeBenchmarkClient{identityErr: errors.New("identity unavailable")}
+
+	output := captureBenchmarkStdout(t, func() {
+		runBenchmarks(client)
+	})
+
+	assert.Contains(t, output, "Connected to: unknown")
+	assert.Contains(t, output, "BENCHMARK COMPLETE")
+}
+
+type fakeBenchmarkClient struct {
+	identityErr             error
+	addAddressCalls         int
+	removeAddressCalls      int
+	addFirewallRuleCalls    int
+	removeFirewallRuleCalls int
+}
+
+func (f *fakeBenchmarkClient) GetIdentity() (string, error) {
+	if f.identityErr != nil {
+		return "", f.identityErr
+	}
+	return "test-router", nil
+}
+
+func (f *fakeBenchmarkClient) AddAddress(_, _, address, _, _ string) (string, error) {
+	f.addAddressCalls++
+	return "addr-" + address, nil
+}
+
+func (f *fakeBenchmarkClient) FindAddress(_, _, address string) (*rosClient.AddressEntry, error) {
+	return &rosClient.AddressEntry{ID: "found-" + address, Address: address}, nil
+}
+
+func (f *fakeBenchmarkClient) ListAddresses(_, list, _ string) ([]rosClient.AddressEntry, error) {
+	return []rosClient.AddressEntry{
+		{ID: "list-1", Address: "198.51.100.1", List: list},
+		{ID: "list-2", Address: "198.51.100.2", List: list},
+	}, nil
+}
+
+func (f *fakeBenchmarkClient) RemoveAddress(_, _ string) error {
+	f.removeAddressCalls++
+	return nil
+}
+
+func (f *fakeBenchmarkClient) AddFirewallRule(_, _ string, _ rosClient.FirewallRule) (string, error) {
+	f.addFirewallRuleCalls++
+	return "rule-id", nil
+}
+
+func (f *fakeBenchmarkClient) FindFirewallRuleByComment(_, _, comment string) (*rosClient.RuleEntry, error) {
+	return &rosClient.RuleEntry{ID: "rule-id", Comment: comment}, nil
+}
+
+func (f *fakeBenchmarkClient) RemoveFirewallRule(_, _, _ string) error {
+	f.removeFirewallRuleCalls++
+	return nil
 }
 
 // captureBenchmarkStdout captures benchmark output emitted while fn runs.

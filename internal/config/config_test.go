@@ -718,6 +718,59 @@ func TestFirewallRulePlacementFor(t *testing.T) {
 	}
 }
 
+// TestFirewallRulePlacementStringAllOverrides verifies summaries include every protocol/table override.
+func TestFirewallRulePlacementStringAllOverrides(t *testing.T) {
+	ipv4RawPosition := 2
+	ipv6FilterPosition := 5
+	firewall := FirewallConfig{
+		RulePlacement: RulePlacementConfig{Strategy: RulePlacementTop},
+		IPv4: ProtoConfig{RulePlacement: &RulePlacementConfig{
+			Strategy: RulePlacementBeforeComment,
+			Comment:  "ipv4 anchor",
+			Filter:   &RulePlacementConfig{Strategy: RulePlacementBottom},
+			Raw:      &RulePlacementConfig{Strategy: RulePlacementPosition, Position: &ipv4RawPosition},
+		}},
+		IPv6: ProtoConfig{RulePlacement: &RulePlacementConfig{
+			Strategy: RulePlacementAfterComment,
+			Comment:  "ipv6 anchor",
+			Filter:   &RulePlacementConfig{Strategy: RulePlacementPosition, Position: &ipv6FilterPosition},
+			Raw:      &RulePlacementConfig{Strategy: RulePlacementBottom},
+		}},
+	}
+
+	got := firewall.RulePlacementString()
+	for _, want := range []string{
+		"top",
+		"ipv4=before_comment:ipv4 anchor",
+		"ipv4.filter=bottom",
+		"ipv4.raw=position:2",
+		"ipv6=after_comment:ipv6 anchor",
+		"ipv6.filter=position:5",
+		"ipv6.raw=bottom",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("RulePlacementString() = %q, want containing %q", got, want)
+		}
+	}
+}
+
+func TestFirewallRulePlacementNilAndProtoAliases(t *testing.T) {
+	if got := (*FirewallConfig)(nil).RulePlacementFor("ip", "filter"); got.Strategy != "" {
+		t.Fatalf("nil RulePlacementFor should return zero value, got %#v", got)
+	}
+	if got := (*FirewallConfig)(nil).RulePlacementString(); got != RulePlacementTop {
+		t.Fatalf("nil RulePlacementString should return %q, got %q", RulePlacementTop, got)
+	}
+
+	firewall := FirewallConfig{IPv4: ProtoConfig{RulePlacement: &RulePlacementConfig{Strategy: RulePlacementBottom}}}
+	if got := firewall.RulePlacementFor("ipv4", "filter"); got.Strategy != RulePlacementBottom {
+		t.Fatalf("ipv4 alias should use IPv4 placement, got %#v", got)
+	}
+	if got := firewall.rulePlacementForProto("unknown"); got != nil {
+		t.Fatalf("unknown proto should not resolve placement, got %#v", got)
+	}
+}
+
 // TestParseRulePlacementConfigVariants verifies parsing of strings, maps,
 // and nested overrides.
 func TestParseRulePlacementConfigVariants(t *testing.T) {

@@ -116,3 +116,10 @@ func ParallelExec[T any](pool *Pool, items []T, fn func(c *Client, item T) error
 	wg.Wait()
 	return errs
 }
+
+// RemoveAddresses removes address-list entries concurrently through the pool.
+func (p *Pool) RemoveAddresses(proto string, entries []AddressEntry) []error {
+	return ParallelExec(p, entries, func(c *Client, entry AddressEntry) error {
+		return c.RemoveAddress(proto, entry.ID)
+	})
+}

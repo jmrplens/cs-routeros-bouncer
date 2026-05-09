@@ -5,6 +5,7 @@ package crowdsec
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 
@@ -296,6 +297,35 @@ func TestLogrusAdapterWithError(t *testing.T) {
 	entry := adapter.WithError(nil)
 	if entry == nil {
 		t.Fatal("expected non-nil logrus.Entry from WithError")
+	}
+}
+
+// TestLogrusAdapterWithErrorForwardsError verifies logrus error fields become zerolog errors.
+func TestLogrusAdapterWithErrorForwardsError(t *testing.T) {
+	var buf bytes.Buffer
+	zl := zerolog.New(&buf).Level(zerolog.DebugLevel)
+	adapter := NewLogrusAdapter(zl)
+
+	adapter.WithError(errors.New("router offline")).Error("connect failed")
+
+	output := buf.String()
+	for _, expected := range []string{`"level":"error"`, `"error":"router offline"`, "connect failed"} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("expected %q in output, got: %s", expected, output)
+		}
+	}
+}
+
+// TestZerologHookDropsDisabledLevel verifies filtered zerolog levels do not emit entries.
+func TestZerologHookDropsDisabledLevel(t *testing.T) {
+	var buf bytes.Buffer
+	hook := zerologHook{zl: zerolog.New(&buf).Level(zerolog.InfoLevel)}
+
+	if err := hook.Fire(&logrus.Entry{Level: logrus.DebugLevel, Message: "hidden", Data: logrus.Fields{"key": "value"}}); err != nil {
+		t.Fatalf("Fire() error: %v", err)
+	}
+	if got := buf.String(); got != "" {
+		t.Fatalf("expected no output for disabled debug level, got %s", got)
 	}
 }
 
