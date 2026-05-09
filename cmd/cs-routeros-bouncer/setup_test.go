@@ -259,6 +259,39 @@ func TestRunUninstallSuccess(t *testing.T) {
 	}
 }
 
+// TestRunUninstallPreservesConfig verifies uninstall keeps config without purge.
+func TestRunUninstallPreservesConfig(t *testing.T) {
+	resetSetupHooks(t)
+	tmpDir := t.TempDir()
+	binPath := filepath.Join(tmpDir, "cs-routeros-bouncer")
+	configDir := filepath.Join(tmpDir, "config")
+	if err := os.WriteFile(binPath, []byte("binary"), 0o600); err != nil {
+		t.Fatalf("write binary: %v", err)
+	}
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("create config dir: %v", err)
+	}
+
+	setupGetuid = func() int { return 0 }
+	setupSystemctl = func(args ...string) error { return nil }
+
+	output := captureStdout(t, func() {
+		if err := runUninstall(binPath, configDir, false); err != nil {
+			t.Fatalf("runUninstall: %v", err)
+		}
+	})
+
+	if _, err := os.Stat(binPath); !os.IsNotExist(err) {
+		t.Fatalf("expected binary to be removed, stat err=%v", err)
+	}
+	if _, err := os.Stat(configDir); err != nil {
+		t.Fatalf("expected config dir to be preserved, stat err=%v", err)
+	}
+	if !strings.Contains(output, "preserved") || !strings.Contains(output, configDir) {
+		t.Fatalf("expected preserved config message for %s, got %q", configDir, output)
+	}
+}
+
 // TestCopyFileCopiesContents verifies copyFile preserves contents and permissions.
 func TestCopyFileCopiesContents(t *testing.T) {
 	tmpDir := t.TempDir()
