@@ -104,4 +104,4 @@ Functional tests modify firewall rules, address lists, CrowdSec decisions, and t
 
 ## Choosing a test layer
 
-Use unit tests for config parsing, decision parsing, metrics, and mocked RouterOS behavior. Use integration tests for Docker build behavior and live RouterOS API primitives. Use functional tests when the change affects startup, reconciliation, systemd, CrowdSec LAPI behavior, CAPI scale, or end-to-end firewall state.
+Run unit tests for config parsing, decision parsing, metrics, and mocked RouterOS behavior. Run integration tests for Docker build behavior and live RouterOS API primitives. Choose functional tests when the change affects startup, reconciliation, systemd, CrowdSec LAPI behavior, CAPI scale, or end-to-end firewall state.

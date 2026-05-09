@@ -1,8 +1,10 @@
 package main
 
 import (
+	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"reflect"
 	"strings"
 	"testing"
@@ -56,6 +58,124 @@ func TestNormalizeRunArgs(t *testing.T) {
 				t.Fatalf("normalizeRunArgs(%v) = %v, want %v", tt.args, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestParseRunFlags verifies valid run-mode flags are parsed.
+func TestParseRunFlags(t *testing.T) {
+	tests := []struct {
+		name        string
+		args        []string
+		wantConfig  string
+		wantVersion bool
+	}{
+		{name: "default", args: nil},
+		{name: "config path", args: []string{"-c", "config.yaml"}, wantConfig: "config.yaml"},
+		{name: "version", args: []string{"--version"}, wantVersion: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotConfig, gotVersion, err := parseRunFlags(tt.args)
+			if err != nil {
+				t.Fatalf("parseRunFlags(%v): %v", tt.args, err)
+			}
+			if *gotConfig != tt.wantConfig || *gotVersion != tt.wantVersion {
+				t.Fatalf("parseRunFlags(%v) = config=%q version=%v, want config=%q version=%v", tt.args, *gotConfig, *gotVersion, tt.wantConfig, tt.wantVersion)
+			}
+		})
+	}
+}
+
+// TestParseRunFlagsErrors verifies invalid run-mode args fail before config load.
+func TestParseRunFlagsErrors(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{name: "unexpected positional", args: []string{"typo"}, wantErr: `unexpected argument "typo"`},
+		{name: "unknown flag", args: []string{"-bad"}, wantErr: "flag provided but not defined"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var err error
+			_ = captureStdout(t, func() {
+				_, _, err = parseRunFlags(tt.args)
+			})
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("parseRunFlags(%v) error = %v, want containing %q", tt.args, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestRunBouncerRejectsPositionalArgs verifies invalid run-mode args stop before config load.
+func TestRunBouncerRejectsPositionalArgs(t *testing.T) {
+	if os.Getenv("CS_ROUTEROS_BOUNCER_TEST_RUN_BOUNCER") == "1" {
+		runBouncer([]string{"typo"})
+		return
+	}
+
+	cmd := exec.Command(os.Args[0], "-test.run=TestRunBouncerRejectsPositionalArgs")
+	cmd.Env = append(os.Environ(), "CS_ROUTEROS_BOUNCER_TEST_RUN_BOUNCER=1")
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected runBouncer to exit with error, output: %s", output)
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected exec.ExitError, got %T: %v", err, err)
+	}
+	if exitErr.ExitCode() != 1 {
+		t.Fatalf("expected exit code 1, got %d; output: %s", exitErr.ExitCode(), output)
+	}
+	if !strings.Contains(string(output), `unexpected argument "typo"`) || !strings.Contains(string(output), "Usage:") {
+		t.Fatalf("expected error and usage output, got: %s", output)
+	}
+}
+
+// TestRunBouncerVersionExits verifies run-mode version output exits cleanly.
+func TestRunBouncerVersionExits(t *testing.T) {
+	if os.Getenv("CS_ROUTEROS_BOUNCER_TEST_RUN_BOUNCER_VERSION") == "1" {
+		runBouncer([]string{"--version"})
+		return
+	}
+
+	cmd := exec.Command(os.Args[0], "-test.run=TestRunBouncerVersionExits")
+	cmd.Env = append(os.Environ(), "CS_ROUTEROS_BOUNCER_TEST_RUN_BOUNCER_VERSION=1")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("expected runBouncer version to exit cleanly, err=%v output=%s", err, output)
+	}
+	if !strings.Contains(string(output), "cs-routeros-bouncer") || !strings.Contains(string(output), "commit:") {
+		t.Fatalf("expected version metadata, got: %s", output)
+	}
+}
+
+// TestRunBouncerInvalidConfigExits verifies config load failures exit before startup.
+func TestRunBouncerInvalidConfigExits(t *testing.T) {
+	if os.Getenv("CS_ROUTEROS_BOUNCER_TEST_RUN_BOUNCER_CONFIG") == "1" {
+		runBouncer([]string{"-c", "/nonexistent/cs-routeros-bouncer.yaml"})
+		return
+	}
+
+	cmd := exec.Command(os.Args[0], "-test.run=TestRunBouncerInvalidConfigExits")
+	cmd.Env = append(os.Environ(), "CS_ROUTEROS_BOUNCER_TEST_RUN_BOUNCER_CONFIG=1")
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected invalid config to exit with error, output: %s", output)
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected exec.ExitError, got %T: %v", err, err)
+	}
+	if exitErr.ExitCode() != 1 {
+		t.Fatalf("expected exit code 1, got %d; output: %s", exitErr.ExitCode(), output)
+	}
+	if !strings.Contains(string(output), "failed to load configuration") {
+		t.Fatalf("expected config load error, got: %s", output)
 	}
 }
 

@@ -26,64 +26,6 @@ function loadRouterOSGrammar() {
 
 const routerosGrammar = loadRouterOSGrammar();
 
-const terminalFrameControls = {
-	name: "terminal-frame-controls",
-	baseStyles: `
-		.frame.is-terminal .header {
-			justify-content: flex-start;
-		}
-		.frame.is-terminal .header::before {
-			position: static;
-			display: block;
-			width: 0.625rem;
-			height: 0.625rem;
-			margin-inline-end: 2.25rem;
-			border-radius: 50%;
-			background-color: #ff5f56;
-			box-shadow: 1rem 0 0 #ffbd2e, 2rem 0 0 #27c93f;
-			content: "";
-			-webkit-mask-image: none;
-			mask-image: none;
-			opacity: 1;
-		}
-		.copy {
-			top: calc((2.25rem - 1.75rem) / 2);
-			right: 0.625rem;
-			z-index: 2;
-			width: 1.75rem;
-			height: 1.75rem;
-			gap: 0;
-			align-items: center;
-			justify-content: center;
-			border: 1px solid var(--sl-color-gray-5);
-			border-radius: 0.375rem;
-			background-color: var(--sl-color-gray-6);
-			opacity: 1;
-			box-shadow: none;
-			transition: background-color 0.2s ease, transform 0.2s ease;
-		}
-		.copy button {
-			width: 1.625rem;
-			height: 1.625rem;
-			flex: 0 0 1.625rem;
-			align-self: center;
-			background-color: transparent;
-			opacity: 1;
-			transition: none;
-		}
-		.copy button::after {
-			background-color: var(--sl-color-gray-2);
-		}
-		@media (hover: hover) {
-			.copy button {
-				width: 1.625rem;
-				height: 1.625rem;
-				opacity: 1;
-			}
-		}
-	`,
-};
-
 /** @returns {import('astro').AstroIntegration} */
 function routerosLanguage() {
 	return {
@@ -141,7 +83,6 @@ export default defineConfig({
 			customCss: ["./src/styles/custom.css"],
 			expressiveCode: {
 				emitExternalStylesheet: false,
-				plugins: [terminalFrameControls],
 			},
 			components: {
 				Header: "./src/components/overrides/Header.astro",

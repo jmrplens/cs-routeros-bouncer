@@ -7,6 +7,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"syscall"
@@ -24,6 +25,8 @@ var (
 	runSetupFn     = runSetup
 	runUninstallFn = runUninstall
 )
+
+const cliErrorFormat = "Error: %v\n"
 
 // main dispatches setup/uninstall subcommands before starting the long-running bouncer.
 func main() {
@@ -69,7 +72,7 @@ func runSetupCommand(args []string) {
 	cfgDir := fs.String("config-dir", defaultConfigDir, "directory for configuration files")
 	_ = fs.Parse(args)
 	if err := runSetupFn(*binPath, *cfgDir); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		fmt.Fprintf(os.Stderr, cliErrorFormat, err)
 		os.Exit(1)
 	}
 }
@@ -82,17 +85,19 @@ func runUninstallCommand(args []string) {
 	purge := fs.Bool("purge", false, "also remove configuration files")
 	_ = fs.Parse(args)
 	if err := runUninstallFn(*binPath, *cfgDir, *purge); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		fmt.Fprintf(os.Stderr, cliErrorFormat, err)
 		os.Exit(1)
 	}
 }
 
 // runBouncer loads configuration, starts metrics/health endpoints, and blocks on Manager.Start.
 func runBouncer(args []string) {
-	fs := flag.NewFlagSet("cs-routeros-bouncer", flag.ExitOnError)
-	configPath := fs.String("c", "", "path to configuration file")
-	showVersion := fs.Bool("version", false, "show version and exit")
-	_ = fs.Parse(args)
+	configPath, showVersion, err := parseRunFlags(args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, cliErrorFormat, err)
+		printUsage()
+		os.Exit(1)
+	}
 
 	if *showVersion {
 		printVersion()
@@ -174,6 +179,22 @@ func runBouncer(args []string) {
 	}
 
 	log.Info().Msg("cs-routeros-bouncer stopped")
+}
+
+func parseRunFlags(args []string) (configPath *string, showVersion *bool, err error) {
+	fs := flag.NewFlagSet("cs-routeros-bouncer", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	fs.Usage = printUsage
+	configPath = fs.String("c", "", "path to configuration file")
+	showVersion = fs.Bool("version", false, "show version and exit")
+	err = fs.Parse(args)
+	if err != nil {
+		return nil, nil, err
+	}
+	if fs.NArg() > 0 {
+		return nil, nil, fmt.Errorf("unexpected argument %q", fs.Arg(0))
+	}
+	return configPath, showVersion, nil
 }
 
 // printVersion writes version metadata to standard output.

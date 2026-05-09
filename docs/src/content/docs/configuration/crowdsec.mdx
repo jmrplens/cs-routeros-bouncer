@@ -95,6 +95,7 @@ Filter decisions by their origin. Empty means all decisions are processed.
 | `crowdsec` | Decisions from CrowdSec detection engine       |
 | `cscli`    | Manual decisions via `cscli decisions add`     |
 | `CAPI`     | Community blocklists from CrowdSec Central API |
+| `lists:*`  | Named list origins such as `lists:<name>`      |
 
 ```yaml
 # Only local decisions (no community blocklists)
@@ -112,7 +113,7 @@ When set as an environment variable, `CROWDSEC_ORIGINS` is space-separated:
 CROWDSEC_ORIGINS="crowdsec cscli"
 ```
 
-Leaving `origins` empty accepts all origins, including `CAPI` and `lists:*`. See [CAPI Blocklists](/cs-routeros-bouncer/configuration/capi-blocklists/) for scale and router sizing guidance.
+Leaving `origins` empty accepts all origins, including `CAPI` and named list origins. Use `lists:*` as the wildcard pattern for `lists:<name>` entries when setting `origins` or `CROWDSEC_ORIGINS`. See [CAPI Blocklists](/cs-routeros-bouncer/configuration/capi-blocklists/) for scale and router sizing guidance.
 
 ### `crowdsec.scopes` <Badge text="Optional" variant="note" />
 

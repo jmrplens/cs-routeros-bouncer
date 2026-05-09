@@ -573,7 +573,7 @@ pre {
 }
 .expressive-code:hover .copy,
 .expressive-code:focus-within .copy {
-	opacity: 0.86;
+	opacity: 1;
 }
 .expressive-code .copy:hover,
 .expressive-code .copy:focus-visible {

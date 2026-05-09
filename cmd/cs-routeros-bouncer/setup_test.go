@@ -18,6 +18,7 @@ func resetSetupHooks(tb testing.TB) {
 	oldEvalSymlinks := setupEvalSymlinks
 	oldMkdirAll := setupMkdirAll
 	oldStat := setupStat
+	oldAbs := setupAbs
 	oldWriteFile := setupWriteFile
 	oldRemove := setupRemove
 	oldRemoveAll := setupRemoveAll
@@ -30,6 +31,7 @@ func resetSetupHooks(tb testing.TB) {
 		setupEvalSymlinks = oldEvalSymlinks
 		setupMkdirAll = oldMkdirAll
 		setupStat = oldStat
+		setupAbs = oldAbs
 		setupWriteFile = oldWriteFile
 		setupRemove = oldRemove
 		setupRemoveAll = oldRemoveAll
@@ -264,16 +266,24 @@ func TestRunUninstallPreservesConfig(t *testing.T) {
 	resetSetupHooks(t)
 	tmpDir := t.TempDir()
 	binPath := filepath.Join(tmpDir, "cs-routeros-bouncer")
+	servicePath := filepath.Join(tmpDir, "cs-routeros-bouncer.service")
 	configDir := filepath.Join(tmpDir, "config")
-	if err := os.WriteFile(binPath, []byte("binary"), 0o600); err != nil {
-		t.Fatalf("write binary: %v", err)
+	for path, data := range map[string]string{binPath: "binary", servicePath: "unit"} {
+		if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
 	}
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("create config dir: %v", err)
 	}
 
+	var calls [][]string
 	setupGetuid = func() int { return 0 }
-	setupSystemctl = func(args ...string) error { return nil }
+	setupServicePath = servicePath
+	setupSystemctl = func(args ...string) error {
+		calls = append(calls, append([]string(nil), args...))
+		return nil
+	}
 
 	output := captureStdout(t, func() {
 		if err := runUninstall(binPath, configDir, false); err != nil {
@@ -284,11 +294,51 @@ func TestRunUninstallPreservesConfig(t *testing.T) {
 	if _, err := os.Stat(binPath); !os.IsNotExist(err) {
 		t.Fatalf("expected binary to be removed, stat err=%v", err)
 	}
+	if _, err := os.Stat(servicePath); !os.IsNotExist(err) {
+		t.Fatalf("expected service file to be removed, stat err=%v", err)
+	}
 	if _, err := os.Stat(configDir); err != nil {
 		t.Fatalf("expected config dir to be preserved, stat err=%v", err)
 	}
+	if got := len(calls); got != 3 {
+		t.Fatalf("expected 3 systemctl calls, got %d: %v", got, calls)
+	}
 	if !strings.Contains(output, "preserved") || !strings.Contains(output, configDir) {
 		t.Fatalf("expected preserved config message for %s, got %q", configDir, output)
+	}
+}
+
+// TestRunUninstallRejectsUnsafeConfigDirs verifies purge refuses root-like paths.
+func TestRunUninstallRejectsUnsafeConfigDirs(t *testing.T) {
+	for _, configDir := range []string{"", " ", ".", string(os.PathSeparator), filepath.Join(string(os.PathSeparator), "tmp")} {
+		t.Run(configDir, func(t *testing.T) {
+			resetSetupHooks(t)
+			setupGetuid = func() int { return 0 }
+			calledSystemctl := false
+			setupSystemctl = func(args ...string) error {
+				calledSystemctl = true
+				return nil
+			}
+
+			err := runUninstall(filepath.Join(t.TempDir(), "bin"), configDir, true)
+			if err == nil || !strings.Contains(err.Error(), "refusing to remove") {
+				t.Fatalf("expected unsafe config dir error, got %v", err)
+			}
+			if calledSystemctl {
+				t.Fatal("systemctl should not be called when config dir is unsafe")
+			}
+		})
+	}
+}
+
+// TestSafeConfigDirForRemovalAbsError verifies path resolution errors are surfaced.
+func TestSafeConfigDirForRemovalAbsError(t *testing.T) {
+	resetSetupHooks(t)
+	setupAbs = func(string) (string, error) { return "", errors.New("abs failed") }
+
+	_, err := safeConfigDirForRemoval("config")
+	if err == nil || !strings.Contains(err.Error(), "resolve config dir") {
+		t.Fatalf("expected resolve config dir error, got %v", err)
 	}
 }
 
