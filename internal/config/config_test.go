@@ -472,9 +472,13 @@ func TestRouterOSCommandValuesAreTrimmedFromEnv(t *testing.T) {
 	t.Setenv("FIREWALL_RAW_CHAINS", "prerouting, output")
 	t.Setenv("FIREWALL_FILTER_CONNECTION_STATE", " new, invalid ")
 	t.Setenv("FIREWALL_IPV4_ADDRESS_LIST", " crowdsec ")
+	t.Setenv("FIREWALL_LOG_PREFIX", " global ")
+	t.Setenv("FIREWALL_FILTER_LOG_PREFIX", " filter ")
+	t.Setenv("FIREWALL_RAW_LOG_PREFIX", " raw ")
 	t.Setenv("FIREWALL_BLOCK_INPUT_INTERFACE", " ether1-WAN ")
 	t.Setenv("FIREWALL_BLOCK_OUTPUT", "true")
 	t.Setenv("FIREWALL_BLOCK_OUTPUT_INTERFACE_LIST", " WAN ")
+	t.Setenv("FIREWALL_BLOCK_OUTPUT_LOG_PREFIX", " output ")
 	t.Setenv("FIREWALL_OUTPUT_PASSTHROUGH_V4", " 10.0.0.5 ")
 
 	cfg, err := Load("")
@@ -494,14 +498,40 @@ func TestRouterOSCommandValuesAreTrimmedFromEnv(t *testing.T) {
 	if cfg.Firewall.IPv4.AddressList != "crowdsec" {
 		t.Fatalf("expected trimmed IPv4 address list, got %q", cfg.Firewall.IPv4.AddressList)
 	}
+	if cfg.Firewall.LogPrefix != "global" {
+		t.Fatalf("expected trimmed global log prefix, got %q", cfg.Firewall.LogPrefix)
+	}
+	if cfg.Firewall.Filter.LogPrefix != "filter" {
+		t.Fatalf("expected trimmed filter log prefix, got %q", cfg.Firewall.Filter.LogPrefix)
+	}
+	if cfg.Firewall.Raw.LogPrefix != "raw" {
+		t.Fatalf("expected trimmed raw log prefix, got %q", cfg.Firewall.Raw.LogPrefix)
+	}
 	if cfg.Firewall.BlockInput.Interface != "ether1-WAN" {
 		t.Fatalf("expected trimmed input interface, got %q", cfg.Firewall.BlockInput.Interface)
 	}
 	if cfg.Firewall.BlockOutput.InterfaceList != "WAN" {
 		t.Fatalf("expected trimmed output interface list, got %q", cfg.Firewall.BlockOutput.InterfaceList)
 	}
+	if cfg.Firewall.BlockOutput.LogPrefix != "output" {
+		t.Fatalf("expected trimmed output log prefix, got %q", cfg.Firewall.BlockOutput.LogPrefix)
+	}
 	if cfg.Firewall.BlockOutput.PassthroughV4 != "10.0.0.5" {
 		t.Fatalf("expected trimmed output passthrough address, got %q", cfg.Firewall.BlockOutput.PassthroughV4)
+	}
+}
+
+func TestRouterOSCommentPrefixPreservesWhitespaceFromEnv(t *testing.T) {
+	setMinimalEnv(t)
+	t.Setenv("FIREWALL_COMMENT_PREFIX", "CROWDSEC: ")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.Firewall.CommentPrefix != "CROWDSEC: " {
+		t.Fatalf("expected comment prefix whitespace to be preserved, got %q", cfg.Firewall.CommentPrefix)
 	}
 }
 
@@ -1430,10 +1460,15 @@ func TestConnectionStateValid(t *testing.T) {
 // TestConnectionStateInvalid verifies that a connection_state value containing
 // an unrecognized token causes a validation error.
 func TestConnectionStateInvalid(t *testing.T) {
-	cfg := validCfg()
-	cfg.Firewall.Filter.ConnectionState = "new,bogus"
-	if err := cfg.Validate(); err == nil {
-		t.Error("expected error for invalid connection_state value")
+	tests := []string{"new,bogus", "new,,invalid"}
+	for _, v := range tests {
+		t.Run(v, func(t *testing.T) {
+			cfg := validCfg()
+			cfg.Firewall.Filter.ConnectionState = v
+			if err := cfg.Validate(); err == nil {
+				t.Error("expected error for invalid connection_state value")
+			}
+		})
 	}
 }
 
