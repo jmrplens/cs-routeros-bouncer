@@ -159,7 +159,7 @@ sudo cs-routeros-bouncer uninstall
 sudo cs-routeros-bouncer uninstall -purge
 ```
 
-`uninstall` also accepts `-bin` if the binary was installed outside `/usr/local/bin/cs-routeros-bouncer`.
+`uninstall` also accepts `-bin` and `-config-dir` if setup used custom paths. Pass the same `-config-dir` with `-purge` to remove that custom configuration directory.
 
 See the [CLI Reference](/cs-routeros-bouncer/getting-started/cli-reference/) for all setup and uninstall flags.
 

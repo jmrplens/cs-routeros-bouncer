@@ -226,9 +226,9 @@ Large address lists can make startup reconciliation the slowest part of boot. Ch
 
 Actions to try:
 
-1. Increase `mikrotik.command_timeout` to `60s`.
+1. Increase `mikrotik.command_timeout` from its default `"30s"` to `"60s"`.
 2. Keep `crowdsec.origins: ["crowdsec", "cscli"]` on small routers.
-3. Increase `mikrotik.pool_size` only after checking RouterOS API `max-sessions`.
+3. Increase `mikrotik.pool_size` from its default `4` only after checking RouterOS API `max-sessions`.
 4. Move full CAPI testing to a maintenance window.
 
 ```yaml

@@ -10,10 +10,14 @@ The benchmark command measures RouterOS API operations against a real router. It
 Build and run the benchmark:
 
 ```bash
-go run ./cmd/benchmark config/test.yaml
+go run ./cmd/benchmark
 ```
 
-If no path is passed, it uses `config/test.yaml`.
+The config path is optional and defaults to `config/test.yaml`:
+
+```bash
+go run ./cmd/benchmark config/test.yaml
+```
 
 The benchmark reads the MikroTik section from the selected YAML file, connects to RouterOS, then runs API-level operations.
 
@@ -44,7 +48,9 @@ Connected to: lab-router
   Add 100 IPv4 (sequential)                4s  (40ms/ip, failures=0)
 ```
 
-Use the numbers to compare RouterOS versions, hardware models, TLS vs plaintext API, and network latency. For real bouncer startup performance, prefer the functional CAPI tests because reconciliation uses script-based bulk adds and pool-based removals, not only sequential API calls.
+Use the numbers to compare RouterOS versions, hardware models, TLS vs plaintext API, and network latency.
+
+For real bouncer startup performance, prefer the functional CAPI tests because reconciliation uses script-based bulk adds and pool-based removals, not only sequential API calls.
 
 ## Safety checklist
 

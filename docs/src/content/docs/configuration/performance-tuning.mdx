@@ -22,7 +22,7 @@ Guidance:
 | Mid-range RouterOS 7   | `4`             |
 | Large CAPI deployments | `6`-`8`         |
 
-The configured value must be between `1` and `20`. On startup, the bouncer queries RouterOS API `max-sessions` and caps the effective pool to `max-sessions - 2`, with at least one session left available.
+The configured value must be between `1` and `20`. On startup, the bouncer queries RouterOS API `max-sessions` and caps the effective pool to `max-sessions - 2`, ensuring at least two sessions remain available for other RouterOS operations.
 
 Check or raise the RouterOS limit:
 
@@ -99,4 +99,4 @@ metrics:
   track_processed: true
 ```
 
-For small routers, prefer local-only mode, `pool_size: 1` or `2`, and avoid full CAPI until you have measured reconciliation time.
+For small routers, prefer [local-only mode](/cs-routeros-bouncer/configuration/capi-blocklists/#local-only-mode), `pool_size: 1` or `2`, and avoid full CAPI until you have measured reconciliation time.

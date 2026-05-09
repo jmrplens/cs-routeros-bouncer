@@ -135,6 +135,15 @@ sudo cs-routeros-bouncer uninstall        # Keeps config files
 sudo cs-routeros-bouncer uninstall -purge  # Also removes config
 ```
 
+If setup used custom paths, pass the same values to uninstall:
+
+```bash
+sudo cs-routeros-bouncer uninstall \
+  -bin /opt/cs-routeros-bouncer/cs-routeros-bouncer \
+  -config-dir /opt/cs-routeros-bouncer/config \
+  -purge
+```
+
 <details>
 <summary><strong>Manual setup</strong></summary>
 

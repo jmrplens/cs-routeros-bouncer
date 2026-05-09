@@ -24,7 +24,6 @@ func resetSetupHooks(tb testing.TB) {
 	oldCopyFile := setupCopyFile
 	oldSystemctl := setupSystemctl
 	oldServicePath := setupServicePath
-	oldConfigDir := setupConfigDir
 	tb.Cleanup(func() {
 		setupGetuid = oldGetuid
 		setupExecutable = oldExecutable
@@ -37,7 +36,6 @@ func resetSetupHooks(tb testing.TB) {
 		setupCopyFile = oldCopyFile
 		setupSystemctl = oldSystemctl
 		setupServicePath = oldServicePath
-		setupConfigDir = oldConfigDir
 	})
 }
 
@@ -79,7 +77,7 @@ func TestRunUninstallRequiresRoot(t *testing.T) {
 	resetSetupHooks(t)
 	setupGetuid = func() int { return 1000 }
 
-	err := runUninstall(filepath.Join(t.TempDir(), "bin"), false)
+	err := runUninstall(filepath.Join(t.TempDir(), "bin"), filepath.Join(t.TempDir(), "config"), false)
 	if err == nil || !strings.Contains(err.Error(), "uninstall must be run as root") {
 		t.Fatalf("expected root error, got %v", err)
 	}
@@ -240,14 +238,13 @@ func TestRunUninstallSuccess(t *testing.T) {
 	var calls [][]string
 	setupGetuid = func() int { return 0 }
 	setupServicePath = servicePath
-	setupConfigDir = configDir
 	setupSystemctl = func(args ...string) error {
 		calls = append(calls, append([]string(nil), args...))
 		return nil
 	}
 
 	_ = captureStdout(t, func() {
-		if err := runUninstall(binPath, true); err != nil {
+		if err := runUninstall(binPath, configDir, true); err != nil {
 			t.Fatalf("runUninstall: %v", err)
 		}
 	})

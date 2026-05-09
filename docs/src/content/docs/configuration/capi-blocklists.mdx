@@ -52,6 +52,8 @@ crowdsec:
   scenarios_containing: ["ssh", "http"]
 ```
 
+Multiple values are matched as OR conditions within each key: `origins` accepts decisions from `crowdsec` OR `cscli` OR `CAPI`, and `scenarios_containing` matches scenarios containing `ssh` OR `http`. When `origins`, `scenarios_containing`, and `scenarios_not_containing` are combined, a decision must pass all configured filter groups.
+
 Use `scenarios_not_containing` to exclude noisy scenarios by substring:
 
 ```yaml

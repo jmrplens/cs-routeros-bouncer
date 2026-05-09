@@ -20,6 +20,11 @@ import (
 	"github.com/jmrplens/cs-routeros-bouncer/internal/metrics"
 )
 
+var (
+	runSetupFn     = runSetup
+	runUninstallFn = runUninstall
+)
+
 // main dispatches setup/uninstall subcommands before starting the long-running bouncer.
 func main() {
 	if handleSubcommand() {
@@ -63,7 +68,7 @@ func runSetupCommand(args []string) {
 	binPath := fs.String("bin", defaultBinPath, "installation path for the binary")
 	cfgDir := fs.String("config-dir", defaultConfigDir, "directory for configuration files")
 	_ = fs.Parse(args)
-	if err := runSetup(*binPath, *cfgDir); err != nil {
+	if err := runSetupFn(*binPath, *cfgDir); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
@@ -73,9 +78,10 @@ func runSetupCommand(args []string) {
 func runUninstallCommand(args []string) {
 	fs := flag.NewFlagSet("uninstall", flag.ExitOnError)
 	binPath := fs.String("bin", defaultBinPath, "path of the installed binary")
+	cfgDir := fs.String("config-dir", defaultConfigDir, "directory for configuration files")
 	purge := fs.Bool("purge", false, "also remove configuration files")
 	_ = fs.Parse(args)
-	if err := runUninstall(*binPath, *purge); err != nil {
+	if err := runUninstallFn(*binPath, *cfgDir, *purge); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
@@ -196,7 +202,8 @@ Setup flags:
   -config-dir string Config directory (default: /etc/cs-routeros-bouncer)
 
 Uninstall flags:
-  -bin string  Path of installed binary (default: /usr/local/bin/cs-routeros-bouncer)
-  -purge       Also remove configuration files
+  -bin string        Path of installed binary (default: /usr/local/bin/cs-routeros-bouncer)
+  -config-dir string Config directory to purge (default: /etc/cs-routeros-bouncer)
+  -purge             Also remove configuration files
 `, config.Version)
 }

@@ -39,7 +39,6 @@ var (
 	setupCopyFile     = copyFile
 	setupSystemctl    = systemctl
 	setupServicePath  = defaultServicePath
-	setupConfigDir    = defaultConfigDir
 )
 
 // serviceTemplate is the systemd unit file content.
@@ -139,7 +138,7 @@ func runSetup(binDst, configDir string) error {
 }
 
 // runUninstall stops and removes the systemd service and binary.
-func runUninstall(binDst string, removeConfig bool) error {
+func runUninstall(binDst, configDir string, removeConfig bool) error {
 	if setupGetuid() != 0 {
 		return errors.New("uninstall must be run as root")
 	}
@@ -162,10 +161,10 @@ func runUninstall(binDst string, removeConfig bool) error {
 	}
 
 	if removeConfig {
-		fmt.Printf("→ Removing config dir %s ...\n", setupConfigDir)
-		_ = setupRemoveAll(setupConfigDir)
+		fmt.Printf("→ Removing config dir %s ...\n", configDir)
+		_ = setupRemoveAll(configDir)
 	} else {
-		fmt.Printf("→ Config dir %s preserved (use -purge to remove).\n", setupConfigDir)
+		fmt.Printf("→ Config dir %s preserved (use -purge to remove).\n", configDir)
 	}
 
 	fmt.Printf("✓ %s uninstalled.\n", serviceName)

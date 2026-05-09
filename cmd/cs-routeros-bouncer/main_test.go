@@ -3,6 +3,7 @@ package main
 import (
 	"io"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -42,16 +43,62 @@ func TestNormalizeRunArgs(t *testing.T) {
 	}{
 		{name: "implicit run", args: []string{"-c", "config.yaml"}, want: []string{"-c", "config.yaml"}},
 		{name: "explicit run", args: []string{"run", "-c", "config.yaml"}, want: []string{"-c", "config.yaml"}},
+		{name: "run only", args: []string{"run"}, want: []string{}},
+		{name: "run non-first", args: []string{"-c", "config.yaml", "run"}, want: []string{"-c", "config.yaml", "run"}},
+		{name: "run as value", args: []string{"-mode", "run"}, want: []string{"-mode", "run"}},
 		{name: "empty", args: nil, want: nil},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := normalizeRunArgs(tt.args)
-			if strings.Join(got, "\x00") != strings.Join(tt.want, "\x00") {
+			if !reflect.DeepEqual(got, tt.want) {
 				t.Fatalf("normalizeRunArgs(%v) = %v, want %v", tt.args, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestHandleSubcommandAdminCommands verifies administrative subcommands parse their flags.
+func TestHandleSubcommandAdminCommands(t *testing.T) {
+	oldSetup := runSetupFn
+	oldUninstall := runUninstallFn
+	t.Cleanup(func() {
+		runSetupFn = oldSetup
+		runUninstallFn = oldUninstall
+	})
+
+	var setupBin, setupConfigDir string
+	runSetupFn = func(binPath, configDir string) error {
+		setupBin = binPath
+		setupConfigDir = configDir
+		return nil
+	}
+
+	oldArgs := os.Args
+	t.Cleanup(func() { os.Args = oldArgs })
+	os.Args = []string{"cs-routeros-bouncer", "setup", "-bin", "/tmp/bouncer", "-config-dir", "/tmp/config"}
+	if !handleSubcommand() {
+		t.Fatal("expected setup subcommand to be handled")
+	}
+	if setupBin != "/tmp/bouncer" || setupConfigDir != "/tmp/config" {
+		t.Fatalf("setup parsed bin=%q configDir=%q", setupBin, setupConfigDir)
+	}
+
+	var uninstallBin, uninstallConfigDir string
+	var uninstallPurge bool
+	runUninstallFn = func(binPath, configDir string, purge bool) error {
+		uninstallBin = binPath
+		uninstallConfigDir = configDir
+		uninstallPurge = purge
+		return nil
+	}
+	os.Args = []string{"cs-routeros-bouncer", "uninstall", "-bin", "/tmp/bouncer", "-config-dir", "/tmp/config", "-purge"}
+	if !handleSubcommand() {
+		t.Fatal("expected uninstall subcommand to be handled")
+	}
+	if uninstallBin != "/tmp/bouncer" || uninstallConfigDir != "/tmp/config" || !uninstallPurge {
+		t.Fatalf("uninstall parsed bin=%q configDir=%q purge=%v", uninstallBin, uninstallConfigDir, uninstallPurge)
 	}
 }
 
@@ -99,8 +146,11 @@ func TestHandleSubcommandVersion(t *testing.T) {
 			if !strings.Contains(output, config.Version) {
 				t.Fatalf("version output missing version %q: %q", config.Version, output)
 			}
-			if !strings.Contains(output, "commit:") || !strings.Contains(output, "built:") {
-				t.Fatalf("version output missing metadata: %q", output)
+			if !strings.Contains(output, "commit:") {
+				t.Fatalf("version output missing commit metadata: %q", output)
+			}
+			if !strings.Contains(output, "built:") {
+				t.Fatalf("version output missing built metadata: %q", output)
 			}
 		})
 	}

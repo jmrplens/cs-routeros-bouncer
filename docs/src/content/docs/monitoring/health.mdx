@@ -125,14 +125,14 @@ groups:
 
 If a Docker health check only runs `wget --spider`, it verifies process liveness only. The container remains healthy even if RouterOS is disconnected because `/health` still returns HTTP `200`.
 
-Use the JSON-body check when you want the container to become unhealthy on RouterOS loss:
+Use the JSON-body check when you want the container to become unhealthy on RouterOS loss. This example requires `jq` in the container or health-check environment:
 
 ```yaml
 healthcheck:
   test:
     - CMD-SHELL
     - >-
-      wget -qO- http://localhost:2112/health | grep -q '"routeros_connected":[[:space:]]*true'
+      wget -qO- http://localhost:2112/health | jq -e '.routeros_connected == true' >/dev/null
 ```
 
 Be cautious with automatic restarts on RouterOS connectivity loss. If the router is rebooting or temporarily unreachable, restart loops can make logs noisier without fixing the underlying network issue.

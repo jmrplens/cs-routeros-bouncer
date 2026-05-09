@@ -77,21 +77,27 @@ sudo cs-routeros-bouncer uninstall
 
 Flags:
 
-| Flag     | Default                              | Description                      |
-| -------- | ------------------------------------ | -------------------------------- |
-| `-bin`   | `/usr/local/bin/cs-routeros-bouncer` | Installed binary path to remove  |
-| `-purge` | `false`                              | Also remove the config directory |
+| Flag          | Default                              | Description                                 |
+| ------------- | ------------------------------------ | ------------------------------------------- |
+| `-bin`        | `/usr/local/bin/cs-routeros-bouncer` | Installed binary path to remove             |
+| `-config-dir` | `/etc/cs-routeros-bouncer`           | Config directory to remove with `-purge`    |
+| `-purge`      | `false`                              | Also remove the configured config directory |
 
-Keep config files:
-
-```bash
-sudo cs-routeros-bouncer uninstall
-```
+By default, `uninstall` keeps config files. If setup used a custom `-bin` or `-config-dir`, pass the same values to `uninstall` so the correct binary and config directory are targeted.
 
 Remove config files too:
 
 ```bash
 sudo cs-routeros-bouncer uninstall -purge
+```
+
+Purge a custom install path:
+
+```bash
+sudo cs-routeros-bouncer uninstall \
+  -bin /opt/cs-routeros-bouncer/cs-routeros-bouncer \
+  -config-dir /opt/cs-routeros-bouncer/config \
+  -purge
 ```
 
 ## `help`
