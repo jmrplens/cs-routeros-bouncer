@@ -174,8 +174,8 @@ func TestRecordReconciliation(t *testing.T) {
 // TestSetInfo verifies that SetInfo sets the bouncer info gauge with version
 // and identity labels.
 func TestSetInfo(t *testing.T) {
-	SetInfo("1.4.1", "myrouter")
-	if got := testutil.ToFloat64(bouncerInfo.WithLabelValues("1.4.1", "myrouter")); got != 1 {
+	SetInfo("1.4.2", "myrouter")
+	if got := testutil.ToFloat64(bouncerInfo.WithLabelValues("1.4.2", "myrouter")); got != 1 {
 		t.Errorf("expected 1, got %v", got)
 	}
 }
@@ -337,15 +337,32 @@ func TestNewServerCreatesInstance(t *testing.T) {
 		ListenAddr: "127.0.0.1",
 		ListenPort: 0, // will use ephemeral
 	}
-	srv := NewServer(cfg, "v1.4.1")
+	srv := NewServer(cfg, "v1.4.2")
 	if srv == nil {
 		t.Fatal("expected non-nil server")
 	}
-	if srv.version != "v1.4.1" {
-		t.Errorf("expected version v1.4.1, got %s", srv.version)
+	if srv.version != "v1.4.2" {
+		t.Errorf("expected version v1.4.2, got %s", srv.version)
 	}
 	if srv.httpServer == nil {
 		t.Fatal("expected non-nil http server")
+	}
+}
+
+// TestServerStartAddressInUse verifies Start reports listener binding errors.
+func TestServerStartAddressInUse(t *testing.T) {
+	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+
+	addr := ln.Addr().(*net.TCPAddr)
+	srv := NewServer(config.MetricsConfig{ListenAddr: addr.IP.String(), ListenPort: addr.Port}, "test")
+
+	err = srv.Start()
+	if err == nil || !strings.Contains(err.Error(), "listen") {
+		t.Fatalf("expected listen error, got %v", err)
 	}
 }
 

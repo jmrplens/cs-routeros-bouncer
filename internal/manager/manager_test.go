@@ -471,3 +471,50 @@ func TestCollectSystemMetrics(t *testing.T) {
 		t.Fatal("collectSystemMetrics did not return after context cancellation")
 	}
 }
+
+// TestStartRouterOSMetricsDisabled verifies disabled or zero-interval polling does not start work.
+func TestStartRouterOSMetricsDisabled(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  config.MetricsConfig
+	}{
+		{name: "disabled", cfg: config.MetricsConfig{Enabled: false, RouterOSPollInterval: time.Millisecond}},
+		{name: "zero interval", cfg: config.MetricsConfig{Enabled: true, RouterOSPollInterval: 0}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := &mockROS{}
+			m := newTestManager(mock, config.Config{Metrics: tt.cfg})
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+
+			m.startRouterOSMetrics(ctx)
+			time.Sleep(20 * time.Millisecond)
+
+			if got := mock.pollCount.Load(); got != 0 {
+				t.Fatalf("expected no polls, got %d", got)
+			}
+		})
+	}
+}
+
+// TestStartRouterOSMetricsEnabled verifies enabled polling starts the background collector.
+func TestStartRouterOSMetricsEnabled(t *testing.T) {
+	mock := &mockROS{}
+	m := newTestManager(mock, config.Config{Metrics: config.MetricsConfig{Enabled: true, RouterOSPollInterval: 10 * time.Millisecond}})
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	m.startRouterOSMetrics(ctx)
+
+	deadline := time.After(2 * time.Second)
+	for mock.pollCount.Load() == 0 {
+		select {
+		case <-deadline:
+			t.Fatal("timed out waiting for RouterOS metrics poll")
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+}

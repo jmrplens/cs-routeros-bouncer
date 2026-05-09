@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.2] - 2026-05-09
+
+### Added
+
+- **Documentation refresh** — added dedicated CAPI blocklists, performance tuning, benchmarking, testing guide, and CLI reference pages, and expanded setup, architecture, monitoring, and troubleshooting guidance
+
+### Fixed
+
+- **CLI run-mode flag handling** — implicit run mode now rejects unknown flags and unexpected positional arguments before loading configuration, while `--version` continues to exit cleanly
+- **Safe uninstall purge** — `uninstall -purge` now refuses empty, root, current-directory, and top-level config paths before running systemd or removal actions
+
+### Changed
+
+- **Docs UI and examples** — refreshed the Astro/Starlight documentation header, logo assets, code block styling, configuration examples, and CrowdSec origin guidance, including explicit `lists:*` documentation
+- **Release preparation** — active version references, issue templates, build examples, metric examples, and version-sensitive tests now point at `1.4.2`; the `v1.4.2` tag is intentionally left for the release merge
+- **Coverage audit** — benchmark runner, RouterOS pool, firewall placement, Logrus adapter, and manager polling/removal paths now use focused unit tests, raising aggregate Go coverage from 88.9% to 94.2%
+
 ## [1.4.1] - 2026-05-08
 
 ### Added

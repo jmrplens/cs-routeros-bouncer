@@ -25,6 +25,17 @@ const (
 	benchmarkIPv4BatchMax = 254
 )
 
+type benchmarkClient interface {
+	GetIdentity() (string, error)
+	AddAddress(proto, list, address, timeout, comment string) (string, error)
+	FindAddress(proto, list, address string) (*rosClient.AddressEntry, error)
+	ListAddresses(proto, list, commentPrefix string) ([]rosClient.AddressEntry, error)
+	RemoveAddress(proto, id string) error
+	AddFirewallRule(proto, mode string, rule rosClient.FirewallRule) (string, error)
+	FindFirewallRuleByComment(proto, mode, comment string) (*rosClient.RuleEntry, error)
+	RemoveFirewallRule(proto, mode, id string) error
+}
+
 // main connects to RouterOS and runs the standalone benchmark suite.
 func main() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.Kitchen})
@@ -65,7 +76,7 @@ func loadConfig(configPath string) (config.Config, error) {
 }
 
 // runBenchmarks executes the benchmark groups in a stable human-readable order.
-func runBenchmarks(client *rosClient.Client) {
+func runBenchmarks(client benchmarkClient) {
 	identity, err := client.GetIdentity()
 	if err != nil {
 		log.Warn().Err(err).Msg("failed to read RouterOS identity")
@@ -79,7 +90,7 @@ func runBenchmarks(client *rosClient.Client) {
 }
 
 // benchmarkSingleOperations measures individual address-list API calls.
-func benchmarkSingleOperations(client *rosClient.Client) {
+func benchmarkSingleOperations(client benchmarkClient) {
 	fmt.Println("=== SINGLE OPERATION BENCHMARKS (RouterOS API) ===")
 
 	bench("Add single IPv4", func() error {
@@ -124,7 +135,7 @@ func benchmarkSingleOperations(client *rosClient.Client) {
 }
 
 // benchmarkFirewallRules measures firewall rule creation, lookup, and removal calls.
-func benchmarkFirewallRules(client *rosClient.Client) {
+func benchmarkFirewallRules(client benchmarkClient) {
 	fmt.Println()
 	fmt.Println("=== FIREWALL RULE BENCHMARKS ===")
 
@@ -161,7 +172,7 @@ func benchmarkFirewallRules(client *rosClient.Client) {
 }
 
 // benchmarkFirewallRule times one create/remove lifecycle for a firewall rule.
-func benchmarkFirewallRule(client *rosClient.Client, proto, mode, createLabel, removeLabel string, rule rosClient.FirewallRule) {
+func benchmarkFirewallRule(client benchmarkClient, proto, mode, createLabel, removeLabel string, rule rosClient.FirewallRule) {
 	var ruleID string
 	bench(createLabel, func() error {
 		id, err := client.AddFirewallRule(proto, mode, rule)
@@ -176,7 +187,7 @@ func benchmarkFirewallRule(client *rosClient.Client, proto, mode, createLabel, r
 }
 
 // benchmarkBatchAdds runs sequential address add/list/find/remove scenarios.
-func benchmarkBatchAdds(client *rosClient.Client) {
+func benchmarkBatchAdds(client benchmarkClient) {
 	fmt.Println()
 	fmt.Println("=== BATCH ADD BENCHMARKS (sequential via API) ===")
 
@@ -188,7 +199,7 @@ func benchmarkBatchAdds(client *rosClient.Client) {
 }
 
 // benchmarkBatchSize measures one sequential batch size using unique TEST-NET-2 addresses.
-func benchmarkBatchSize(client *rosClient.Client, n int) {
+func benchmarkBatchSize(client benchmarkClient, n int) {
 	if n > benchmarkIPv4BatchMax {
 		fmt.Printf("  %-35s %8s  (max unique TEST-NET-2 addresses=%d)\n", fmt.Sprintf("Add %d IPv4 (sequential)", n), "SKIPPED", benchmarkIPv4BatchMax)
 		return

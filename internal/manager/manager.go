@@ -47,7 +47,7 @@ var (
 type Manager struct {
 	cfg     config.Config
 	ros     RouterOSClient
-	pool    *rosClient.Pool
+	pool    routerOSPool
 	stream  CrowdSecStream
 	logger  zerolog.Logger
 	version string
@@ -65,6 +65,12 @@ type Manager struct {
 type firewallRuleRef struct {
 	Comment string
 	ID      string
+}
+
+type routerOSPool interface {
+	Connect() error
+	Close()
+	RemoveAddresses(proto string, entries []rosClient.AddressEntry) []error
 }
 
 // NewManager creates a new bouncer manager.
@@ -1436,9 +1442,7 @@ func (m *Manager) removeAddresses(proto string, entries []rosClient.AddressEntry
 
 // removeAddressesParallel removes address-list entries through the RouterOS connection pool.
 func (m *Manager) removeAddressesParallel(proto string, entries []rosClient.AddressEntry) int {
-	errs := rosClient.ParallelExec(m.pool, entries, func(c *rosClient.Client, entry rosClient.AddressEntry) error {
-		return c.RemoveAddress(proto, entry.ID)
-	})
+	errs := m.pool.RemoveAddresses(proto, entries)
 	removed := len(entries) - len(errs)
 	for _, err := range errs {
 		if errors.Is(err, rosClient.ErrNotFound) {

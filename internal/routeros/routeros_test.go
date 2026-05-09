@@ -5,6 +5,7 @@ package routeros
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -753,6 +754,17 @@ func TestPoolConnect_Error(t *testing.T) {
 	}
 }
 
+// TestPoolConnectNilClient verifies Connect rejects a nil client factory result.
+func TestPoolConnectNilClient(t *testing.T) {
+	p := NewPool(config.MikroTikConfig{}, 1)
+	p.newClient = func(_ config.MikroTikConfig) *Client { return nil }
+
+	err := p.Connect()
+	if err == nil || !strings.Contains(err.Error(), "newClient returned nil client") {
+		t.Fatalf("expected nil client error, got %v", err)
+	}
+}
+
 // TestPoolConnect_PartialFailure verifies Connect returns an error when
 // only some connections succeed (third of three fails).
 func TestPoolConnect_PartialFailure(t *testing.T) {
@@ -777,5 +789,31 @@ func TestPoolConnect_PartialFailure(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "connection 2 failed") {
 		t.Errorf("expected error about connection 2, got: %v", err)
+	}
+}
+
+// TestPoolRemoveAddresses verifies pooled address removal delegates to pool clients.
+func TestPoolRemoveAddresses(t *testing.T) {
+	mc := newMockConn()
+	p := NewPool(config.MikroTikConfig{}, 1)
+	p.newClient = func(_ config.MikroTikConfig) *Client {
+		return &Client{dialFunc: func(_ config.MikroTikConfig) (RouterConn, error) { return mc, nil }}
+	}
+	if err := p.Connect(); err != nil {
+		t.Fatalf("Connect() error: %v", err)
+	}
+	t.Cleanup(p.Close)
+	mc.pushReply(emptyReply())
+	mc.pushReply(emptyReply())
+
+	errs := p.RemoveAddresses("ip", []AddressEntry{{ID: "*1"}, {ID: "*2"}})
+	if len(errs) != 0 {
+		t.Fatalf("unexpected remove errors: %v", errs)
+	}
+	if got := mc.callCount(); got != 2 {
+		t.Fatalf("expected 2 remove calls, got %d", got)
+	}
+	if args := mc.lastArgs(); !slices.Contains(args, "/ip/firewall/address-list/remove") || !slices.Contains(args, "=numbers=*2") {
+		t.Fatalf("unexpected last remove args: %v", args)
 	}
 }

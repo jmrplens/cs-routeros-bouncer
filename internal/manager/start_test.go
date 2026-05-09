@@ -1125,6 +1125,47 @@ func TestReconcileAddresses_SequentialRemoveFallback(t *testing.T) {
 	}
 }
 
+type fakeRouterOSPool struct {
+	proto   string
+	entries []ros.AddressEntry
+	errs    []error
+	closed  bool
+}
+
+func (p *fakeRouterOSPool) Connect() error { return nil }
+
+func (p *fakeRouterOSPool) Close() { p.closed = true }
+
+func (p *fakeRouterOSPool) RemoveAddresses(proto string, entries []ros.AddressEntry) []error {
+	p.proto = proto
+	p.entries = append([]ros.AddressEntry(nil), entries...)
+	return p.errs
+}
+
+// TestRemoveAddressesParallelMixedErrors verifies pooled removal counts ErrNotFound as success.
+func TestRemoveAddressesParallelMixedErrors(t *testing.T) {
+	mgr := newTestManager(&mockROS{}, baseConfig())
+	pool := &fakeRouterOSPool{errs: []error{
+		fmt.Errorf("already gone: %w", ros.ErrNotFound),
+		errors.New("remove timeout"),
+	}}
+	mgr.pool = pool
+	entries := []ros.AddressEntry{
+		{ID: "*1", Address: "10.0.0.1"},
+		{ID: "*2", Address: "10.0.0.2"},
+		{ID: "*3", Address: "10.0.0.3"},
+	}
+
+	removed := mgr.removeAddresses("ip", entries)
+
+	if removed != 2 {
+		t.Fatalf("expected 2 removals counted, got %d", removed)
+	}
+	if pool.proto != "ip" || len(pool.entries) != len(entries) {
+		t.Fatalf("pool called with proto=%q entries=%v", pool.proto, pool.entries)
+	}
+}
+
 // TestReconcileAddresses_SequentialRemoveNoSuchItem verifies that ErrNotFound
 // errors during sequential remove are treated as success (expired items).
 func TestReconcileAddresses_SequentialRemoveNoSuchItem(t *testing.T) {
