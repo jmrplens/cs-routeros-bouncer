@@ -91,7 +91,7 @@ services:
       MIKROTIK_HOST: "192.168.0.1:8728"
       MIKROTIK_USER: "crowdsec"
       MIKROTIK_PASS: "your-password"
-    # Or mount a config file:
+    # Optional: mount a config file; this path is loaded automatically when present.
     # volumes:
     #   - ./config.yaml:/etc/cs-routeros-bouncer/config.yaml
 ```

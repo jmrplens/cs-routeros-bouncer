@@ -18,11 +18,11 @@ cs-routeros-bouncer -c /path/to/config.yaml
 
 Deployment helpers choose their own paths:
 
-| Deployment method            | Config path used                                    |
-| ---------------------------- | --------------------------------------------------- |
-| `setup` systemd service      | `/etc/cs-routeros-bouncer/cs-routeros-bouncer.yaml` |
-| Docker image default command | `/etc/cs-routeros-bouncer/config.yaml`              |
-| Direct binary execution      | No implicit file; use `-c`                          |
+| Deployment method       | Config path used                                                                                   |
+| ----------------------- | -------------------------------------------------------------------------------------------------- |
+| `setup` systemd service | `/etc/cs-routeros-bouncer/cs-routeros-bouncer.yaml`                                                |
+| Docker image            | Environment variables by default; `/etc/cs-routeros-bouncer/config.yaml` is auto-loaded if mounted |
+| Direct binary execution | No implicit file; use `-c`                                                                         |
 
 YAML string values may contain explicit `${VAR}` placeholders. Only braced placeholders are expanded; literal `$` characters in secrets are preserved.
 

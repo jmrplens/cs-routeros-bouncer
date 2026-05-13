@@ -32,7 +32,7 @@ services:
 
 ### With config file
 
-The Docker image runs `cs-routeros-bouncer -c /etc/cs-routeros-bouncer/config.yaml` by default, so mount your file at that path:
+The Docker image can run from environment variables alone. If you prefer a YAML file, mount it at `/etc/cs-routeros-bouncer/config.yaml`; the bouncer loads that file automatically when it exists:
 
 ```yaml
 services:

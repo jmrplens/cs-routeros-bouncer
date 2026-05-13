@@ -46,6 +46,14 @@ func TestNormalizeRunArgs(t *testing.T) {
 		{name: "implicit run", args: []string{"-c", "config.yaml"}, want: []string{"-c", "config.yaml"}},
 		{name: "explicit run", args: []string{"run", "-c", "config.yaml"}, want: []string{"-c", "config.yaml"}},
 		{name: "run only", args: []string{"run"}, want: []string{}},
+		{name: "compose shell wrapper", args: []string{"sh", "-c", "until nc -z crowdsec 8080; do sleep 2; done; exec /usr/local/bin/crowdsec-cloudflare-bouncer"}, want: []string{}},
+		{name: "compose shell wrapper string", args: []string{"sh -c \"until nc -z crowdsec 8080; do sleep 2; done; exec /usr/local/bin/crowdsec-cloudflare-bouncer\""}, want: []string{}},
+		{name: "compose shell wrapper absolute", args: []string{"/bin/sh", "-c", "echo ready"}, want: []string{}},
+		{name: "compose shell wrapper zsh", args: []string{"zsh", "-c", "echo ready"}, want: []string{}},
+		{name: "compose shell wrapper ksh", args: []string{"ksh", "-c", "echo ready"}, want: []string{}},
+		{name: "compose shell wrapper fish", args: []string{"fish", "-c", "echo ready"}, want: []string{}},
+		{name: "run then shell wrapper", args: []string{"run", "sh", "-c", "echo ready"}, want: []string{}},
+		{name: "shell without command flag", args: []string{"sh", "script.sh"}, want: []string{"sh", "script.sh"}},
 		{name: "run non-first", args: []string{"-c", "config.yaml", "run"}, want: []string{"-c", "config.yaml", "run"}},
 		{name: "run as value", args: []string{"-mode", "run"}, want: []string{"-mode", "run"}},
 		{name: "empty", args: nil, want: nil},
@@ -59,6 +67,59 @@ func TestNormalizeRunArgs(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestResolveRunConfigPath verifies Docker's default mounted config file is
+// used only when no explicit path was supplied and the file is present.
+func TestResolveRunConfigPath(t *testing.T) {
+	oldStat := runConfigStat
+	oldPath := runConfigPath
+	t.Cleanup(func() {
+		runConfigStat = oldStat
+		runConfigPath = oldPath
+	})
+
+	runConfigPath = "/etc/cs-routeros-bouncer/config.yaml"
+
+	t.Run("explicit path wins", func(t *testing.T) {
+		called := false
+		runConfigStat = func(string) (os.FileInfo, error) {
+			called = true
+			return nil, nil
+		}
+		if got := resolveRunConfigPath("custom.yaml"); got != "custom.yaml" {
+			t.Fatalf("resolveRunConfigPath() = %q, want custom.yaml", got)
+		}
+		if called {
+			t.Fatal("stat should not be called for an explicit config path")
+		}
+	})
+
+	t.Run("default path exists", func(t *testing.T) {
+		runConfigStat = func(path string) (os.FileInfo, error) {
+			if path != runConfigPath {
+				t.Fatalf("stat path = %q, want %q", path, runConfigPath)
+			}
+			return nil, nil
+		}
+		if got := resolveRunConfigPath(""); got != runConfigPath {
+			t.Fatalf("resolveRunConfigPath() = %q, want %q", got, runConfigPath)
+		}
+	})
+
+	t.Run("default path missing", func(t *testing.T) {
+		runConfigStat = func(string) (os.FileInfo, error) { return nil, os.ErrNotExist }
+		if got := resolveRunConfigPath(""); got != "" {
+			t.Fatalf("resolveRunConfigPath() = %q, want empty", got)
+		}
+	})
+
+	t.Run("default path stat error", func(t *testing.T) {
+		runConfigStat = func(string) (os.FileInfo, error) { return nil, os.ErrPermission }
+		if got := resolveRunConfigPath(""); got != runConfigPath {
+			t.Fatalf("resolveRunConfigPath() = %q, want %q", got, runConfigPath)
+		}
+	})
 }
 
 // TestParseRunFlags verifies valid run-mode flags are parsed.

@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.4] - 2026-05-14
+
+### Fixed
+
+- **Docker env-only startup** — Docker images no longer force `-c /etc/cs-routeros-bouncer/config.yaml`; deployments configured only with environment variables now start without requiring a mounted config file ([#33](https://github.com/jmrplens/cs-routeros-bouncer/issues/33))
+- **Legacy Compose command compatibility** — `command: sh -c ...` wrappers that were ignored by the image entrypoint before `1.4.2` are tolerated again, avoiding `unexpected argument "sh"` for existing Docker Compose deployments ([#33](https://github.com/jmrplens/cs-routeros-bouncer/issues/33))
+
+### Changed
+
+- **Docker examples** — Compose examples now document environment variables as the default configuration path and describe `/etc/cs-routeros-bouncer/config.yaml` as an optional auto-loaded mount
+- **Release preparation** — active version references, issue templates, build examples, metric examples, and version-sensitive tests now point at `1.4.4`; the `v1.4.4` tag is intentionally left for the release merge
+
 ## [1.4.3] - 2026-05-09
 
 ### Added

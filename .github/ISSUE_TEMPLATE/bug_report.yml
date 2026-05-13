@@ -26,7 +26,7 @@ body:
     attributes:
       label: Bouncer version
       description: Output of `cs-routeros-bouncer --version` or Docker image tag.
-      placeholder: "v1.4.3"
+      placeholder: "v1.4.4"
     validations:
       required: true
 
