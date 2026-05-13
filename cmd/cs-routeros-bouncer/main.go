@@ -10,6 +10,8 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -24,6 +26,8 @@ import (
 var (
 	runSetupFn     = runSetup
 	runUninstallFn = runUninstall
+	runConfigStat  = os.Stat
+	runConfigPath  = defaultConfigDir + "/config.yaml"
 )
 
 const cliErrorFormat = "Error: %v\n"
@@ -57,12 +61,36 @@ func handleSubcommand() bool {
 	return false
 }
 
-// normalizeRunArgs accepts `run` as a compatibility alias for the default command.
+// normalizeRunArgs accepts legacy Docker Compose command wrappers and `run` as
+// compatibility aliases for the default command.
 func normalizeRunArgs(args []string) []string {
 	if len(args) > 0 && args[0] == "run" {
-		return args[1:]
+		args = args[1:]
+	}
+	if isShellCommandWrapper(args) {
+		return []string{}
 	}
 	return args
+}
+
+func isShellCommandWrapper(args []string) bool {
+	if len(args) >= 3 && args[1] == "-c" {
+		return isShellCommand(args[0])
+	}
+	if len(args) == 1 {
+		fields := strings.Fields(args[0])
+		return len(fields) >= 3 && fields[1] == "-c" && isShellCommand(fields[0])
+	}
+	return false
+}
+
+func isShellCommand(command string) bool {
+	switch filepath.Base(command) {
+	case "sh", "ash", "bash", "dash":
+		return true
+	default:
+		return false
+	}
 }
 
 // runSetupCommand parses setup flags and installs the binary as a systemd service.
@@ -108,8 +136,10 @@ func runBouncer(args []string) {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
+	resolvedConfigPath := resolveRunConfigPath(*configPath)
+
 	// Load configuration
-	cfg, err := config.Load(*configPath)
+	cfg, err := config.Load(resolvedConfigPath)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to load configuration")
 	}
@@ -127,7 +157,7 @@ func runBouncer(args []string) {
 
 	log.Info().
 		Str("version", config.Version).
-		Str("config", *configPath).
+		Str("config", resolvedConfigPath).
 		Msg("starting cs-routeros-bouncer")
 
 	// Setup context with signal handling
@@ -179,6 +209,16 @@ func runBouncer(args []string) {
 	}
 
 	log.Info().Msg("cs-routeros-bouncer stopped")
+}
+
+func resolveRunConfigPath(configPath string) string {
+	if configPath != "" {
+		return configPath
+	}
+	if _, err := runConfigStat(runConfigPath); err == nil || !os.IsNotExist(err) {
+		return runConfigPath
+	}
+	return ""
 }
 
 func parseRunFlags(args []string) (configPath *string, showVersion *bool, err error) {
