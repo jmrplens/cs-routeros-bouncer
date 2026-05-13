@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -73,20 +74,26 @@ func normalizeRunArgs(args []string) []string {
 	return args
 }
 
+// isShellCommandWrapper reports whether args look like a Docker Compose shell
+// wrapper that should be ignored for compatibility with older image behavior.
 func isShellCommandWrapper(args []string) bool {
 	if len(args) >= 3 && args[1] == "-c" {
 		return isShellCommand(args[0])
 	}
 	if len(args) == 1 {
+		// This compatibility shim only needs to identify shell wrappers so they
+		// can be ignored; it deliberately does not preserve or re-tokenize the
+		// wrapped command string.
 		fields := strings.Fields(args[0])
 		return len(fields) >= 3 && fields[1] == "-c" && isShellCommand(fields[0])
 	}
 	return false
 }
 
+// isShellCommand recognizes common shell executable names used in Compose wrappers.
 func isShellCommand(command string) bool {
 	switch filepath.Base(command) {
-	case "sh", "ash", "bash", "dash":
+	case "sh", "ash", "bash", "dash", "zsh", "ksh", "fish":
 		return true
 	default:
 		return false
@@ -211,11 +218,15 @@ func runBouncer(args []string) {
 	log.Info().Msg("cs-routeros-bouncer stopped")
 }
 
+// resolveRunConfigPath chooses the explicit config path or the optional Docker default.
 func resolveRunConfigPath(configPath string) string {
 	if configPath != "" {
 		return configPath
 	}
-	if _, err := runConfigStat(runConfigPath); err == nil || !os.IsNotExist(err) {
+	// resolveRunConfigPath returns runConfigPath when runConfigStat confirms it
+	// exists, and also on non-NotExist errors so config.Load can surface the
+	// real failure. A missing runConfigPath means env-only mode.
+	if _, err := runConfigStat(runConfigPath); err == nil || !errors.Is(err, os.ErrNotExist) {
 		return runConfigPath
 	}
 	return ""
