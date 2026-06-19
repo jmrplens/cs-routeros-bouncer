@@ -224,12 +224,18 @@ func (c *Client) MoveFirewallRule(proto, mode, ruleID, beforeID string) error {
 		Str("before_id", beforeID).
 		Msg("moving firewall rule")
 	if err := c.moveRule(path, ruleID, beforeID); err != nil {
-		log.Error().Err(err).
+		// Logged at debug only: a failed move is often expected and transient
+		// (for example RouterOS refuses to move a rule before a builtin one),
+		// and every caller already handles the returned error and logs it at
+		// the appropriate severity (retry at debug, fallback at warn). Logging
+		// an error here would double-log and make a recoverable condition look
+		// like a real failure.
+		log.Debug().Err(err).
 			Str("proto", proto).
 			Str("mode", mode).
 			Str("rule_id", ruleID).
 			Str("before_id", beforeID).
-			Msg("failed to move firewall rule")
+			Msg("move firewall rule command failed; returning to caller")
 		return fmt.Errorf("move %s/%s firewall rule %s before %s: %w", proto, mode, ruleID, beforeID, err)
 	}
 	log.Info().
