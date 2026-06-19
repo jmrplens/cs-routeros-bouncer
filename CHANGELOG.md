@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.5] - 2026-06-20
+
+### Fixed
+
+- **Grafana "Reconciliation Duration" panel** — the panel graphed the histogram `crowdsec_bouncer_operation_duration_seconds_sum` (a monotonic cumulative counter) and therefore showed the lifetime total of all reconcile durations instead of the most recent cycle. A new `crowdsec_bouncer_last_operation_duration_seconds` gauge now records the duration of the most recent operation, and the panel queries it ([#44](https://github.com/jmrplens/cs-routeros-bouncer/issues/44))
+
+### Security
+
+- **Go 1.26.4** — bumped the Go toolchain (go directive, CI and Docker build image) from 1.26.3 to 1.26.4 to fix two Go standard library vulnerabilities reported by govulncheck: GO-2026-5039 (`net/textproto`) and GO-2026-5037 (`crypto/x509`)
+
+### Changed
+
+- **Dependencies** — updated the Go build/test dependency closure (including `golang.org/x/crypto`, `golang.org/x/net`, `golang.org/x/sys`, `golang.org/x/text` and `prometheus/common`), bumped the Docker base image to `alpine:3.24`, and refreshed the documentation site's npm dependencies (Astro, Starlight, sharp and dev tooling)
+
+### Added
+
+- **`crowdsec_bouncer_last_operation_duration_seconds`** — new per-operation gauge exposing the duration of the most recent operation (add, remove, reconcile, …), complementing the existing latency histogram
+
 ## [1.4.4] - 2026-05-14
 
 ### Fixed
