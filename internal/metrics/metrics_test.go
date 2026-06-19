@@ -162,6 +162,23 @@ func TestObserveOperationDuration(t *testing.T) {
 	}
 }
 
+// TestObserveOperationDurationSetsLastGauge verifies that
+// ObserveOperationDuration records the most recent duration as a (non-monotonic)
+// gauge so dashboards can display per-cycle latency rather than the cumulative
+// histogram _sum counter.
+func TestObserveOperationDurationSetsLastGauge(t *testing.T) {
+	ObserveOperationDuration("reconcile", 9*time.Millisecond)
+	if got := testutil.ToFloat64(lastOperationDuration.WithLabelValues("reconcile")); got != 0.009 {
+		t.Errorf("expected last reconcile duration 0.009, got %v", got)
+	}
+
+	// A subsequent observation overwrites the gauge (it is not cumulative).
+	ObserveOperationDuration("reconcile", 12*time.Millisecond)
+	if got := testutil.ToFloat64(lastOperationDuration.WithLabelValues("reconcile")); got != 0.012 {
+		t.Errorf("expected last reconcile duration 0.012 after overwrite, got %v", got)
+	}
+}
+
 // TestRecordReconciliation verifies that RecordReconciliation adds the
 // correct count to the reconciliation counter.
 func TestRecordReconciliation(t *testing.T) {

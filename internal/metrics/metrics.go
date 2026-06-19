@@ -53,6 +53,11 @@ var (
 		Buckets: prometheus.DefBuckets,
 	}, []string{"operation"})
 
+	lastOperationDuration = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "crowdsec_bouncer_last_operation_duration_seconds",
+		Help: "Duration of the most recent operation in seconds (gauge, overwritten each cycle).",
+	}, []string{"operation"})
+
 	reconciliationTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "crowdsec_bouncer_reconciliation_total",
 		Help: "Total reconciliation actions performed.",
@@ -430,9 +435,14 @@ func SetHealthConnectedCallback(fn func(bool)) {
 	healthConnectedCallback.mu.Unlock()
 }
 
-// ObserveOperationDuration records the duration of an operation.
+// ObserveOperationDuration records the duration of an operation. It feeds the
+// latency histogram and also overwrites a per-operation gauge holding the most
+// recent duration, so dashboards can display per-cycle latency instead of the
+// cumulative histogram _sum counter.
 func ObserveOperationDuration(operation string, duration time.Duration) {
-	operationDuration.WithLabelValues(operation).Observe(duration.Seconds())
+	seconds := duration.Seconds()
+	operationDuration.WithLabelValues(operation).Observe(seconds)
+	lastOperationDuration.WithLabelValues(operation).Set(seconds)
 }
 
 // RecordReconciliation increments reconciliation counters.
