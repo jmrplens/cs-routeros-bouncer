@@ -3525,7 +3525,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "crowdsec_bouncer_operation_duration_seconds_sum{job=\"$job\", operation=\"reconcile\"}",
+          "expr": "crowdsec_bouncer_last_operation_duration_seconds{job=\"$job\", operation=\"reconcile\"}",
           "legendFormat": "Duration",
           "refId": "A"
         }
