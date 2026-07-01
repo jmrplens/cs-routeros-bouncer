@@ -1,0 +1,98 @@
+# cs-routeros-bouncer — full reference
+
+> Companion reference to llms.txt: complete CLI flags and configuration key/env-var reference for cs-routeros-bouncer, a CrowdSec bouncer for MikroTik RouterOS. Manually maintained from the configuration docs, not auto-generated — if it looks stale, trust the live docs pages linked below.
+
+Source of truth: this file summarizes https://jmrplens.github.io/cs-routeros-bouncer/getting-started/cli-reference/ and the configuration reference pages. When in doubt, follow the live docs.
+
+## CLI
+
+- `cs-routeros-bouncer -c <path>`: run the bouncer with a YAML config file. `-c` is required unless every setting is supplied via environment variables (the systemd installer and Docker image set their own `-c`).
+- `-version` / `cs-routeros-bouncer version`: print version, commit, build date.
+- `cs-routeros-bouncer setup [-bin PATH] [-config-dir DIR]`: install as a systemd service. Defaults: `-bin /usr/local/bin/cs-routeros-bouncer`, `-config-dir /etc/cs-routeros-bouncer`. Copies the binary, creates the config directory, writes an example config if missing, installs and starts the systemd unit.
+- `cs-routeros-bouncer uninstall [-bin PATH] [-config-dir DIR] [-purge]`: stop and remove the systemd service and binary. Keeps config files unless `-purge` is passed.
+- `-h` / `--help` / `cs-routeros-bouncer help`: usage information.
+
+## Configuration: mikrotik.*
+
+| Key | Env | Default | Notes |
+|---|---|---|---|
+| `mikrotik.address` | `MIKROTIK_HOST` | `192.168.0.1:8728` | Required. `host:port`; 8728 plaintext, 8729 TLS. |
+| `mikrotik.username` | `MIKROTIK_USER` | `crowdsec` | Required. Use a dedicated, minimally-privileged user. |
+| `mikrotik.password` | `MIKROTIK_PASS` | — | Required. Prefer setting via environment variable. |
+| `mikrotik.tls` | `MIKROTIK_TLS` | `false` | Requires the `api-ssl` service on the router. |
+| `mikrotik.tls_insecure` | `MIKROTIK_TLS_INSECURE` | `false` | Skip cert verification; needed for self-signed certs. Prefer a CA-signed certificate in production instead of enabling this. |
+| `mikrotik.connection_timeout` | `MIKROTIK_CONN_TIMEOUT` | `10s` | Go duration format. |
+| `mikrotik.command_timeout` | `MIKROTIK_CMD_TIMEOUT` | `30s` | Increase for slow routers or large address lists. |
+| `mikrotik.pool_size` | `MIKROTIK_POOL_SIZE` | `4` | Parallel API connections, range 1-20. Auto-capped to the router's `max-sessions - 2`. |
+
+## Configuration: crowdsec.*
+
+| Key | Env | Default | Notes |
+|---|---|---|---|
+| `crowdsec.api_url` | `CROWDSEC_URL` | `http://localhost:8080/` | LAPI URL, trailing slash required. |
+| `crowdsec.api_key` | `CROWDSEC_BOUNCER_API_KEY` | — | Required. Generate with `cscli bouncers add cs-routeros-bouncer`. |
+| `crowdsec.retry_initial_connect` | `CROWDSEC_RETRY_INITIAL_CONNECT` | `true` | Retry LAPI connection on startup. |
+| `crowdsec.update_frequency` | `CROWDSEC_UPDATE_FREQUENCY` | `10s` | Poll interval for new/expired decisions. |
+| `crowdsec.reconciliation_interval` | `CROWDSEC_RECONCILIATION_INTERVAL` | `15m` | Full state resync interval; `0` disables, non-zero must be ≥ `1m`. |
+| `crowdsec.lapi_metrics_interval` | `CROWDSEC_LAPI_METRICS_INTERVAL` | `15m` | Usage-metrics push to LAPI `/v1/usage-metrics`; `0` disables. |
+| `crowdsec.origins` | `CROWDSEC_ORIGINS` | `[]` (all) | Filter by origin: `crowdsec`, `cscli`, `CAPI`, `lists:*`. Space-separated as env var. |
+| `crowdsec.scopes` | `CROWDSEC_SCOPES` | `["ip","range"]` | Decision scopes processed. |
+| `crowdsec.supported_decisions_types` | `CROWDSEC_DECISIONS_TYPES` | `["ban"]` | Only `ban` is meaningful for a firewall bouncer; other types are ignored. |
+| `crowdsec.scenarios_containing` / `scenarios_not_containing` | `CROWDSEC_SCENARIOS_CONTAINING` / `CROWDSEC_SCENARIOS_NOT_CONTAINING` | `[]` | Substring include/exclude filters on scenario name. |
+| `crowdsec.cert_path` / `key_path` / `ca_cert_path` / `insecure_skip_verify` | `CROWDSEC_CERT_PATH` / `CROWDSEC_KEY_PATH` / `CROWDSEC_CA_CERT_PATH` / `CROWDSEC_INSECURE_SKIP_VERIFY` | — / `false` | Mutual TLS to LAPI. |
+
+## Configuration: firewall.*
+
+| Key | Env | Default | Notes |
+|---|---|---|---|
+| `firewall.ipv4.enabled` | `FIREWALL_IPV4_ENABLED` | `true` | |
+| `firewall.ipv4.address_list` | `FIREWALL_IPV4_ADDRESS_LIST` | `crowdsec-banned` | |
+| `firewall.ipv6.enabled` | `FIREWALL_IPV6_ENABLED` | `true` | |
+| `firewall.ipv6.address_list` | `FIREWALL_IPV6_ADDRESS_LIST` | `crowdsec6-banned` | |
+| `firewall.filter.enabled` | `FIREWALL_FILTER_ENABLED` | `true` | `/ip(v6)/firewall/filter`, after connection tracking. |
+| `firewall.filter.chains` | `FIREWALL_FILTER_CHAINS` | `["input"]` | Also supports `forward`. |
+| `firewall.raw.enabled` | `FIREWALL_RAW_ENABLED` | `true` | `/ip(v6)/firewall/raw`, before connection tracking (cheaper). |
+| `firewall.raw.chains` | `FIREWALL_RAW_CHAINS` | `["prerouting"]` | |
+| `firewall.deny_action` | `FIREWALL_DENY_ACTION` | `drop` | `drop` or `reject`. |
+| `firewall.reject_with` | `FIREWALL_REJECT_WITH` | — | ICMP/TCP-RST type, only with `deny_action: reject`. |
+| `firewall.rule_placement` | `FIREWALL_RULE_PLACEMENT` (+ `FIREWALL_RULE_PLACEMENT_STRATEGY`, `FIREWALL_RULE_PLACEMENT_COMMENT`, `FIREWALL_RULE_PLACEMENT_COMMENT_MATCH`, `FIREWALL_RULE_PLACEMENT_POSITION`, `FIREWALL_RULE_PLACEMENT_FALLBACK`) | `top` | `top`, `bottom`, `position`, `before_comment`, `after_comment`; structured per-table/per-protocol overrides supported in YAML. Precedence: global → global filter/raw → protocol → protocol filter/raw. |
+| `firewall.comment_prefix` | `FIREWALL_COMMENT_PREFIX` | `crowdsec-bouncer` | Tags all bouncer-managed rules. |
+| `firewall.log` / `firewall.log_prefix` | `FIREWALL_LOG` / `FIREWALL_LOG_PREFIX` | `false` / `crowdsec-bouncer` | Per-type overrides: `filter.log_prefix`, `raw.log_prefix`, `block_output.log_prefix`. |
+| `firewall.filter.connection_state` | `FIREWALL_FILTER_CONNECTION_STATE` | — (all) | `new`, `established`, `related`, `invalid`, `untracked`; filter rules only, not raw. |
+| `firewall.block_input.interface` / `interface_list` | `FIREWALL_BLOCK_INPUT_INTERFACE` / `FIREWALL_BLOCK_INPUT_INTERFACE_LIST` | — (all interfaces) | Restrict input/raw rules to an interface or interface list. |
+| `firewall.block_input.whitelist` | — | — | Address-list of trusted IPs; bouncer inserts an accept rule before the drop/reject rule. |
+| `firewall.block_output.enabled` | `FIREWALL_BLOCK_OUTPUT` | `false` | Block outbound traffic to banned IPs. |
+| `firewall.block_output.interface` / `interface_list` | `FIREWALL_BLOCK_OUTPUT_INTERFACE` / `FIREWALL_BLOCK_OUTPUT_INTERFACE_LIST` | — | Required (one of them) when output blocking is enabled. |
+| `firewall.block_output.passthrough_v4` / `passthrough_v6` (or `_list` variants) | `FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V4` / `FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V6` (or `FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V4_LIST` / `FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V6_LIST`) | — | Exempt specific local clients from output blocking. |
+
+## Configuration: logging.* / metrics.*
+
+| Key | Env | Default | Notes |
+|---|---|---|---|
+| `logging.level` | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error`. |
+| `logging.format` | `LOG_FORMAT` | `text` | `text` or `json`. |
+| `logging.file` | `LOG_FILE` | — (stdout) | When set, logs to both stdout and file. |
+| `metrics.enabled` | `METRICS_ENABLED` | `false` | Exposes `/metrics` (Prometheus) and `/health`. |
+| `metrics.listen_addr` / `listen_port` | `METRICS_ADDR` / `METRICS_PORT` | `0.0.0.0` / `2112` | Do not expose to the internet. |
+| `metrics.routeros_poll_interval` | `METRICS_ROUTEROS_POLL_INTERVAL` | `30s` | RouterOS system metrics (CPU, memory, temperature); `0` disables. |
+| `metrics.track_processed` | `METRICS_TRACK_PROCESSED` | `true` | Adds passthrough counting rules to measure total evaluated (not just dropped) traffic. |
+
+## CAPI blocklist scale guidance
+
+Benchmarked on a MikroTik RB5009: full CrowdSec Central API (CAPI) sync of about 28,700 decisions completed in about 58 seconds wall-clock (~35-36s of RouterOS bulk-add work), with roughly 39% observed CPU peak. For resource-constrained routers, prefer local-only mode (`crowdsec.origins: ["crowdsec", "cscli"]`) to exclude CAPI's large community blocklists; combine with `scenarios_containing` / `scenarios_not_containing` substring filters for a narrower CAPI subset instead of excluding it entirely.
+
+## Connection pool sizing guidance
+
+| Router class | Suggested `mikrotik.pool_size` |
+|---|---|
+| Small home router | 1-2 |
+| Mid-range RouterOS 7 | 4 (default) |
+| Large CAPI deployments | 6-8 |
+
+Valid range is 1-20; the effective pool is always capped to the router's API `max-sessions - 2`.
+
+## Links
+
+- [llms.txt](https://jmrplens.github.io/cs-routeros-bouncer/llms.txt): concise overview and page index.
+- [Full documentation](https://jmrplens.github.io/cs-routeros-bouncer/): rendered docs site (Starlight).
+- [Repository](https://github.com/jmrplens/cs-routeros-bouncer): source, issues, releases.

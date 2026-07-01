@@ -1,0 +1,28 @@
+{
+  "name": "cs-routeros-bouncer",
+  "short_name": "RouterOS Bouncer",
+  "description": "CrowdSec bouncer for MikroTik RouterOS — automatic firewall management via the RouterOS API",
+  "start_url": "/cs-routeros-bouncer/",
+  "scope": "/cs-routeros-bouncer/",
+  "display": "standalone",
+  "background_color": "#0d1117",
+  "theme_color": "#3F51B5",
+  "icons": [
+    {
+      "src": "/cs-routeros-bouncer/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any"
+    },
+    {
+      "src": "/cs-routeros-bouncer/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "/cs-routeros-bouncer/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "categories": ["security", "networking", "utilities"]
+}
