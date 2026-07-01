@@ -12,6 +12,7 @@ permissions:
 env:
   GO_VERSION: "1.26.4"
   GOTOOLCHAIN: go1.26.4
+  NODE_VERSION: "24"
 
 jobs:
   workflows:
@@ -19,6 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
@@ -31,6 +34,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@v6
         with:
           version: 10
@@ -38,7 +43,7 @@ jobs:
           cache_dependency_path: docs/pnpm-lock.yaml
       - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: ${{ env.NODE_VERSION }}
       - name: Install Markdown linter
         run: pnpm --dir docs install --frozen-lockfile --ignore-scripts
       - name: Lint Markdown
@@ -49,6 +54,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
@@ -75,6 +82,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
@@ -95,6 +104,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
@@ -107,6 +118,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Run ShellCheck on functional tests
         uses: ludeeus/action-shellcheck@2.0.0
         with:
@@ -120,6 +133,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@v6
         with:
           version: 10
@@ -127,7 +142,7 @@ jobs:
           cache_dependency_path: docs/pnpm-lock.yaml
       - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: ${{ env.NODE_VERSION }}
       - name: Install documentation dependencies
         working-directory: docs
         run: pnpm install --frozen-lockfile --ignore-scripts
@@ -143,6 +158,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
@@ -167,6 +184,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           fetch-depth: 0
       - uses: actions/download-artifact@v8
         with:
@@ -178,7 +196,7 @@ jobs:
           cache_dependency_path: docs/pnpm-lock.yaml
       - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: ${{ env.NODE_VERSION }}
       - name: Install docs dependencies for analysis
         run: pnpm --dir docs install --frozen-lockfile --ignore-scripts
       - name: Generate Astro types for analysis
@@ -201,6 +219,8 @@ jobs:
         goarch: [amd64, arm64]
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
@@ -225,6 +245,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build Docker image
         run: docker build -f docker/Dockerfile -t cs-routeros-bouncer:ci-test .
       - name: Verify image
