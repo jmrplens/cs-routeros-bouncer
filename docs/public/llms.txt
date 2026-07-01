@@ -1,0 +1,58 @@
+# cs-routeros-bouncer
+
+> A free, open-source CrowdSec bouncer for MikroTik RouterOS. It syncs CrowdSec decisions into RouterOS firewall rules, with reconciliation, metrics, and safe cleanup.
+
+cs-routeros-bouncer is a single static binary (Go) that watches the CrowdSec Local API (LAPI) for ban/unban decisions and applies them as RouterOS `/ip firewall filter`, `/ip firewall raw` (and their IPv6 equivalents) rules through the MikroTik RouterOS API. It is MIT-licensed and listed in the [CrowdSec Hub](https://app.crowdsec.net/hub/author/jmrplens/remediation-components/cs-routeros-bouncer).
+
+Requirements:
+
+- CrowdSec 1.5+ with LAPI reachable from the bouncer host
+- MikroTik RouterOS 7.x with the API enabled (port 8728, or 8729 for TLS)
+- A dedicated RouterOS API user with appropriate permissions
+
+Key behavior:
+
+- Zero manual router configuration: auto-creates and auto-removes its managed firewall filter/raw rule blocks on start/stop.
+- Real-time IP management: adds IPs on ban, removes on unban (no bulk re-upload, no duplicates), ~1-3 ms per operation.
+- Self-healing state: on start or restart, reconciles CrowdSec decisions against MikroTik state, adding missing entries and removing stale ones.
+- IPv4 and IPv6: each rule type (filter input, raw prerouting, filter output) has an IPv6 equivalent; placement strategy is configurable globally or per protocol/table.
+- Full observability: Prometheus metrics, structured logging, a health endpoint, and a ready-to-use Grafana dashboard.
+
+## Documentation
+
+- [Quick Start](https://jmrplens.github.io/cs-routeros-bouncer/getting-started/quickstart/): Get up and running in 5 minutes with Docker or systemd.
+- [Installation](https://jmrplens.github.io/cs-routeros-bouncer/getting-started/installation/): Installation methods and requirements.
+- [CLI Reference](https://jmrplens.github.io/cs-routeros-bouncer/getting-started/cli-reference/): Command-line flags and usage.
+- [Router Setup](https://jmrplens.github.io/cs-routeros-bouncer/getting-started/router-setup/): Preparing the MikroTik RouterOS side (API user, permissions).
+- [Configuration Overview](https://jmrplens.github.io/cs-routeros-bouncer/configuration/): All configuration options explained with examples.
+- [MikroTik Configuration](https://jmrplens.github.io/cs-routeros-bouncer/configuration/mikrotik/): RouterOS connection settings.
+- [CrowdSec Configuration](https://jmrplens.github.io/cs-routeros-bouncer/configuration/crowdsec/): LAPI connection and bouncer registration.
+- [CAPI Blocklists](https://jmrplens.github.io/cs-routeros-bouncer/configuration/capi-blocklists/): Central API community blocklist handling.
+- [Firewall Configuration](https://jmrplens.github.io/cs-routeros-bouncer/configuration/firewall/): Rule types, placement, and ordering.
+- [Logging & Metrics](https://jmrplens.github.io/cs-routeros-bouncer/configuration/logging-metrics/): Structured logging and Prometheus metrics configuration.
+- [Performance Tuning](https://jmrplens.github.io/cs-routeros-bouncer/configuration/performance-tuning/): Batch sizing and throughput tuning.
+- [Configuration Examples](https://jmrplens.github.io/cs-routeros-bouncer/configuration/examples/): End-to-end example configurations.
+- [Architecture Overview](https://jmrplens.github.io/cs-routeros-bouncer/architecture/): High-level design.
+- [Decision Processing](https://jmrplens.github.io/cs-routeros-bouncer/architecture/decisions/): How CrowdSec decisions are consumed and applied.
+- [Firewall Rules](https://jmrplens.github.io/cs-routeros-bouncer/architecture/firewall-rules/): RouterOS rule types, tables, and IPv4/IPv6 handling.
+- [Reconciliation](https://jmrplens.github.io/cs-routeros-bouncer/architecture/reconciliation/): Self-healing state sync on start/restart.
+- [Prometheus Metrics](https://jmrplens.github.io/cs-routeros-bouncer/monitoring/prometheus/): Exposed metrics reference.
+- [Grafana Dashboard](https://jmrplens.github.io/cs-routeros-bouncer/monitoring/grafana/): Ready-to-use dashboard.
+- [Health Endpoint](https://jmrplens.github.io/cs-routeros-bouncer/monitoring/health/): Health check endpoint reference.
+- [Troubleshooting](https://jmrplens.github.io/cs-routeros-bouncer/troubleshooting/): Common issues and their solutions.
+
+## Development
+
+- [Building & Testing](https://jmrplens.github.io/cs-routeros-bouncer/development/building/): Build and test the project from source.
+- [Testing Guide](https://jmrplens.github.io/cs-routeros-bouncer/development/testing-guide/): Test suite structure and conventions.
+- [Benchmarking](https://jmrplens.github.io/cs-routeros-bouncer/development/benchmarking/): Performance benchmarking.
+- [Project Structure](https://jmrplens.github.io/cs-routeros-bouncer/development/structure/): Repository layout.
+- [Contributing](https://jmrplens.github.io/cs-routeros-bouncer/development/contributing/): Contribution guidelines.
+- [Security Policy](https://jmrplens.github.io/cs-routeros-bouncer/development/security/): Vulnerability reporting.
+
+## Optional
+
+- [Full LLM reference](https://jmrplens.github.io/cs-routeros-bouncer/llms-full.txt): Generated companion reference with the complete configuration and CLI surface.
+- [Repository](https://github.com/jmrplens/cs-routeros-bouncer): Source code, issues, and releases (MIT license).
+- [CrowdSec Hub listing](https://app.crowdsec.net/hub/author/jmrplens/remediation-components/cs-routeros-bouncer): Official CrowdSec remediation component listing.
+- [Documentation hub](https://jmrplens.github.io/llms.txt): Index of all documentation sites by the same author.
