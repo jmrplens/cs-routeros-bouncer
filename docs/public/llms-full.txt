@@ -1,6 +1,6 @@
 # cs-routeros-bouncer — full reference
 
-> Generated companion to llms.txt: complete CLI flags and configuration key/env-var reference for cs-routeros-bouncer, a CrowdSec bouncer for MikroTik RouterOS.
+> Companion reference to llms.txt: complete CLI flags and configuration key/env-var reference for cs-routeros-bouncer, a CrowdSec bouncer for MikroTik RouterOS. Manually maintained from the configuration docs, not auto-generated — if it looks stale, trust the live docs pages linked below.
 
 Source of truth: this file summarizes https://jmrplens.github.io/cs-routeros-bouncer/getting-started/cli-reference/ and the configuration reference pages. When in doubt, follow the live docs.
 
@@ -20,7 +20,7 @@ Source of truth: this file summarizes https://jmrplens.github.io/cs-routeros-bou
 | `mikrotik.username` | `MIKROTIK_USER` | `crowdsec` | Required. Use a dedicated, minimally-privileged user. |
 | `mikrotik.password` | `MIKROTIK_PASS` | — | Required. Prefer setting via environment variable. |
 | `mikrotik.tls` | `MIKROTIK_TLS` | `false` | Requires the `api-ssl` service on the router. |
-| `mikrotik.tls_insecure` | `MIKROTIK_TLS_INSECURE` | `false` | Skip cert verification; needed for self-signed certs. |
+| `mikrotik.tls_insecure` | `MIKROTIK_TLS_INSECURE` | `false` | Skip cert verification; needed for self-signed certs. Prefer a CA-signed certificate in production instead of enabling this. |
 | `mikrotik.connection_timeout` | `MIKROTIK_CONN_TIMEOUT` | `10s` | Go duration format. |
 | `mikrotik.command_timeout` | `MIKROTIK_CMD_TIMEOUT` | `30s` | Increase for slow routers or large address lists. |
 | `mikrotik.pool_size` | `MIKROTIK_POOL_SIZE` | `4` | Parallel API connections, range 1-20. Auto-capped to the router's `max-sessions - 2`. |
@@ -55,15 +55,15 @@ Source of truth: this file summarizes https://jmrplens.github.io/cs-routeros-bou
 | `firewall.raw.chains` | `FIREWALL_RAW_CHAINS` | `["prerouting"]` | |
 | `firewall.deny_action` | `FIREWALL_DENY_ACTION` | `drop` | `drop` or `reject`. |
 | `firewall.reject_with` | `FIREWALL_REJECT_WITH` | — | ICMP/TCP-RST type, only with `deny_action: reject`. |
-| `firewall.rule_placement` | `FIREWALL_RULE_PLACEMENT` (+ `_STRATEGY`/`_COMMENT`/`_COMMENT_MATCH`/`_POSITION`/`_FALLBACK`) | `top` | `top`, `bottom`, `position`, `before_comment`, `after_comment`; structured per-table/per-protocol overrides supported in YAML. Precedence: global → global filter/raw → protocol → protocol filter/raw. |
+| `firewall.rule_placement` | `FIREWALL_RULE_PLACEMENT` (+ `FIREWALL_RULE_PLACEMENT_STRATEGY`, `FIREWALL_RULE_PLACEMENT_COMMENT`, `FIREWALL_RULE_PLACEMENT_COMMENT_MATCH`, `FIREWALL_RULE_PLACEMENT_POSITION`, `FIREWALL_RULE_PLACEMENT_FALLBACK`) | `top` | `top`, `bottom`, `position`, `before_comment`, `after_comment`; structured per-table/per-protocol overrides supported in YAML. Precedence: global → global filter/raw → protocol → protocol filter/raw. |
 | `firewall.comment_prefix` | `FIREWALL_COMMENT_PREFIX` | `crowdsec-bouncer` | Tags all bouncer-managed rules. |
 | `firewall.log` / `firewall.log_prefix` | `FIREWALL_LOG` / `FIREWALL_LOG_PREFIX` | `false` / `crowdsec-bouncer` | Per-type overrides: `filter.log_prefix`, `raw.log_prefix`, `block_output.log_prefix`. |
 | `firewall.filter.connection_state` | `FIREWALL_FILTER_CONNECTION_STATE` | — (all) | `new`, `established`, `related`, `invalid`, `untracked`; filter rules only, not raw. |
-| `firewall.block_input.interface` / `interface_list` | `FIREWALL_BLOCK_INPUT_INTERFACE` / `_LIST` | — (all interfaces) | Restrict input/raw rules to an interface or interface list. |
+| `firewall.block_input.interface` / `interface_list` | `FIREWALL_BLOCK_INPUT_INTERFACE` / `FIREWALL_BLOCK_INPUT_INTERFACE_LIST` | — (all interfaces) | Restrict input/raw rules to an interface or interface list. |
 | `firewall.block_input.whitelist` | — | — | Address-list of trusted IPs; bouncer inserts an accept rule before the drop/reject rule. |
 | `firewall.block_output.enabled` | `FIREWALL_BLOCK_OUTPUT` | `false` | Block outbound traffic to banned IPs. |
-| `firewall.block_output.interface` / `interface_list` | `FIREWALL_BLOCK_OUTPUT_INTERFACE` / `_LIST` | — | Required (one of them) when output blocking is enabled. |
-| `firewall.block_output.passthrough_v4` / `passthrough_v6` (or `_list`) | `FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V4` / `_V6` (or `_LIST`) | — | Exempt specific local clients from output blocking. |
+| `firewall.block_output.interface` / `interface_list` | `FIREWALL_BLOCK_OUTPUT_INTERFACE` / `FIREWALL_BLOCK_OUTPUT_INTERFACE_LIST` | — | Required (one of them) when output blocking is enabled. |
+| `firewall.block_output.passthrough_v4` / `passthrough_v6` (or `_list` variants) | `FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V4` / `FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V6` (or `FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V4_LIST` / `FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V6_LIST`) | — | Exempt specific local clients from output blocking. |
 
 ## Configuration: logging.* / metrics.*
 

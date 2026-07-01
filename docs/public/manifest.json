@@ -12,6 +12,16 @@
       "src": "/cs-routeros-bouncer/favicon.svg",
       "type": "image/svg+xml",
       "sizes": "any"
+    },
+    {
+      "src": "/cs-routeros-bouncer/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "/cs-routeros-bouncer/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
     }
   ],
   "categories": ["security", "networking", "utilities"]

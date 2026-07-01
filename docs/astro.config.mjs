@@ -272,12 +272,9 @@ export default defineConfig({
 								name: "cs-routeros-bouncer",
 								applicationCategory: "SecurityApplication",
 								operatingSystem: "Linux",
-								programmingLanguage: "Go",
 								url: "https://github.com/jmrplens/cs-routeros-bouncer",
 								downloadUrl:
 									"https://github.com/jmrplens/cs-routeros-bouncer/releases",
-								codeRepository:
-									"https://github.com/jmrplens/cs-routeros-bouncer",
 								image: {
 									"@type": "ImageObject",
 									url: "https://jmrplens.github.io/cs-routeros-bouncer/og-image.png",
@@ -296,7 +293,7 @@ export default defineConfig({
 									"CrowdSec, bouncer, MikroTik, RouterOS, firewall, network security, Go",
 								description:
 									"CrowdSec bouncer for MikroTik RouterOS — automatic firewall management via the RouterOS API",
-								offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+								offers: { "@type": "Offer", price: 0, priceCurrency: "USD" },
 								author: { "@id": "https://jmrp.io/#person" },
 								sameAs: [
 									"https://app.crowdsec.net/hub/author/jmrplens/remediation-components/cs-routeros-bouncer",
