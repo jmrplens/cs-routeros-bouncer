@@ -25,5 +25,5 @@ jobs:
           gh api \
             --method POST \
             -H "Accept: application/vnd.github+json" \
-            /repos/$REPO/issues/$NUMBER/assignees \
+            "/repos/$REPO/issues/$NUMBER/assignees" \
             -f assignees[]=jmrplens

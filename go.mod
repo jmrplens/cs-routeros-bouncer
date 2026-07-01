@@ -93,25 +93,25 @@ require (
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
-	github.com/go-openapi/analysis v0.25.2 // indirect
+	github.com/go-openapi/analysis v0.25.3 // indirect
 	github.com/go-openapi/errors v0.22.8 // indirect
-	github.com/go-openapi/jsonpointer v0.23.1 // indirect
+	github.com/go-openapi/jsonpointer v0.24.0 // indirect
 	github.com/go-openapi/jsonreference v0.21.6 // indirect
 	github.com/go-openapi/loads v0.24.0 // indirect
 	github.com/go-openapi/spec v0.22.6 // indirect
-	github.com/go-openapi/strfmt v0.26.3 // indirect
-	github.com/go-openapi/swag v0.26.1 // indirect
-	github.com/go-openapi/swag/cmdutils v0.26.1 // indirect
-	github.com/go-openapi/swag/conv v0.26.1 // indirect
-	github.com/go-openapi/swag/fileutils v0.26.1 // indirect
-	github.com/go-openapi/swag/jsonname v0.26.1 // indirect
-	github.com/go-openapi/swag/jsonutils v0.26.1 // indirect
-	github.com/go-openapi/swag/loading v0.26.1 // indirect
-	github.com/go-openapi/swag/mangling v0.26.1 // indirect
-	github.com/go-openapi/swag/netutils v0.26.1 // indirect
-	github.com/go-openapi/swag/stringutils v0.26.1 // indirect
-	github.com/go-openapi/swag/typeutils v0.26.1 // indirect
-	github.com/go-openapi/swag/yamlutils v0.26.1 // indirect
+	github.com/go-openapi/strfmt v0.26.4 // indirect
+	github.com/go-openapi/swag v0.27.0 // indirect
+	github.com/go-openapi/swag/cmdutils v0.27.0 // indirect
+	github.com/go-openapi/swag/conv v0.27.0 // indirect
+	github.com/go-openapi/swag/fileutils v0.27.0 // indirect
+	github.com/go-openapi/swag/jsonname v0.27.0 // indirect
+	github.com/go-openapi/swag/jsonutils v0.27.0 // indirect
+	github.com/go-openapi/swag/loading v0.27.0 // indirect
+	github.com/go-openapi/swag/mangling v0.27.0 // indirect
+	github.com/go-openapi/swag/netutils v0.27.0 // indirect
+	github.com/go-openapi/swag/stringutils v0.27.0 // indirect
+	github.com/go-openapi/swag/typeutils v0.27.0 // indirect
+	github.com/go-openapi/swag/yamlutils v0.27.0 // indirect
 	github.com/go-openapi/validate v0.26.0 // indirect
 	github.com/go-toolsmith/astcast v1.1.0 // indirect
 	github.com/go-toolsmith/astcopy v1.1.0 // indirect
@@ -176,7 +176,7 @@ require (
 	github.com/ldez/usetesting v0.5.0 // indirect
 	github.com/leonklingele/grouper v1.1.2 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.0 // indirect
-	github.com/lufia/plan9stats v0.0.0-20260330125221-c963978e514e // indirect
+	github.com/lufia/plan9stats v0.0.0-20260627054121-477a66015f15 // indirect
 	github.com/macabu/inamedparam v0.2.0 // indirect
 	github.com/mailru/easyjson v0.9.0 // indirect
 	github.com/manuelarte/embeddedstructfieldcheck v0.4.0 // indirect
@@ -199,12 +199,12 @@ require (
 	github.com/nunnatsa/ginkgolinter v0.23.0 // indirect
 	github.com/oklog/ulid/v2 v2.1.1 // indirect
 	github.com/openai/openai-go/v3 v3.32.0 // indirect
-	github.com/pelletier/go-toml/v2 v2.4.0 // indirect
+	github.com/pelletier/go-toml/v2 v2.4.2 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.69.0 // indirect
-	github.com/prometheus/procfs v0.20.1 // indirect
+	github.com/prometheus/procfs v0.21.1 // indirect
 	github.com/quasilyte/go-ruleguard v0.4.5 // indirect
 	github.com/quasilyte/go-ruleguard/dsl v0.3.23 // indirect
 	github.com/quasilyte/gogrep v0.5.0 // indirect
@@ -224,7 +224,7 @@ require (
 	github.com/sashamelentyev/interfacebloat v1.1.0 // indirect
 	github.com/sashamelentyev/usestdlibvars v1.29.0 // indirect
 	github.com/securego/gosec/v2 v2.26.1 // indirect
-	github.com/shirou/gopsutil/v4 v4.26.5 // indirect
+	github.com/shirou/gopsutil/v4 v4.26.6 // indirect
 	github.com/sivchari/containedctx v1.0.3 // indirect
 	github.com/sonatard/noctx v0.5.1 // indirect
 	github.com/sourcegraph/go-diff v0.8.0 // indirect
