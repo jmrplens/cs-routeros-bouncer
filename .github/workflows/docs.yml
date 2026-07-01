@@ -77,6 +77,7 @@ jobs:
     name: Submit to IndexNow
     needs: deploy
     runs-on: ubuntu-latest
+    permissions: {}
     steps:
       - name: Notify IndexNow of updated URLs
         env:
@@ -97,7 +98,7 @@ jobs:
           # Fetch the live sitemap with a short retry/backoff for deploy propagation.
           idx=""
           for attempt in 1 2 3 4 5; do
-            if idx=$(curl -fsSL "$BASE/sitemap-index.xml"); then break; fi
+            if idx=$(curl --connect-timeout 5 --max-time 30 -fsSL "$BASE/sitemap-index.xml"); then break; fi
             echo "sitemap fetch attempt ${attempt} failed; retrying in 10s…"
             sleep 10
           done
@@ -105,15 +106,22 @@ jobs:
           # Collect sub-sitemap URLs, then each sitemap's <loc> entries. A while
           # loop over a here-string (not a pipe) keeps errors from being masked
           # under `set -o pipefail`; a transient sub-sitemap fetch can't abort all.
-          subs=$(printf '%s' "$idx" | grep -oE '<loc>[^<]+</loc>' | sed -E 's#</?loc>##g')
+          # Every grep here is guarded with `|| true`: under `set -o pipefail`,
+          # a clean "no matches" result (exit 1) would otherwise abort this
+          # best-effort job instead of just yielding an empty list.
+          subs=$(printf '%s' "$idx" | grep -oE '<loc>[^<]+</loc>' | sed -E 's#</?loc>##g' || true)
+          if [ -z "$subs" ]; then echo "::warning title=IndexNow::no sub-sitemaps found; skipping submission"; exit 0; fi
           urls=""
           while IFS= read -r sm; do
             [ -n "$sm" ] || continue
-            body=$(curl -fsSL "$sm" || true)
-            urls="${urls}$(printf '%s' "$body" | grep -oE '<loc>[^<]+</loc>' | sed -E 's#</?loc>##g')"$'\n'
+            body=$(curl --connect-timeout 5 --max-time 30 -fsSL "$sm" || true)
+            locs=$(printf '%s' "$body" | grep -oE '<loc>[^<]+</loc>' | sed -E 's#</?loc>##g' || true)
+            [ -n "$locs" ] || continue
+            urls="${urls}${locs}"$'\n'
           done <<< "$subs"
-          url_json=$(printf '%s\n' "$urls" | grep . | jq -R . | jq -s .)
+          url_json=$(printf '%s\n' "$urls" | jq -R 'select(length > 0)' | jq -s .)
           count=$(printf '%s' "$url_json" | jq 'length')
+          if [ "$count" -eq 0 ]; then echo "::warning title=IndexNow::no URLs found; skipping submission"; exit 0; fi
           echo "Submitting $count URLs to IndexNow"
           payload=$(jq -n \
             --arg host "$HOST" \
@@ -123,7 +131,7 @@ jobs:
             '{host:$host, key:$key, keyLocation:$keyLocation, urlList:$urlList}')
           # `|| true` so a transport error (DNS/timeout) can't abort under set -e;
           # curl writes 000 to the http_code on failure, handled by the case below.
-          code=$(curl -sS -o /tmp/indexnow.out -w '%{http_code}' \
+          code=$(curl --connect-timeout 5 --max-time 30 -sS -o /tmp/indexnow.out -w '%{http_code}' \
             -X POST "https://api.indexnow.org/IndexNow" \
             -H "Content-Type: application/json; charset=utf-8" \
             --data "$payload" || true)
