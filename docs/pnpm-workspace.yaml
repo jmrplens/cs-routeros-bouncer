@@ -1,3 +1,11 @@
+# This project deliberately tracks the latest releases (incl. day-0).
+# Disable pnpm 11's default 24h supply-chain age gate, which would
+# otherwise block freshly-published packages like Astro 7.
+minimumReleaseAge: 0
+
+allowBuilds:
+  esbuild: true
+  sharp: true
 onlyBuiltDependencies:
   - esbuild
   - sharp
