@@ -300,6 +300,7 @@ export default defineConfig({
 								author: { "@id": "https://jmrp.io/#person" },
 								sameAs: [
 									"https://app.crowdsec.net/hub/author/jmrplens/remediation-components/cs-routeros-bouncer",
+									"https://www.wikidata.org/wiki/Q140393352",
 								],
 							},
 							{

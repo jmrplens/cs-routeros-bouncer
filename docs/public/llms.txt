@@ -55,4 +55,5 @@ Key behavior:
 - [Full LLM reference](https://jmrplens.github.io/cs-routeros-bouncer/llms-full.txt): Generated companion reference with the complete configuration and CLI surface.
 - [Repository](https://github.com/jmrplens/cs-routeros-bouncer): Source code, issues, and releases (MIT license).
 - [CrowdSec Hub listing](https://app.crowdsec.net/hub/author/jmrplens/remediation-components/cs-routeros-bouncer): Official CrowdSec remediation component listing.
+- [Wikidata: CrowdSec RouterOS Bouncer (Q140393352)](https://www.wikidata.org/wiki/Q140393352): Knowledge-graph entity for this project.
 - [Documentation hub](https://jmrplens.github.io/llms.txt): Index of all documentation sites by the same author.
