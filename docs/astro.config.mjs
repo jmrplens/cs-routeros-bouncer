@@ -259,6 +259,43 @@ export default defineConfig({
 						href: "/cs-routeros-bouncer/manifest.json",
 					},
 				},
+				// Starlight's `favicon` option above only emits one SVG <link>.
+				// Add fallbacks for browsers/crawlers with weak or no SVG favicon
+				// support (older Safari, Google's SERP favicon fetcher, RSS
+				// readers) and for the home-screen/bookmark icon on iOS.
+				{
+					tag: "link",
+					attrs: {
+						rel: "icon",
+						type: "image/png",
+						sizes: "32x32",
+						href: "/cs-routeros-bouncer/favicon-32x32.png",
+					},
+				},
+				{
+					// `sizes: "any"` on a raster .ico looks wrong at a glance, but
+					// it's deliberate: Starlight's own SVG <link> (emitted by the
+					// `favicon` option above) is appended after this whole `head`
+					// array, i.e. last in document order. Some Chromium versions
+					// otherwise prefer an earlier .ico with an exact/declared size
+					// over a later SVG; marking it "any" makes it the least-specific
+					// candidate so the SVG — which browsers that support it always
+					// prefer — wins. This is the same technique documented in
+					// https://evilmartians.com/chronicles/how-to-favicon-in-2021-six-files-that-fit-most-needs.
+					tag: "link",
+					attrs: {
+						rel: "icon",
+						href: "/cs-routeros-bouncer/favicon.ico",
+						sizes: "any",
+					},
+				},
+				{
+					tag: "link",
+					attrs: {
+						rel: "apple-touch-icon",
+						href: "/cs-routeros-bouncer/apple-touch-icon.png",
+					},
+				},
 				{
 					tag: "link",
 					attrs: { rel: "me", href: "https://github.com/jmrplens" },
