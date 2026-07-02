@@ -1,0 +1,196 @@
+---
+import Default from "@astrojs/starlight/components/Head.astro";
+
+/**
+ * Serialize a JSON-LD value for embedding via `set:html` in a `<script>` tag.
+ * Escapes `<` so a `</script>` sequence inside page title/description text
+ * can't prematurely close the tag and corrupt the surrounding markup.
+ */
+function toLdJson(value: unknown): string {
+	return JSON.stringify(value).replace(/</g, "\\u003c");
+}
+
+const SITE_URL = "https://jmrplens.github.io/cs-routeros-bouncer/";
+const AUTHOR_ID = "https://jmrp.io/#person";
+const SOFTWARE_ID = "https://github.com/jmrplens/cs-routeros-bouncer#software";
+const WEBSITE_ID = `${SITE_URL}#website`;
+
+/** Top-level sidebar group labels, keyed by their URL segment, for BreadcrumbList generation. */
+const SEGMENT_LABELS: Record<string, string> = {
+	"getting-started": "Getting Started",
+	configuration: "Configuration",
+	architecture: "Architecture",
+	monitoring: "Monitoring",
+	development: "Development",
+};
+
+/**
+ * Only these groups have their own index page (via a `slug:` frontmatter
+ * override in their index.mdx). The others — getting-started, monitoring,
+ * development — have no group-level page, so an intermediate breadcrumb for
+ * them would link to a URL that 404s. Those segments are skipped instead.
+ */
+const SEGMENT_INDEX_PAGES = new Set(["configuration", "architecture"]);
+
+/** Hand-curated HowTo steps for the step-by-step getting-started pages, keyed by page id/slug. */
+const HOW_TO_STEPS: Record<string, { name: string; text: string }[]> = {
+	"getting-started/quickstart": [
+		{
+			name: "Register the bouncer with CrowdSec",
+			text: "On the machine running CrowdSec, run `sudo cscli bouncers add cs-routeros-bouncer` and save the API key shown in the output.",
+		},
+		{
+			name: "Create a RouterOS API user",
+			text: "Connect to the MikroTik router and create a dedicated user group and user that has only the minimum required API permissions.",
+		},
+		{
+			name: "Deploy the bouncer",
+			text: "Run the bouncer via Docker Compose, or as a binary with a systemd service, pointing it at the CrowdSec LAPI and the RouterOS API.",
+		},
+		{
+			name: "Verify it's working",
+			text: "Check the bouncer's /health endpoint and logs, then confirm new firewall rules and address-list entries appear on the router.",
+		},
+	],
+	"getting-started/installation": [
+		{
+			name: "Choose a deployment method",
+			text: "Pick Docker Compose, a binary with systemd, or building from source, depending on your infrastructure.",
+		},
+		{
+			name: "Install and configure",
+			text: "Deploy the image or binary and set the CrowdSec LAPI URL, bouncer API key, and RouterOS connection details via environment variables or a YAML config file.",
+		},
+		{
+			name: "Verify installation",
+			text: "Check the service status, call the /health endpoint, review the logs, and confirm the router-side firewall rules and address lists were created.",
+		},
+	],
+	"getting-started/router-setup": [
+		{
+			name: "Enable the RouterOS API service",
+			text: "Enable the plaintext `api` (port 8728) service or, recommended for production, the TLS-encrypted `api-ssl` (port 8729) service on the MikroTik router.",
+		},
+		{
+			name: "Create a dedicated API user",
+			text: "Create a RouterOS user group with only the read, write, api, and sensitive policies, then create a user in that group with a strong password.",
+		},
+		{
+			name: "Allow firewall access for the bouncer host",
+			text: "If the router firewall restricts API access, add a rule allowing only the bouncer host's IP to reach the API port.",
+		},
+		{
+			name: "Verify connectivity",
+			text: "Test API connectivity with nc or openssl s_client, or start the bouncer and check its /health endpoint for routeros_connected: true.",
+		},
+	],
+};
+
+// Defensive: `starlightRoute` is only set by Starlight's routing middleware.
+// It should always be present for content-collection pages, but guard it
+// anyway so a page rendered outside that middleware degrades to the default
+// Head instead of throwing.
+const { starlightRoute } = Astro.locals;
+const entry = starlightRoute?.entry;
+const id = starlightRoute?.id;
+const lastUpdated = starlightRoute?.lastUpdated;
+
+const canonicalUrl = Astro.url.href;
+const title = entry?.data.title;
+const description = entry?.data.description;
+const dateModified = lastUpdated ? lastUpdated.toISOString() : undefined;
+
+const techArticle = entry
+	? {
+			"@context": "https://schema.org",
+			"@type": "TechArticle",
+			"@id": `${canonicalUrl}#article`,
+			headline: title,
+			...(description ? { description } : {}),
+			url: canonicalUrl,
+			mainEntityOfPage: canonicalUrl,
+			...(dateModified ? { dateModified } : {}),
+			author: { "@id": AUTHOR_ID },
+			publisher: { "@id": AUTHOR_ID },
+			about: { "@id": SOFTWARE_ID },
+			isPartOf: { "@id": WEBSITE_ID },
+			inLanguage: "en",
+		}
+	: null;
+
+// Skip breadcrumbs on the homepage itself (id === "") — a single "Home" crumb adds no value.
+const segments = id ? id.split("/") : [];
+const breadcrumbList =
+	entry && segments.length > 0
+		? {
+				"@context": "https://schema.org",
+				"@type": "BreadcrumbList",
+				itemListElement: [
+					{ "@type": "ListItem", position: 1, name: "Home", item: SITE_URL },
+					// Only emit an intermediate crumb when the segment has a real page
+					// of its own (see SEGMENT_INDEX_PAGES) — otherwise skip it rather
+					// than link to a URL that 404s, then renumber positions to stay
+					// sequential as schema.org's BreadcrumbList requires.
+					...segments
+						.map((segment, index) => {
+							const isLast = index === segments.length - 1;
+							if (!isLast && !SEGMENT_INDEX_PAGES.has(segment)) return null;
+							const name = isLast
+								? title
+								: (SEGMENT_LABELS[segment] ?? segment);
+							const pathAcc = segments.slice(0, index + 1).join("/");
+							return { name, item: `${SITE_URL}${pathAcc}/` };
+						})
+						.filter((crumb) => crumb !== null)
+						.map((crumb, index) => ({
+							"@type": "ListItem",
+							position: index + 2,
+							...crumb,
+						})),
+				],
+			}
+		: null;
+
+const howToSteps = id ? HOW_TO_STEPS[id] : undefined;
+const howTo =
+	entry && howToSteps
+		? {
+				"@context": "https://schema.org",
+				"@type": "HowTo",
+				name: title,
+				...(description ? { description } : {}),
+				step: howToSteps.map((step, index) => ({
+					"@type": "HowToStep",
+					position: index + 1,
+					name: step.name,
+					text: step.text,
+				})),
+			}
+		: null;
+---
+
+<Default {...Astro.props}><slot /></Default>
+
+{
+	techArticle && (
+		<script
+			type="application/ld+json"
+			is:inline
+			set:html={toLdJson(techArticle)}
+		/>
+	)
+}
+{
+	breadcrumbList && (
+		<script
+			type="application/ld+json"
+			is:inline
+			set:html={toLdJson(breadcrumbList)}
+		/>
+	)
+}
+{
+	howTo && (
+		<script type="application/ld+json" is:inline set:html={toLdJson(howTo)} />
+	)
+}

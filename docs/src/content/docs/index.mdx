@@ -7,6 +7,7 @@ hero:
   tagline: cs-routeros-bouncer syncs CrowdSec decisions into MikroTik firewall rules with reconciliation, metrics, and safe cleanup.
   image:
     file: ../../assets/logo.svg
+    alt: cs-routeros-bouncer logo
   actions:
     - text: Get Started
       link: /cs-routeros-bouncer/getting-started/quickstart/
@@ -16,6 +17,57 @@ hero:
       link: https://github.com/jmrplens/cs-routeros-bouncer
       icon: external
       variant: minimal
+head:
+  - tag: script
+    attrs:
+      type: application/ld+json
+    content: |
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "What is cs-routeros-bouncer?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "cs-routeros-bouncer is a free, open-source CrowdSec bouncer for MikroTik RouterOS. It syncs CrowdSec ban/unban decisions into RouterOS firewall rules (filter and raw, IPv4 and IPv6) through the RouterOS API, with startup and periodic reconciliation, Prometheus metrics, and safe rule cleanup."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Which CrowdSec and RouterOS versions does it support?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "It requires CrowdSec 1.5+ with the Local API (LAPI) reachable from the bouncer host, and MikroTik RouterOS 7.x with the API service enabled (port 8728, or 8729 for TLS), using a dedicated RouterOS API user with the appropriate permissions."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Is cs-routeros-bouncer free and open source?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. cs-routeros-bouncer is MIT-licensed, written in Go, distributed as a single static binary, with the full source on GitHub and no paid tier."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does cs-routeros-bouncer support IPv6?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. Each RouterOS rule type it manages (filter input, raw prerouting, and optional filter output) has an IPv6 equivalent, and IPv4/IPv6 rule placement can be configured together or overridden independently per protocol."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "How is cs-routeros-bouncer different from address-list or script-based CrowdSec bouncers for MikroTik?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "cs-routeros-bouncer talks to the RouterOS API directly and applies each ban or unban as an individual real-time call (about 1-3 ms), instead of periodically regenerating address lists via scheduled scripts. It also runs startup and periodic reconciliation against MikroTik's actual state, so drift is repaired automatically."
+            }
+          }
+        ]
+      }
 ---
 
 import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
@@ -56,12 +108,17 @@ import VersionBadge from "../../components/VersionBadge.astro";
 
 ## Why cs-routeros-bouncer? <VersionBadge version="1.4.5" />
 
+Unlike bouncers that manage MikroTik via periodic address-list scripts,
+cs-routeros-bouncer talks to the
+[RouterOS API](https://help.mikrotik.com/docs/spaces/ROS/pages/47579160/API)
+directly and applies each CrowdSec decision as an individual real-time call.
+
 <CardGrid stagger>
-  <Card title="Zero Manual Configuration" icon="approve-check">
+  <Card title="0 Manual Router Commands" icon="approve-check">
     Auto-creates and auto-removes firewall filter/raw rules on start/stop — no
     manual router setup needed.
   </Card>
-  <Card title="Real-time IP Management" icon="list-format">
+  <Card title="Real-time IP Management (~1–3 ms/op)" icon="list-format">
     Adds IPs on ban, removes on unban. No bulk re-upload, no duplicates. **~1–3
     ms per operation**.
   </Card>
@@ -80,6 +137,59 @@ import VersionBadge from "../../components/VersionBadge.astro";
 - **CrowdSec** 1.5+ with LAPI accessible from the bouncer host
 - **MikroTik RouterOS** 7.x with API enabled (port 8728 or 8729 for TLS)
 - A dedicated RouterOS API user with appropriate permissions
+
+## Frequently asked questions
+
+<details>
+<summary>What is cs-routeros-bouncer?</summary>
+
+cs-routeros-bouncer is a free, open-source CrowdSec bouncer for MikroTik
+RouterOS. It syncs CrowdSec ban/unban decisions into RouterOS firewall rules
+(filter and raw, IPv4 and IPv6) through the RouterOS API, with startup and
+periodic reconciliation, Prometheus metrics, and safe rule cleanup.
+
+</details>
+
+<details>
+<summary>Which CrowdSec and RouterOS versions does it support?</summary>
+
+It requires CrowdSec 1.5+ with the Local API (LAPI) reachable from the
+bouncer host, and MikroTik RouterOS 7.x with the API service enabled (port
+8728, or 8729 for TLS), using a dedicated RouterOS API user with the
+appropriate permissions.
+
+</details>
+
+<details>
+<summary>Is cs-routeros-bouncer free and open source?</summary>
+
+Yes. cs-routeros-bouncer is MIT-licensed, written in Go, distributed as a
+single static binary, with the full source on GitHub and no paid tier.
+
+</details>
+
+<details>
+<summary>Does cs-routeros-bouncer support IPv6?</summary>
+
+Yes. Each RouterOS rule type it manages (filter input, raw prerouting, and
+optional filter output) has an IPv6 equivalent, and IPv4/IPv6 rule placement
+can be configured together or overridden independently per protocol.
+
+</details>
+
+<details>
+<summary>
+  How is cs-routeros-bouncer different from address-list or script-based
+  CrowdSec bouncers for MikroTik?
+</summary>
+
+cs-routeros-bouncer talks to the RouterOS API directly and applies each ban
+or unban as an individual real-time call (about 1-3 ms), instead of
+periodically regenerating address lists via scheduled scripts. It also runs
+startup and periodic reconciliation against MikroTik's actual state, so drift
+is repaired automatically.
+
+</details>
 
 ## Explore the docs
 

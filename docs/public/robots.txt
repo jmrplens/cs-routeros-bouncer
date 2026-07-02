@@ -4,6 +4,10 @@
 #   https://jmrplens.github.io/cs-routeros-bouncer/llms.txt
 #   https://jmrplens.github.io/cs-routeros-bouncer/llms-full.txt
 
+# Machine-readable content-use preferences, see https://contentsignals.org/
+# (only the three spec-defined keys: search, ai-input, ai-train)
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
+
 User-agent: *
 Allow: /
 

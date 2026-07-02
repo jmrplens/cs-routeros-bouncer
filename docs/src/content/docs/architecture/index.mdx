@@ -12,6 +12,8 @@ cs-routeros-bouncer acts as a bridge between CrowdSec's threat intelligence and 
 
 ```mermaid
 flowchart LR
+    accTitle: cs-routeros-bouncer architecture overview
+    accDescr: CrowdSec LAPI sends ban and unban decisions to cs-routeros-bouncer, which applies them to the MikroTik router through the RouterOS API, exposes Prometheus metrics, and serves health checks. The router applies the changes to its firewall rules and address lists.
     CS[CrowdSec LAPI] -->|decisions| B[cs-routeros-bouncer]
     B -->|RouterOS API| R[MikroTik Router]
     B -->|/metrics| P[Prometheus]
@@ -60,6 +62,8 @@ The bouncer is composed of several internal packages:
 
 ```mermaid
 sequenceDiagram
+    accTitle: cs-routeros-bouncer startup and runtime data flow
+    accDescr: At startup the bouncer connects to CrowdSec and MikroTik, creates firewall rules, fetches active decisions, and reconciles address lists. During the runtime loop it adds or removes IPs as CrowdSec reports new or expired decisions, checking its address cache first. On a fixed interval it reconciles again to repair drift. On shutdown (SIGTERM) it removes its firewall rules while address-list entries expire via their own timeout.
     participant CS as CrowdSec LAPI
     participant B as Bouncer
     participant MT as MikroTik Router

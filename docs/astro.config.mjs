@@ -1,8 +1,88 @@
 // @ts-check
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import sitemap from "@astrojs/sitemap";
 import rehypeMermaid from "rehype-mermaid";
 import fs from "node:fs";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+const docsRoot = fileURLToPath(new URL(".", import.meta.url));
+const siteBase = "/cs-routeros-bouncer";
+
+// Check once, at module load, instead of on every getLastmod() call — avoids
+// spawning a doomed `git` process per page when `git` is missing or the build
+// runs outside a git checkout (e.g. some Docker/CI contexts).
+let isGitAvailable = false;
+try {
+	execFileSync("git", ["rev-parse", "--is-inside-work-tree"], {
+		cwd: docsRoot,
+		stdio: "ignore",
+	});
+	isGitAvailable = true;
+} catch {
+	// No git available — getLastmod() below becomes a no-op.
+}
+
+/**
+ * Resolve the newest git commit date for the content file backing a given
+ * sitemap URL, so `sitemap-0.xml` carries real per-page `<lastmod>` values
+ * instead of Starlight's default (which omits `lastmod` entirely).
+ * @param {string} pathname
+ * @returns {string | undefined}
+ */
+function getLastmod(pathname) {
+	if (!isGitAvailable) return undefined;
+	const slug = pathname
+		.replace(new RegExp(`^${siteBase}/?`), "")
+		.replace(/\/$/, "");
+	const candidates =
+		slug === ""
+			? ["src/content/docs/index.mdx"]
+			: [`src/content/docs/${slug}.mdx`, `src/content/docs/${slug}/index.mdx`];
+	for (const relativePath of candidates) {
+		try {
+			const output = execFileSync(
+				"git",
+				["log", "-1", "--format=%cI", "--", relativePath],
+				{ cwd: docsRoot, encoding: "utf-8" },
+			).trim();
+			if (output) return output;
+		} catch {
+			// Try the next candidate path.
+		}
+	}
+	return undefined;
+}
+
+/**
+ * Resolve the latest release tag and its date from git, so the
+ * `SoftwareApplication` JSON-LD's `softwareVersion`/`dateModified` track the
+ * actual latest release instead of a hand-maintained literal that silently
+ * goes stale after every release (falls back to a known-good snapshot when
+ * git or tags aren't available, e.g. building from a tarball).
+ * @returns {{ version: string, date: string }}
+ */
+function getLatestRelease() {
+	const fallback = { version: "1.4.5", date: "2026-06-19" };
+	if (!isGitAvailable) return fallback;
+	try {
+		const tag = execFileSync("git", ["describe", "--tags", "--abbrev=0"], {
+			cwd: docsRoot,
+			encoding: "utf-8",
+		}).trim();
+		const date = execFileSync("git", ["log", "-1", "--format=%cI", tag], {
+			cwd: docsRoot,
+			encoding: "utf-8",
+		}).trim();
+		if (!tag || !date) return fallback;
+		return { version: tag.replace(/^v/, ""), date: date.slice(0, 10) };
+	} catch {
+		return fallback;
+	}
+}
+
+const latestRelease = getLatestRelease();
 
 // Load RouterOS TextMate grammar for syntax highlighting
 const routerosGrammarURL = new URL(
@@ -58,6 +138,12 @@ export default defineConfig({
 	},
 	integrations: [
 		routerosLanguage(),
+		sitemap({
+			serialize(item) {
+				const lastmod = getLastmod(new URL(item.url).pathname);
+				return lastmod ? { ...item, lastmod } : item;
+			},
+		}),
 		starlight({
 			title: "cs-routeros-bouncer",
 			description:
@@ -87,6 +173,7 @@ export default defineConfig({
 			components: {
 				Header: "./src/components/overrides/Header.astro",
 				Footer: "./src/components/overrides/Footer.astro",
+				Head: "./src/components/overrides/Head.astro",
 			},
 			head: [
 				{
@@ -135,6 +222,34 @@ export default defineConfig({
 					attrs: {
 						name: "msvalidate.01",
 						content: "7574EB3B44624C239F14920DBC34EE25",
+					},
+				},
+				{
+					tag: "meta",
+					attrs: {
+						name: "google-site-verification",
+						content: "4Hx_PJ1seU_BgKfWpo_FA7_Hkh7GeYVNrvnvzqCjF0Q",
+					},
+				},
+				{
+					// This is a baseline policy, not strong XSS mitigation: it still
+					// allows 'unsafe-inline' for script-src/style-src because this page
+					// ships literal inline <script type="application/ld+json"> blocks
+					// (with per-page dynamic content, so build-time hashes won't match)
+					// and Starlight's scoped inline styles — a static GitHub Pages site
+					// can't mint per-request nonces either. Its value is narrowing
+					// default-src/connect-src/base-uri/form-action to 'self', not
+					// blocking inline script execution.
+					tag: "meta",
+					attrs: {
+						"http-equiv": "Content-Security-Policy",
+						// script-src needs 'wasm-unsafe-eval' (and 'unsafe-eval' as a
+						// fallback for browsers that don't yet support the narrower
+						// directive, e.g. Safari) because Starlight's Pagefind search
+						// runs its index as WebAssembly — see
+						// https://pagefind.app/docs/hosting/#content-security-policy.
+						content:
+							"default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' 'unsafe-eval'; connect-src 'self'; base-uri 'self'; form-action 'self'",
 					},
 				},
 				{
@@ -264,6 +379,10 @@ export default defineConfig({
 									"@id":
 										"https://github.com/jmrplens/cs-routeros-bouncer#software",
 								},
+								speakable: {
+									"@type": "SpeakableSpecification",
+									cssSelector: [".hero .tagline", "#how-it-works"],
+								},
 							},
 							{
 								"@type": "SoftwareApplication",
@@ -272,6 +391,8 @@ export default defineConfig({
 								name: "cs-routeros-bouncer",
 								applicationCategory: "SecurityApplication",
 								operatingSystem: "Linux",
+								softwareVersion: latestRelease.version,
+								dateModified: latestRelease.date,
 								url: "https://github.com/jmrplens/cs-routeros-bouncer",
 								downloadUrl:
 									"https://github.com/jmrplens/cs-routeros-bouncer/releases",
@@ -315,48 +436,6 @@ export default defineConfig({
 										"https://github.com/jmrplens/cs-routeros-bouncer#software",
 								},
 								author: { "@id": "https://jmrp.io/#person" },
-							},
-						],
-					}),
-				},
-				{
-					tag: "script",
-					attrs: { type: "application/ld+json" },
-					content: JSON.stringify({
-						"@context": "https://schema.org",
-						"@type": "FAQPage",
-						mainEntity: [
-							{
-								"@type": "Question",
-								name: "What is cs-routeros-bouncer?",
-								acceptedAnswer: {
-									"@type": "Answer",
-									text: "cs-routeros-bouncer is a free, open-source CrowdSec bouncer for MikroTik RouterOS. It syncs CrowdSec ban/unban decisions into RouterOS firewall rules (filter and raw, IPv4 and IPv6) through the RouterOS API, with startup and periodic reconciliation, Prometheus metrics, and safe rule cleanup.",
-								},
-							},
-							{
-								"@type": "Question",
-								name: "Which CrowdSec and RouterOS versions does it support?",
-								acceptedAnswer: {
-									"@type": "Answer",
-									text: "It requires CrowdSec 1.5+ with the Local API (LAPI) reachable from the bouncer host, and MikroTik RouterOS 7.x with the API service enabled (port 8728, or 8729 for TLS), using a dedicated RouterOS API user with the appropriate permissions.",
-								},
-							},
-							{
-								"@type": "Question",
-								name: "Is cs-routeros-bouncer free and open source?",
-								acceptedAnswer: {
-									"@type": "Answer",
-									text: "Yes. cs-routeros-bouncer is MIT-licensed, written in Go, distributed as a single static binary, with the full source on GitHub and no paid tier.",
-								},
-							},
-							{
-								"@type": "Question",
-								name: "Does cs-routeros-bouncer support IPv6?",
-								acceptedAnswer: {
-									"@type": "Answer",
-									text: "Yes. Each RouterOS rule type it manages (filter input, raw prerouting, and optional filter output) has an IPv6 equivalent, and IPv4/IPv6 rule placement can be configured together or overridden independently per protocol.",
-								},
 							},
 						],
 					}),

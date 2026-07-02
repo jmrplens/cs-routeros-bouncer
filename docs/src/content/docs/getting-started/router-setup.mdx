@@ -9,7 +9,7 @@ This guide covers the MikroTik RouterOS configuration required for cs-routeros-b
 
 ## API Service
 
-The bouncer communicates with MikroTik via the RouterOS API. Ensure the API service is enabled:
+The bouncer communicates with MikroTik via the [RouterOS API](https://help.mikrotik.com/docs/spaces/ROS/pages/47579160/API). Ensure the API service is enabled:
 
 ```routeros
 /ip/service/print
@@ -36,7 +36,7 @@ Use TLS (port 8729) for production deployments. Configure the bouncer with `mikr
 
 ## API User
 
-Create a dedicated user with minimal permissions:
+Create a dedicated [RouterOS user](https://help.mikrotik.com/docs/spaces/ROS/pages/8978504/User) with minimal permissions:
 
 <Steps>
 

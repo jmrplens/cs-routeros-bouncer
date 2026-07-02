@@ -20,6 +20,7 @@
     "playwright:install": "playwright install --with-deps chromium"
   },
   "dependencies": {
+    "@astrojs/sitemap": "^3.7.3",
     "@astrojs/starlight": "^0.41.2",
     "astro": "^7.0.4",
     "rehype-mermaid": "^3.0.0",
