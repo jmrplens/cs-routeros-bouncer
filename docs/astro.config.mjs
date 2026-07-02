@@ -259,6 +259,34 @@ export default defineConfig({
 						href: "/cs-routeros-bouncer/manifest.json",
 					},
 				},
+				// Starlight's `favicon` option above only emits one SVG <link>.
+				// Add fallbacks for browsers/crawlers with weak or no SVG favicon
+				// support (older Safari, Google's SERP favicon fetcher, RSS
+				// readers) and for the home-screen/bookmark icon on iOS.
+				{
+					tag: "link",
+					attrs: {
+						rel: "icon",
+						type: "image/png",
+						sizes: "32x32",
+						href: "/cs-routeros-bouncer/favicon-32x32.png",
+					},
+				},
+				{
+					tag: "link",
+					attrs: {
+						rel: "icon",
+						href: "/cs-routeros-bouncer/favicon.ico",
+						sizes: "any",
+					},
+				},
+				{
+					tag: "link",
+					attrs: {
+						rel: "apple-touch-icon",
+						href: "/cs-routeros-bouncer/apple-touch-icon.png",
+					},
+				},
 				{
 					tag: "link",
 					attrs: { rel: "me", href: "https://github.com/jmrplens" },
