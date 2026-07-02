@@ -1,0 +1,161 @@
+---
+import Default from "@astrojs/starlight/components/Head.astro";
+
+const SITE_URL = "https://jmrplens.github.io/cs-routeros-bouncer/";
+const AUTHOR_ID = "https://jmrp.io/#person";
+const SOFTWARE_ID = "https://github.com/jmrplens/cs-routeros-bouncer#software";
+const WEBSITE_ID = `${SITE_URL}#website`;
+
+/** Top-level sidebar group labels, keyed by their URL segment, for BreadcrumbList generation. */
+const SEGMENT_LABELS: Record<string, string> = {
+	"getting-started": "Getting Started",
+	configuration: "Configuration",
+	architecture: "Architecture",
+	monitoring: "Monitoring",
+	development: "Development",
+};
+
+/** Hand-curated HowTo steps for the step-by-step getting-started pages, keyed by page id/slug. */
+const HOW_TO_STEPS: Record<string, { name: string; text: string }[]> = {
+	"getting-started/quickstart": [
+		{
+			name: "Register the bouncer with CrowdSec",
+			text: "On the machine running CrowdSec, run `sudo cscli bouncers add cs-routeros-bouncer` and save the API key shown in the output.",
+		},
+		{
+			name: "Create a RouterOS API user",
+			text: "Connect to the MikroTik router and create a dedicated user group and user that has only the minimum required API permissions.",
+		},
+		{
+			name: "Deploy the bouncer",
+			text: "Run the bouncer via Docker Compose, or as a binary with a systemd service, pointing it at the CrowdSec LAPI and the RouterOS API.",
+		},
+		{
+			name: "Verify it's working",
+			text: "Check the bouncer's /health endpoint and logs, then confirm new firewall rules and address-list entries appear on the router.",
+		},
+	],
+	"getting-started/installation": [
+		{
+			name: "Choose a deployment method",
+			text: "Pick Docker Compose, a binary with systemd, or building from source, depending on your infrastructure.",
+		},
+		{
+			name: "Install and configure",
+			text: "Deploy the image or binary and set the CrowdSec LAPI URL, bouncer API key, and RouterOS connection details via environment variables or a YAML config file.",
+		},
+		{
+			name: "Verify installation",
+			text: "Check the service status, call the /health endpoint, review the logs, and confirm the router-side firewall rules and address lists were created.",
+		},
+	],
+	"getting-started/router-setup": [
+		{
+			name: "Enable the RouterOS API service",
+			text: "Enable the plaintext `api` (port 8728) service or, recommended for production, the TLS-encrypted `api-ssl` (port 8729) service on the MikroTik router.",
+		},
+		{
+			name: "Create a dedicated API user",
+			text: "Create a RouterOS user group with only the read, write, api, and sensitive policies, then create a user in that group with a strong password.",
+		},
+		{
+			name: "Allow firewall access for the bouncer host",
+			text: "If the router firewall restricts API access, add a rule allowing only the bouncer host's IP to reach the API port.",
+		},
+		{
+			name: "Verify connectivity",
+			text: "Test API connectivity with nc or openssl s_client, or start the bouncer and check its /health endpoint for routeros_connected: true.",
+		},
+	],
+};
+
+const { starlightRoute } = Astro.locals;
+const { entry, id, lastUpdated } = starlightRoute;
+
+const canonicalUrl = Astro.url.href;
+const title = entry.data.title;
+const description = entry.data.description;
+const dateModified = lastUpdated ? lastUpdated.toISOString() : undefined;
+
+const techArticle = {
+	"@context": "https://schema.org",
+	"@type": "TechArticle",
+	"@id": `${canonicalUrl}#article`,
+	headline: title,
+	...(description ? { description } : {}),
+	url: canonicalUrl,
+	mainEntityOfPage: canonicalUrl,
+	...(dateModified ? { dateModified } : {}),
+	author: { "@id": AUTHOR_ID },
+	publisher: { "@id": AUTHOR_ID },
+	about: { "@id": SOFTWARE_ID },
+	isPartOf: { "@id": WEBSITE_ID },
+	inLanguage: "en",
+};
+
+// Skip breadcrumbs on the homepage itself (id === "") — a single "Home" crumb adds no value.
+const segments = id ? id.split("/") : [];
+const breadcrumbList =
+	segments.length > 0
+		? {
+				"@context": "https://schema.org",
+				"@type": "BreadcrumbList",
+				itemListElement: [
+					{ "@type": "ListItem", position: 1, name: "Home", item: SITE_URL },
+					...segments.map((segment, index) => {
+						const isLast = index === segments.length - 1;
+						const name = isLast ? title : (SEGMENT_LABELS[segment] ?? segment);
+						const pathAcc = segments.slice(0, index + 1).join("/");
+						return {
+							"@type": "ListItem",
+							position: index + 2,
+							name,
+							item: `${SITE_URL}${pathAcc}/`,
+						};
+					}),
+				],
+			}
+		: null;
+
+const howToSteps = HOW_TO_STEPS[id];
+const howTo = howToSteps
+	? {
+			"@context": "https://schema.org",
+			"@type": "HowTo",
+			name: title,
+			...(description ? { description } : {}),
+			step: howToSteps.map((step, index) => ({
+				"@type": "HowToStep",
+				position: index + 1,
+				name: step.name,
+				text: step.text,
+			})),
+		}
+	: null;
+---
+
+<Default {...Astro.props}><slot /></Default>
+
+<script
+	type="application/ld+json"
+	is:inline
+	set:html={JSON.stringify(techArticle)}
+/>
+{
+	breadcrumbList && (
+		<script
+			type="application/ld+json"
+			is:inline
+			set:html={JSON.stringify(breadcrumbList)}
+		/>
+	)
+}
+{
+	howTo && (
+		<script
+			type="application/ld+json"
+			is:inline
+			set:html={JSON.stringify(howTo)}
+		/>
+	)
+}

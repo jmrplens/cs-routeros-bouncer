@@ -7,7 +7,7 @@ import { Steps, Tabs, TabItem } from "@astrojs/starlight/components";
 
 ## Connection issues
 
-### Cannot connect to MikroTik
+### Why can't the bouncer connect to MikroTik?
 
 :::danger[Error: dial tcp: connection refused]
 The bouncer cannot reach the MikroTik API port.
@@ -29,7 +29,7 @@ The bouncer cannot reach the MikroTik API port.
 
 </Steps>
 
-### Authentication failed
+### Why does RouterOS authentication fail?
 
 :::danger[Error: cannot log in]
 Wrong username or password.
@@ -51,7 +51,7 @@ Wrong username or password.
 
 </Steps>
 
-### TLS certificate errors
+### How do I fix RouterOS TLS certificate errors?
 
 :::danger[Error: x509: certificate signed by unknown authority]
 TLS verification failed.
@@ -74,7 +74,7 @@ TLS verification failed.
 
 ## CrowdSec LAPI issues
 
-### Cannot connect to LAPI
+### Why can't the bouncer connect to the CrowdSec LAPI?
 
 :::danger[Error: connection to CrowdSec LAPI failed]
 The bouncer cannot reach the CrowdSec Local API.
@@ -98,7 +98,7 @@ The bouncer cannot reach the CrowdSec Local API.
 
 </Steps>
 
-### No decisions received
+### Why isn't the bouncer receiving CrowdSec decisions?
 
 :::caution[Bouncer starts but no IPs are banned]
 The bouncer connects successfully but the address list stays empty.
@@ -113,7 +113,7 @@ Possible causes:
 
 ## Firewall rule issues
 
-### Rules not created
+### Why aren't firewall rules being created?
 
 :::caution[Address list has entries but no firewall rules]
 IPs are added to the address list but no firewall rules exist.
@@ -168,7 +168,7 @@ Rules may be placed after existing rules.
 
 ## Performance issues
 
-### High CPU during reconciliation
+### Why does RouterOS CPU spike during reconciliation?
 
 :::caution[Router CPU spikes during bouncer startup]
 This is expected during initial reconciliation with large address lists.

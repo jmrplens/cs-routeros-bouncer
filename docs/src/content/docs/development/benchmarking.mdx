@@ -52,6 +52,21 @@ Use the numbers to compare RouterOS versions, hardware models, TLS vs plaintext 
 
 For real bouncer startup performance, prefer the functional CAPI tests because reconciliation uses script-based bulk adds and pool-based removals, not only sequential API calls.
 
+## Real-world results
+
+These figures come from the functional CAPI test suite (`tests/functional/`) run against a MikroTik RB5009, not from the single-operation `cmd/benchmark` tool above. See [Architecture: Connection pool](/cs-routeros-bouncer/architecture/#connection-pool) and [Script-based bulk add](/cs-routeros-bouncer/architecture/#script-based-bulk-add) for the mechanisms behind these numbers.
+
+| Scenario                                                           | Result                        |
+| ------------------------------------------------------------------ | ----------------------------- |
+| Cache-first optimistic add (address not yet on the router)         | ~1–3 ms per operation         |
+| Check-first add (list entries before adding, avoided by cache)     | ~400 ms per IP                |
+| Script-based bulk add vs. sequential API calls                     | ~97× faster for large batches |
+| Full RB5009 bulk-add, ~28,700 CAPI-origin entries, `pool_size: 10` | ~35–36 s total                |
+
+The gap between cache-first (~1-3 ms) and check-first (~400 ms) is why the in-memory address cache described in [Architecture](/cs-routeros-bouncer/architecture/#in-memory-address-cache) exists: it lets the bouncer skip the RouterOS list-then-add round trip for addresses it already knows about.
+
+For CAPI-scale deployments (tens of thousands of entries), also see [CAPI Blocklists](/cs-routeros-bouncer/configuration/capi-blocklists/) and [Performance Tuning](/cs-routeros-bouncer/configuration/performance-tuning/) for `pool_size` sizing guidance.
+
 ## Safety checklist
 
 - Confirm the target is a lab router.

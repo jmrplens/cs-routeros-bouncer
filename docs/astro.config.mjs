@@ -1,8 +1,44 @@
 // @ts-check
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import sitemap from "@astrojs/sitemap";
 import rehypeMermaid from "rehype-mermaid";
 import fs from "node:fs";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+const docsRoot = fileURLToPath(new URL(".", import.meta.url));
+const siteBase = "/cs-routeros-bouncer";
+
+/**
+ * Resolve the newest git commit date for the content file backing a given
+ * sitemap URL, so `sitemap-0.xml` carries real per-page `<lastmod>` values
+ * instead of Starlight's default (which omits `lastmod` entirely).
+ * @param {string} pathname
+ * @returns {string | undefined}
+ */
+function getLastmod(pathname) {
+	const slug = pathname
+		.replace(new RegExp(`^${siteBase}/?`), "")
+		.replace(/\/$/, "");
+	const candidates =
+		slug === ""
+			? ["src/content/docs/index.mdx"]
+			: [`src/content/docs/${slug}.mdx`, `src/content/docs/${slug}/index.mdx`];
+	for (const relativePath of candidates) {
+		try {
+			const output = execFileSync(
+				"git",
+				["log", "-1", "--format=%cI", "--", relativePath],
+				{ cwd: docsRoot, encoding: "utf-8" },
+			).trim();
+			if (output) return output;
+		} catch {
+			// Try the next candidate path.
+		}
+	}
+	return undefined;
+}
 
 // Load RouterOS TextMate grammar for syntax highlighting
 const routerosGrammarURL = new URL(
@@ -58,6 +94,12 @@ export default defineConfig({
 	},
 	integrations: [
 		routerosLanguage(),
+		sitemap({
+			serialize(item) {
+				const lastmod = getLastmod(new URL(item.url).pathname);
+				return lastmod ? { ...item, lastmod } : item;
+			},
+		}),
 		starlight({
 			title: "cs-routeros-bouncer",
 			description:
@@ -87,6 +129,7 @@ export default defineConfig({
 			components: {
 				Header: "./src/components/overrides/Header.astro",
 				Footer: "./src/components/overrides/Footer.astro",
+				Head: "./src/components/overrides/Head.astro",
 			},
 			head: [
 				{
@@ -135,6 +178,21 @@ export default defineConfig({
 					attrs: {
 						name: "msvalidate.01",
 						content: "7574EB3B44624C239F14920DBC34EE25",
+					},
+				},
+				{
+					tag: "meta",
+					attrs: {
+						name: "google-site-verification",
+						content: "4Hx_PJ1seU_BgKfWpo_FA7_Hkh7GeYVNrvnvzqCjF0Q",
+					},
+				},
+				{
+					tag: "meta",
+					attrs: {
+						"http-equiv": "Content-Security-Policy",
+						content:
+							"default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; base-uri 'self'; form-action 'self'",
 					},
 				},
 				{
@@ -264,6 +322,10 @@ export default defineConfig({
 									"@id":
 										"https://github.com/jmrplens/cs-routeros-bouncer#software",
 								},
+								speakable: {
+									"@type": "SpeakableSpecification",
+									cssSelector: [".hero .tagline", "#how-it-works"],
+								},
 							},
 							{
 								"@type": "SoftwareApplication",
@@ -272,6 +334,8 @@ export default defineConfig({
 								name: "cs-routeros-bouncer",
 								applicationCategory: "SecurityApplication",
 								operatingSystem: "Linux",
+								softwareVersion: "1.4.5",
+								dateModified: "2026-06-19",
 								url: "https://github.com/jmrplens/cs-routeros-bouncer",
 								downloadUrl:
 									"https://github.com/jmrplens/cs-routeros-bouncer/releases",
@@ -315,48 +379,6 @@ export default defineConfig({
 										"https://github.com/jmrplens/cs-routeros-bouncer#software",
 								},
 								author: { "@id": "https://jmrp.io/#person" },
-							},
-						],
-					}),
-				},
-				{
-					tag: "script",
-					attrs: { type: "application/ld+json" },
-					content: JSON.stringify({
-						"@context": "https://schema.org",
-						"@type": "FAQPage",
-						mainEntity: [
-							{
-								"@type": "Question",
-								name: "What is cs-routeros-bouncer?",
-								acceptedAnswer: {
-									"@type": "Answer",
-									text: "cs-routeros-bouncer is a free, open-source CrowdSec bouncer for MikroTik RouterOS. It syncs CrowdSec ban/unban decisions into RouterOS firewall rules (filter and raw, IPv4 and IPv6) through the RouterOS API, with startup and periodic reconciliation, Prometheus metrics, and safe rule cleanup.",
-								},
-							},
-							{
-								"@type": "Question",
-								name: "Which CrowdSec and RouterOS versions does it support?",
-								acceptedAnswer: {
-									"@type": "Answer",
-									text: "It requires CrowdSec 1.5+ with the Local API (LAPI) reachable from the bouncer host, and MikroTik RouterOS 7.x with the API service enabled (port 8728, or 8729 for TLS), using a dedicated RouterOS API user with the appropriate permissions.",
-								},
-							},
-							{
-								"@type": "Question",
-								name: "Is cs-routeros-bouncer free and open source?",
-								acceptedAnswer: {
-									"@type": "Answer",
-									text: "Yes. cs-routeros-bouncer is MIT-licensed, written in Go, distributed as a single static binary, with the full source on GitHub and no paid tier.",
-								},
-							},
-							{
-								"@type": "Question",
-								name: "Does cs-routeros-bouncer support IPv6?",
-								acceptedAnswer: {
-									"@type": "Answer",
-									text: "Yes. Each RouterOS rule type it manages (filter input, raw prerouting, and optional filter output) has an IPv6 equivalent, and IPv4/IPv6 rule placement can be configured together or overridden independently per protocol.",
-								},
 							},
 						],
 					}),

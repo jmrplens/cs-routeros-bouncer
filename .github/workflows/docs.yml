@@ -26,6 +26,10 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+          # Starlight's `lastUpdated` and the sitemap's per-page `<lastmod>` both
+          # read git history per file. A shallow (fetch-depth: 1) checkout only
+          # has the latest commit, so every page would show the same date.
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v6
         with:
