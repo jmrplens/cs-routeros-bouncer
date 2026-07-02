@@ -273,6 +273,15 @@ export default defineConfig({
 					},
 				},
 				{
+					// `sizes: "any"` on a raster .ico looks wrong at a glance, but
+					// it's deliberate: Starlight's own SVG <link> (emitted by the
+					// `favicon` option above) is appended after this whole `head`
+					// array, i.e. last in document order. Some Chromium versions
+					// otherwise prefer an earlier .ico with an exact/declared size
+					// over a later SVG; marking it "any" makes it the least-specific
+					// candidate so the SVG — which browsers that support it always
+					// prefer — wins. This is the same technique documented in
+					// https://evilmartians.com/chronicles/how-to-favicon-in-2021-six-files-that-fit-most-needs.
 					tag: "link",
 					attrs: {
 						rel: "icon",
