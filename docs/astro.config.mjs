@@ -10,6 +10,20 @@ import { fileURLToPath } from "node:url";
 const docsRoot = fileURLToPath(new URL(".", import.meta.url));
 const siteBase = "/cs-routeros-bouncer";
 
+// Check once, at module load, instead of on every getLastmod() call — avoids
+// spawning a doomed `git` process per page when `git` is missing or the build
+// runs outside a git checkout (e.g. some Docker/CI contexts).
+let isGitAvailable = false;
+try {
+	execFileSync("git", ["rev-parse", "--is-inside-work-tree"], {
+		cwd: docsRoot,
+		stdio: "ignore",
+	});
+	isGitAvailable = true;
+} catch {
+	// No git available — getLastmod() below becomes a no-op.
+}
+
 /**
  * Resolve the newest git commit date for the content file backing a given
  * sitemap URL, so `sitemap-0.xml` carries real per-page `<lastmod>` values
@@ -18,6 +32,7 @@ const siteBase = "/cs-routeros-bouncer";
  * @returns {string | undefined}
  */
 function getLastmod(pathname) {
+	if (!isGitAvailable) return undefined;
 	const slug = pathname
 		.replace(new RegExp(`^${siteBase}/?`), "")
 		.replace(/\/$/, "");
@@ -39,6 +54,35 @@ function getLastmod(pathname) {
 	}
 	return undefined;
 }
+
+/**
+ * Resolve the latest release tag and its date from git, so the
+ * `SoftwareApplication` JSON-LD's `softwareVersion`/`dateModified` track the
+ * actual latest release instead of a hand-maintained literal that silently
+ * goes stale after every release (falls back to a known-good snapshot when
+ * git or tags aren't available, e.g. building from a tarball).
+ * @returns {{ version: string, date: string }}
+ */
+function getLatestRelease() {
+	const fallback = { version: "1.4.5", date: "2026-06-19" };
+	if (!isGitAvailable) return fallback;
+	try {
+		const tag = execFileSync("git", ["describe", "--tags", "--abbrev=0"], {
+			cwd: docsRoot,
+			encoding: "utf-8",
+		}).trim();
+		const date = execFileSync("git", ["log", "-1", "--format=%cI", tag], {
+			cwd: docsRoot,
+			encoding: "utf-8",
+		}).trim();
+		if (!tag || !date) return fallback;
+		return { version: tag.replace(/^v/, ""), date: date.slice(0, 10) };
+	} catch {
+		return fallback;
+	}
+}
+
+const latestRelease = getLatestRelease();
 
 // Load RouterOS TextMate grammar for syntax highlighting
 const routerosGrammarURL = new URL(
@@ -188,11 +232,24 @@ export default defineConfig({
 					},
 				},
 				{
+					// This is a baseline policy, not strong XSS mitigation: it still
+					// allows 'unsafe-inline' for script-src/style-src because this page
+					// ships literal inline <script type="application/ld+json"> blocks
+					// (with per-page dynamic content, so build-time hashes won't match)
+					// and Starlight's scoped inline styles — a static GitHub Pages site
+					// can't mint per-request nonces either. Its value is narrowing
+					// default-src/connect-src/base-uri/form-action to 'self', not
+					// blocking inline script execution.
 					tag: "meta",
 					attrs: {
 						"http-equiv": "Content-Security-Policy",
+						// script-src needs 'wasm-unsafe-eval' (and 'unsafe-eval' as a
+						// fallback for browsers that don't yet support the narrower
+						// directive, e.g. Safari) because Starlight's Pagefind search
+						// runs its index as WebAssembly — see
+						// https://pagefind.app/docs/hosting/#content-security-policy.
 						content:
-							"default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; base-uri 'self'; form-action 'self'",
+							"default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' 'unsafe-eval'; connect-src 'self'; base-uri 'self'; form-action 'self'",
 					},
 				},
 				{
@@ -334,8 +391,8 @@ export default defineConfig({
 								name: "cs-routeros-bouncer",
 								applicationCategory: "SecurityApplication",
 								operatingSystem: "Linux",
-								softwareVersion: "1.4.5",
-								dateModified: "2026-06-19",
+								softwareVersion: latestRelease.version,
+								dateModified: latestRelease.date,
 								url: "https://github.com/jmrplens/cs-routeros-bouncer",
 								downloadUrl:
 									"https://github.com/jmrplens/cs-routeros-bouncer/releases",
