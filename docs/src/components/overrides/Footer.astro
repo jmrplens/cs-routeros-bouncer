@@ -1,5 +1,26 @@
 ---
 import Default from "@astrojs/starlight/components/Footer.astro";
+
+// Localized strings for the custom footer, keyed by the page language
+// (Starlight sets `lang` on the route data; the root locale is English).
+const FOOTER_STRINGS: Record<
+	string,
+	{ builtWith: string; poweredBy: string; license: string }
+> = {
+	en: {
+		builtWith: "Built with",
+		poweredBy: "Powered by",
+		license: "MIT License",
+	},
+	es: {
+		builtWith: "Creado con",
+		poweredBy: "Impulsado por",
+		license: "Licencia MIT",
+	},
+};
+
+const lang = Astro.locals.starlightRoute?.lang ?? "en";
+const t = FOOTER_STRINGS[lang] ?? FOOTER_STRINGS.en;
 ---
 
 <Default {...Astro.props}><slot /></Default>
@@ -7,12 +28,14 @@ import Default from "@astrojs/starlight/components/Footer.astro";
 <div class="custom-footer">
 	<div class="footer-inner">
 		<p>
-			Built with <a
+			{t.builtWith}
+			<a
 				href="https://starlight.astro.build/"
 				target="_blank"
 				rel="external noopener noreferrer">Starlight</a
 			>
-			&middot; Powered by <a
+			&middot; {t.poweredBy}
+			<a
 				href="https://www.crowdsec.net/"
 				target="_blank"
 				rel="external noopener noreferrer">CrowdSec</a
@@ -34,7 +57,7 @@ import Default from "@astrojs/starlight/components/Footer.astro";
 			<a
 				href="https://github.com/jmrplens/cs-routeros-bouncer/blob/main/LICENSE"
 				target="_blank"
-				rel="external noopener noreferrer">MIT License</a
+				rel="external noopener noreferrer">{t.license}</a
 			>
 		</p>
 	</div>

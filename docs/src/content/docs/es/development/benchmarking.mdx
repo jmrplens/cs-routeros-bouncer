@@ -1,0 +1,75 @@
+---
+title: Benchmarking
+description: Cómo ejecutar e interpretar el comando de benchmark de la API de RouterOS.
+---
+
+El comando de benchmark mide operaciones de la API de RouterOS contra un router real. Está pensado para desarrollo y planificación de capacidad, no para despliegues normales.
+
+## Comando
+
+Compila y ejecuta el benchmark:
+
+```bash
+go run ./cmd/benchmark
+```
+
+La ruta de configuración es opcional y por defecto es `config/test.yaml`:
+
+```bash
+go run ./cmd/benchmark config/test.yaml
+```
+
+El benchmark lee la sección de MikroTik del archivo YAML seleccionado, se conecta a RouterOS y después ejecuta operaciones a nivel de API.
+
+## Qué mide
+
+- Adiciones/eliminaciones individuales de direcciones IPv4 e IPv6 en address-list.
+- Llamadas de búsqueda y listado de address-list.
+- Llamadas de creación, búsqueda y eliminación de reglas de firewall.
+- Tiempos de adición/listado/búsqueda/eliminación secuenciales de lotes IPv4.
+
+El benchmark usa direcciones de prueba de prefijos de documentación como `198.51.100.0/24` y `2001:db8::/32`, pero aun así escribe en las address lists y los menús de firewall de RouterOS configurados.
+
+:::caution
+Ejecuta los benchmarks en un router de laboratorio o durante una ventana de mantenimiento. El comando crea reglas de firewall y entradas de address-list temporales y después las elimina.
+:::
+
+## Ejemplo de salida
+
+```text
+Connected to: lab-router
+
+=== SINGLE OPERATION BENCHMARKS (RouterOS API) ===
+  Add single IPv4                         35ms  OK
+  Find IPv4 (1 entry)                     12ms  OK
+  Remove IPv4 by .id                      18ms  OK
+
+=== BATCH ADD BENCHMARKS (sequential via API) ===
+  Add 100 IPv4 (sequential)                4s  (40ms/ip, failures=0)
+```
+
+Usa los números para comparar versiones de RouterOS, modelos de hardware, API con TLS frente a texto plano y latencia de red.
+
+Para el rendimiento real de arranque del bouncer, prefiere las pruebas funcionales de CAPI, porque la reconciliación usa adiciones masivas basadas en scripts y eliminaciones basadas en pool, no solo llamadas secuenciales a la API.
+
+## Resultados en el mundo real
+
+Estas cifras provienen de la suite de pruebas funcionales de CAPI (`tests/functional/`) ejecutada contra un MikroTik RB5009, no de la herramienta de operaciones individuales `cmd/benchmark` anterior. Consulta [Arquitectura: Pool de conexiones](/cs-routeros-bouncer/es/architecture/#pool-de-conexiones) y [Adición masiva basada en scripts](/cs-routeros-bouncer/es/architecture/#adición-masiva-basada-en-scripts) para conocer los mecanismos detrás de estos números.
+
+| Escenario                                                                           | Resultado                          |
+| ----------------------------------------------------------------------------------- | ---------------------------------- |
+| Adición optimista cache-first (la dirección aún no está en el router)               | ~1–3 ms por operación              |
+| Adición check-first (listar entradas antes de añadir, evitado por la caché)         | ~400 ms por IP                     |
+| Adición masiva basada en scripts frente a llamadas secuenciales a la API            | ~97× más rápida para lotes grandes |
+| Adición masiva completa en RB5009, ~28.700 entradas de origen CAPI, `pool_size: 10` | ~35–36 s en total                  |
+
+La diferencia entre cache-first (~1-3 ms) y check-first (~400 ms) es la razón por la que existe la caché de direcciones en memoria descrita en [Arquitectura](/cs-routeros-bouncer/es/architecture/#caché-de-direcciones-en-memoria): permite al bouncer saltarse el viaje de ida y vuelta listar-y-añadir de RouterOS para las direcciones que ya conoce.
+
+Para despliegues a escala de CAPI (decenas de miles de entradas), consulta también [Blocklists de CAPI](/cs-routeros-bouncer/es/configuration/capi-blocklists/) y [Ajuste de rendimiento](/cs-routeros-bouncer/es/configuration/performance-tuning/) para orientación sobre el dimensionado de `pool_size`.
+
+## Lista de comprobación de seguridad
+
+- Confirma que el destino es un router de laboratorio.
+- Usa address lists de prueba dedicadas cuando sea posible.
+- Mantén `command_timeout` lo bastante alto para dispositivos lentos.
+- Revisa el router tras una interrupción y elimina cualquier comentario `benchmark-*` si una ejecución se detiene a medias.

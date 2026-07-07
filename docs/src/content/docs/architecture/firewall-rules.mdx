@@ -3,7 +3,7 @@ title: Firewall Rules
 description: How the bouncer creates and manages firewall rules on the MikroTik router.
 ---
 
-import { Badge, Steps, LinkCard } from "@astrojs/starlight/components";
+import { Steps, LinkCard } from "@astrojs/starlight/components";
 
 How the bouncer creates and manages firewall rules.
 
@@ -102,7 +102,7 @@ Rules are identified by a structured comment:
 | `prefix`    | Configurable via `comment_prefix` (default: `crowdsec-bouncer`) |
 | `type`      | `filter` or `raw`                                               |
 | `chain`     | `input`, `forward`, `prerouting`, `output`                      |
-| `direction` | `input`, `output`, or `whitelist`                               |
+| `direction` | `input`, `output`, `whitelist`, or `counting`                   |
 | `protocol`  | `v4` or `v6`                                                    |
 
 :::note

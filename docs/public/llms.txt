@@ -50,6 +50,11 @@ Key behavior:
 - [Contributing](https://jmrplens.github.io/cs-routeros-bouncer/development/contributing/): Contribution guidelines.
 - [Security Policy](https://jmrplens.github.io/cs-routeros-bouncer/development/security/): Vulnerability reporting.
 
+## Languages
+
+- English (default): all URLs above.
+- [Español](https://jmrplens.github.io/cs-routeros-bouncer/es/): full Spanish translation of every page, mirrored under the `/es/` path prefix (e.g. `/es/getting-started/quickstart/`).
+
 ## Optional
 
 - [Full LLM reference](https://jmrplens.github.io/cs-routeros-bouncer/llms-full.txt): Generated companion reference with the complete configuration and CLI surface.

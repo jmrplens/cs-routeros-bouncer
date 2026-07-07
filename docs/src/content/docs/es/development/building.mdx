@@ -1,0 +1,211 @@
+---
+title: Compilación
+description: Cómo compilar, probar y ejecutar el linter del bouncer desde el código fuente.
+---
+
+import {
+  Steps,
+  Tabs,
+  TabItem,
+  LinkCard,
+  CardGrid,
+} from "@astrojs/starlight/components";
+
+## Requisitos previos
+
+- **Go** 1.26.4 o posterior
+- **Docker** (para compilar imágenes Docker)
+- **golangci-lint** (para el linting)
+
+## Compilación
+
+<Tabs>
+  <TabItem label="Binario" icon="seti:go">
+
+```bash
+# Clona el repositorio
+git clone https://github.com/jmrplens/cs-routeros-bouncer.git
+cd cs-routeros-bouncer
+
+# Compila
+CGO_ENABLED=0 go build -o cs-routeros-bouncer ./cmd/cs-routeros-bouncer
+```
+
+**Con información de versión:**
+
+```bash
+CGO_ENABLED=0 go build -ldflags "-X github.com/jmrplens/cs-routeros-bouncer/internal/config.Version=1.4.5 -X github.com/jmrplens/cs-routeros-bouncer/internal/config.Commit=$(git rev-parse --short HEAD) -X github.com/jmrplens/cs-routeros-bouncer/internal/config.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) -X github.com/crowdsecurity/go-cs-lib/version.Version=1.4.5" \
+  -o cs-routeros-bouncer ./cmd/cs-routeros-bouncer
+```
+
+  </TabItem>
+  <TabItem label="Docker" icon="seti:docker">
+
+```bash
+docker build -f docker/Dockerfile -t cs-routeros-bouncer:local .
+```
+
+  </TabItem>
+  <TabItem label="Compilación cruzada">
+
+Compila para distintas arquitecturas:
+
+```bash
+# ARM64 (p. ej., Raspberry Pi 4, Apple Silicon)
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o cs-routeros-bouncer-arm64 ./cmd/cs-routeros-bouncer
+
+# ARMv7 (p. ej., Raspberry Pi 3)
+CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -o cs-routeros-bouncer-armv7 ./cmd/cs-routeros-bouncer
+
+# AMD64
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o cs-routeros-bouncer-amd64 ./cmd/cs-routeros-bouncer
+```
+
+  </TabItem>
+</Tabs>
+
+## Pruebas
+
+<Tabs>
+  <TabItem label="Pruebas unitarias">
+
+```bash
+# Ejecuta todas las pruebas
+go test ./...
+
+# Con salida detallada
+go test -v ./...
+
+# Con cobertura
+go test -coverprofile=coverage.out ./...
+go tool cover -html=coverage.out
+```
+
+**Ejecuta un paquete concreto:**
+
+```bash
+go test -v ./internal/config/...
+go test -v ./internal/routeros/...
+go test -v ./internal/metrics/...
+```
+
+  </TabItem>
+  <TabItem label="Cobertura">
+
+```bash
+# Genera el informe de cobertura
+go test -coverprofile=coverage.out -covermode=atomic ./...
+
+# Consulta la cobertura en el navegador
+go tool cover -html=coverage.out -o coverage.html
+
+# Comprueba el porcentaje de cobertura
+go tool cover -func=coverage.out | tail -1
+```
+
+  </TabItem>
+  <TabItem label="Pruebas de integración y funcionales">
+
+Las pruebas de integración están protegidas por la etiqueta de compilación `integration`. La suite funcional en Bash ejecuta comprobaciones de caja negra contra un bouncer real instalado.
+
+```bash
+# Pruebas de integración en Go
+go test -v -tags integration -count=1 -timeout 300s ./tests/integration/...
+
+# Suite funcional de caja negra
+cp tests/functional/.env.example tests/functional/.env
+tests/functional/run_tests.sh
+```
+
+:::caution
+Las pruebas de integración y funcionales crean y eliminan reglas de firewall y entradas de address-list en el router de destino. Usa un router de pruebas o asegúrate de entender el impacto.
+:::
+
+  </TabItem>
+</Tabs>
+
+<CardGrid>
+  <LinkCard
+    title="Guía de pruebas"
+    description="Suites de pruebas unitarias, de integración y funcionales en detalle."
+    href="/cs-routeros-bouncer/es/development/testing-guide/"
+  />
+  <LinkCard
+    title="Benchmarking"
+    description="Comando de benchmark de la API de RouterOS y notas de seguridad."
+    href="/cs-routeros-bouncer/es/development/benchmarking/"
+  />
+</CardGrid>
+
+## Linting
+
+```bash
+# Instala golangci-lint
+go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+
+# Ejecuta el linter
+golangci-lint run
+
+# Ejecuta con corrección automática
+golangci-lint run --fix
+
+# Go vet
+go vet ./...
+```
+
+El proyecto usa `.golangci.yml` para la configuración del linter.
+
+## CI/CD
+
+| Workflow      | Disparador                        | Propósito                                                            |
+| ------------- | --------------------------------- | -------------------------------------------------------------------- |
+| `ci.yml`      | Push, PR                          | Ejecuta linting, pruebas, análisis de docs y comprobaciones de build |
+| `docs.yml`    | Cambios en docs, ejecución manual | Compila y despliega el sitio de documentación de Astro               |
+| `release.yml` | Push de etiqueta                  | Compila binarios e imágenes Docker, crea la release de GitHub        |
+
+### Proceso de publicación
+
+<Steps>
+
+1. **Actualiza la versión** en el código
+
+2. **Crea y sube una etiqueta de git**
+
+   ```bash
+   git tag v1.4.5
+   git push origin v1.4.5
+   ```
+
+3. **GitHub Actions automáticamente:**
+   - Compila binarios para linux/amd64, linux/arm64, linux/arm/v7
+   - Compila y publica imágenes Docker (multiarquitectura)
+   - Crea una release de GitHub con los binarios adjuntos
+
+</Steps>
+
+## Flujo de trabajo de desarrollo
+
+<Steps>
+
+1. **Crea una rama de funcionalidad**
+
+   ```bash
+   git checkout -b feat/my-feature
+   ```
+
+2. **Haz los cambios y pruébalos**
+
+   ```bash
+   go test ./...
+   golangci-lint run
+   ```
+
+3. **Haz commit con un mensaje convencional**
+
+   ```bash
+   git commit -m "feat: add new feature"
+   ```
+
+4. **Haz push y crea un PR**
+
+</Steps>

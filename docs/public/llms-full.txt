@@ -72,7 +72,7 @@ Source of truth: this file summarizes https://jmrplens.github.io/cs-routeros-bou
 | `logging.level` | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error`. |
 | `logging.format` | `LOG_FORMAT` | `text` | `text` or `json`. |
 | `logging.file` | `LOG_FILE` | — (stdout) | When set, logs to both stdout and file. |
-| `metrics.enabled` | `METRICS_ENABLED` | `false` | Exposes `/metrics` (Prometheus) and `/health`. |
+| `metrics.enabled` | `METRICS_ENABLED` | `false` | Exposes `/metrics` (Prometheus). `/health` is always served. |
 | `metrics.listen_addr` / `listen_port` | `METRICS_ADDR` / `METRICS_PORT` | `0.0.0.0` / `2112` | Do not expose to the internet. |
 | `metrics.routeros_poll_interval` | `METRICS_ROUTEROS_POLL_INTERVAL` | `30s` | RouterOS system metrics (CPU, memory, temperature); `0` disables. |
 | `metrics.track_processed` | `METRICS_TRACK_PROCESSED` | `true` | Adds passthrough counting rules to measure total evaluated (not just dropped) traffic. |

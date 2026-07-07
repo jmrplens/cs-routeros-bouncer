@@ -6,7 +6,7 @@ Thank you for your interest in contributing! This guide will help you get starte
 
 ### Prerequisites
 
-- **Go 1.26.3+** — [Download](https://go.dev/dl/)
+- **Go 1.26.4+** — [Download](https://go.dev/dl/)
 - **golangci-lint** — `go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest`
 - **Docker** (optional) — for container builds and testing
 - **MikroTik router** (optional) — for integration testing

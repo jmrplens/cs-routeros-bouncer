@@ -25,7 +25,7 @@ You should receive a response within 48 hours. We will work with you to understa
 
 This bouncer interacts with your network firewall. Please keep in mind:
 
-- **RouterOS API credentials**: Use a dedicated user with minimal permissions (only `read`, `write`, `api` for firewall and address lists)
+- **RouterOS API credentials**: Use a dedicated user with minimal permissions — the `read`, `write`, `api`, and `sensitive` policies, as created by the group command in the README (the `sensitive` policy is required to manage the firewall entries)
 - **CrowdSec API key**: Keep bouncer API keys secure; rotate them periodically
 - **Network exposure**: The metrics endpoint (default port 2112) should not be exposed to the internet
 - **TLS**: Enable TLS for the RouterOS API connection in production (`mikrotik.tls: true`, port 8729)

@@ -1,0 +1,128 @@
+---
+title: Configuración de MikroTik
+description: Conexión a la API de RouterOS, TLS, tiempos de espera y ajustes del pool de conexiones.
+---
+
+import { Badge } from "@astrojs/starlight/components";
+
+Ajustes de la conexión a la [API de MikroTik RouterOS](https://help.mikrotik.com/docs/spaces/ROS/pages/47579160/API).
+
+## Conexión
+
+### `mikrotik.address` <Badge text="Obligatorio" variant="danger" />
+
+**Env:** `MIKROTIK_HOST` · **Por defecto:** `192.168.0.1:8728`
+
+Dirección de la API de RouterOS en formato `host:port`.
+
+- Puerto `8728` — API en texto plano
+- Puerto `8729` — API cifrada con TLS
+
+```yaml
+mikrotik:
+  address: "192.168.0.1:8728"
+```
+
+### `mikrotik.username` <Badge text="Obligatorio" variant="danger" />
+
+**Env:** `MIKROTIK_USER` · **Por defecto:** `crowdsec`
+
+El nombre de usuario de la API de RouterOS. Usa un usuario dedicado con permisos mínimos. Consulta [Configuración del router](/cs-routeros-bouncer/es/getting-started/router-setup/) para crear el usuario.
+
+### `mikrotik.password` <Badge text="Obligatorio" variant="danger" />
+
+**Env:** `MIKROTIK_PASS` · **Por defecto:** —
+
+La contraseña de la API de RouterOS.
+
+:::tip[Variables de entorno]
+Para valores sensibles como contraseñas, usa variables de entorno en lugar del archivo de configuración:
+
+```bash
+export MIKROTIK_PASS="your-secure-password"
+```
+
+:::
+
+## TLS
+
+### `mikrotik.tls` <Badge text="Opcional" variant="note" />
+
+**Env:** `MIKROTIK_TLS` · **Por defecto:** `false`
+
+Habilita TLS para la conexión a la API de RouterOS. Requiere el servicio `api-ssl` en el router (puerto 8729).
+
+```yaml
+mikrotik:
+  address: "192.168.0.1:8729"
+  tls: true
+```
+
+### `mikrotik.tls_insecure` <Badge text="Opcional" variant="note" />
+
+**Env:** `MIKROTIK_TLS_INSECURE` · **Por defecto:** `false`
+
+Omite la verificación del certificado TLS. Solo es necesario cuando el router usa un certificado autofirmado.
+
+:::caution
+Mantén `tls_insecure: false` siempre que sea posible: la configuración recomendada en producción es un certificado firmado por una CA en la que confíe el host del bouncer, de modo que la conexión quede cifrada y verificada. Establece `tls_insecure: true` solo para certificados autofirmados o para diagnósticos puntuales.
+:::
+
+## Tiempos de espera
+
+### `mikrotik.connection_timeout` <Badge text="Opcional" variant="note" />
+
+**Env:** `MIKROTIK_CONN_TIMEOUT` · **Por defecto:** `10s`
+
+Tiempo máximo de espera para la conexión inicial a la API. Usa el formato de duración de Go.
+
+### `mikrotik.command_timeout` <Badge text="Opcional" variant="note" />
+
+**Env:** `MIKROTIK_CMD_TIMEOUT` · **Por defecto:** `30s`
+
+Tiempo máximo de espera para que se complete un único comando de la API. Auméntalo si tienes un router lento o address lists grandes.
+
+:::tip
+Si ves errores de tiempo de espera durante la reconciliación con listas de IPs grandes (más de 20.000), aumenta `command_timeout` a `60s` o más. Ten en cuenta que, con la adición masiva basada en scripts, los comandos individuales de la API son pequeños (100 IPs por script), por lo que el valor por defecto de `30s` es suficiente para la mayoría de las instalaciones.
+:::
+
+## Pool de conexiones
+
+### `mikrotik.pool_size` <Badge text="Opcional" variant="note" />
+
+**Env:** `MIKROTIK_POOL_SIZE` · **Por defecto:** `4`
+
+Número de conexiones paralelas a la API de RouterOS usadas para las operaciones en bloque (añadir, eliminar y reconciliar entradas de address-list). Un valor más alto aumenta el rendimiento durante la reconciliación de arranque y los eventos masivos de ban/unban.
+
+- **Rango válido:** 1–20
+- **Limitación automática:** al arrancar, el bouncer consulta el límite `max-sessions` del servicio API del router y reduce automáticamente el tamaño efectivo del pool para que nunca supere `max-sessions − 2` (reservando conexiones para el cliente principal y herramientas externas como WinBox).
+
+```yaml
+mikrotik:
+  pool_size: 8 # Mayor paralelismo para acelerar las operaciones en bloque
+```
+
+### Comprobar el límite del router
+
+El servicio API de RouterOS tiene un ajuste `max-sessions` que limita las conexiones simultáneas. El valor de fábrica es **20**.
+
+```routeros
+# Comprobar el límite actual
+/ip/service/print where name=api
+
+# Aumentarlo (el valor máximo admitido es 1000)
+/ip/service/set api max-sessions=1000
+```
+
+:::tip[Ajuste de rendimiento]
+Para despliegues pequeños y medianos (≤ 5.000 IPs), el valor por defecto `pool_size: 4` es óptimo. Para listas de CAPI muy grandes (más de 20.000 IPs), aumentarlo a 6–8 puede reducir notablemente el tiempo de reconciliación. Verifica siempre primero el `max-sessions` del router:
+
+```routeros
+/ip/service/set api max-sessions=1000
+```
+
+:::
+
+:::note
+Cada conexión del pool es una sesión completa de la API de RouterOS. En routers con recursos limitados (p. ej., hAP lite), mantén `pool_size` bajo (1–2) para evitar presión de memoria.
+:::

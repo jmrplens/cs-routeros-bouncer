@@ -1,0 +1,84 @@
+---
+title: Seguridad
+description: Política de seguridad, versiones compatibles y notificación de vulnerabilidades.
+---
+
+import { Steps, Badge } from "@astrojs/starlight/components";
+
+## Versiones compatibles
+
+| Versión            | Compatible                           |
+| ------------------ | ------------------------------------ |
+| Última release     | <Badge text="✓" variant="success" /> |
+| Minor anterior     | <Badge text="✓" variant="success" /> |
+| Versiones antiguas | <Badge text="✗" variant="danger" />  |
+
+## Notificar vulnerabilidades
+
+<Steps>
+
+1. **No** abras un issue público
+
+2. **Contacta de forma privada**
+
+   Abre un [aviso de seguridad privado](https://github.com/jmrplens/cs-routeros-bouncer/security/advisories/new) usando la funcionalidad de [notificación privada de vulnerabilidades de GitHub](https://docs.github.com/en/code-security/security-advisories/guidance-on-reporting-and-writing-information-about-vulnerabilities/privately-reporting-a-security-vulnerability). Si prefieres correo cifrado, usa la [clave PGP](https://keys.openpgp.org/vks/v1/by-fingerprint/0A993B268654DBBA52B7E8D3FCF653391E2C91FC) del mantenedor.
+
+3. **Incluye los detalles**
+   - Descripción de la vulnerabilidad
+   - Pasos para reproducirla
+   - Impacto potencial
+   - Solución sugerida (si la hay)
+
+</Steps>
+
+Nuestro objetivo es responder en un plazo de 48 horas y trabajaremos contigo para entender y resolver el problema.
+
+## Consideraciones de seguridad
+
+### Credenciales de la API de RouterOS
+
+- Usa un usuario dedicado con permisos mínimos (solo las políticas `read`, `write`, `api` y `sensitive`)
+- Usa TLS cuando sea posible (`mikrotik.tls: true`)
+- Almacena las credenciales de forma segura (variables de entorno o gestión de secretos)
+- Nunca subas credenciales al control de versiones
+
+### Conexión a la LAPI de CrowdSec
+
+- Usa certificados TLS para las conexiones a la LAPI cuando estén disponibles
+- Restringe el acceso a la LAPI a redes de confianza
+- Rota las API keys del bouncer periódicamente
+
+### Endpoint de métricas
+
+:::caution
+Los endpoints `/metrics` y `/health` no requieren autenticación. Restringe el acceso mediante segmentación de red o reglas de firewall. No expongas el puerto de métricas a internet.
+:::
+
+### Seguridad en Docker
+
+- La imagen Docker oficial se ejecuta como usuario no root
+- Usa un montaje de sistema de archivos de solo lectura cuando sea posible
+- Limita las capabilities del contenedor
+- Usa gestión de secretos para las credenciales (secretos de Docker, secretos de Kubernetes)
+
+### Hardening de systemd
+
+El comando `setup` escribe una unidad de systemd con hardening habilitado:
+
+| Ajuste                    | Propósito                                                                     |
+| ------------------------- | ----------------------------------------------------------------------------- |
+| `NoNewPrivileges=yes`     | Impide la escalada de privilegios a través de transiciones exec               |
+| `ProtectSystem=strict`    | Monta las rutas del sistema en solo lectura para el servicio                  |
+| `ProtectHome=yes`         | Bloquea el acceso directo a los directorios home                              |
+| `ReadWritePaths=/var/log` | Permite escribir archivos de log cuando `logging.file` apunta bajo `/var/log` |
+| `PrivateTmp=yes`          | Proporciona al servicio un directorio temporal aislado                        |
+| `LimitNOFILE=65536`       | Deja margen para las sesiones de la API de RouterOS y los endpoints HTTP      |
+
+Si mantienes un archivo de unidad manual, conserva estos ajustes salvo que tu despliegue tenga una razón concreta para relajar alguno.
+
+### Integridad de las reglas de firewall
+
+- El bouncer identifica sus reglas mediante comentarios estructurados — no modifiques estos comentarios manualmente
+- Usa la opción `comment_prefix` para evitar conflictos con otras herramientas
+- El bouncer realiza una limpieza al arrancar y al apagarse para evitar reglas obsoletas
+- Cada regla del bouncer incluye además la firma fija `@cs-routeros-bouncer`. Esto permite que la limpieza de recuperación tras un fallo encuentre reglas antiguas incluso si `comment_prefix` cambia más adelante.

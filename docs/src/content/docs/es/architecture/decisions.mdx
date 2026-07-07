@@ -1,0 +1,92 @@
+---
+title: Procesamiento de decisiones
+description: Cómo procesa el bouncer las decisiones de CrowdSec — filtrado, deduplicación y gestión de ámbitos.
+---
+
+import { Steps, LinkCard } from "@astrojs/starlight/components";
+
+Cómo procesa el bouncer las decisiones entrantes de CrowdSec.
+
+## Flujo de procesamiento
+
+<Steps>
+
+1. **Recibir la decisión de la LAPI**
+
+   El bouncer obtiene las decisiones nuevas y expiradas de la Local API de CrowdSec.
+
+2. **Comprobar el ámbito**
+
+   | Ámbito  | Acción                                  | Ejemplo       |
+   | ------- | --------------------------------------- | ------------- |
+   | `Ip`    | Se añade directamente a la address-list | `192.168.1.1` |
+   | `Range` | Se añade como CIDR a la address-list    | `10.0.0.0/24` |
+   | Otro    | Se registra como advertencia y se omite | —             |
+
+   `Ip` y `Range` son los valores de ámbito tal como CrowdSec los envía en las decisiones; el filtro de configuración `crowdsec.scopes` usa las formas en minúscula `ip` y `range`.
+
+3. **Filtrar por origen**
+
+   Si `origins` está configurado, solo pasan las decisiones de los orígenes permitidos. Las decisiones que no coinciden se descartan.
+
+4. **Filtrar por escenario**
+
+   Si `scenarios_containing` o `scenarios_not_containing` están configurados, solo se procesan las decisiones cuyo nombre de escenario supera esos filtros de subcadena.
+
+5. **Aplicar la acción**
+   - **Ban** → Añadir la IP/rango a la address-list de MikroTik
+   - **Unban** → Eliminar la IP/rango de la address-list
+
+</Steps>
+
+## Filtrado por origen
+
+Cuando `origins` está configurado, el bouncer solo procesa las decisiones de los orígenes especificados:
+
+| Origen     | Fuente                                                |
+| ---------- | ----------------------------------------------------- |
+| `crowdsec` | Detecciones del motor local de CrowdSec               |
+| `cscli`    | Bans manuales mediante `cscli decisions add`          |
+| `CAPI`     | Blocklists comunitarias de la Central API de CrowdSec |
+| `lists:*`  | Suscripciones a blocklists de terceros                |
+
+```yaml
+crowdsec:
+  origins: ["crowdsec", "cscli"] # Ignorar las listas comunitarias de CAPI
+```
+
+Cuando `origins` está vacío (valor por defecto), **se aceptan todos los orígenes**.
+
+## Filtrado por escenario
+
+Los filtros de escenario usan los campos `scenarios_containing` y `scenarios_not_containing` de CrowdSec. Buscan subcadenas literales en el nombre del escenario, como `ssh`, `http` o `crowdsecurity/ssh-bf`.
+
+```yaml
+crowdsec:
+  scenarios_containing:
+    - "ssh"
+    - "http"
+  scenarios_not_containing:
+    - "test"
+```
+
+Usa `scenarios_containing` para quedarte solo con los escenarios que coinciden. Usa `scenarios_not_containing` para excluir escenarios ruidosos o no deseados cuando el bouncer procesa las decisiones recibidas de la LAPI de CrowdSec.
+
+## Gestión de IPs duplicadas
+
+Cuando la misma IP aparece en varias decisiones (por ejemplo, con distintos escenarios u orígenes), el bouncer lo gestiona de forma eficiente:
+
+1. **Durante los bans**: consulta primero la caché en memoria. Si ya se sabe que la dirección está presente, la llamada a la API de RouterOS se omite.
+2. **Durante los unbans**: consulta primero la caché en memoria y solo elimina de MikroTik si la IP está realmente presente
+3. **Al arrancar y en la reconciliación periódica**: el recolector de decisiones deduplica las IPs antes de la reconciliación
+4. **Tras fallos de caché**: si RouterOS aun así responde con `already have such entry`, el bouncer lo trata como un conflicto a nivel de dispositivo, mantiene la sesión de API abierta, localiza la entrada existente, actualiza su timeout/comentario y registra la dirección en la caché. Esta ruta de escritura solo ocurre cuando la dirección faltaba en la caché local.
+
+:::note
+La gestión de duplicados es transparente: la address-list solo contiene una entrada por IP, con independencia de cuántas decisiones la referencien. Los eventos de ban duplicados ya en caché no refrescan el timeout de RouterOS durante la misma ejecución; esto evita escrituras repetidas en RouterOS durante los picos del stream. La reconciliación periódica repara la deriva real volviendo a añadir las direcciones que siguen activas en CrowdSec pero faltan en MikroTik.
+:::
+
+<LinkCard
+  title="Configuración de CrowdSec"
+  description="Configura los orígenes, los filtros de subcadena de escenarios y los ajustes de conexión a la LAPI."
+  href="/cs-routeros-bouncer/es/configuration/crowdsec/"
+/>

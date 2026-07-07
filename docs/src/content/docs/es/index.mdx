@@ -1,0 +1,230 @@
+---
+title: Bouncer de CrowdSec para MikroTik RouterOS
+description: Bouncer de CrowdSec para MikroTik RouterOS — gestión automática del firewall mediante la API de RouterOS
+template: doc
+hero:
+  title: RouterOS Bouncer
+  tagline: cs-routeros-bouncer sincroniza las decisiones de CrowdSec con las reglas del firewall de MikroTik, con reconciliación, métricas y limpieza segura.
+  image:
+    file: ../../../assets/logo.svg
+    alt: Logo de cs-routeros-bouncer
+  actions:
+    - text: Empezar
+      link: /cs-routeros-bouncer/es/getting-started/quickstart/
+      icon: right-arrow
+      variant: primary
+    - text: Ver en GitHub
+      link: https://github.com/jmrplens/cs-routeros-bouncer
+      icon: external
+      variant: minimal
+head:
+  - tag: script
+    attrs:
+      type: application/ld+json
+    content: |
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "¿Qué es cs-routeros-bouncer?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "cs-routeros-bouncer es un bouncer de CrowdSec gratuito y de código abierto para MikroTik RouterOS. Sincroniza las decisiones de bloqueo/desbloqueo de CrowdSec con las reglas del firewall de RouterOS (filter y raw, IPv4 e IPv6) a través de la API de RouterOS, con reconciliación al inicio y periódica, métricas de Prometheus y limpieza segura de reglas."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "¿Qué versiones de CrowdSec y RouterOS soporta?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Requiere CrowdSec 1.5+ con la Local API (LAPI) accesible desde el host del bouncer, y MikroTik RouterOS 7.x con el servicio API habilitado (puerto 8728, u 8729 para TLS), usando un usuario dedicado de la API de RouterOS con los permisos apropiados."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "¿Es cs-routeros-bouncer gratuito y de código abierto?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Sí. cs-routeros-bouncer tiene licencia MIT, está escrito en Go, se distribuye como un único binario estático, con el código fuente completo en GitHub y sin planes de pago."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "¿Soporta cs-routeros-bouncer IPv6?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Sí. Cada tipo de regla de RouterOS que gestiona (filter input, raw prerouting y opcionalmente filter output) tiene un equivalente IPv6, y la ubicación de las reglas IPv4/IPv6 puede configurarse de forma conjunta o sobrescribirse de forma independiente por protocolo."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "¿En qué se diferencia cs-routeros-bouncer de los bouncers de CrowdSec para MikroTik basados en address-list o en scripts?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "cs-routeros-bouncer se comunica directamente con la API de RouterOS y aplica cada bloqueo o desbloqueo como una llamada individual en tiempo real (alrededor de 1-3 ms), en lugar de regenerar periódicamente listas de direcciones mediante scripts programados. También ejecuta una reconciliación al inicio y periódica contra el estado real de MikroTik, de modo que las desviaciones se reparan automáticamente."
+            }
+          }
+        ]
+      }
+---
+
+import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
+import VersionBadge from "../../../components/VersionBadge.astro";
+
+## Cómo funciona
+
+<div class="flow-steps">
+  <div class="flow-step">
+    <div class="flow-step__icon" aria-hidden="true">
+      01
+    </div>
+    <div class="flow-step__title">CrowdSec detecta</div>
+    <div class="flow-step__desc">
+      La LAPI recibe decisiones sobre IPs maliciosas
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-step__icon" aria-hidden="true">
+      02
+    </div>
+    <div class="flow-step__title">El bouncer sincroniza</div>
+    <div class="flow-step__desc">
+      Aplica los nuevos bloqueos y expira los antiguos
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-step__icon" aria-hidden="true">
+      03
+    </div>
+    <div class="flow-step__title">RouterOS bloquea</div>
+    <div class="flow-step__desc">
+      Actualiza las reglas del firewall a través de la API
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-step__icon" aria-hidden="true">
+      04
+    </div>
+    <div class="flow-step__title">Tú monitorizas</div>
+    <div class="flow-step__desc">
+      Comprueba la salud, las métricas y los paneles
+    </div>
+  </div>
+</div>
+
+## ¿Por qué cs-routeros-bouncer? <VersionBadge />
+
+A diferencia de los bouncers que gestionan MikroTik mediante scripts periódicos
+de address-list, cs-routeros-bouncer se comunica directamente con la
+[API de RouterOS](https://help.mikrotik.com/docs/spaces/ROS/pages/47579160/API)
+y aplica cada decisión de CrowdSec como una llamada individual en tiempo real.
+
+<CardGrid stagger>
+  <Card title="0 comandos manuales en el router" icon="approve-check">
+    Crea y elimina automáticamente las reglas de firewall filter/raw al iniciar
+    y detener — no se necesita configuración manual del router.
+  </Card>
+  <Card title="Gestión de IPs en tiempo real (~1–3 ms/op)" icon="list-format">
+    Añade IPs al bloquear, las elimina al desbloquear. Sin recargas masivas, sin
+    duplicados. **~1–3 ms por operación**.
+  </Card>
+  <Card title="Estado autorreparable" icon="random">
+    Al iniciar o reiniciar, sincroniza las decisiones de CrowdSec con el estado
+    de MikroTik — añade las entradas que faltan y elimina las obsoletas
+    automáticamente.
+  </Card>
+  <Card title="Observabilidad completa" icon="analytics">
+    Métricas de Prometheus, logs estructurados, endpoint de salud y un panel de
+    Grafana listo para usar.
+  </Card>
+</CardGrid>
+
+## Requisitos
+
+- **CrowdSec** 1.5+ con la LAPI accesible desde el host del bouncer
+- **MikroTik RouterOS** 7.x con la API habilitada (puerto 8728 u 8729 para TLS)
+- Un usuario dedicado de la API de RouterOS con los permisos apropiados
+
+## Preguntas frecuentes
+
+<details>
+<summary>¿Qué es cs-routeros-bouncer?</summary>
+
+cs-routeros-bouncer es un bouncer de CrowdSec gratuito y de código abierto para
+MikroTik RouterOS. Sincroniza las decisiones de bloqueo/desbloqueo de CrowdSec
+con las reglas del firewall de RouterOS (filter y raw, IPv4 e IPv6) a través de
+la API de RouterOS, con reconciliación al inicio y periódica, métricas de
+Prometheus y limpieza segura de reglas.
+
+</details>
+
+<details>
+<summary>¿Qué versiones de CrowdSec y RouterOS soporta?</summary>
+
+Requiere CrowdSec 1.5+ con la Local API (LAPI) accesible desde el host del
+bouncer, y MikroTik RouterOS 7.x con el servicio API habilitado (puerto 8728,
+u 8729 para TLS), usando un usuario dedicado de la API de RouterOS con los
+permisos apropiados.
+
+</details>
+
+<details>
+<summary>¿Es cs-routeros-bouncer gratuito y de código abierto?</summary>
+
+Sí. cs-routeros-bouncer tiene licencia MIT, está escrito en Go, se distribuye
+como un único binario estático, con el código fuente completo en GitHub y sin
+planes de pago.
+
+</details>
+
+<details>
+<summary>¿Soporta cs-routeros-bouncer IPv6?</summary>
+
+Sí. Cada tipo de regla de RouterOS que gestiona (filter input, raw prerouting
+y opcionalmente filter output) tiene un equivalente IPv6, y la ubicación de las
+reglas IPv4/IPv6 puede configurarse de forma conjunta o sobrescribirse de forma
+independiente por protocolo.
+
+</details>
+
+<details>
+<summary>
+  ¿En qué se diferencia cs-routeros-bouncer de los bouncers de CrowdSec para
+  MikroTik basados en address-list o en scripts?
+</summary>
+
+cs-routeros-bouncer se comunica directamente con la API de RouterOS y aplica
+cada bloqueo o desbloqueo como una llamada individual en tiempo real
+(alrededor de 1-3 ms), en lugar de regenerar periódicamente listas de
+direcciones mediante scripts programados. También ejecuta una reconciliación
+al inicio y periódica contra el estado real de MikroTik, de modo que las
+desviaciones se reparan automáticamente.
+
+</details>
+
+## Explora la documentación
+
+<CardGrid>
+  <LinkCard
+    title="Inicio rápido"
+    description="Ponlo en marcha en 5 minutos con Docker o systemd."
+    href="/cs-routeros-bouncer/es/getting-started/quickstart/"
+  />
+  <LinkCard
+    title="Referencia de configuración"
+    description="Todas las opciones de configuración explicadas con ejemplos."
+    href="/cs-routeros-bouncer/es/configuration/"
+  />
+  <LinkCard
+    title="Monitorización y métricas"
+    description="Métricas de Prometheus, panel de Grafana y comprobaciones de salud."
+    href="/cs-routeros-bouncer/es/monitoring/prometheus/"
+  />
+  <LinkCard
+    title="Solución de problemas"
+    description="Problemas comunes y sus soluciones."
+    href="/cs-routeros-bouncer/es/troubleshooting/"
+  />
+</CardGrid>

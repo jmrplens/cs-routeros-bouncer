@@ -1,0 +1,118 @@
+---
+title: Inicio rápido
+description: Pon cs-routeros-bouncer en marcha en 5 minutos.
+---
+
+import { Steps, LinkCard, CardGrid } from "@astrojs/starlight/components";
+
+<Steps>
+
+1. **Registra el bouncer en CrowdSec**
+
+   En la máquina donde se ejecuta CrowdSec:
+
+   ```bash
+   sudo cscli bouncers add cs-routeros-bouncer
+   ```
+
+   :::note[Guarda la API key]
+   Copia la API key que se muestra en la salida — la necesitarás para la configuración del bouncer.
+   :::
+
+2. **Crea un usuario de la API de RouterOS**
+
+   Conéctate a tu router MikroTik (vía SSH, Winbox o WebFig) y crea un usuario dedicado:
+
+   ```routeros
+   /user group add name=crowdsec policy=read,write,api,sensitive,!ftp,!local,!ssh,!reboot,!policy,!test,!password,!sniff,!romon,!rest-api
+   /user add name=crowdsec group=crowdsec password=YOUR_SECURE_PASSWORD
+   ```
+
+   :::caution[Seguridad]
+   Usa una contraseña fuerte y única. El usuario de la API debe tener solo los permisos mínimos necesarios.
+   :::
+
+   Para más detalles, consulta [Configuración del router](/cs-routeros-bouncer/es/getting-started/router-setup/).
+
+3. **Despliega el bouncer**
+
+   Elige un método de despliegue.
+
+   **Docker Compose**
+
+   ```yaml
+   services:
+     cs-routeros-bouncer:
+       image: ghcr.io/jmrplens/cs-routeros-bouncer:latest
+       container_name: cs-routeros-bouncer
+       restart: unless-stopped
+       ports:
+         - "2112:2112" # Métricas de Prometheus (opcional)
+       environment:
+         CROWDSEC_URL: "http://crowdsec:8080/"
+         CROWDSEC_BOUNCER_API_KEY: "your-bouncer-api-key"
+         MIKROTIK_HOST: "192.168.0.1:8728"
+         MIKROTIK_USER: "crowdsec"
+         MIKROTIK_PASS: "your-password"
+   ```
+
+   ```bash
+   docker compose up -d
+   ```
+
+   **Binario + systemd**
+
+   ```bash
+   # Descarga (sustituye por tu arquitectura: amd64, arm64, armv7)
+   wget https://github.com/jmrplens/cs-routeros-bouncer/releases/latest/download/cs-routeros-bouncer_linux_amd64.tar.gz
+   tar xzf cs-routeros-bouncer_linux_amd64.tar.gz
+
+   # Instalación automatizada
+   sudo ./cs-routeros-bouncer setup
+
+   # Edita la configuración
+   sudo nano /etc/cs-routeros-bouncer/cs-routeros-bouncer.yaml
+
+   # Reinicia tras editar la configuración
+   sudo systemctl restart cs-routeros-bouncer
+   ```
+
+4. **Verifica que funciona**
+
+   ```bash
+   # Comprueba el endpoint de salud
+   curl http://localhost:2112/health
+   # {"status":"ok","routeros_connected":true,"version":"vX.Y.Z"}
+
+   # Comprueba los logs
+   sudo journalctl -u cs-routeros-bouncer -f
+   ```
+
+   En el router, deberías ver nuevas reglas de firewall y entradas en las listas de direcciones:
+
+   ```routeros
+   /ip/firewall/filter/print where comment~"crowdsec"
+   /ip/firewall/address-list/print where list=crowdsec-banned
+   ```
+
+</Steps>
+
+## Próximos pasos
+
+<CardGrid>
+  <LinkCard
+    title="Guía de instalación completa"
+    description="Todas las opciones de despliegue explicadas en detalle."
+    href="/cs-routeros-bouncer/es/getting-started/installation/"
+  />
+  <LinkCard
+    title="Referencia de configuración"
+    description="Personaliza cada aspecto del bouncer."
+    href="/cs-routeros-bouncer/es/configuration/"
+  />
+  <LinkCard
+    title="Configuración de la monitorización"
+    description="Configura las métricas de Prometheus y el panel de Grafana."
+    href="/cs-routeros-bouncer/es/monitoring/prometheus/"
+  />
+</CardGrid>

@@ -1,9 +1,13 @@
 ---
+import { getLatestRelease } from "../lib/latest-release.mjs";
+
 interface Props {
 	version?: string;
 }
 
-const { version = "latest" } = Astro.props;
+// Default to the latest git tag at build time so the badge tracks releases
+// automatically instead of relying on a hand-maintained literal per page.
+const { version = getLatestRelease().version } = Astro.props;
 ---
 
 <span class="version-badge" aria-label={`Version ${version}`}>

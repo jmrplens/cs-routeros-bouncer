@@ -1,0 +1,169 @@
+---
+title: Dashboard de Grafana
+description: Dashboard de Grafana preconfigurado para monitorizar el bouncer.
+---
+
+import {
+  Steps,
+  Aside,
+  LinkCard,
+  CardGrid,
+} from "@astrojs/starlight/components";
+
+Se incluye un dashboard de Grafana preconfigurado para monitorizar el bouncer y la salud del router.
+
+## Capturas de pantalla
+
+**Tema oscuro:**
+
+![Dashboard de Grafana con tema oscuro](../../../../assets/grafana-dashboard-dark.png)
+
+**Tema claro:**
+
+![Dashboard de Grafana con tema claro](../../../../assets/grafana-dashboard-light.png)
+
+## Requisitos previos
+
+Antes de importar el dashboard, necesitas:
+
+1. **Una instancia de Grafana en ejecución** (se recomienda v9.0+)
+2. **Una instancia de Prometheus en ejecución** que haga scraping del bouncer
+3. **El bouncer en ejecución** con `metrics.enabled: true`
+
+## Guía de configuración
+
+### 1. Configura el bouncer para exponer métricas
+
+Habilita las métricas de Prometheus en la configuración de tu bouncer:
+
+```yaml title="config.yaml"
+metrics:
+  enabled: true
+  listen_addr: "0.0.0.0"
+  listen_port: 2112
+  routeros_poll_interval: 30s # Habilita las métricas del sistema RouterOS
+```
+
+Comprueba que el endpoint de métricas funciona:
+
+```bash
+curl -s http://<bouncer-host>:2112/metrics | head -20
+```
+
+### 2. Configura Prometheus para hacer scraping del bouncer
+
+Añade un trabajo de scraping a tu configuración de Prometheus:
+
+```yaml title="prometheus.yml"
+scrape_configs:
+  - job_name: "cs-routeros-bouncer"
+    static_configs:
+      - targets: ["<bouncer-host>:2112"]
+    scrape_interval: 15s
+```
+
+Sustituye `<bouncer-host>` por la IP o el nombre de host donde se ejecuta el bouncer.
+
+<Aside type="tip">
+  Si el bouncer se ejecuta en el mismo host que Prometheus, usa
+  `localhost:2112`. Para entornos con Docker, usa el nombre del contenedor o la
+  IP de la red.
+</Aside>
+
+Después de añadir la configuración de scraping, recarga Prometheus:
+
+```bash
+# Recargar mediante HTTP (si --web.enable-lifecycle está activado)
+curl -X POST http://localhost:9090/-/reload
+
+# O reiniciar Prometheus
+systemctl restart prometheus
+```
+
+Comprueba que el target está sano en la interfaz de Prometheus: **Status → Targets** — el target `cs-routeros-bouncer` debería mostrar **UP**.
+
+### 3. Añade Prometheus como fuente de datos en Grafana
+
+<Steps>
+
+1. **Abre las fuentes de datos**
+
+   En Grafana, ve a **Connections** → **Data sources** → **Add data source**.
+
+2. **Selecciona Prometheus**
+
+   Elige **Prometheus** en la lista.
+
+3. **Configura la conexión**
+
+   Establece la **Prometheus server URL** con tu instancia de Prometheus (p. ej., `http://localhost:9090` o `http://prometheus:9090` en Docker).
+
+4. **Save & Test**
+
+   Haz clic en **Save & Test** — deberías ver "Successfully queried the Prometheus API."
+
+</Steps>
+
+### 4. Importa el dashboard
+
+<Steps>
+
+1. **Abre la importación en Grafana**
+
+   Ve a **Dashboards** → **New** → **Import**.
+
+2. **Sube el JSON del dashboard**
+
+   Sube `grafana/dashboard.json` desde el repositorio.
+
+3. **Selecciona la fuente de datos de Prometheus**
+
+   Elige la fuente de datos de Prometheus que configuraste en el paso 3.
+
+4. **Haz clic en Import**
+
+   El dashboard se creará y mostrará datos de inmediato.
+
+</Steps>
+
+<Aside type="note">
+  Si los paneles muestran "No data", comprueba: (1) que Prometheus está haciendo
+  scraping del bouncer correctamente, (2) que está seleccionada la fuente de
+  datos correcta y (3) que el bouncer lleva en ejecución el tiempo suficiente
+  para generar métricas.
+</Aside>
+
+## Paneles del dashboard
+
+El dashboard contiene 41 paneles organizados en 9 filas:
+
+| Fila                         | Paneles                                                                                                                                                                                                          |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Overview**                 | RouterOS Connected, Active Decisions (IPv4/IPv6/Total), IPv4/IPv6 Ratio, Uptime, Bouncer Info                                                                                                                    |
+| **RouterOS System**          | RouterOS System, CPU Load Over Time, Memory Usage Over Time, CPU Temperature Over Time, RouterOS Uptime, RouterOS Info                                                                                           |
+| **Decisions**                | Active Decisions Over Time, Cumulative Decisions, Decisions Processed (Rate)                                                                                                                                     |
+| **Decisions by Origin**      | Active Decisions by Origin, Decisions by Origin (Rate), Cumulative Decisions by Origin                                                                                                                           |
+| **Firewall Traffic**         | Processed Bytes, Processed Packets, Dropped Bytes, Dropped Packets, Drop Rate, Processed/Dropped Traffic Rate, Processed/Dropped Traffic by Protocol (Rate), Processed Traffic (Cumulative), Drop Rate Over Time |
+| **Errors & Reconciliation**  | Error Rate, RouterOS Connection, Reconciliation Duration, Last Reconciliation, Total Errors                                                                                                                      |
+| **Performance & Operations** | Operation Latency (p50/p95/p99), Operation Rate                                                                                                                                                                  |
+| **Process Resources**        | Memory Usage, CPU Usage, Goroutines & File Descriptors                                                                                                                                                           |
+| **Configuration**            | Bouncer Configuration                                                                                                                                                                                            |
+
+:::tip
+Usa el selector de rango temporal para acercarte a eventos concretos. El panel "Decisions Processed" es útil para correlacionar picos de baneos con incidentes específicos.
+:::
+
+## Relacionado
+
+<CardGrid>
+  <LinkCard
+    title="Métricas de Prometheus"
+    description="Referencia completa de todas las métricas exportadas"
+    href="/cs-routeros-bouncer/es/monitoring/prometheus/"
+  />
+  <LinkCard
+    title="Endpoint de salud"
+    description="Comprobación de salud HTTP para monitorización de disponibilidad"
+    href="/cs-routeros-bouncer/es/monitoring/health/"
+  />
+</CardGrid>

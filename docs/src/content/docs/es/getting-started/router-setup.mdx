@@ -1,0 +1,137 @@
+---
+title: Configuración del router
+description: Configuración de MikroTik RouterOS necesaria para cs-routeros-bouncer.
+---
+
+import { Steps, Badge, LinkCard } from "@astrojs/starlight/components";
+
+Esta guía cubre la configuración de MikroTik RouterOS necesaria para cs-routeros-bouncer.
+
+## Servicio API
+
+El bouncer se comunica con MikroTik mediante la [API de RouterOS](https://help.mikrotik.com/docs/spaces/ROS/pages/47579160/API). Asegúrate de que el servicio API está habilitado:
+
+```routeros
+/ip/service/print
+```
+
+Necesitas uno de estos:
+
+- **api** (puerto 8728) — conexión en texto plano
+- **api-ssl** (puerto 8729) — conexión cifrada con TLS <Badge text="Recomendado" variant="tip" />
+
+Para habilitarlos:
+
+```routeros
+# Habilita la API en texto plano
+/ip/service/enable api
+
+# Habilita la API con TLS (recomendado)
+/ip/service/enable api-ssl
+```
+
+:::tip[Recomendación para producción]
+Usa TLS (puerto 8729) en despliegues de producción. Configura el bouncer con `mikrotik.tls: true`.
+:::
+
+## Usuario de la API
+
+Crea un [usuario de RouterOS](https://help.mikrotik.com/docs/spaces/ROS/pages/8978504/User) dedicado con permisos mínimos:
+
+<Steps>
+
+1. **Crea un grupo solo con las políticas requeridas**
+
+   ```routeros
+   /user/group/add name=crowdsec policy=read,write,api,sensitive,!ftp,!local,!ssh,!reboot,!policy,!test,!password,!sniff,!romon,!rest-api
+   ```
+
+2. **Crea el usuario de la API**
+
+   ```routeros
+   /user/add name=crowdsec group=crowdsec password=YOUR_SECURE_PASSWORD
+   ```
+
+</Steps>
+
+### Políticas requeridas
+
+| Política    | Motivo                                                              |
+| ----------- | ------------------------------------------------------------------- |
+| `read`      | Leer las reglas de firewall y las listas de direcciones             |
+| `write`     | Crear/modificar/eliminar reglas de firewall y listas de direcciones |
+| `api`       | Acceder a la API de RouterOS                                        |
+| `sensitive` | Necesaria para algunas operaciones de la API                        |
+
+### Políticas denegadas
+
+Todas las demás políticas se deniegan explícitamente para seguir el principio de mínimo privilegio:
+
+`!ftp`, `!local`, `!ssh`, `!reboot`, `!policy`, `!test`, `!password`, `!sniff`, `!romon`, `!rest-api`
+
+## Acceso a través del firewall
+
+Si tienes reglas de firewall que restringen el acceso a la API, permite las conexiones desde el host del bouncer:
+
+```routeros
+# Para la API en texto plano (puerto 8728)
+/ip/firewall/filter/add chain=input protocol=tcp dst-port=8728 src-address=BOUNCER_IP action=accept comment="Allow CrowdSec bouncer API access" place-before=0
+
+# Para la API con TLS (puerto 8729) — si usas tls: true
+/ip/firewall/filter/add chain=input protocol=tcp dst-port=8729 src-address=BOUNCER_IP action=accept comment="Allow CrowdSec bouncer API-SSL access" place-before=0
+```
+
+Sustituye `BOUNCER_IP` por la dirección IP de la máquina que ejecuta el bouncer.
+
+:::caution[Seguridad]
+Restringe el acceso a la API únicamente a la IP del host del bouncer. Nunca expongas el puerto de la API a internet.
+:::
+
+## Configuración TLS
+
+Para conexiones TLS:
+
+<Steps>
+
+1. **Asegúrate de que tu router tiene un certificado válido** (autofirmado o firmado por una CA)
+
+2. **Habilita el servicio `api-ssl`**
+
+   ```routeros
+   /ip/service/enable api-ssl
+   ```
+
+3. **Configura el bouncer**
+
+   ```yaml
+   mikrotik:
+     address: "192.168.0.1:8729"
+     tls: true
+     tls_insecure: false # Mantenlo en false tras instalar la confianza; true desactiva la verificación y es solo para diagnóstico
+   ```
+
+</Steps>
+
+## Verificación
+
+Tras la configuración, verifica que el usuario de la API puede conectarse:
+
+```bash
+# Prueba la conectividad de la API en texto plano
+nc -vz ROUTER_IP 8728
+# Prueba la conectividad de la API con TLS (si usas api-ssl)
+openssl s_client -connect ROUTER_IP:8729 -servername ROUTER_IP </dev/null
+```
+
+O usa el endpoint de salud del bouncer después de iniciarlo:
+
+```bash
+curl http://localhost:2112/health
+# {"status":"ok","routeros_connected":true,"version":"vX.Y.Z"}
+```
+
+<LinkCard
+  title="Siguiente: Instalación"
+  description="Despliega el bouncer con Docker, systemd o compilándolo desde el código fuente."
+  href="/cs-routeros-bouncer/es/getting-started/installation/"
+/>

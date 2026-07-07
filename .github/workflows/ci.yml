@@ -38,7 +38,7 @@ jobs:
           persist-credentials: false
       - uses: pnpm/action-setup@v6
         with:
-          version: 10
+          package_json_file: docs/package.json
           cache: true
           cache_dependency_path: docs/pnpm-lock.yaml
       - uses: actions/setup-node@v6
@@ -137,7 +137,7 @@ jobs:
           persist-credentials: false
       - uses: pnpm/action-setup@v6
         with:
-          version: 10
+          package_json_file: docs/package.json
           cache: true
           cache_dependency_path: docs/pnpm-lock.yaml
       - uses: actions/setup-node@v6
@@ -191,7 +191,7 @@ jobs:
           name: coverage
       - uses: pnpm/action-setup@v6
         with:
-          version: 10
+          package_json_file: docs/package.json
           cache: true
           cache_dependency_path: docs/pnpm-lock.yaml
       - uses: actions/setup-node@v6

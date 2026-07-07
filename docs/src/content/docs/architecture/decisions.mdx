@@ -23,6 +23,8 @@ How the bouncer processes incoming CrowdSec decisions.
    | `Range` | Added as CIDR to address list  | `10.0.0.0/24` |
    | Other   | Logged as warning, skipped     | —             |
 
+   `Ip` and `Range` are the scope values as CrowdSec sends them in decisions; the `crowdsec.scopes` config filter uses the lowercase forms `ip` and `range`.
+
 3. **Filter by origin**
 
    If `origins` is configured, only decisions from allowed origins pass through. Unmatched decisions are discarded.

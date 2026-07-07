@@ -45,7 +45,7 @@ Wrong username or password.
    /user/print where name=crowdsec
    ```
 
-3. **Verify the user's group** has required policies: `api`, `read`, `write`
+3. **Verify the user's group** has required policies: `read`, `write`, `api`, `sensitive`
 
 4. **Check allowed address** restrictions on the user account
 
@@ -59,12 +59,15 @@ TLS verification failed.
 
 <Steps>
 
-1. **For self-signed certificates**, set the CA path:
+1. **For self-signed router certificates**, skip verification of the RouterOS API certificate:
 
    ```yaml
-   crowdsec:
-     ca_cert_path: "/path/to/ca.pem"
+   mikrotik:
+     tls: true
+     tls_insecure: true
    ```
+
+   There is no CA-path option for the MikroTik connection — `tls_insecure` is the only trust control. For a verified connection, install a certificate signed by a CA the bouncer host trusts. (`crowdsec.ca_cert_path` only affects the CrowdSec LAPI connection, not RouterOS.)
 
 2. **Verify the certificate** is valid and not expired
 

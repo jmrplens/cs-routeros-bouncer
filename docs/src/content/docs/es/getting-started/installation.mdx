@@ -1,0 +1,250 @@
+---
+title: Instalación
+description: Despliega cs-routeros-bouncer con Docker, systemd o compilándolo desde el código fuente.
+---
+
+import { Steps, Tabs, TabItem, LinkCard } from "@astrojs/starlight/components";
+
+cs-routeros-bouncer admite varios métodos de despliegue. Elige el que mejor se adapte a tu infraestructura.
+
+<Tabs>
+  <TabItem label="Docker Compose" icon="seti:docker">
+
+Ideal si ya ejecutas CrowdSec en Docker.
+
+### Configuración básica
+
+```yaml
+services:
+  cs-routeros-bouncer:
+    image: ghcr.io/jmrplens/cs-routeros-bouncer:latest
+    container_name: cs-routeros-bouncer
+    restart: unless-stopped
+    ports:
+      - "2112:2112" # Métricas de Prometheus (opcional)
+    environment:
+      CROWDSEC_URL: "http://crowdsec:8080/"
+      CROWDSEC_BOUNCER_API_KEY: "your-bouncer-api-key"
+      MIKROTIK_HOST: "192.168.0.1:8728"
+      MIKROTIK_USER: "crowdsec"
+      MIKROTIK_PASS: "your-password"
+```
+
+### Con archivo de configuración
+
+La imagen de Docker puede funcionar solo con variables de entorno. Si prefieres un archivo YAML, móntalo en `/etc/cs-routeros-bouncer/config.yaml`; el bouncer carga ese archivo automáticamente cuando existe:
+
+```yaml
+services:
+  cs-routeros-bouncer:
+    image: ghcr.io/jmrplens/cs-routeros-bouncer:latest
+    container_name: cs-routeros-bouncer
+    restart: unless-stopped
+    ports:
+      - "2112:2112"
+    volumes:
+      - ./config.yaml:/etc/cs-routeros-bouncer/config.yaml
+```
+
+Inicia el servicio:
+
+```bash
+docker compose up -d
+```
+
+:::tip
+Todas las opciones de configuración pueden establecerse mediante variables de entorno. Consulta la sección de [Configuración](/cs-routeros-bouncer/es/configuration/) para ver la lista completa.
+:::
+
+  </TabItem>
+  <TabItem label="Binario + systemd" icon="linux">
+
+### Instalación automática (recomendada)
+
+<Steps>
+
+1. **Descarga la última versión**
+
+   ```bash
+   # Sustituye la arquitectura según necesites: amd64, arm64, armv7
+   wget https://github.com/jmrplens/cs-routeros-bouncer/releases/latest/download/cs-routeros-bouncer_linux_amd64.tar.gz
+   tar xzf cs-routeros-bouncer_linux_amd64.tar.gz
+   ```
+
+2. **Ejecuta la instalación automatizada**
+
+   ```bash
+   sudo ./cs-routeros-bouncer setup
+   ```
+
+3. **Configura**
+
+   ```bash
+   sudo nano /etc/cs-routeros-bouncer/cs-routeros-bouncer.yaml
+   sudo systemctl restart cs-routeros-bouncer
+   ```
+
+</Steps>
+
+La instalación automatizada copia el binario, crea el directorio de configuración, escribe una unidad de systemd reforzada, habilita el servicio y lo inicia.
+
+El subcomando `setup` acepta flags opcionales:
+
+| Flag          | Valor por defecto                    | Descripción                                   |
+| ------------- | ------------------------------------ | --------------------------------------------- |
+| `-bin`        | `/usr/local/bin/cs-routeros-bouncer` | Ruta de instalación del binario               |
+| `-config-dir` | `/etc/cs-routeros-bouncer`           | Directorio para los archivos de configuración |
+
+La configuración generada es `/etc/cs-routeros-bouncer/cs-routeros-bouncer.yaml` a menos que `-config-dir` cambie el directorio.
+
+### Instalación manual
+
+<details>
+<summary>Pasos de instalación manual (haz clic para expandir)</summary>
+
+```bash
+# Descarga
+wget https://github.com/jmrplens/cs-routeros-bouncer/releases/latest/download/cs-routeros-bouncer_linux_amd64.tar.gz
+tar xzf cs-routeros-bouncer_linux_amd64.tar.gz
+
+# Instala el binario
+sudo install -m 755 cs-routeros-bouncer /usr/local/bin/
+
+# Crea el directorio de configuración y copia la configuración
+sudo mkdir -p /etc/cs-routeros-bouncer
+sudo cp cs-routeros-bouncer.yaml /etc/cs-routeros-bouncer/cs-routeros-bouncer.yaml
+
+# Edita la configuración
+sudo nano /etc/cs-routeros-bouncer/cs-routeros-bouncer.yaml
+
+# Crea el servicio de systemd
+sudo tee /etc/systemd/system/cs-routeros-bouncer.service > /dev/null << 'EOF'
+[Unit]
+Description=CrowdSec RouterOS Bouncer
+After=network-online.target crowdsec.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/cs-routeros-bouncer -c /etc/cs-routeros-bouncer/cs-routeros-bouncer.yaml
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=90
+LimitNOFILE=65536
+
+# Hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/log
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now cs-routeros-bouncer
+```
+
+</details>
+
+### Desinstalación
+
+```bash
+# Conserva los archivos de configuración
+sudo cs-routeros-bouncer uninstall
+
+# Elimina también la configuración
+sudo cs-routeros-bouncer uninstall -purge
+```
+
+`uninstall` también acepta `-bin` y `-config-dir` si la instalación usó rutas personalizadas. Pasa el mismo `-config-dir` junto con `-purge` para eliminar ese directorio de configuración personalizado.
+
+Consulta la [Referencia de la CLI](/cs-routeros-bouncer/es/getting-started/cli-reference/) para ver todos los flags de setup y uninstall.
+
+  </TabItem>
+  <TabItem label="Compilar desde el código fuente" icon="seti:go">
+
+### Requisitos previos
+
+- **Go 1.26.4+** — [Descargar](https://go.dev/dl/)
+- **Make** — normalmente preinstalado en Linux
+
+### Compilar e instalar
+
+<Steps>
+
+1. **Clona y compila**
+
+   ```bash
+   git clone https://github.com/jmrplens/cs-routeros-bouncer.git
+   cd cs-routeros-bouncer
+   make build
+   ```
+
+   El binario se crea en `bin/cs-routeros-bouncer`.
+
+2. **Instala**
+
+   ```bash
+   # Opción 1: Instalación automatizada
+   sudo bin/cs-routeros-bouncer setup
+
+   # Opción 2: Instalación manual
+   sudo install -m 755 bin/cs-routeros-bouncer /usr/local/bin/
+   ```
+
+</Steps>
+
+  </TabItem>
+</Tabs>
+
+## Verificar la instalación
+
+Tras instalar con cualquiera de los métodos, verifica que el bouncer se ejecuta correctamente:
+
+<Steps>
+
+1. **Comprueba el estado del servicio**
+
+   ```bash
+   # Instalación con binario
+   sudo systemctl status cs-routeros-bouncer
+
+   # Docker Compose
+   docker compose ps cs-routeros-bouncer
+   ```
+
+2. **Comprueba el endpoint de salud**
+
+   ```bash
+   curl http://localhost:2112/health
+   # {"status":"ok","routeros_connected":true,"version":"vX.Y.Z"}
+   ```
+
+3. **Comprueba los logs**
+
+   ```bash
+   # Instalación con binario
+   sudo journalctl -u cs-routeros-bouncer -f
+
+   # Docker Compose
+   docker compose logs -f cs-routeros-bouncer
+   ```
+
+4. **Verifica las reglas en el router**
+
+   ```routeros
+   /ip/firewall/filter/print where comment~"crowdsec"
+   /ip/firewall/raw/print where comment~"crowdsec"
+   /ip/firewall/address-list/print where list=crowdsec-banned
+   ```
+
+</Steps>
+
+<LinkCard
+  title="Siguiente: Referencia de configuración"
+  description="Personaliza todos los ajustes del bouncer, incluidas las reglas de firewall, el filtrado y las métricas."
+  href="/cs-routeros-bouncer/es/configuration/"
+/>

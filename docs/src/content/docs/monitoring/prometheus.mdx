@@ -12,20 +12,20 @@ The bouncer exports Prometheus metrics when `metrics.enabled` is `true`. Metrics
 ### `crowdsec_bouncer_active_decisions`
 
 <Badge text="Gauge" variant="note" />
-<Badge text="Labels: ip_type" variant="default" />
+<Badge text="Labels: proto" variant="default" />
 
 Number of currently active (banned) decisions by protocol version. Updated in real time during streaming ban/unban events and recalculated during reconciliation.
 
-| Label     | Values         | Description      |
-| --------- | -------------- | ---------------- |
-| `ip_type` | `ipv4`, `ipv6` | Protocol version |
+| Label   | Values         | Description      |
+| ------- | -------------- | ---------------- |
+| `proto` | `ipv4`, `ipv6` | Protocol version |
 
 ```text
 # Total active decisions
 sum(crowdsec_bouncer_active_decisions)
 
 # IPv6 decisions only
-crowdsec_bouncer_active_decisions{ip_type="ipv6"}
+crowdsec_bouncer_active_decisions{proto="ipv6"}
 ```
 
 ---
@@ -37,9 +37,9 @@ crowdsec_bouncer_active_decisions{ip_type="ipv6"}
 
 Active decisions broken down by their source. Incremented/decremented in real time during streaming and reset during full reconciliation.
 
-| Label    | Values                                 | Description            |
-| -------- | -------------------------------------- | ---------------------- |
-| `origin` | `crowdsec`, `cscli`, `CAPI`, `lists:*` | Source of the decision |
+| Label    | Values                                      | Description                                                                                                                                                    |
+| -------- | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `origin` | `crowdsec`, `cscli`, `CAPI`, `lists:<name>` | Source of the decision (`lists:<name>` is the literal label for a named blocklist; the `lists:*` wildcard exists only in the `crowdsec.origins` config filter) |
 
 ```text
 # Active decisions by origin
@@ -54,9 +54,9 @@ crowdsec_bouncer_active_decisions_by_origin{origin="CAPI"}
 ### `crowdsec_bouncer_decisions_total`
 
 <Badge text="Counter" variant="success" />
-<Badge text="Labels: action, origin, ip_type" variant="default" />
+<Badge text="Labels: action, proto, origin" variant="default" />
 
-Total number of decisions processed since startup. Counts both bans (`action="ban"`) and unbans (`action="unban"`).
+Total number of decisions processed since startup. Counts both bans (`action="ban"`) and unbans (`action="unban"`), with `proto` (`ipv4`/`ipv6`) and the decision `origin`.
 
 ```text
 # Ban rate per minute by origin
@@ -71,13 +71,16 @@ sum(crowdsec_bouncer_decisions_total{action="unban"})
 ### `crowdsec_bouncer_errors_total`
 
 <Badge text="Counter" variant="success" />
-<Badge text="Labels: component" variant="default" />
+<Badge text="Labels: operation" variant="default" />
 
-Total errors by component (`lapi`, `routeros`, `stream`).
+Total errors by failed operation. The `operation` label takes the values `add`, `find`, `remove`, `reconcile`, and `firewall`.
 
 ```text
-# Error rate across all components
+# Error rate across all operations
 rate(crowdsec_bouncer_errors_total[5m])
+
+# Reconciliation errors only
+crowdsec_bouncer_errors_total{operation="reconcile"}
 ```
 
 ---
@@ -95,11 +98,25 @@ Whether the bouncer has an active connection to RouterOS (`1` = connected, `0` =
 <Badge text="Histogram" variant="danger" />
 <Badge text="Labels: operation" variant="default" />
 
-Duration of operations in seconds. Labels: `operation="add"`, `operation="remove"`, `operation="reconcile"`.
+Duration of operations in seconds. Labels: `operation="add"`, `operation="remove"`, `operation="reconcile"`, `operation="bulk_add"`, `operation="bulk_remove"`.
 
 ```text
 # p99 add operation latency
 histogram_quantile(0.99, rate(crowdsec_bouncer_operation_duration_seconds_bucket{operation="add"}[5m]))
+```
+
+---
+
+### `crowdsec_bouncer_last_operation_duration_seconds`
+
+<Badge text="Gauge" variant="note" />
+<Badge text="Labels: operation" variant="default" />
+
+Duration of the most recent operation of each type, in seconds. Uses the same `operation` values as `crowdsec_bouncer_operation_duration_seconds` and is updated alongside it — useful for "how long did the last reconcile take?" panels without histogram math.
+
+```text
+# Duration of the last reconciliation
+crowdsec_bouncer_last_operation_duration_seconds{operation="reconcile"}
 ```
 
 ---
@@ -116,9 +133,10 @@ Total reconciliation actions. Labels: `action="added"`, `action="removed"`, `act
 ### `crowdsec_bouncer_info`
 
 <Badge text="Gauge" variant="note" />
+<Badge text="Labels: version, routeros_identity" variant="default" />
 <Badge text="Info metric (value always 1)" variant="caution" />
 
-Bouncer build information with `version` label.
+Bouncer build information. Labels expose the bouncer `version` and the RouterOS system identity (`routeros_identity`) it is connected to.
 
 ---
 
@@ -133,48 +151,29 @@ Unix timestamp of when the bouncer process started.
 ### `crowdsec_bouncer_config_info`
 
 <Badge text="Gauge" variant="note" />
+<Badge text="Labels: group, param, value" variant="default" />
 <Badge text="Info metric (value always 1)" variant="caution" />
 
-Exposes bouncer configuration as metric labels. Carries all configuration parameters as labels:
+Exposes the non-sensitive bouncer configuration as info metrics. Each configuration parameter is emitted as its **own series** with exactly three labels — `group`, `param`, and `value` — and a constant value of `1`:
+
+```text
+crowdsec_bouncer_config_info{group="CrowdSec",param="API URL",value="http://localhost:8080/"} 1
+crowdsec_bouncer_config_info{group="MikroTik",param="Connection Pool Size",value="4"} 1
+crowdsec_bouncer_config_info{group="Firewall",param="Deny Action",value="drop"} 1
+```
 
 <details>
-<summary>Full label list</summary>
+<summary>Full parameter list</summary>
 
-| Label                                   | Example value            |
-| --------------------------------------- | ------------------------ |
-| `version`                               | `1.4.5`                  |
-| `crowdsec_url`                          | `http://localhost:8080/` |
-| `crowdsec_update_frequency`             | `10s`                    |
-| `crowdsec_include_scenarios_containing` | —                        |
-| `crowdsec_exclude_scenarios_containing` | —                        |
-| `crowdsec_only_include_decisions_from`  | —                        |
-| `crowdsec_origins`                      | `crowdsec,cscli`         |
-| `crowdsec_scenarios`                    | —                        |
-| `mikrotik_host`                         | `192.168.88.1:8728`      |
-| `mikrotik_tls`                          | `false`                  |
-| `mikrotik_pool_size`                    | `4`                      |
-| `firewall_deny_action`                  | `drop`                   |
-| `firewall_reject_with`                  | —                        |
-| `firewall_rule_placement`               | `top`                    |
-| `firewall_filter_chains`                | `input`                  |
-| `firewall_raw_chains`                   | `prerouting`             |
-| `firewall_ipv4_enabled`                 | `true`                   |
-| `firewall_ipv6_enabled`                 | `true`                   |
-| `firewall_filter_enabled`               | `true`                   |
-| `firewall_raw_enabled`                  | `true`                   |
-| `firewall_log`                          | `false`                  |
-| `firewall_log_prefix`                   | `crowdsec-bouncer`       |
-| `firewall_comment_prefix`               | `crowdsec-bouncer`       |
-| `firewall_block_output`                 | `false`                  |
-| `firewall_input_interface`              | —                        |
-| `firewall_input_interface_list`         | —                        |
-| `firewall_input_whitelist`              | —                        |
-| `firewall_filter_connection_state`      | —                        |
-| `firewall_filter_log_prefix`            | —                        |
-| `firewall_raw_log_prefix`               | —                        |
-| `metrics_routeros_poll_interval`        | `30s`                    |
+| `group`    | `param` values                                                                                                                                                                                                                 |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `CrowdSec` | `API URL`, `Update Frequency`, `Origins`, `Scopes`, `Decision Types`, `Retry Initial Connect`, `TLS Enabled`                                                                                                                   |
+| `MikroTik` | `Address`, `TLS Enabled`, `Connection Pool Size`, `Connection Timeout`, `Command Timeout`                                                                                                                                      |
+| `Firewall` | `IPv4 Enabled`, `IPv4 Address List`, `IPv6 Enabled`, `IPv6 Address List`, `Filter Enabled`, `Filter Chains`, `Raw Enabled`, `Raw Chains`, `Deny Action`, `Block Output`, `Rule Placement`, `Comment Prefix`, `Logging Enabled` |
+| `Logging`  | `Level`, `Format`                                                                                                                                                                                                              |
+| `Metrics`  | `Enabled`, `Listen Address`, `Listen Port`, `RouterOS Poll Interval`, `Track Processed`                                                                                                                                        |
 
-`firewall_rule_placement` is a configuration label. Simple values appear as `top` or `bottom`; structured placement appears as a compact summary such as `position:5`, `after_comment:drop invalid`, `top,filter=after_comment:drop invalid,raw=position:2`, or `top,ipv4=before_comment:IPv4 anchor,ipv6=bottom,ipv6.raw=position:4`.
+For `Rule Placement`, simple values appear as `top` or `bottom`; structured placement appears as a compact summary such as `position:5`, `after_comment:drop invalid`, `top,filter=after_comment:drop invalid,raw=position:2`, or `top,ipv4=before_comment:IPv4 anchor,ipv6=bottom,ipv6.raw=position:4`.
 
 </details>
 

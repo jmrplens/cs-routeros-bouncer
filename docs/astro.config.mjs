@@ -6,23 +6,10 @@ import rehypeMermaid from "rehype-mermaid";
 import fs from "node:fs";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { getLatestRelease, gitAvailable } from "./src/lib/latest-release.mjs";
 
 const docsRoot = fileURLToPath(new URL(".", import.meta.url));
 const siteBase = "/cs-routeros-bouncer";
-
-// Check once, at module load, instead of on every getLastmod() call — avoids
-// spawning a doomed `git` process per page when `git` is missing or the build
-// runs outside a git checkout (e.g. some Docker/CI contexts).
-let isGitAvailable = false;
-try {
-	execFileSync("git", ["rev-parse", "--is-inside-work-tree"], {
-		cwd: docsRoot,
-		stdio: "ignore",
-	});
-	isGitAvailable = true;
-} catch {
-	// No git available — getLastmod() below becomes a no-op.
-}
 
 /**
  * Resolve the newest git commit date for the content file backing a given
@@ -32,7 +19,7 @@ try {
  * @returns {string | undefined}
  */
 function getLastmod(pathname) {
-	if (!isGitAvailable) return undefined;
+	if (!gitAvailable()) return undefined;
 	const slug = pathname
 		.replace(new RegExp(`^${siteBase}/?`), "")
 		.replace(/\/$/, "");
@@ -53,33 +40,6 @@ function getLastmod(pathname) {
 		}
 	}
 	return undefined;
-}
-
-/**
- * Resolve the latest release tag and its date from git, so the
- * `SoftwareApplication` JSON-LD's `softwareVersion`/`dateModified` track the
- * actual latest release instead of a hand-maintained literal that silently
- * goes stale after every release (falls back to a known-good snapshot when
- * git or tags aren't available, e.g. building from a tarball).
- * @returns {{ version: string, date: string }}
- */
-function getLatestRelease() {
-	const fallback = { version: "1.4.5", date: "2026-06-19" };
-	if (!isGitAvailable) return fallback;
-	try {
-		const tag = execFileSync("git", ["describe", "--tags", "--abbrev=0"], {
-			cwd: docsRoot,
-			encoding: "utf-8",
-		}).trim();
-		const date = execFileSync("git", ["log", "-1", "--format=%cI", tag], {
-			cwd: docsRoot,
-			encoding: "utf-8",
-		}).trim();
-		if (!tag || !date) return fallback;
-		return { version: tag.replace(/^v/, ""), date: date.slice(0, 10) };
-	} catch {
-		return fallback;
-	}
 }
 
 const latestRelease = getLatestRelease();
@@ -139,6 +99,10 @@ export default defineConfig({
 	integrations: [
 		routerosLanguage(),
 		sitemap({
+			i18n: {
+				defaultLocale: "en",
+				locales: { en: "en", es: "es" },
+			},
 			serialize(item) {
 				const lastmod = getLastmod(new URL(item.url).pathname);
 				return lastmod ? { ...item, lastmod } : item;
@@ -148,6 +112,11 @@ export default defineConfig({
 			title: "cs-routeros-bouncer",
 			description:
 				"CrowdSec bouncer for MikroTik RouterOS — automatic firewall management via the RouterOS API",
+			defaultLocale: "root",
+			locales: {
+				root: { label: "English", lang: "en" },
+				es: { label: "Español", lang: "es" },
+			},
 			logo: {
 				src: "./src/assets/logo.svg",
 				alt: "cs-routeros-bouncer",
@@ -481,87 +450,131 @@ export default defineConfig({
 			sidebar: [
 				{
 					label: "Getting Started",
+					translations: { es: "Primeros pasos" },
 					items: [
 						{
 							label: "Quick Start",
+							translations: { es: "Inicio rápido" },
 							slug: "getting-started/quickstart",
-							badge: { text: "Start here", variant: "tip" },
+							badge: {
+								text: { en: "Start here", es: "Empieza aquí" },
+								variant: "tip",
+							},
 						},
 						{
 							label: "Installation",
+							translations: { es: "Instalación" },
 							slug: "getting-started/installation",
 						},
 						{
 							label: "CLI Reference",
+							translations: { es: "Referencia CLI" },
 							slug: "getting-started/cli-reference",
 						},
 						{
 							label: "Router Setup",
+							translations: { es: "Configuración del router" },
 							slug: "getting-started/router-setup",
 						},
 					],
 				},
 				{
 					label: "Configuration",
+					translations: { es: "Configuración" },
 					items: [
-						{ label: "Overview", slug: "configuration" },
+						{
+							label: "Overview",
+							translations: { es: "Visión general" },
+							slug: "configuration",
+						},
 						{ label: "MikroTik", slug: "configuration/mikrotik" },
 						{ label: "CrowdSec", slug: "configuration/crowdsec" },
-						{ label: "CAPI Blocklists", slug: "configuration/capi-blocklists" },
+						{
+							label: "CAPI Blocklists",
+							translations: { es: "Listas de bloqueo CAPI" },
+							slug: "configuration/capi-blocklists",
+						},
 						{ label: "Firewall", slug: "configuration/firewall" },
 						{
 							label: "Logging & Metrics",
+							translations: { es: "Logs y métricas" },
 							slug: "configuration/logging-metrics",
 						},
 						{
 							label: "Performance Tuning",
+							translations: { es: "Ajuste de rendimiento" },
 							slug: "configuration/performance-tuning",
 						},
-						{ label: "Examples", slug: "configuration/examples" },
+						{
+							label: "Examples",
+							translations: { es: "Ejemplos" },
+							slug: "configuration/examples",
+						},
 					],
 				},
 				{
 					label: "Architecture",
-					badge: { text: "Deep dive", variant: "note" },
+					translations: { es: "Arquitectura" },
+					badge: {
+						text: { en: "Deep dive", es: "En profundidad" },
+						variant: "note",
+					},
 					items: [
-						{ label: "Overview", slug: "architecture" },
+						{
+							label: "Overview",
+							translations: { es: "Visión general" },
+							slug: "architecture",
+						},
 						{
 							label: "Decision Processing",
+							translations: { es: "Procesamiento de decisiones" },
 							slug: "architecture/decisions",
 						},
 						{
 							label: "Firewall Rules",
+							translations: { es: "Reglas de firewall" },
 							slug: "architecture/firewall-rules",
 						},
 						{
 							label: "Reconciliation",
+							translations: { es: "Reconciliación" },
 							slug: "architecture/reconciliation",
 						},
 					],
 				},
 				{
 					label: "Monitoring",
+					translations: { es: "Monitorización" },
 					items: [
 						{
 							label: "Prometheus Metrics",
+							translations: { es: "Métricas de Prometheus" },
 							slug: "monitoring/prometheus",
 						},
 						{
 							label: "Grafana Dashboard",
+							translations: { es: "Dashboard de Grafana" },
 							slug: "monitoring/grafana",
 						},
-						{ label: "Health Endpoint", slug: "monitoring/health" },
+						{
+							label: "Health Endpoint",
+							translations: { es: "Endpoint de salud" },
+							slug: "monitoring/health",
+						},
 					],
 				},
 				{
 					label: "Development",
+					translations: { es: "Desarrollo" },
 					items: [
 						{
 							label: "Building & Testing",
+							translations: { es: "Compilación y pruebas" },
 							slug: "development/building",
 						},
 						{
 							label: "Testing Guide",
+							translations: { es: "Guía de pruebas" },
 							slug: "development/testing-guide",
 						},
 						{
@@ -570,20 +583,30 @@ export default defineConfig({
 						},
 						{
 							label: "Project Structure",
+							translations: { es: "Estructura del proyecto" },
 							slug: "development/structure",
 						},
 						{
 							label: "Contributing",
+							translations: { es: "Contribuir" },
 							slug: "development/contributing",
 						},
 						{
 							label: "Security",
+							translations: { es: "Seguridad" },
 							slug: "development/security",
-							badge: { text: "Policy", variant: "caution" },
+							badge: {
+								text: { en: "Policy", es: "Política" },
+								variant: "caution",
+							},
 						},
 					],
 				},
-				{ label: "Troubleshooting", slug: "troubleshooting" },
+				{
+					label: "Troubleshooting",
+					translations: { es: "Solución de problemas" },
+					slug: "troubleshooting",
+				},
 			],
 		}),
 	],
