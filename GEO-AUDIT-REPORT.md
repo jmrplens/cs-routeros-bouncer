@@ -125,22 +125,26 @@ Bing Copilot 86 (verified Bing indexation via DDG proxy, msvalidate tag, IndexNo
 ## 30-Day Action Plan
 
 ### Week 1: On-site quick wins (schema + authorship + entry pages)
+
 - [ ] Commit/deploy `inLanguage` fix; add TechArticle `image`/`datePublished`; SoftwareApplication `softwareHelp`/`softwareRequirements`; link FAQPage into the graph
 - [ ] Footer byline (en+es) + About/Credits page
 - [ ] Quickstart/Installation: direct-answer intros, Requirements block, question-form headings, meta descriptions
 
 ### Week 2: Entity & directory presence
+
 - [ ] awesome-crowdsec PR
 - [ ] Wikidata enrichment (properties + identifiers, keep P348 current)
 - [ ] CrowdSec Hub badge/link visible on the homepage
 - [ ] Tested-with matrix (RouterOS versions/hardware/CrowdSec versions/date)
 
 ### Week 3: Community seeding (human actions)
+
 - [ ] Announcement thread on discourse.crowdsec.net
 - [ ] Participate in forum.mikrotik.com CrowdSec threads (t=187449 is the natural home)
 - [ ] r/mikrotik write-up (first-mover — no competitor presence there either)
 
 ### Week 4: Content depth & media
+
 - [ ] Deep outbound links: docs.crowdsec.net on config pages, RouterOS filter/raw docs on firewall/architecture pages
 - [ ] Capture one real timestamped benchmark run; 1–2 annotated screenshots with alt text
 - [ ] Optional: 3–5-min YouTube setup walkthrough linked from quickstart (biggest Gemini lever)
