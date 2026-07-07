@@ -1,0 +1,138 @@
+---
+title: Reglas de firewall
+description: Cómo crea y gestiona el bouncer las reglas de firewall en el router MikroTik.
+---
+
+import { Steps, LinkCard } from "@astrojs/starlight/components";
+
+Cómo crea y gestiona el bouncer las reglas de firewall.
+
+## Tipos de reglas
+
+El bouncer puede crear reglas en tres ubicaciones:
+
+| Tipo           | Ruta de RouterOS                     | Propósito                                                                |
+| -------------- | ------------------------------------ | ------------------------------------------------------------------------ |
+| Filter input   | `/ip/firewall/filter`                | Bloquear el tráfico entrante (después del connection tracking)           |
+| Raw prerouting | `/ip/firewall/raw`                   | Bloquear el tráfico entrante (antes del connection tracking — menos CPU) |
+| Filter output  | `/ip/firewall/filter` (chain output) | Bloquear el tráfico saliente hacia IPs baneadas                          |
+
+Cada tipo tiene su equivalente IPv6 (por ejemplo, `/ipv6/firewall/filter`).
+
+## Flujo de creación de reglas
+
+Al arrancar, el bouncer sigue esta secuencia:
+
+<Steps>
+
+1. **Comprobar si existen reglas**
+
+   Busca reglas gestionadas por el bouncer comparando el patrón del comentario.
+
+2. **Limpiar el estado**
+
+   Elimina cualquier regla existente para garantizar un inicio limpio.
+
+3. **Crear las reglas nuevas**
+
+   Crea las reglas según la configuración actual.
+
+4. **Colocarlas en la posición configurada**
+
+   Coloca el bloque gestionado según el `rule_placement` efectivo para ese protocolo y tabla: arriba, abajo, una posición numérica de RouterOS o un comentario ancla.
+
+</Steps>
+
+## Estructura de las reglas
+
+Cada regla tiene:
+
+- **Chain**: `input`, `forward`, `prerouting` u `output`
+- **Acción**: `drop` o `reject` (con `reject-with` opcional)
+- **Interfaz**: restricción opcional de interfaz de entrada/salida
+- **Estado de conexión**: matcher opcional de connection-state (solo filter)
+- **Ajustes de log**: registro opcional con prefijo configurable
+- **Comentario**: identificador estructurado para la gestión
+
+Ejemplo de regla tal y como se ve en RouterOS:
+
+```routeros
+/ip/firewall/filter print where comment~"crowdsec-bouncer"
+# chain=input action=drop src-address-list=crowdsec-banned
+#   in-interface=ether1 log=no
+#   comment="crowdsec-bouncer:filter-input-input-v4 @cs-routeros-bouncer"
+```
+
+## Colocación de reglas
+
+El bouncer coloca las reglas relacionadas como bloques ordenados. Un bloque de input típico incluye las siguientes reglas en orden: `whitelist` (si está configurada), `counting` (si las métricas de procesados están habilitadas) y después la regla de deny/reject. La colocación se realiza cuando ya existen todas las reglas del bloque, de modo que el orden interno se mantiene estable.
+
+La colocación es local a cada menú. Un bloque de `filter` se posiciona dentro de `/ip firewall filter` o `/ipv6 firewall filter`; un bloque de `raw` se posiciona dentro de `/ip firewall raw` o `/ipv6 firewall raw`.
+
+El bouncer puede colocar su bloque gestionado (las reglas relacionadas que crea y mueve juntas) arriba, abajo, en una posición numérica de `print` de RouterOS, o relativa a un comentario existente perteneciente a otra regla. Si el bloqueo de salida está habilitado, el bloque de output se mueve con el mismo orden interno. Por defecto, el bouncer reutiliza la misma estrategia de colocación para IPv4 e IPv6. Las anulaciones por tabla y por protocolo pueden enviar los bloques de `filter`, `raw`, IPv4 e IPv6 a ubicaciones distintas. La precedencia es: colocación global, anulación global de tabla, anulación de protocolo y, por último, anulación de tabla del protocolo.
+
+| Estrategia       | Comportamiento                                                                                                                                                                                                    |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `top`            | Mueve el bloque antes de la primera regla utilizable que no sea del bouncer. Si RouterOS rechaza la posición, por ejemplo antes de reglas dinámicas o integradas, el bouncer reintenta con posiciones inferiores. |
+| `bottom`         | Deja las reglas recién creadas añadidas al final.                                                                                                                                                                 |
+| `position`       | Requiere `position` y usa la numeración de `print` de RouterOS empezando en cero, excluyendo las reglas existentes del bouncer. Las posiciones fuera de rango se añaden al final.                                 |
+| `before_comment` | Mueve el bloque antes de la primera regla no perteneciente al bouncer cuyo comentario coincide con el ancla configurada.                                                                                          |
+| `after_comment`  | Mueve el bloque después del ancla coincidente insertándolo antes de la siguiente regla no perteneciente al bouncer; si el ancla es la última, el bloque se queda añadido al final.                                |
+
+La colocación por comentario usa `fallback` (`top` por defecto, o `bottom`) cuando el ancla no existe o no puede usarse. La `position` numérica ignora `fallback` porque una posición fuera de rango implica de forma natural añadir al final.
+
+```routeros
+# Las reglas aparecen cerca de la ubicación configurada; el reintento o el fallback pueden elegir un destino válido posterior.
+/ip/firewall/filter print
+# 0  chain=input action=drop src-address-list=crowdsec-banned ...
+# 1  chain=forward action=drop src-address-list=crowdsec-banned ...
+# 2  ... (tus otras reglas)
+```
+
+## Identificación de reglas
+
+Las reglas se identifican mediante un comentario estructurado:
+
+```text
+{prefix}:{type}-{chain}-{direction}-{protocol} @cs-routeros-bouncer
+```
+
+| Parte       | Valores                                                                  |
+| ----------- | ------------------------------------------------------------------------ |
+| `prefix`    | Configurable mediante `comment_prefix` (por defecto: `crowdsec-bouncer`) |
+| `type`      | `filter` o `raw`                                                         |
+| `chain`     | `input`, `forward`, `prerouting`, `output`                               |
+| `direction` | `input`, `output`, `whitelist` o `counting`                              |
+| `protocol`  | `v4` o `v6`                                                              |
+
+:::note
+El sufijo `@cs-routeros-bouncer` se añade siempre y sirve para distinguir las reglas creadas por este bouncer de otras reglas que casualmente puedan tener comentarios similares.
+:::
+
+## Limpieza al apagar
+
+Cuando el bouncer recibe una señal SIGTERM:
+
+<Steps>
+
+1. **Eliminar las reglas**
+
+   Se eliminan todas las reglas de firewall con comentarios coincidentes.
+
+2. **Conservar las address-lists**
+
+   Las entradas de las address-lists **no** se eliminan: expiran de forma natural mediante su timeout.
+
+</Steps>
+
+Este diseño implica que:
+
+- La protección continúa brevemente después de detener el bouncer (hasta que las entradas expiran)
+- No se necesitan operaciones de borrado masivo al apagar
+- Un reinicio rápido no deja el router desprotegido durante el intervalo
+
+<LinkCard
+  title="Configuración del firewall"
+  description="Configura los tipos de reglas, la colocación, el registro y personalizaciones avanzadas."
+  href="/cs-routeros-bouncer/es/configuration/firewall/"
+/>

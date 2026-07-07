@@ -1,0 +1,138 @@
+---
+title: Endpoint de salud
+description: Endpoint HTTP de comprobación de salud para monitorizar el estado del bouncer.
+---
+
+import { Tabs, TabItem, Badge } from "@astrojs/starlight/components";
+
+El bouncer proporciona siempre un endpoint de comprobación de salud. Las métricas de Prometheus se pueden desactivar, pero `/health` sigue disponible para Docker, systemd, Kubernetes y comprobaciones externas de disponibilidad.
+
+## Endpoint
+
+```text
+GET http://<listen_addr>:<listen_port>/health
+```
+
+Por defecto: `http://localhost:2112/health`
+
+## Formato de respuesta
+
+El valor `version` representa la versión en ejecución.
+
+```json
+{
+  "status": "ok",
+  "routeros_connected": true,
+  "version": "<current version>"
+}
+```
+
+## Códigos de estado HTTP
+
+| Código | Estado                                | Significado                                                                            |
+| ------ | ------------------------------------- | -------------------------------------------------------------------------------------- |
+| `200`  | <Badge text="OK" variant="success" /> | El endpoint de salud respondió; revisa `routeros_connected` para el estado de RouterOS |
+
+Un timeout, un error de conexión rechazada u otro fallo de conexión TCP indica que el proceso o el listener no está accesible. Los sistemas de monitorización deben tratar esos fallos de conexión como señales de proceso caído; el propio endpoint `/health` devuelve `200` cuando es alcanzable.
+
+Usa el cuerpo JSON para distinguir entre la vitalidad del proceso y la disponibilidad de RouterOS. `routeros_connected: false` significa que el proceso está vivo pero la conexión con la API de RouterOS está caída o reconectándose en ese momento.
+
+## Ejemplos de integración
+
+<Tabs>
+  <TabItem label="Docker" icon="seti:docker">
+
+```yaml
+services:
+  cs-routeros-bouncer:
+    image: ghcr.io/jmrplens/cs-routeros-bouncer:latest
+    healthcheck:
+      # Solo vitalidad del proceso; revisa routeros_connected para el estado de RouterOS.
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:2112/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+```
+
+Para reiniciar el contenedor cuando se pierda la conectividad con RouterOS, inspecciona el cuerpo JSON en su lugar:
+
+```yaml
+healthcheck:
+  test:
+    - CMD-SHELL
+    - >-
+      wget -qO- http://localhost:2112/health | grep -q '"routeros_connected":[[:space:]]*true'
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 15s
+```
+
+  </TabItem>
+  <TabItem label="Kubernetes">
+
+```yaml
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 2112
+  initialDelaySeconds: 15
+  periodSeconds: 30
+  timeoutSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 2112
+  initialDelaySeconds: 5
+  periodSeconds: 10
+```
+
+Estas sondas confirman que el proceso y el endpoint responden. Usa una sonda exec personalizada si quieres que la disponibilidad dependa de la conectividad con RouterOS:
+
+```yaml
+readinessProbe:
+  exec:
+    command:
+      - sh
+      - -c
+      - wget -qO- http://localhost:2112/health | grep -q '"routeros_connected":[[:space:]]*true'
+  initialDelaySeconds: 5
+  periodSeconds: 10
+```
+
+  </TabItem>
+  <TabItem label="Alerta de Prometheus">
+
+```yaml
+groups:
+  - name: cs-routeros-bouncer
+    rules:
+      - alert: BouncerUnhealthy
+        expr: up{job="cs-routeros-bouncer"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "CrowdSec RouterOS bouncer is down"
+```
+
+  </TabItem>
+</Tabs>
+
+## Resolución de problemas en Docker
+
+Si una comprobación de salud de Docker solo ejecuta `wget --spider`, verifica únicamente la vitalidad del proceso. El contenedor se mantiene sano aunque RouterOS esté desconectado, porque `/health` sigue devolviendo HTTP `200`.
+
+Usa la comprobación del cuerpo JSON cuando quieras que el contenedor pase a no saludable al perder RouterOS. Este ejemplo requiere `jq` en el contenedor o en el entorno de la comprobación de salud:
+
+```yaml
+healthcheck:
+  test:
+    - CMD-SHELL
+    - >-
+      wget -qO- http://localhost:2112/health | jq -e '.routeros_connected == true' >/dev/null
+```
+
+Ten cuidado con los reinicios automáticos ante la pérdida de conectividad con RouterOS. Si el router se está reiniciando o está temporalmente inaccesible, los bucles de reinicio pueden hacer que los logs sean más ruidosos sin arreglar el problema de red subyacente.

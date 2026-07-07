@@ -1,0 +1,111 @@
+---
+title: Registro y métricas
+description: Parámetros de configuración del registro del bouncer y de las métricas de Prometheus.
+---
+
+import { Badge, LinkCard } from "@astrojs/starlight/components";
+
+Ajustes para el registro del bouncer y las métricas de Prometheus.
+
+## Registro
+
+### `logging.level` <Badge text="Opcional" variant="note" />
+
+**Env:** `LOG_LEVEL` · **Predeterminado:** `info`
+
+Nivel de detalle del log:
+
+| Nivel   | Descripción                                         |
+| ------- | --------------------------------------------------- |
+| `debug` | Información detallada para depuración (muy verboso) |
+| `info`  | Mensajes de funcionamiento normal                   |
+| `warn`  | Condiciones de advertencia                          |
+| `error` | Solo condiciones de error                           |
+
+```yaml
+logging:
+  level: "debug" # Útil para diagnosticar problemas
+```
+
+### `logging.format` <Badge text="Opcional" variant="note" />
+
+**Env:** `LOG_FORMAT` · **Predeterminado:** `text`
+
+Formato de salida del log:
+
+- `text` — salida legible y con colores (ideal para consola/journalctl)
+- `json` — JSON estructurado (ideal para sistemas de agregación de logs)
+
+### `logging.file` <Badge text="Opcional" variant="note" />
+
+**Env:** `LOG_FILE` · **Predeterminado:** — (stdout)
+
+Ruta a un archivo de log. Cuando está vacío, los logs se escriben solo en stdout. Cuando se configura, los logs se escriben tanto en stdout como en el archivo especificado.
+
+```yaml
+logging:
+  file: "/var/log/cs-routeros-bouncer.log"
+```
+
+## Métricas de Prometheus
+
+### `metrics.enabled` <Badge text="Opcional" variant="note" />
+
+**Env:** `METRICS_ENABLED` · **Predeterminado:** `false`
+
+Habilita el endpoint de métricas de Prometheus. Cuando está habilitado, el bouncer expone métricas en `/metrics`. La comprobación de salud `/health` se sirve siempre en el listener de métricas, independientemente de este ajuste.
+
+### `metrics.listen_addr` <Badge text="Opcional" variant="note" />
+
+**Env:** `METRICS_ADDR` · **Predeterminado:** `0.0.0.0`
+
+Dirección de escucha del servidor HTTP de métricas.
+
+### `metrics.listen_port` <Badge text="Opcional" variant="note" />
+
+**Env:** `METRICS_PORT` · **Predeterminado:** `2112`
+
+Puerto de escucha del servidor HTTP de métricas.
+
+```yaml
+metrics:
+  enabled: true
+  listen_addr: "0.0.0.0"
+  listen_port: 2112
+```
+
+### `metrics.routeros_poll_interval` <Badge text="Opcional" variant="note" />
+
+**Env:** `METRICS_ROUTEROS_POLL_INTERVAL` · **Predeterminado:** `30s`
+
+Frecuencia con la que se consulta RouterOS para obtener métricas del sistema (carga de CPU, memoria, temperatura). Configúralo en `0` para deshabilitar la recopilación de métricas del sistema.
+
+```yaml
+metrics:
+  routeros_poll_interval: "30s"
+```
+
+### `metrics.track_processed` <Badge text="Avanzado" variant="caution" />
+
+**Env:** `METRICS_TRACK_PROCESSED` · **Predeterminado:** `true`
+
+Habilita el seguimiento del tráfico procesado (no bloqueado) a través del firewall. Cuando está habilitado, el bouncer crea reglas de conteo passthrough en RouterOS para medir todo el tráfico que pasa por las cadenas monitorizadas y envía los datos tanto a Prometheus como a LAPI.
+
+Configúralo en `false` para deshabilitar el seguimiento del tráfico procesado, lo que evita crear reglas adicionales en el router y reduce la sobrecarga de métricas.
+
+```yaml
+metrics:
+  track_processed: true
+```
+
+### Métricas disponibles
+
+<LinkCard
+  title="Referencia de métricas de Prometheus"
+  description="Lista completa de todas las métricas exportadas con ejemplos de PromQL"
+  href="/cs-routeros-bouncer/es/monitoring/prometheus/"
+/>
+
+:::caution[Seguridad]
+El endpoint de métricas no debe exponerse a internet. Usa reglas de firewall o segmentación de red para restringir el acceso.
+:::

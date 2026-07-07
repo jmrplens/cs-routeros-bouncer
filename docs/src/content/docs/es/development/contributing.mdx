@@ -1,0 +1,111 @@
+---
+title: Contribuir
+description: Directrices para contribuir a cs-routeros-bouncer.
+---
+
+import { Steps } from "@astrojs/starlight/components";
+
+¡Gracias por plantearte contribuir a cs-routeros-bouncer!
+
+## Primeros pasos
+
+### Requisitos previos
+
+- Go 1.26.3+
+- Un router MikroTik (para pruebas funcionales — opcional)
+- Git
+
+### Configuración
+
+<Steps>
+
+1. **Haz un fork y clona el repositorio**
+
+   ```bash
+   git clone https://github.com/YOUR-USERNAME/cs-routeros-bouncer.git
+   cd cs-routeros-bouncer
+   ```
+
+2. **Instala las dependencias y verifica la compilación**
+
+   ```bash
+   go mod download
+   go build ./...
+   go test ./...
+   ```
+
+</Steps>
+
+## Flujo de trabajo de desarrollo
+
+<Steps>
+
+1. **Crea una rama** a partir de `main`
+
+   ```bash
+   git checkout -b feat/my-feature
+   ```
+
+2. **Haz tus cambios** — mantén los commits enfocados y atómicos
+
+3. **Escribe pruebas** para la nueva funcionalidad
+
+4. **Ejecuta la suite de pruebas y el linter**
+
+   ```bash
+   go test ./...
+   golangci-lint run
+   ```
+
+5. **Haz commit** usando mensajes de commit convencionales
+
+   ```text
+   feat: add support for new feature
+   fix: correct handling of edge case
+   docs: update configuration reference
+   ```
+
+6. **Haz push** y crea un pull request
+
+</Steps>
+
+## Mensajes de commit
+
+Sigue [Conventional Commits](https://www.conventionalcommits.org/):
+
+| Prefijo     | Uso                                                             |
+| ----------- | --------------------------------------------------------------- |
+| `feat:`     | Nueva funcionalidad                                             |
+| `fix:`      | Corrección de errores                                           |
+| `docs:`     | Cambios en la documentación                                     |
+| `test:`     | Añadir o modificar pruebas                                      |
+| `refactor:` | Cambio de código que ni corrige un error ni añade funcionalidad |
+| `perf:`     | Mejora de rendimiento                                           |
+| `chore:`    | Cambios en el proceso de build o herramientas auxiliares        |
+| `ci:`       | Cambios en CI/CD                                                |
+
+## Estilo de código
+
+- Sigue las convenciones estándar de Go (`gofmt`, `go vet`)
+- Usa nombres de variables y funciones con significado
+- Añade comentarios a las funciones exportadas y a la lógica compleja
+- Mantén las funciones enfocadas — una función, una responsabilidad
+- Gestiona los errores de forma explícita — sin fallos silenciosos
+
+## Directrices para pull requests
+
+- Mantén los PR enfocados en un único cambio
+- Incluye pruebas para la nueva funcionalidad
+- Actualiza la documentación si cambia el comportamiento
+- Asegúrate de que todas las comprobaciones de CI pasan
+- Proporciona una descripción clara del qué y el porqué
+
+## Informar de problemas
+
+Al informar de errores, incluye:
+
+1. Versión del bouncer (`cs-routeros-bouncer -version`)
+2. Versión de MikroTik RouterOS
+3. Configuración (con las credenciales censuradas)
+4. Salida de log relevante (`LOG_LEVEL=debug`)
+5. Pasos para reproducirlo

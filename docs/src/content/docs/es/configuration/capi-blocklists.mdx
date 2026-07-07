@@ -1,0 +1,73 @@
+---
+title: Blocklists de CAPI
+description: Cómo decidir si sincronizar las blocklists comunitarias de CrowdSec con RouterOS.
+---
+
+CrowdSec puede proporcionar decisiones de [blocklist comunitaria](https://docs.crowdsec.net/docs/central_api/community_blocklist) desde la Central API (CAPI). cs-routeros-bouncer puede sincronizar esas decisiones con RouterOS, pero el tamaño de la lista puede ser lo bastante grande como para importar en routers pequeños.
+
+## Cuándo usar CAPI
+
+Usa la sincronización completa de CAPI cuando:
+
+- Tu router tiene suficiente CPU y memoria para decenas de miles de entradas de address-list.
+- Quieres un bloqueo proactivo de IPs maliciosas conocidas, no solo de las IPs vistas localmente.
+- Es aceptable que la reconciliación de arranque tarde alrededor de un minuto en hardware de gama media.
+
+Prefiere el modo solo local cuando:
+
+- El router tiene recursos limitados.
+- Solo quieres bloquear a los atacantes detectados por tu propio motor de CrowdSec.
+- Los reinicios del router y del bouncer deben ser muy rápidos.
+
+## Modo solo local
+
+En YAML, conserva solo las decisiones del motor local y las manuales de `cscli`:
+
+```yaml
+crowdsec:
+  origins: ["crowdsec", "cscli"]
+```
+
+Con variables de entorno, `CROWDSEC_ORIGINS` se separa con espacios:
+
+```bash
+CROWDSEC_ORIGINS="crowdsec cscli"
+```
+
+Dejar `origins` vacío acepta todos los orígenes, incluidos `CAPI` y `lists:*`.
+
+## Escala esperada
+
+En el entorno de pruebas de rendimiento con un RB5009, la sincronización completa de CAPI sincronizó unas 28.700 decisiones en unos 58 segundos de reloj, con aproximadamente 35-36 segundos de trabajo de adición masiva en RouterOS y un pico de CPU observado de en torno al 39 %.
+
+Tu resultado depende de la versión de RouterOS, el modelo, la carga de tráfico, la latencia de la API y el tamaño de la address-list. El coste se concentra durante la reconciliación de arranque o los cambios grandes de lista; el trabajo normal de ban/unban en streaming es mucho más ligero.
+
+## Estrategia de filtrado
+
+Empieza con el modo solo local en routers pequeños y habilita CAPI solo después de comprobar el tiempo de reconciliación de arranque y la CPU. Si la CAPI completa resulta demasiado pesada, combina los filtros de origen con filtros de subcadena de escenario:
+
+```yaml
+crowdsec:
+  origins: ["crowdsec", "cscli", "CAPI"]
+  scenarios_containing: ["ssh", "http"]
+```
+
+Los valores múltiples se evalúan como condiciones OR dentro de cada clave: `origins` acepta decisiones de `crowdsec` OR `cscli` OR `CAPI`, y `scenarios_containing` coincide con escenarios que contienen `ssh` OR `http`. Cuando se combinan `origins`, `scenarios_containing` y `scenarios_not_containing`, una decisión debe pasar todos los grupos de filtros configurados.
+
+Usa `scenarios_not_containing` para excluir escenarios ruidosos por subcadena:
+
+```yaml
+crowdsec:
+  scenarios_not_containing: ["test", "honeypot"]
+```
+
+## Monitorización
+
+Vigila estas señales mientras pruebas CAPI:
+
+- `/health` sigue siendo accesible y `routeros_connected` se mantiene en `true`.
+- `crowdsec_bouncer_active_decisions_by_origin{origin="CAPI"}` muestra la proporción de CAPI.
+- La CPU de RouterOS vuelve a estar casi en reposo tras la reconciliación.
+- Los logs no muestran reconexiones repetidas ni un vaivén repetido de entradas duplicadas.
+
+Si la CPU se mantiene alta tras la reconciliación, trátalo como una señal para resolver problemas y no como comportamiento normal de CAPI.

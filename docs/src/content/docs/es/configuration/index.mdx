@@ -1,0 +1,180 @@
+---
+title: Visión general de la configuración
+description: Todas las opciones de configuración de cs-routeros-bouncer de un vistazo.
+slug: es/configuration
+---
+
+import { LinkCard, CardGrid } from "@astrojs/starlight/components";
+
+cs-routeros-bouncer se puede configurar mediante un **archivo YAML** y/o **variables de entorno**. Las variables de entorno tienen prioridad sobre los valores del archivo de configuración.
+
+## Archivo de configuración
+
+Cuando ejecutas el binario directamente, pasa la ruta de configuración con `-c`, salvo que todos los ajustes obligatorios se proporcionen mediante variables de entorno:
+
+```bash
+cs-routeros-bouncer -c /path/to/config.yaml
+```
+
+Los asistentes de despliegue eligen sus propias rutas:
+
+| Método de despliegue          | Ruta de configuración usada                                                                                       |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Servicio systemd `setup`      | `/etc/cs-routeros-bouncer/cs-routeros-bouncer.yaml`                                                               |
+| Imagen Docker                 | Variables de entorno por defecto; `/etc/cs-routeros-bouncer/config.yaml` se carga automáticamente si está montado |
+| Ejecución directa del binario | Sin archivo implícito; usa `-c`                                                                                   |
+
+Los valores de cadena YAML pueden contener marcadores explícitos `${VAR}`. Solo se expanden los marcadores con llaves; los caracteres `$` literales de los secretos se conservan.
+
+En el repositorio se incluye una referencia completa comentada en [`config/cs-routeros-bouncer.yaml`](https://github.com/jmrplens/cs-routeros-bouncer/blob/main/config/cs-routeros-bouncer.yaml).
+
+## Secciones de configuración
+
+<CardGrid>
+  <LinkCard
+    title="MikroTik"
+    description="Conexión a la API de RouterOS, TLS y tiempos de espera."
+    href="/cs-routeros-bouncer/es/configuration/mikrotik/"
+  />
+  <LinkCard
+    title="CrowdSec"
+    description="Conexión a LAPI, sondeo y filtrado de decisiones."
+    href="/cs-routeros-bouncer/es/configuration/crowdsec/"
+  />
+  <LinkCard
+    title="Blocklists de CAPI"
+    description="Blocklists comunitarias, modo solo local y recomendaciones de escala."
+    href="/cs-routeros-bouncer/es/configuration/capi-blocklists/"
+  />
+  <LinkCard
+    title="Firewall"
+    description="IPv4/IPv6, reglas filter/raw, bloqueo de salida y registro."
+    href="/cs-routeros-bouncer/es/configuration/firewall/"
+  />
+  <LinkCard
+    title="Registro y métricas"
+    description="Nivel/formato de log y endpoint de métricas de Prometheus."
+    href="/cs-routeros-bouncer/es/configuration/logging-metrics/"
+  />
+  <LinkCard
+    title="Ajuste de rendimiento"
+    description="Tamaño del pool, operaciones en bloque, tiempos de espera y cadencia de reconciliación."
+    href="/cs-routeros-bouncer/es/configuration/performance-tuning/"
+  />
+  <LinkCard
+    title="Ejemplos"
+    description="Ejemplos de configuración completos para escenarios habituales."
+    href="/cs-routeros-bouncer/es/configuration/examples/"
+  />
+</CardGrid>
+
+## Referencia rápida
+
+Todas las opciones de un vistazo. Consulta las páginas dedicadas para las descripciones detalladas.
+
+### Parámetros básicos
+
+Los ajustes esenciales para poner en marcha el bouncer. La mayoría de los despliegues solo necesitan estos.
+
+| Clave de configuración    | Variable de entorno        | Valor por defecto        | Descripción                                    |
+| ------------------------- | -------------------------- | ------------------------ | ---------------------------------------------- |
+| `crowdsec.api_url`        | `CROWDSEC_URL`             | `http://localhost:8080/` | URL de la LAPI de CrowdSec                     |
+| `crowdsec.api_key`        | `CROWDSEC_BOUNCER_API_KEY` | _(obligatorio)_          | API key del bouncer                            |
+| `mikrotik.address`        | `MIKROTIK_HOST`            | `192.168.0.1:8728`       | Dirección de la API de RouterOS (`host:port`)  |
+| `mikrotik.username`       | `MIKROTIK_USER`            | `crowdsec`               | Usuario de la API                              |
+| `mikrotik.password`       | `MIKROTIK_PASS`            | _(obligatorio)_          | Contraseña de la API                           |
+| `firewall.ipv4.enabled`   | `FIREWALL_IPV4_ENABLED`    | `true`                   | Habilitar el bloqueo IPv4                      |
+| `firewall.ipv6.enabled`   | `FIREWALL_IPV6_ENABLED`    | `true`                   | Habilitar el bloqueo IPv6                      |
+| `firewall.filter.enabled` | `FIREWALL_FILTER_ENABLED`  | `true`                   | Crear reglas de firewall filter                |
+| `firewall.raw.enabled`    | `FIREWALL_RAW_ENABLED`     | `true`                   | Crear reglas raw/prerouting                    |
+| `firewall.deny_action`    | `FIREWALL_DENY_ACTION`     | `drop`                   | Acción: `drop` o `reject`                      |
+| `logging.level`           | `LOG_LEVEL`                | `info`                   | Nivel de log: `debug`, `info`, `warn`, `error` |
+
+### Parámetros avanzados
+
+Opciones de ajuste fino para el filtrado de decisiones, TLS, rendimiento, personalización del firewall y observabilidad. Los valores por defecto funcionan bien en la mayoría de las instalaciones.
+
+#### [CrowdSec](/cs-routeros-bouncer/es/configuration/crowdsec/) — sondeo, filtrado y TLS
+
+| Clave de configuración               | Variable de entorno                 | Valor por defecto | Descripción                                                                 |
+| ------------------------------------ | ----------------------------------- | ----------------- | --------------------------------------------------------------------------- |
+| `crowdsec.update_frequency`          | `CROWDSEC_UPDATE_FREQUENCY`         | `10s`             | Intervalo de sondeo                                                         |
+| `crowdsec.reconciliation_interval`   | `CROWDSEC_RECONCILIATION_INTERVAL`  | `15m`             | Reconciliación periódica de address-list (`0` = deshabilitada, mínimo `1m`) |
+| `crowdsec.lapi_metrics_interval`     | `CROWDSEC_LAPI_METRICS_INTERVAL`    | `15m`             | Intervalo de envío de métricas de uso (`0` = deshabilitado)                 |
+| `crowdsec.origins`                   | `CROWDSEC_ORIGINS`                  | `[]` (todos)      | Filtrar por origen                                                          |
+| `crowdsec.scopes`                    | `CROWDSEC_SCOPES`                   | `["ip","range"]`  | Ámbitos de decisión                                                         |
+| `crowdsec.supported_decisions_types` | `CROWDSEC_DECISIONS_TYPES`          | `["ban"]`         | Tipos de decisión (solo `ban` está implementado)                            |
+| `crowdsec.scenarios_containing`      | `CROWDSEC_SCENARIOS_CONTAINING`     | `[]`              | Incluir solo los escenarios coincidentes                                    |
+| `crowdsec.scenarios_not_containing`  | `CROWDSEC_SCENARIOS_NOT_CONTAINING` | `[]`              | Excluir los escenarios coincidentes                                         |
+| `crowdsec.retry_initial_connect`     | `CROWDSEC_RETRY_INITIAL_CONNECT`    | `true`            | Reintentar en el arranque                                                   |
+| `crowdsec.insecure_skip_verify`      | `CROWDSEC_INSECURE_SKIP_VERIFY`     | `false`           | Omitir la verificación TLS                                                  |
+| `crowdsec.cert_path`                 | `CROWDSEC_CERT_PATH`                |                   | Ruta del certificado de cliente                                             |
+| `crowdsec.key_path`                  | `CROWDSEC_KEY_PATH`                 |                   | Ruta de la clave de cliente                                                 |
+| `crowdsec.ca_cert_path`              | `CROWDSEC_CA_CERT_PATH`             |                   | Ruta del certificado de la CA                                               |
+
+`CROWDSEC_ORIGINS` se separa con espacios cuando se define como variable de entorno, por ejemplo `CROWDSEC_ORIGINS="crowdsec cscli"`.
+
+#### [MikroTik](/cs-routeros-bouncer/es/configuration/mikrotik/) — TLS y rendimiento
+
+| Clave de configuración        | Variable de entorno     | Valor por defecto | Descripción                       |
+| ----------------------------- | ----------------------- | ----------------- | --------------------------------- |
+| `mikrotik.tls`                | `MIKROTIK_TLS`          | `false`           | Usar TLS                          |
+| `mikrotik.tls_insecure`       | `MIKROTIK_TLS_INSECURE` | `false`           | Omitir la verificación TLS        |
+| `mikrotik.connection_timeout` | `MIKROTIK_CONN_TIMEOUT` | `10s`             | Tiempo de espera de conexión      |
+| `mikrotik.command_timeout`    | `MIKROTIK_CMD_TIMEOUT`  | `30s`             | Tiempo de espera de comando       |
+| `mikrotik.pool_size`          | `MIKROTIK_POOL_SIZE`    | `4`               | Conexiones API en paralelo (1–20) |
+
+#### [Firewall](/cs-routeros-bouncer/es/configuration/firewall/) — reglas, interfaces y registro
+
+| Clave de configuración                      | Variable de entorno                         | Valor por defecto  | Descripción                                                                                                                                                                                                                                     |
+| ------------------------------------------- | ------------------------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `firewall.ipv4.address_list`                | `FIREWALL_IPV4_ADDRESS_LIST`                | `crowdsec-banned`  | Nombre de la lista IPv4                                                                                                                                                                                                                         |
+| `firewall.ipv6.address_list`                | `FIREWALL_IPV6_ADDRESS_LIST`                | `crowdsec6-banned` | Nombre de la lista IPv6                                                                                                                                                                                                                         |
+| `firewall.filter.chains`                    | `FIREWALL_FILTER_CHAINS`                    | `["input"]`        | Cadenas filter; en los valores de entorno separados por comas se recorta el espacio en blanco alrededor de cada entrada                                                                                                                         |
+| `firewall.raw.chains`                       | `FIREWALL_RAW_CHAINS`                       | `["prerouting"]`   | Cadenas raw; en los valores de entorno separados por comas se recorta el espacio en blanco alrededor de cada entrada                                                                                                                            |
+| `firewall.rule_placement`                   | `FIREWALL_RULE_PLACEMENT`                   | `top`              | Forma abreviada de cadena simple para la colocación global                                                                                                                                                                                      |
+| `firewall.rule_placement.strategy`          | `FIREWALL_RULE_PLACEMENT_STRATEGY`          | `top`              | Estrategia en forma de objeto: `top`, `bottom`, `position`, `before_comment` o `after_comment`                                                                                                                                                  |
+| `firewall.rule_placement.comment`           | `FIREWALL_RULE_PLACEMENT_COMMENT`           |                    | Comentario ancla para la colocación por comentario                                                                                                                                                                                              |
+| `firewall.rule_placement.comment_match`     | `FIREWALL_RULE_PLACEMENT_COMMENT_MATCH`     | `exact`            | Modo de coincidencia del comentario: `exact` o `contains`                                                                                                                                                                                       |
+| `firewall.rule_placement.position`          | `FIREWALL_RULE_PLACEMENT_POSITION`          |                    | Posición `print` de RouterOS (base cero) obligatoria cuando la estrategia es `position`                                                                                                                                                         |
+| `firewall.rule_placement.fallback`          | `FIREWALL_RULE_PLACEMENT_FALLBACK`          | `top`              | Alternativa para la colocación por comentario: `top` o `bottom`                                                                                                                                                                                 |
+| `firewall.rule_placement.filter`            | Solo YAML                                   |                    | Sobrescritura para la tabla filter; hereda los campos no especificados de la colocación global                                                                                                                                                  |
+| `firewall.rule_placement.raw`               | Solo YAML                                   |                    | Sobrescritura para la tabla raw; hereda los campos no especificados de la colocación global                                                                                                                                                     |
+| `firewall.ipv4.rule_placement`              | Solo YAML                                   |                    | Sobrescritura de colocación solo IPv4; hereda los campos no especificados de la colocación global                                                                                                                                               |
+| `firewall.ipv4.rule_placement.filter`       | Solo YAML                                   |                    | Sobrescritura IPv4 para la tabla filter; hereda de la colocación global y de la IPv4                                                                                                                                                            |
+| `firewall.ipv4.rule_placement.raw`          | Solo YAML                                   |                    | Sobrescritura IPv4 para la tabla raw; hereda de la colocación global y de la IPv4                                                                                                                                                               |
+| `firewall.ipv6.rule_placement`              | Solo YAML                                   |                    | Sobrescritura de colocación solo IPv6; hereda los campos no especificados de la colocación global                                                                                                                                               |
+| `firewall.ipv6.rule_placement.filter`       | Solo YAML                                   |                    | Sobrescritura IPv6 para la tabla filter; hereda de la colocación global y de la IPv6                                                                                                                                                            |
+| `firewall.ipv6.rule_placement.raw`          | Solo YAML                                   |                    | Sobrescritura IPv6 para la tabla raw; hereda de la colocación global y de la IPv6                                                                                                                                                               |
+| `firewall.comment_prefix`                   | `FIREWALL_COMMENT_PREFIX`                   | `crowdsec-bouncer` | Prefijo de comentario                                                                                                                                                                                                                           |
+| `firewall.log`                              | `FIREWALL_LOG`                              | `false`            | Habilitar el registro de reglas                                                                                                                                                                                                                 |
+| `firewall.log_prefix`                       | `FIREWALL_LOG_PREFIX`                       | `crowdsec-bouncer` | Prefijo de log global                                                                                                                                                                                                                           |
+| `firewall.reject_with`                      | `FIREWALL_REJECT_WITH`                      |                    | Tipo de rechazo cuando `deny_action=reject`: `icmp-network-unreachable`, `icmp-host-unreachable`, `icmp-port-unreachable`, `icmp-protocol-unreachable`, `icmp-network-prohibited`, `icmp-host-prohibited`, `icmp-admin-prohibited`, `tcp-reset` |
+| `firewall.filter.log_prefix`                | `FIREWALL_FILTER_LOG_PREFIX`                |                    | Sobrescribir el prefijo de log para las reglas filter                                                                                                                                                                                           |
+| `firewall.filter.connection_state`          | `FIREWALL_FILTER_CONNECTION_STATE`          |                    | Estados separados por comas: `new`, `established`, `related`, `invalid`, `untracked`; se recorta el espacio en blanco alrededor de las entradas; solo minúsculas, sin negación                                                                  |
+| `firewall.raw.log_prefix`                   | `FIREWALL_RAW_LOG_PREFIX`                   |                    | Sobrescribir el prefijo de log para las reglas raw                                                                                                                                                                                              |
+| `firewall.block_input.interface`            | `FIREWALL_BLOCK_INPUT_INTERFACE`            |                    | Restringir las reglas input/raw a una interfaz (vacío = todas)                                                                                                                                                                                  |
+| `firewall.block_input.interface_list`       | `FIREWALL_BLOCK_INPUT_INTERFACE_LIST`       |                    | Restringir las reglas input/raw a una lista de interfaces (vacío = todas)                                                                                                                                                                       |
+| `firewall.block_input.whitelist`            | `FIREWALL_BLOCK_INPUT_WHITELIST`            |                    | Address-list para la lista blanca de entrada (accept antes de drop)                                                                                                                                                                             |
+| `firewall.block_output.enabled`             | `FIREWALL_BLOCK_OUTPUT`                     | `false`            | Bloquear el tráfico saliente                                                                                                                                                                                                                    |
+| `firewall.block_output.interface`           | `FIREWALL_BLOCK_OUTPUT_INTERFACE`           |                    | Interfaz WAN                                                                                                                                                                                                                                    |
+| `firewall.block_output.interface_list`      | `FIREWALL_BLOCK_OUTPUT_INTERFACE_LIST`      |                    | Lista de interfaces WAN                                                                                                                                                                                                                         |
+| `firewall.block_output.log_prefix`          | `FIREWALL_BLOCK_OUTPUT_LOG_PREFIX`          |                    | Sobrescribir el prefijo de log para las reglas de salida                                                                                                                                                                                        |
+| `firewall.block_output.passthrough_v4`      | `FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V4`      |                    | Cliente IPv4 que omite el bloqueo de salida                                                                                                                                                                                                     |
+| `firewall.block_output.passthrough_v4_list` | `FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V4_LIST` |                    | Lista IPv4 que omite el bloqueo de salida                                                                                                                                                                                                       |
+| `firewall.block_output.passthrough_v6`      | `FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V6`      |                    | Cliente IPv6 que omite el bloqueo de salida                                                                                                                                                                                                     |
+| `firewall.block_output.passthrough_v6_list` | `FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V6_LIST` |                    | Lista IPv6 que omite el bloqueo de salida                                                                                                                                                                                                       |
+
+Los alias retrocompatibles como `FIREWALL_INPUT_*` y `FIREWALL_OUTPUT_*` se siguen aceptando para despliegues antiguos. Prefiere los nombres explícitos `FIREWALL_BLOCK_INPUT_*` y `FIREWALL_BLOCK_OUTPUT_*` en las configuraciones nuevas.
+
+#### [Registro y métricas](/cs-routeros-bouncer/es/configuration/logging-metrics/) — formato, salida a archivo y Prometheus
+
+| Clave de configuración           | Variable de entorno              | Valor por defecto | Descripción                                                                |
+| -------------------------------- | -------------------------------- | ----------------- | -------------------------------------------------------------------------- |
+| `logging.format`                 | `LOG_FORMAT`                     | `text`            | Formato de log: `text` o `json`                                            |
+| `logging.file`                   | `LOG_FILE`                       |                   | Ruta del archivo de log (vacío = solo stdout)                              |
+| `metrics.enabled`                | `METRICS_ENABLED`                | `false`           | Habilitar el endpoint `/metrics` de Prometheus                             |
+| `metrics.listen_addr`            | `METRICS_ADDR`                   | `0.0.0.0`         | Dirección de escucha                                                       |
+| `metrics.listen_port`            | `METRICS_PORT`                   | `2112`            | Puerto de escucha                                                          |
+| `metrics.routeros_poll_interval` | `METRICS_ROUTEROS_POLL_INTERVAL` | `30s`             | Intervalo de sondeo de métricas del sistema RouterOS (0 para deshabilitar) |
+| `metrics.track_processed`        | `METRICS_TRACK_PROCESSED`        | `true`            | Crear reglas passthrough de conteo para las métricas de tráfico procesado  |

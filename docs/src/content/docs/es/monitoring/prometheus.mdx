@@ -1,0 +1,374 @@
+---
+title: Métricas de Prometheus
+description: Referencia completa de todas las métricas de Prometheus exportadas por el bouncer.
+---
+
+import { Badge, Aside } from "@astrojs/starlight/components";
+
+El bouncer exporta métricas de Prometheus cuando `metrics.enabled` es `true`. Las métricas están disponibles en `http://<listen_addr>:<listen_port>/metrics`.
+
+## Métricas del bouncer
+
+### `crowdsec_bouncer_active_decisions`
+
+<Badge text="Gauge" variant="note" />
+<Badge text="Etiquetas: proto" variant="default" />
+
+Número de decisiones actualmente activas (baneos) por versión de protocolo. Se actualiza en tiempo real durante los eventos de ban/unban en streaming y se recalcula durante la reconciliación.
+
+| Etiqueta | Valores        | Descripción          |
+| -------- | -------------- | -------------------- |
+| `proto`  | `ipv4`, `ipv6` | Versión de protocolo |
+
+```text
+# Total de decisiones activas
+sum(crowdsec_bouncer_active_decisions)
+
+# Solo decisiones IPv6
+crowdsec_bouncer_active_decisions{proto="ipv6"}
+```
+
+---
+
+### `crowdsec_bouncer_active_decisions_by_origin`
+
+<Badge text="Gauge" variant="note" />
+<Badge text="Etiquetas: origin" variant="default" />
+
+Decisiones activas desglosadas por su fuente. Se incrementa/decrementa en tiempo real durante el streaming y se reinicia durante la reconciliación completa.
+
+| Etiqueta | Valores                                | Descripción           |
+| -------- | -------------------------------------- | --------------------- |
+| `origin` | `crowdsec`, `cscli`, `CAPI`, `lists:*` | Fuente de la decisión |
+
+```text
+# Decisiones activas por origen
+crowdsec_bouncer_active_decisions_by_origin
+
+# Solo decisiones de la blocklist comunitaria
+crowdsec_bouncer_active_decisions_by_origin{origin="CAPI"}
+```
+
+---
+
+### `crowdsec_bouncer_decisions_total`
+
+<Badge text="Counter" variant="success" />
+<Badge text="Etiquetas: action, proto, origin" variant="default" />
+
+Número total de decisiones procesadas desde el arranque. Cuenta tanto los baneos (`action="ban"`) como los desbaneos (`action="unban"`), con `proto` (`ipv4`/`ipv6`) y el `origin` de la decisión.
+
+```text
+# Tasa de baneos por minuto según el origen
+rate(crowdsec_bouncer_decisions_total{action="ban"}[5m]) * 60
+
+# Total de desbaneos desde el arranque
+sum(crowdsec_bouncer_decisions_total{action="unban"})
+```
+
+---
+
+### `crowdsec_bouncer_errors_total`
+
+<Badge text="Counter" variant="success" />
+<Badge text="Etiquetas: operation" variant="default" />
+
+Total de errores por operación fallida. La etiqueta `operation` toma los valores `add`, `find`, `remove`, `reconcile` y `firewall`.
+
+```text
+# Tasa de errores en todas las operaciones
+rate(crowdsec_bouncer_errors_total[5m])
+
+# Solo errores de reconciliación
+crowdsec_bouncer_errors_total{operation="reconcile"}
+```
+
+---
+
+### `crowdsec_bouncer_routeros_connected`
+
+<Badge text="Gauge" variant="note" />
+
+Indica si el bouncer tiene una conexión activa con RouterOS (`1` = conectado, `0` = desconectado).
+
+---
+
+### `crowdsec_bouncer_operation_duration_seconds`
+
+<Badge text="Histogram" variant="danger" />
+<Badge text="Etiquetas: operation" variant="default" />
+
+Duración de las operaciones en segundos. Etiquetas: `operation="add"`, `operation="remove"`, `operation="reconcile"`, `operation="bulk_add"`, `operation="bulk_remove"`.
+
+```text
+# Latencia p99 de la operación add
+histogram_quantile(0.99, rate(crowdsec_bouncer_operation_duration_seconds_bucket{operation="add"}[5m]))
+```
+
+---
+
+### `crowdsec_bouncer_last_operation_duration_seconds`
+
+<Badge text="Gauge" variant="note" />
+<Badge text="Etiquetas: operation" variant="default" />
+
+Duración de la operación más reciente de cada tipo, en segundos. Usa los mismos valores de `operation` que `crowdsec_bouncer_operation_duration_seconds` y se actualiza junto a ella — útil para paneles de "¿cuánto tardó la última reconciliación?" sin cálculos de histograma.
+
+```text
+# Duración de la última reconciliación
+crowdsec_bouncer_last_operation_duration_seconds{operation="reconcile"}
+```
+
+---
+
+### `crowdsec_bouncer_reconciliation_total`
+
+<Badge text="Counter" variant="success" />
+<Badge text="Etiquetas: action" variant="default" />
+
+Total de acciones de reconciliación. Etiquetas: `action="added"`, `action="removed"`, `action="unchanged"`. La reconciliación periódica incrementa `unchanged` cuando las entradas ya coinciden con la instantánea activa de CrowdSec.
+
+---
+
+### `crowdsec_bouncer_info`
+
+<Badge text="Gauge" variant="note" />
+<Badge text="Etiquetas: version, routeros_identity" variant="default" />
+<Badge text="Métrica informativa (valor siempre 1)" variant="caution" />
+
+Información de compilación del bouncer. Las etiquetas exponen la `version` del bouncer y la identidad del sistema RouterOS (`routeros_identity`) al que está conectado.
+
+---
+
+### `crowdsec_bouncer_start_time_seconds`
+
+<Badge text="Gauge" variant="note" />
+
+Marca de tiempo Unix del momento en que arrancó el proceso del bouncer.
+
+---
+
+### `crowdsec_bouncer_config_info`
+
+<Badge text="Gauge" variant="note" />
+<Badge text="Etiquetas: group, param, value" variant="default" />
+<Badge text="Métrica informativa (valor siempre 1)" variant="caution" />
+
+Expone la configuración no sensible del bouncer como métricas informativas. Cada parámetro de configuración se emite como su **propia serie** con exactamente tres etiquetas — `group`, `param` y `value` — y un valor constante de `1`:
+
+```text
+crowdsec_bouncer_config_info{group="CrowdSec",param="API URL",value="http://localhost:8080/"} 1
+crowdsec_bouncer_config_info{group="MikroTik",param="Connection Pool Size",value="4"} 1
+crowdsec_bouncer_config_info{group="Firewall",param="Deny Action",value="drop"} 1
+```
+
+<details>
+<summary>Lista completa de parámetros</summary>
+
+| `group`    | Valores de `param`                                                                                                                                                                                                             |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `CrowdSec` | `API URL`, `Update Frequency`, `Origins`, `Scopes`, `Decision Types`, `Retry Initial Connect`, `TLS Enabled`                                                                                                                   |
+| `MikroTik` | `Address`, `TLS Enabled`, `Connection Pool Size`, `Connection Timeout`, `Command Timeout`                                                                                                                                      |
+| `Firewall` | `IPv4 Enabled`, `IPv4 Address List`, `IPv6 Enabled`, `IPv6 Address List`, `Filter Enabled`, `Filter Chains`, `Raw Enabled`, `Raw Chains`, `Deny Action`, `Block Output`, `Rule Placement`, `Comment Prefix`, `Logging Enabled` |
+| `Logging`  | `Level`, `Format`                                                                                                                                                                                                              |
+| `Metrics`  | `Enabled`, `Listen Address`, `Listen Port`, `RouterOS Poll Interval`, `Track Processed`                                                                                                                                        |
+
+Para `Rule Placement`, los valores simples aparecen como `top` o `bottom`; la colocación estructurada aparece como un resumen compacto, por ejemplo `position:5`, `after_comment:drop invalid`, `top,filter=after_comment:drop invalid,raw=position:2` o `top,ipv4=before_comment:IPv4 anchor,ipv6=bottom,ipv6.raw=position:4`.
+
+</details>
+
+## Tráfico descartado por el firewall
+
+### `crowdsec_bouncer_dropped_bytes_total`
+
+<Badge text="Gauge" variant="note" />
+
+Bytes acumulados descartados por todas las reglas de firewall del bouncer.
+
+### `crowdsec_bouncer_dropped_packets_total`
+
+<Badge text="Gauge" variant="note" />
+
+Paquetes acumulados descartados por todas las reglas de firewall del bouncer.
+
+### `crowdsec_bouncer_dropped_bytes_by_proto`
+
+<Badge text="Gauge" variant="note" />
+<Badge text="Etiquetas: proto" variant="default" />
+<Badge text="Nueva" variant="success" />
+
+Bytes acumulados descartados por las reglas de firewall, desglosados por protocolo.
+
+| Etiqueta | Valores        | Descripción          |
+| -------- | -------------- | -------------------- |
+| `proto`  | `ipv4`, `ipv6` | Versión de protocolo |
+
+### `crowdsec_bouncer_dropped_packets_by_proto`
+
+<Badge text="Gauge" variant="note" />
+<Badge text="Etiquetas: proto" variant="default" />
+<Badge text="Nueva" variant="success" />
+
+Paquetes acumulados descartados por las reglas de firewall, desglosados por protocolo.
+
+| Etiqueta | Valores        | Descripción          |
+| -------- | -------------- | -------------------- |
+| `proto`  | `ipv4`, `ipv6` | Versión de protocolo |
+
+```text
+# Tasa de bytes descartados por protocolo
+rate(crowdsec_bouncer_dropped_bytes_by_proto[5m])
+
+# Comparar el tráfico descartado IPv4 frente a IPv6
+crowdsec_bouncer_dropped_bytes_by_proto{proto="ipv4"}
+crowdsec_bouncer_dropped_bytes_by_proto{proto="ipv6"}
+```
+
+## Tráfico procesado
+
+Las métricas de tráfico procesado miden TODO el tráfico evaluado por las cadenas de firewall del bouncer, no solo el tráfico bloqueado. El bouncer crea automáticamente reglas de conteo `action=passthrough` situadas antes de cada regla de descarte para registrar el caudal total de la cadena. Son el equivalente en MikroTik de los contadores JUMP de iptables que usa `cs-firewall-bouncer`.
+
+:::note
+El seguimiento del tráfico procesado requiere `metrics.track_processed: true` (el valor predeterminado). Configúralo a `false` para desactivar estas métricas y evitar la creación de reglas de conteo passthrough en el router.
+:::
+
+### `crowdsec_bouncer_processed_bytes_total`
+
+<Badge text="Gauge" variant="note" />
+<Badge text="Nueva" variant="success" />
+
+Bytes acumulados procesados (evaluados) por todas las reglas de firewall del bouncer.
+
+### `crowdsec_bouncer_processed_packets_total`
+
+<Badge text="Gauge" variant="note" />
+<Badge text="Nueva" variant="success" />
+
+Paquetes acumulados procesados (evaluados) por todas las reglas de firewall del bouncer.
+
+### `crowdsec_bouncer_processed_bytes_by_proto`
+
+<Badge text="Gauge" variant="note" />
+<Badge text="Etiquetas: proto" variant="default" />
+<Badge text="Nueva" variant="success" />
+
+Bytes acumulados procesados por las reglas de firewall, desglosados por protocolo.
+
+| Etiqueta | Valores        | Descripción          |
+| -------- | -------------- | -------------------- |
+| `proto`  | `ipv4`, `ipv6` | Versión de protocolo |
+
+### `crowdsec_bouncer_processed_packets_by_proto`
+
+<Badge text="Gauge" variant="note" />
+<Badge text="Etiquetas: proto" variant="default" />
+<Badge text="Nueva" variant="success" />
+
+Paquetes acumulados procesados por las reglas de firewall, desglosados por protocolo.
+
+| Etiqueta | Valores        | Descripción          |
+| -------- | -------------- | -------------------- |
+| `proto`  | `ipv4`, `ipv6` | Versión de protocolo |
+
+```text
+# Tasa de tráfico procesado por protocolo
+rate(crowdsec_bouncer_processed_bytes_by_proto[5m])
+
+# Porcentaje de descarte (cuánto tráfico se está bloqueando)
+sum(crowdsec_bouncer_dropped_packets_total) / sum(crowdsec_bouncer_processed_packets_total) * 100
+```
+
+<Aside type="note">
+  El tráfico procesado suele ser entre 200 y 500 veces mayor que el tráfico
+  descartado, ya que cuenta TODOS los paquetes que entran en las cadenas del
+  bouncer, no solo los que coinciden con IPs baneadas. Esta proporción es la
+  esperada y da contexto sobre cuánto tráfico está evaluando realmente el
+  bouncer.
+</Aside>
+
+## Métricas del sistema RouterOS
+
+Cuando `metrics.routeros_poll_interval` no es cero, el bouncer recopila métricas del sistema MikroTik:
+
+### `crowdsec_bouncer_routeros_cpu_load`
+
+<Badge text="Gauge" variant="note" />
+
+Porcentaje de carga de CPU (0–100).
+
+### `crowdsec_bouncer_routeros_memory_total_bytes`
+
+<Badge text="Gauge" variant="note" />
+
+Memoria total del sistema en bytes.
+
+### `crowdsec_bouncer_routeros_memory_used_bytes`
+
+<Badge text="Gauge" variant="note" />
+
+Memoria del sistema usada en bytes.
+
+### `crowdsec_bouncer_routeros_cpu_temperature_celsius`
+
+<Badge text="Gauge" variant="note" />
+
+Temperatura de la CPU en grados Celsius.
+
+### `crowdsec_bouncer_routeros_uptime_seconds`
+
+<Badge text="Gauge" variant="note" />
+<Badge text="Nueva" variant="success" />
+
+Tiempo de actividad de RouterOS en segundos. Se obtiene del formato de cadena de uptime de MikroTik (p. ej. `1w2d3h4m5s`).
+
+```text
+# Tiempo de actividad en días
+crowdsec_bouncer_routeros_uptime_seconds / 86400
+```
+
+### `crowdsec_bouncer_routeros_info`
+
+<Badge text="Gauge" variant="note" />
+<Badge text="Etiquetas: version, board_name" variant="default" />
+<Badge text="Nueva" variant="success" />
+
+Información del sistema RouterOS como métrica informativa (valor siempre 1). Las etiquetas exponen la versión de RouterOS y el modelo de hardware.
+
+| Etiqueta     | Ejemplo      | Descripción         |
+| ------------ | ------------ | ------------------- |
+| `version`    | `7.16.2`     | Versión de RouterOS |
+| `board_name` | `RB4011iGS+` | Modelo de hardware  |
+
+```text
+# Porcentaje de uso de memoria
+crowdsec_bouncer_routeros_memory_used_bytes / crowdsec_bouncer_routeros_memory_total_bytes * 100
+
+# Carga media de CPU
+crowdsec_bouncer_routeros_cpu_load
+```
+
+## Métricas de uso de LAPI
+
+<Aside type="tip">
+  Estas métricas se envían directamente a la LAPI de CrowdSec a través del
+  endpoint `/v1/usage-metrics` (no se exponen en el endpoint de Prometheus).
+  Permiten a CrowdSec hacer un seguimiento centralizado de la actividad del
+  bouncer. Se configuran con `crowdsec.lapi_metrics_interval`.
+</Aside>
+
+El bouncer envía lo siguiente a la LAPI en cada push de métricas:
+
+| Métrica                 | Descripción                                                                   |
+| ----------------------- | ----------------------------------------------------------------------------- |
+| **active_decisions**    | Recuento de decisiones activas por origen y por protocolo                     |
+| **dropped (bytes)**     | Delta de bytes bloqueados desde el último push, por `ip_type` (`ipv4`/`ipv6`) |
+| **dropped (packets)**   | Delta de paquetes bloqueados desde el último push, por `ip_type`              |
+| **processed (bytes)**   | Delta de bytes procesados (evaluados) desde el último push, por `ip_type`     |
+| **processed (packets)** | Delta de paquetes procesados desde el último push, por `ip_type`              |
+
+<Aside type="note">
+  Las métricas dropped y processed se envían como deltas (diferencia desde el
+  último push). La LAPI las agrega para mostrar la actividad acumulada del
+  bouncer en `cscli metrics show bouncers`. La etiqueta `ip_type` permite el
+  análisis por protocolo en la Console de CrowdSec.
+</Aside>

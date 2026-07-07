@@ -1,0 +1,673 @@
+---
+title: Firewall
+description: Configuración de bloqueo IPv4/IPv6, creación de reglas de firewall y bloqueo de salida.
+---
+
+import { Badge } from "@astrojs/starlight/components";
+
+Ajustes para el bloqueo IPv4/IPv6, la creación de reglas del [firewall de RouterOS](https://help.mikrotik.com/docs/spaces/ROS/pages/250708066/Firewall) y el bloqueo de salida.
+
+## IPv4
+
+### `firewall.ipv4.enabled` <Badge text="Opcional" variant="note" />
+
+**Env:** `FIREWALL_IPV4_ENABLED` · **Predeterminado:** `true`
+
+Habilita el bloqueo de direcciones IPv4. Cuando está habilitado, el bouncer crea reglas de firewall IPv4 y gestiona la address-list IPv4.
+
+### `firewall.ipv4.address_list` <Badge text="Opcional" variant="note" />
+
+**Env:** `FIREWALL_IPV4_ADDRESS_LIST` · **Predeterminado:** `crowdsec-banned`
+
+Nombre de la address-list IPv4 en MikroTik donde se almacenan las IP baneadas.
+
+## IPv6
+
+### `firewall.ipv6.enabled` <Badge text="Opcional" variant="note" />
+
+**Env:** `FIREWALL_IPV6_ENABLED` · **Predeterminado:** `true`
+
+Habilita el bloqueo de direcciones IPv6. Cuando está habilitado, el bouncer crea reglas de firewall IPv6 y gestiona la address-list IPv6.
+
+### `firewall.ipv6.address_list` <Badge text="Opcional" variant="note" />
+
+**Env:** `FIREWALL_IPV6_ADDRESS_LIST` · **Predeterminado:** `crowdsec6-banned`
+
+Nombre de la address-list IPv6 en MikroTik.
+
+## Reglas filter
+
+### `firewall.filter.enabled` <Badge text="Opcional" variant="note" />
+
+**Env:** `FIREWALL_FILTER_ENABLED` · **Predeterminado:** `true`
+
+Crea reglas en `/ip/firewall/filter` (y en `/ipv6/firewall/filter` si IPv6 está habilitado). Las reglas filter son las reglas estándar del firewall de RouterOS que se procesan después del seguimiento de conexiones.
+
+### `firewall.filter.chains` <Badge text="Opcional" variant="note" />
+
+**Env:** `FIREWALL_FILTER_CHAINS` · **Predeterminado:** `["input"]`
+
+Cadenas en las que crear las reglas filter. Valores habituales:
+
+- `input` — bloquea el tráfico destinado al propio router
+- `forward` — bloquea el tráfico que atraviesa el router
+
+```yaml
+firewall:
+  filter:
+    chains: ["input", "forward"]
+```
+
+Para la forma de variable de entorno, las entradas separadas por comas pueden escribirse como
+`input,forward` o `input, forward`; los espacios en blanco circundantes se eliminan antes de
+enviar los valores a RouterOS.
+
+## Reglas raw
+
+### `firewall.raw.enabled` <Badge text="Opcional" variant="note" />
+
+**Env:** `FIREWALL_RAW_ENABLED` · **Predeterminado:** `true`
+
+Crea reglas en `/ip/firewall/raw` (y en `/ipv6/firewall/raw` si IPv6 está habilitado). Las reglas raw se procesan antes del seguimiento de conexiones, lo que proporciona un filtrado de paquetes más temprano con menor uso de CPU.
+
+:::tip[Buena práctica]
+Habilita tanto las reglas filter como las raw para lograr defensa en profundidad. Las reglas raw bloquean el tráfico en una fase más temprana del procesamiento de paquetes.
+:::
+
+### `firewall.raw.chains` <Badge text="Opcional" variant="note" />
+
+**Env:** `FIREWALL_RAW_CHAINS` · **Predeterminado:** `["prerouting"]`
+
+Cadenas en las que crear las reglas raw. Normalmente `prerouting`.
+
+Al igual que con las cadenas filter, los valores de entorno separados por comas toleran
+espacios en blanco alrededor de cada nombre de cadena.
+
+## Comportamiento de las reglas
+
+### `firewall.deny_action` <Badge text="Opcional" variant="note" />
+
+**Env:** `FIREWALL_DENY_ACTION` · **Predeterminado:** `drop`
+
+Acción para las reglas de firewall:
+
+- `drop` — descarta los paquetes silenciosamente (recomendado)
+- `reject` — envía una respuesta de rechazo al emisor
+
+### `firewall.rule_placement` <Badge text="Opcional" variant="note" />
+
+**Env:** `FIREWALL_RULE_PLACEMENT` · **Predeterminado:** `top`
+
+Dónde colocar los nuevos bloques de reglas de firewall. La colocación se evalúa por menú del firewall de RouterOS (`filter` o `raw`) y por protocolo (`ip` o `ipv6`).
+
+| Estrategia       | Campos adicionales                                       | Fallback              | Comportamiento de reintento                                            | Caso de uso                                            |
+| ---------------- | -------------------------------------------------------- | --------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------ |
+| `top`            | Ninguno                                                  | No                    | Sí, prueba posiciones inferiores si RouterOS rechaza el primer destino | Máxima prioridad tolerando reglas dinámicas/integradas |
+| `bottom`         | Ninguno                                                  | No                    | No                                                                     | Añadir después de las reglas existentes                |
+| `position`       | `position` requerido                                     | No aplica             | Sí, reintenta posiciones inferiores cuando el destino no puede usarse  | Colocar en una posición de `print` de RouterOS         |
+| `before_comment` | `comment`, `comment_match` opcional, `fallback` opcional | Sí, `top` por defecto | Solo fallback                                                          | Colocar antes de una regla de usuario conocida         |
+| `after_comment`  | `comment`, `comment_match` opcional, `fallback` opcional | Sí, `top` por defecto | Solo fallback                                                          | Colocar después de una regla de usuario conocida       |
+
+:::note
+El bouncer coloca las reglas relacionadas como un bloque, de modo que las reglas de whitelist, conteo y drop/reject conservan su orden interno.
+:::
+
+Los valores de cadena simples siguen siendo totalmente compatibles y se recomiendan para despliegues sencillos:
+
+```yaml
+firewall:
+  rule_placement: "top"
+# o bien:
+# rule_placement: "bottom"
+```
+
+La colocación estructurada acepta estos campos:
+
+| Campo           | Predeterminado | Se aplica a                       | Descripción                                                                                                                                                                         |
+| --------------- | -------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `strategy`      | `top`          | Todos los modos                   | Uno de `top`, `bottom`, `position`, `before_comment` o `after_comment`                                                                                                              |
+| `position`      |                | `position`                        | Posición de `print` de RouterOS basada en cero, requerida. Los valores negativos no son válidos.                                                                                    |
+| `comment`       |                | `before_comment`, `after_comment` | Comentario de regla de RouterOS usado como ancla. Requerido para las estrategias de comentario.                                                                                     |
+| `comment_match` | `exact`        | `before_comment`, `after_comment` | `exact` usa una coincidencia exacta de cadena completa sensible a mayúsculas. `contains` usa una coincidencia literal de subcadena sensible a mayúsculas. No es una regex.          |
+| `fallback`      | `top`          | `before_comment`, `after_comment` | `top` o `bottom` cuando el ancla no existe o no puede usarse. Se ignora para `position`.                                                                                            |
+| `filter`        |                | Solo configuración estructurada   | Anula la colocación global para `/ip firewall filter` y `/ipv6 firewall filter`, incluidas las reglas opcionales de bloqueo de salida configuradas mediante `block_output.enabled`. |
+| `raw`           |                | Solo configuración estructurada   | Anula la colocación global para `/ip firewall raw` y `/ipv6 firewall raw`.                                                                                                          |
+
+El mismo objeto estructurado puede usarse en `firewall.ipv4.rule_placement` y `firewall.ipv6.rule_placement` para anulaciones por protocolo solo en YAML. Estas anulaciones heredan los campos no especificados de la colocación global y pueden contener anulaciones `filter` y `raw` locales al protocolo.
+
+Coloca las reglas filter después de una regla de usuario existente manteniendo las reglas raw en la parte superior:
+
+```yaml
+firewall:
+  rule_placement:
+    strategy: "top"
+    filter:
+      strategy: "after_comment"
+      comment: "drop invalid"
+      comment_match: "contains"
+      fallback: "top"
+    raw:
+      strategy: "top"
+```
+
+Coloca las reglas en una posición numérica de RouterOS:
+
+```yaml
+firewall:
+  rule_placement:
+    strategy: "position"
+    position: 2
+```
+
+`position` es obligatorio para `strategy: "position"` y usa la numeración de `print` de RouterOS basada en cero. Si la posición configurada es mayor que el número de reglas existentes ajenas al bouncer, el bloque se añade al final. `fallback` se ignora para `strategy: "position"`.
+
+Por ejemplo, si RouterOS muestra reglas existentes ajenas al bouncer en las posiciones `0`, `1`, `2` y `3`, entonces `position: 2` inserta el bloque gestionado antes de la regla que actualmente se muestra como `2`. El bouncer excluye sus propias reglas `@cs-routeros-bouncer` antes de calcular la posición de destino, por lo que los reinicios son estables.
+
+Si se configuran tanto la colocación global como las anulaciones `filter` o `raw`, la anulación específica de tabla gana para esa tabla y hereda de la colocación global los campos que no establezca.
+
+```yaml
+firewall:
+  rule_placement:
+    strategy: "before_comment"
+    comment: "my rule"
+    filter:
+      strategy: "top"
+```
+
+En este ejemplo, `filter` usa `strategy: "top"`. `raw` hereda la `strategy: "before_comment"` global y `comment: "my rule"`.
+
+Las anulaciones específicas de protocolo se evalúan después de las anulaciones globales de tabla. El orden de precedencia completo es: colocación global, `filter`/`raw` globales, colocación de protocolo y, por último, `filter`/`raw` de protocolo.
+
+```yaml
+firewall:
+  rule_placement:
+    strategy: "top"
+  ipv4:
+    rule_placement:
+      strategy: "before_comment"
+      comment: "IPv4 production anchor"
+      fallback: "bottom"
+  ipv6:
+    rule_placement:
+      strategy: "bottom"
+      filter:
+        strategy: "after_comment"
+        comment: "IPv6 filter anchor"
+      raw:
+        strategy: "position"
+        position: 4
+```
+
+En este ejemplo, las reglas IPv4 se colocan antes del ancla IPv4. Las reglas IPv6 heredan `bottom`, las reglas filter IPv6 se colocan después de `IPv6 filter anchor` y las reglas raw IPv6 usan la posición basada en cero `4`.
+
+Variables de entorno adicionales para la colocación global estructurada:
+
+- `FIREWALL_RULE_PLACEMENT` - estrategia global heredada/simple (`top`, `bottom`, `position`, `before_comment` o `after_comment`)
+- `FIREWALL_RULE_PLACEMENT_STRATEGY` - estrategia global en forma de objeto; tiene precedencia sobre `FIREWALL_RULE_PLACEMENT` cuando ambas están definidas
+- `FIREWALL_RULE_PLACEMENT_COMMENT` - comentario ancla para las estrategias de comentario
+- `FIREWALL_RULE_PLACEMENT_COMMENT_MATCH` - `exact` o `contains`
+- `FIREWALL_RULE_PLACEMENT_POSITION` - posición numérica basada en cero, requerida para `position`
+- `FIREWALL_RULE_PLACEMENT_FALLBACK` - `top` o `bottom` para las estrategias de comentario
+
+```bash
+FIREWALL_RULE_PLACEMENT="after_comment"
+FIREWALL_RULE_PLACEMENT_COMMENT="drop invalid"
+FIREWALL_RULE_PLACEMENT_COMMENT_MATCH="contains"
+FIREWALL_RULE_PLACEMENT_FALLBACK="top"
+```
+
+Las variables de entorno configuran únicamente la colocación global. Usa YAML cuando necesites estrategias de colocación distintas para `filter`, `raw`, IPv4 o IPv6.
+
+### `firewall.comment_prefix` <Badge text="Opcional" variant="note" />
+
+**Env:** `FIREWALL_COMMENT_PREFIX` · **Predeterminado:** `crowdsec-bouncer`
+
+Prefijo para los comentarios de todos los recursos gestionados por el bouncer en MikroTik. Se usa para identificar y gestionar las reglas.
+
+Ejemplo de comentarios generados:
+
+```text
+crowdsec-bouncer:filter-input-input-v4 @cs-routeros-bouncer
+crowdsec-bouncer:raw-prerouting-input-v4 @cs-routeros-bouncer
+crowdsec-bouncer:filter-input-input-v6 @cs-routeros-bouncer
+```
+
+## Registro de reglas
+
+### `firewall.log` <Badge text="Opcional" variant="note" />
+
+**Env:** `FIREWALL_LOG` · **Predeterminado:** `false`
+
+Habilita el registro de RouterOS en las reglas de firewall. Cuando está habilitado, los paquetes coincidentes se registran en el log del sistema de RouterOS.
+
+### `firewall.log_prefix` <Badge text="Opcional" variant="note" />
+
+**Env:** `FIREWALL_LOG_PREFIX` · **Predeterminado:** `crowdsec-bouncer`
+
+Prefijo para las entradas de log de RouterOS cuando el registro está habilitado. Ayuda a identificar las entradas relacionadas con el bouncer en el log del router.
+
+```yaml
+firewall:
+  log: true
+  log_prefix: "crowdsec-bouncer"
+```
+
+## Filtrado por interfaz de entrada
+
+Restringe las reglas de input (filter) y prerouting (raw) a interfaces concretas. De forma predeterminada, las reglas se aplican a **todas las interfaces**.
+
+:::note[Comportamiento predeterminado]
+Cuando tanto `interface` como `interface_list` están vacíos (el valor predeterminado), las reglas de firewall coinciden con el tráfico que llega por **todas** las interfaces. Esto bloquea las IP baneadas independientemente de si el tráfico proviene de la WAN, la LAN o cualquier otra interfaz.
+:::
+
+Usa este ajuste para limitar el bloqueo únicamente a la interfaz WAN, de modo que las IP baneadas en el lado LAN puedan seguir accediendo al router (p. ej., para administración o servicios internos).
+
+### `firewall.block_input.interface` <Badge text="Opcional" variant="note" />
+
+**Env:** `FIREWALL_BLOCK_INPUT_INTERFACE` · **Predeterminado:** — (todas las interfaces)
+
+Restringe las reglas input/raw a una única interfaz.
+
+```yaml
+firewall:
+  block_input:
+    interface: "ether1"
+```
+
+### `firewall.block_input.interface_list` <Badge text="Opcional" variant="note" />
+
+**Env:** `FIREWALL_BLOCK_INPUT_INTERFACE_LIST` · **Predeterminado:** — (todas las interfaces)
+
+Restringe las reglas input/raw a una lista de interfaces. Alternativa a especificar una única interfaz.
+
+```yaml
+firewall:
+  block_input:
+    interface_list: "WAN"
+```
+
+:::note
+Si se configuran tanto `interface` como `interface_list`, ambos se aplican a la regla (RouterOS los evalúa como AND).
+:::
+
+## Bloqueo de salida
+
+Bloquea el tráfico saliente hacia IP baneadas. Deshabilitado de forma predeterminada.
+
+### `firewall.block_output.enabled` <Badge text="Opcional" variant="note" />
+
+**Env:** `FIREWALL_BLOCK_OUTPUT` · **Predeterminado:** `false`
+
+Habilita el bloqueo del tráfico saliente hacia IP baneadas. Esto impide que tu red establezca conexiones con IP maliciosas conocidas.
+
+### `firewall.block_output.interface` <Badge text="Opcional" variant="note" />
+
+**Env:** `FIREWALL_BLOCK_OUTPUT_INTERFACE` · **Predeterminado:** —
+
+Interfaz WAN para las reglas de salida. Requerido si `block_output.enabled` es true (a menos que `interface_list` esté configurado).
+
+```yaml
+firewall:
+  block_output:
+    enabled: true
+    interface: "ether1"
+```
+
+### `firewall.block_output.interface_list` <Badge text="Opcional" variant="note" />
+
+**Env:** `FIREWALL_BLOCK_OUTPUT_INTERFACE_LIST` · **Predeterminado:** —
+
+Lista de interfaces WAN para las reglas de salida. Alternativa a especificar una única interfaz.
+
+```yaml
+firewall:
+  block_output:
+    enabled: true
+    interface_list: "WAN"
+```
+
+:::note
+Si se configuran tanto `interface` como `interface_list`, ambas se aplican a la regla (RouterOS las evalúa como AND), igual que en `block_input`.
+:::
+
+---
+
+## Personalización de reglas
+
+Opciones avanzadas para personalizar cómo se crean las reglas de firewall y con qué tráfico coinciden.
+
+Cada opción a continuación muestra la configuración YAML del bouncer y el comando de RouterOS equivalente que el bouncer genera. Los comandos de RouterOS se muestran para ayudarte a entender exactamente qué reglas se crean en el router.
+
+### `firewall.reject_with` <Badge text="Opcional" variant="note" />
+
+**Env:** `FIREWALL_REJECT_WITH` · **Predeterminado:** —
+
+Personaliza el tipo de respuesta ICMP cuando `deny_action` es `reject`. Solo es válido cuando `deny_action: "reject"`.
+
+| Valor                       | Descripción                                                 |
+| --------------------------- | ----------------------------------------------------------- |
+| `icmp-network-unreachable`  | La red es inalcanzable                                      |
+| `icmp-host-unreachable`     | El host es inalcanzable                                     |
+| `icmp-port-unreachable`     | El puerto es inalcanzable                                   |
+| `icmp-protocol-unreachable` | El protocolo es inalcanzable                                |
+| `icmp-network-prohibited`   | Red prohibida administrativamente                           |
+| `icmp-host-prohibited`      | Host prohibido administrativamente                          |
+| `icmp-admin-prohibited`     | Comunicación prohibida administrativamente                  |
+| `tcp-reset`                 | Envía un TCP RST (recomendado para servicios con mucho TCP) |
+
+**Configuración del bouncer:**
+
+```yaml
+firewall:
+  deny_action: "reject"
+  reject_with: "icmp-admin-prohibited"
+```
+
+**Comandos de RouterOS equivalentes generados por el bouncer:**
+
+```routeros
+# Sin reject_with (comportamiento reject predeterminado):
+/ip/firewall/filter add chain=input action=reject src-address-list=crowdsec-banned comment="crowdsec-bouncer:filter-input-input-v4 @cs-routeros-bouncer"
+
+# Con reject_with="icmp-admin-prohibited":
+/ip/firewall/filter add chain=input action=reject reject-with=icmp-admin-prohibited src-address-list=crowdsec-banned comment="crowdsec-bouncer:filter-input-input-v4 @cs-routeros-bouncer"
+
+# Con reject_with="tcp-reset":
+/ip/firewall/filter add chain=input action=reject reject-with=tcp-reset src-address-list=crowdsec-banned comment="crowdsec-bouncer:filter-input-input-v4 @cs-routeros-bouncer"
+```
+
+:::tip
+Usa `tcp-reset` si principalmente quieres rechazar conexiones TCP (fuerza bruta SSH, escáneres web). Usa `icmp-admin-prohibited` para una respuesta genérica de "acceso denegado" que funciona con cualquier protocolo.
+:::
+
+---
+
+### `firewall.filter.connection_state` <Badge text="Opcional" variant="note" />
+
+**Env:** `FIREWALL_FILTER_CONNECTION_STATE` · **Predeterminado:** — (coincide con todos)
+
+Añade un matcher `connection-state` a las reglas filter. Esto restringe la coincidencia de reglas a estados de conexión concretos, permitiendo que las conexiones established/related pasen aunque la IP de origen esté baneada.
+
+Los valores separados por comas se normalizan antes de usarse en RouterOS, de modo que
+`new, invalid` se trata como `new,invalid`.
+
+| Estado        | Descripción                                                         |
+| ------------- | ------------------------------------------------------------------- |
+| `new`         | Una conexión nueva (primer paquete de un flujo)                     |
+| `established` | Parte de una conexión ya establecida                                |
+| `related`     | Relacionado con una conexión existente (p. ej., canal de datos FTP) |
+| `invalid`     | No puede identificarse o no tiene ningún estado conocido            |
+| `untracked`   | El paquete no está rastreado (elude el seguimiento de conexiones)   |
+
+:::caution
+Esta opción solo se aplica a las reglas **filter**. Las reglas RAW no admiten la coincidencia por connection-state porque raw opera antes del seguimiento de conexiones.
+:::
+
+**Configuración del bouncer — bloquear solo conexiones nuevas:**
+
+```yaml
+firewall:
+  filter:
+    enabled: true
+    chains: ["input"]
+    connection_state: "new"
+```
+
+**Comandos de RouterOS equivalentes:**
+
+```routeros
+# Sin connection_state (predeterminado — bloquea TODOS los paquetes de IP baneadas):
+/ip/firewall/filter add chain=input action=drop src-address-list=crowdsec-banned comment="crowdsec-bouncer:filter-input-input-v4 @cs-routeros-bouncer"
+
+# Con connection_state="new" (solo bloquea conexiones NUEVAS, las existentes pueden terminar):
+/ip/firewall/filter add chain=input action=drop connection-state=new src-address-list=crowdsec-banned comment="crowdsec-bouncer:filter-input-input-v4 @cs-routeros-bouncer"
+
+# Con connection_state="new,invalid" (bloquea paquetes nuevos e inválidos):
+/ip/firewall/filter add chain=input action=drop connection-state=new,invalid src-address-list=crowdsec-banned comment="crowdsec-bouncer:filter-input-input-v4 @cs-routeros-bouncer"
+```
+
+:::tip[Caso de uso]
+Configurar `connection_state: "new"` es útil si quieres bloquear las conexiones nuevas desde IP baneadas pero permitir que las conexiones ya establecidas (p. ej., descargas en curso) terminen correctamente. Esto evita cortar de forma abrupta sesiones legítimas iniciadas antes de que la IP fuera baneada.
+:::
+
+---
+
+### `firewall.filter.log_prefix` / `firewall.raw.log_prefix` / `firewall.block_output.log_prefix` <Badge text="Opcional" variant="note" />
+
+**Env:** `FIREWALL_FILTER_LOG_PREFIX` / `FIREWALL_RAW_LOG_PREFIX` / `FIREWALL_BLOCK_OUTPUT_LOG_PREFIX`
+
+Anula el `log_prefix` global para tipos de regla concretos. Esto permite diferenciar las entradas de log de las reglas filter, raw y de salida al analizar los logs de RouterOS.
+
+**Orden de resolución:** prefijo por tipo → `firewall.log_prefix` global.
+
+| Tipo de regla            | Clave de configuración             | Variable de entorno                |
+| ------------------------ | ---------------------------------- | ---------------------------------- |
+| Reglas filter de entrada | `firewall.filter.log_prefix`       | `FIREWALL_FILTER_LOG_PREFIX`       |
+| Reglas raw de entrada    | `firewall.raw.log_prefix`          | `FIREWALL_RAW_LOG_PREFIX`          |
+| Reglas de salida         | `firewall.block_output.log_prefix` | `FIREWALL_BLOCK_OUTPUT_LOG_PREFIX` |
+
+**Configuración del bouncer:**
+
+```yaml
+firewall:
+  log: true
+  log_prefix: "crowdsec" # valor global predeterminado
+  filter:
+    log_prefix: "cs-filter" # anula el global para las reglas filter
+  raw:
+    log_prefix: "cs-raw" # anula el global para las reglas raw
+  block_output:
+    log_prefix: "cs-output" # anula el global para las reglas de salida
+```
+
+**Comandos de RouterOS equivalentes:**
+
+```routeros
+# Las reglas filter usan el prefijo "cs-filter":
+/ip/firewall/filter add chain=input action=drop src-address-list=crowdsec-banned log=yes log-prefix="cs-filter" comment="crowdsec-bouncer:filter-input-input-v4 @cs-routeros-bouncer"
+
+# Las reglas raw usan el prefijo "cs-raw":
+/ip/firewall/raw add chain=prerouting action=drop src-address-list=crowdsec-banned log=yes log-prefix="cs-raw" comment="crowdsec-bouncer:raw-prerouting-input-v4 @cs-routeros-bouncer"
+
+# Las reglas de salida usan el prefijo "cs-output":
+/ip/firewall/filter add chain=output action=drop dst-address-list=crowdsec-banned out-interface=ether1 log=yes log-prefix="cs-output" comment="crowdsec-bouncer:filter-output-output-v4 @cs-routeros-bouncer"
+```
+
+<details>
+<summary>Ejemplo de salida de log de RouterOS</summary>
+
+```text
+jan/15 14:30:01 firewall,info cs-filter input: in:ether1 out:(unknown 0), src-mac 00:11:22:33:44:55, proto TCP (SYN), 185.220.101.1:45678->192.168.1.1:22, len 60
+jan/15 14:30:01 firewall,info cs-raw prerouting: in:ether1 out:(unknown 0), src-mac 00:11:22:33:44:55, proto TCP (SYN), 185.220.101.1:45679->192.168.1.1:443, len 60
+jan/15 14:30:02 firewall,info cs-output output: in:(unknown 0) out:ether1, proto TCP, 192.168.1.100:54321->185.220.101.1:80, len 60
+```
+
+</details>
+
+:::tip[Caso de uso]
+Los prefijos de log por tipo son esenciales para herramientas de análisis de logs (p. ej., parsers de syslog, fail2ban o sistemas SIEM) que necesitan distinguir entre tráfico entrante bloqueado (filter/raw) y tráfico saliente bloqueado (output).
+:::
+
+---
+
+### `firewall.block_input.whitelist` <Badge text="Opcional" variant="note" />
+
+**Env:** `FIREWALL_BLOCK_INPUT_WHITELIST` · **Predeterminado:** —
+
+Nombre de una address-list de RouterOS que contiene IP de confianza que deben eludir el bloqueo de CrowdSec. Cuando se configura, el bouncer crea una regla **accept** antes de la regla drop/reject en cada cadena, permitiendo que el tráfico de los orígenes en la whitelist pase aunque estén en la lista de baneos de CrowdSec.
+
+Funciona tanto con reglas filter como raw. La address-list debe crearse y gestionarse por separado en el router.
+
+**Paso 1 — Crea la whitelist en tu router:**
+
+```routeros
+# Añade IP de confianza a la address-list de whitelist (gestiónala tú mismo):
+/ip/firewall/address-list add list=crowdsec-whitelist address=10.0.0.1 comment="monitoring server"
+/ip/firewall/address-list add list=crowdsec-whitelist address=192.168.1.0/24 comment="LAN subnet"
+```
+
+**Paso 2 — Configura el bouncer:**
+
+```yaml
+firewall:
+  block_input:
+    whitelist: "crowdsec-whitelist"
+```
+
+**Comandos de RouterOS equivalentes generados por el bouncer:**
+
+```routeros
+# Para cada cadena, el bouncer crea DOS reglas — accept ANTES de drop:
+
+# 1) Regla accept para las IP en la whitelist (colocada primero):
+/ip/firewall/filter add chain=input action=accept src-address-list=crowdsec-whitelist comment="crowdsec-bouncer:filter-input-whitelist-v4 @cs-routeros-bouncer"
+# 2) Regla drop para las IP baneadas (colocada después de accept):
+/ip/firewall/filter add chain=input action=drop src-address-list=crowdsec-banned comment="crowdsec-bouncer:filter-input-input-v4 @cs-routeros-bouncer"
+
+# Mismo patrón para las reglas raw:
+/ip/firewall/raw add chain=prerouting action=accept src-address-list=crowdsec-whitelist comment="crowdsec-bouncer:raw-prerouting-whitelist-v4 @cs-routeros-bouncer"
+/ip/firewall/raw add chain=prerouting action=drop src-address-list=crowdsec-banned comment="crowdsec-bouncer:raw-prerouting-input-v4 @cs-routeros-bouncer"
+
+# Y para IPv6 (si está habilitado):
+/ipv6/firewall/filter add chain=input action=accept src-address-list=crowdsec-whitelist comment="crowdsec-bouncer:filter-input-whitelist-v6 @cs-routeros-bouncer"
+/ipv6/firewall/filter add chain=input action=drop src-address-list=crowdsec6-banned comment="crowdsec-bouncer:filter-input-input-v6 @cs-routeros-bouncer"
+```
+
+:::tip[Caso de uso]
+La whitelist es útil cuando tienes sistemas de monitorización de confianza, escáneres de seguridad o servicios internos cuyas IP podrían acabar en las listas de baneos de CrowdSec (p. ej., un escáner de vulnerabilidades que activa la detección de fuerza bruta). En lugar de modificar CrowdSec, puedes ponerlas en la whitelist a nivel de firewall.
+:::
+
+:::note[Interacción con `connection_state`]
+Cuando `connection_state` está configurado, también se aplica a la regla accept de la whitelist. Esto significa que la regla accept solo coincidirá con paquetes en los estados de conexión especificados. Para la mayoría de los casos de uso esto es correcto, porque la regla drop/reject gestionada por el bouncer usa el mismo filtro `connection_state`. Si tienes reglas de firewall adicionales debajo de las reglas gestionadas por el bouncer, las IP de la whitelist en otros estados de conexión podrían seguir siendo evaluadas por ellas.
+:::
+
+---
+
+### `firewall.block_output.passthrough_v4` / `passthrough_v6` <Badge text="Opcional" variant="note" />
+
+**Env:** `FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V4` / `FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V6` · **Predeterminado:** —
+
+Permite que una IP de cliente local concreta eluda el bloqueo de salida. Usa la negación de `src-address` (`!IP`) en la regla drop/reject de salida, de modo que los paquetes desde esa dirección de origen no se bloquean aunque vayan hacia un destino baneado.
+
+**Configuración del bouncer:**
+
+```yaml
+firewall:
+  block_output:
+    enabled: true
+    interface: "ether1"
+    passthrough_v4: "192.168.1.100"
+    passthrough_v6: "fd00::100"
+```
+
+**Comandos de RouterOS equivalentes:**
+
+```routeros
+# Sin passthrough (predeterminado — bloquea a TODOS los clientes locales el acceso a IP baneadas):
+/ip/firewall/filter add chain=output action=drop dst-address-list=crowdsec-banned out-interface=ether1 comment="crowdsec-bouncer:filter-output-output-v4 @cs-routeros-bouncer"
+
+# Con passthrough_v4="192.168.1.100" (todos los clientes bloqueados EXCEPTO 192.168.1.100):
+/ip/firewall/filter add chain=output action=drop dst-address-list=crowdsec-banned out-interface=ether1 src-address=!192.168.1.100 comment="crowdsec-bouncer:filter-output-output-v4 @cs-routeros-bouncer"
+
+# Con passthrough_v6="fd00::100":
+/ipv6/firewall/filter add chain=output action=drop dst-address-list=crowdsec6-banned out-interface=ether1 src-address=!fd00::100 comment="crowdsec-bouncer:filter-output-output-v6 @cs-routeros-bouncer"
+```
+
+:::tip[Caso de uso]
+Usa esto cuando tengas un escáner de seguridad o un honeypot (p. ej., `192.168.1.100`) que necesite comunicarse con IP maliciosas conocidas con fines de investigación, mientras sigues bloqueando el acceso saliente para el resto de clientes locales.
+:::
+
+---
+
+### `firewall.block_output.passthrough_v4_list` / `passthrough_v6_list` <Badge text="Opcional" variant="note" />
+
+**Env:** `FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V4_LIST` / `FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V6_LIST` · **Predeterminado:** —
+
+Igual que passthrough, pero usando una address-list en lugar de una única IP. Usa la negación de `src-address-list` (`!list`) en la regla de salida. Es más flexible cuando varios clientes necesitan eludir el bloqueo de salida.
+
+:::note
+Cuando se configuran una IP única y una address-list para el mismo protocolo, la **address-list tiene precedencia** y la IP única se ignora.
+:::
+
+**Paso 1 — Crea la lista de passthrough en tu router:**
+
+```routeros
+# Añade los clientes que deben eludir el bloqueo de salida:
+/ip/firewall/address-list add list=trusted-clients-v4 address=192.168.1.100 comment="security scanner"
+/ip/firewall/address-list add list=trusted-clients-v4 address=192.168.1.200 comment="honeypot server"
+```
+
+**Paso 2 — Configura el bouncer:**
+
+```yaml
+firewall:
+  block_output:
+    enabled: true
+    interface: "ether1"
+    passthrough_v4_list: "trusted-clients-v4"
+    passthrough_v6_list: "trusted-clients-v6"
+```
+
+**Comandos de RouterOS equivalentes:**
+
+```routeros
+# Con passthrough_v4_list="trusted-clients-v4" (todos los clientes bloqueados EXCEPTO los de la lista):
+/ip/firewall/filter add chain=output action=drop dst-address-list=crowdsec-banned out-interface=ether1 src-address-list=!trusted-clients-v4 comment="crowdsec-bouncer:filter-output-output-v4 @cs-routeros-bouncer"
+
+# Con passthrough_v6_list="trusted-clients-v6":
+/ipv6/firewall/filter add chain=output action=drop dst-address-list=crowdsec6-banned out-interface=ether1 src-address-list=!trusted-clients-v6 comment="crowdsec-bouncer:filter-output-output-v6 @cs-routeros-bouncer"
+```
+
+---
+
+## Ejemplo completo
+
+Aquí tienes una configuración completa que combina varias opciones de personalización de reglas:
+
+```yaml
+firewall:
+  deny_action: "reject"
+  reject_with: "tcp-reset"
+  log: true
+  log_prefix: "crowdsec"
+  rule_placement: "top"
+  filter:
+    enabled: true
+    chains: ["input", "forward"]
+    connection_state: "new"
+    log_prefix: "cs-filter"
+  raw:
+    enabled: true
+    chains: ["prerouting"]
+    log_prefix: "cs-raw"
+  block_input:
+    interface: "ether1"
+    whitelist: "crowdsec-whitelist"
+  block_output:
+    enabled: true
+    interface: "ether1"
+    log_prefix: "cs-output"
+    passthrough_v4_list: "trusted-clients-v4"
+```
+
+<details>
+<summary>Reglas completas de RouterOS generadas (IPv4)</summary>
+
+```routeros
+# Filter — cadena input (whitelist + reject con connection-state):
+/ip/firewall/filter add chain=input action=accept src-address-list=crowdsec-whitelist in-interface=ether1 connection-state=new log=yes log-prefix="cs-filter" comment="crowdsec-bouncer:filter-input-whitelist-v4 @cs-routeros-bouncer"
+/ip/firewall/filter add chain=input action=reject reject-with=tcp-reset src-address-list=crowdsec-banned in-interface=ether1 connection-state=new log=yes log-prefix="cs-filter" comment="crowdsec-bouncer:filter-input-input-v4 @cs-routeros-bouncer"
+
+# Filter — cadena forward (mismo patrón):
+/ip/firewall/filter add chain=forward action=accept src-address-list=crowdsec-whitelist in-interface=ether1 connection-state=new log=yes log-prefix="cs-filter" comment="crowdsec-bouncer:filter-forward-whitelist-v4 @cs-routeros-bouncer"
+/ip/firewall/filter add chain=forward action=reject reject-with=tcp-reset src-address-list=crowdsec-banned in-interface=ether1 connection-state=new log=yes log-prefix="cs-filter" comment="crowdsec-bouncer:filter-forward-input-v4 @cs-routeros-bouncer"
+
+# Raw — cadena prerouting (sin connection-state, sin reject-with):
+/ip/firewall/raw add chain=prerouting action=accept src-address-list=crowdsec-whitelist in-interface=ether1 log=yes log-prefix="cs-raw" comment="crowdsec-bouncer:raw-prerouting-whitelist-v4 @cs-routeros-bouncer"
+/ip/firewall/raw add chain=prerouting action=drop src-address-list=crowdsec-banned in-interface=ether1 log=yes log-prefix="cs-raw" comment="crowdsec-bouncer:raw-prerouting-input-v4 @cs-routeros-bouncer"
+
+# Filter — cadena output (con lista de passthrough):
+/ip/firewall/filter add chain=output action=reject reject-with=tcp-reset dst-address-list=crowdsec-banned out-interface=ether1 src-address-list=!trusted-clients-v4 log=yes log-prefix="cs-output" comment="crowdsec-bouncer:filter-output-output-v4 @cs-routeros-bouncer"
+```
+
+</details>

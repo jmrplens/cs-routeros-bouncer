@@ -1,0 +1,350 @@
+---
+title: Solución de problemas
+description: Problemas comunes y sus soluciones.
+---
+
+import { Steps, Tabs, TabItem } from "@astrojs/starlight/components";
+
+## Problemas de conexión
+
+### ¿Por qué el bouncer no puede conectarse a MikroTik?
+
+:::danger[Error: dial tcp: connection refused]
+El bouncer no puede alcanzar el puerto de la API de MikroTik.
+:::
+
+<Steps>
+
+1. **Verifica que el servicio API está activado**
+
+   ```routeros
+   /ip/service/print where name=api
+   ```
+
+2. **Comprueba que el puerto coincide con tu configuración** (por defecto: 8728, TLS: 8729)
+
+3. **Verifica que las reglas del firewall permiten el acceso** desde la IP del bouncer
+
+4. **Si usas Docker**, asegúrate de que el contenedor puede alcanzar la red del router
+
+</Steps>
+
+### ¿Por qué falla la autenticación de RouterOS?
+
+:::danger[Error: cannot log in]
+Nombre de usuario o contraseña incorrectos.
+:::
+
+<Steps>
+
+1. **Verifica las credenciales** en tu archivo de configuración
+
+2. **Comprueba que el usuario existe y tiene el grupo correcto**
+
+   ```routeros
+   /user/print where name=crowdsec
+   ```
+
+3. **Verifica que el grupo del usuario** tiene las políticas necesarias: `api`, `read`, `write`
+
+4. **Comprueba las restricciones de allowed address** en la cuenta de usuario
+
+</Steps>
+
+### ¿Cómo soluciono los errores de certificado TLS de RouterOS?
+
+:::danger[Error: x509: certificate signed by unknown authority]
+La verificación TLS ha fallado.
+:::
+
+<Steps>
+
+1. **Para certificados autofirmados del router**, omite la verificación del certificado de la API de RouterOS:
+
+   ```yaml
+   mikrotik:
+     tls: true
+     tls_insecure: true
+   ```
+
+   No existe una opción de ruta de CA para la conexión con MikroTik — `tls_insecure` es el único control de confianza. Para una conexión verificada, instala un certificado firmado por una CA en la que confíe el host del bouncer. (`crowdsec.ca_cert_path` solo afecta a la conexión con la LAPI de CrowdSec, no a RouterOS.)
+
+2. **Verifica que el certificado** es válido y no ha caducado
+
+3. **Comprueba que el nombre de host** coincide con el CN o SAN del certificado
+
+</Steps>
+
+## Problemas con la LAPI de CrowdSec
+
+### ¿Por qué el bouncer no puede conectarse a la LAPI de CrowdSec?
+
+:::danger[Error: connection to CrowdSec LAPI failed]
+El bouncer no puede alcanzar la Local API de CrowdSec.
+:::
+
+<Steps>
+
+1. **Verifica la URL de la LAPI**
+
+   ```bash
+   curl http://localhost:8080/v1/decisions
+   ```
+
+2. **Comprueba la API key del bouncer**
+
+   ```bash
+   cscli bouncers list
+   ```
+
+3. **Si CrowdSec se ejecuta en Docker**, asegúrate de que hay conectividad de red entre los contenedores
+
+</Steps>
+
+### ¿Por qué el bouncer no recibe decisiones de CrowdSec?
+
+:::caution[El bouncer arranca pero no se banea ninguna IP]
+El bouncer se conecta correctamente pero la lista de direcciones permanece vacía.
+:::
+
+Causas posibles:
+
+1. **No hay decisiones activas** — comprueba con `cscli decisions list`
+2. **Filtrado por origen demasiado restrictivo** — revisa la configuración de `crowdsec.origins`
+3. **El filtrado de escenarios lo excluye todo** — revisa `crowdsec.scenarios_containing` / `crowdsec.scenarios_not_containing`
+4. **El motor de CrowdSec no detecta amenazas** — revisa los logs de CrowdSec
+
+## Problemas con las reglas del firewall
+
+### ¿Por qué no se crean las reglas del firewall?
+
+:::caution[La lista de direcciones tiene entradas pero no hay reglas de firewall]
+Las IPs se añaden a la lista de direcciones pero no existen reglas de firewall.
+:::
+
+<Steps>
+
+1. **Comprueba que filter y raw están activados**
+
+   ```yaml
+   firewall:
+     filter:
+       enabled: true
+     raw:
+       enabled: true
+   ```
+
+2. **Busca errores en los logs**
+
+   ```bash
+   journalctl -u cs-routeros-bouncer -f
+   ```
+
+3. **Verifica que el usuario** tiene la política `write` para operaciones de firewall
+
+</Steps>
+
+### Las reglas no están en la posición esperada
+
+:::note[Las reglas de firewall aparecen al final]
+Las reglas pueden colocarse después de reglas existentes.
+:::
+
+<Steps>
+
+1. **Verifica** `rule_placement` en la configuración. Usa `"top"` para la máxima prioridad o `"bottom"` para añadir al final. Usa la colocación estructurada (`position`, `before_comment`, `after_comment`) cuando las reglas existentes del router deban mantenerse primero. Comprueba tanto el ajuste global como cualquier override `firewall.ipv4.rule_placement` o `firewall.ipv6.rule_placement`.
+
+2. **Comprueba si hay reglas dinámicas** en la posición 0. La lógica de reintento del bouncer solo se aplica a `top` y `position`. Prueba posiciones inferiores cuando RouterOS rechaza un destino dinámico o integrado.
+
+3. **Comprueba los anclajes de comentario** para `before_comment` y `after_comment`. La coincidencia distingue mayúsculas y minúsculas; `comment_match: "contains"` es una coincidencia literal de subcadena, no una expresión regular.
+
+4. **Inspecciona las posiciones manualmente**
+
+   ```routeros
+   /ip/firewall/filter print
+   /ip/firewall/raw print
+   ```
+
+5. **Revisa los logs del bouncer** con `journalctl -u cs-routeros-bouncer -f | grep -i placement`. Los anclajes de comentario ausentes usan `fallback` (`top` por defecto, o `bottom`). La colocación numérica requiere `position`; las posiciones numéricas fuera de rango se añaden al final.
+
+</Steps>
+
+## Problemas de rendimiento
+
+### ¿Por qué se dispara la CPU de RouterOS durante la reconciliación?
+
+:::caution[La CPU del router se dispara durante el arranque del bouncer]
+Esto es lo esperado durante la reconciliación inicial con listas de direcciones grandes.
+:::
+
+**Benchmarks de rendimiento:**
+
+| Tamaño de lista                   | Tiempo                                                       | Pico de CPU                |
+| --------------------------------- | ------------------------------------------------------------ | -------------------------- |
+| ~28.700 IPs (CAPI completo)       | ~58 s de tiempo real; ~35–36 s de trabajo masivo en RouterOS | ~39% observado             |
+| Comprobación periódica sin deriva | ~3–4 s                                                       | Vuelve a niveles de reposo |
+
+**Para reducir el impacto:**
+
+1. Filtra las decisiones sincronizadas con `origins`:
+
+   ```yaml
+   crowdsec:
+     origins: ["crowdsec", "cscli"]
+   ```
+
+2. Programa los reinicios del bouncer en periodos de poco tráfico
+
+:::note[El impacto en la CPU es temporal]
+El impacto en la CPU es temporal — solo mientras la reconciliación está añadiendo o eliminando entradas de forma activa.
+:::
+
+### CPU de RouterOS alta de forma sostenida tras el arranque
+
+:::caution[La CPU del router se mantiene alta tras la reconciliación]
+Esto no es lo esperado por el simple hecho de que las entradas de la address-list permanezcan en el router. El bouncer debería estar mayormente inactivo entre las actualizaciones del stream de CrowdSec y las ejecuciones periódicas de reconciliación.
+:::
+
+Comprueba si hay actividad repetida en la API de RouterOS:
+
+```bash
+journalctl -u cs-routeros-bouncer --since "30 min ago" | grep -E "already have such entry|attempting reconnect|RouterOS command failed"
+```
+
+Señales de comportamiento correcto (qué buscar):
+
+<Steps>
+
+1. Las decisiones de baneo duplicadas en caché se omiten sin tocar RouterOS
+2. Los errores de dispositivo `already have such entry` de RouterOS no provocan reconexiones
+3. La CPU del router vuelve a niveles cercanos al reposo/tráfico normal cuando termina la reconciliación
+
+</Steps>
+
+Si sigues viendo errores de duplicados repetidos e intentos de reconexión, actualiza a la primera versión cuyo [changelog](https://github.com/jmrplens/cs-routeros-bouncer/blob/main/CHANGELOG.md#unreleased) incluya las correcciones de gestión de errores de dispositivo de RouterOS y del fast-path de caché. Hasta que se publique esa versión, compila desde un commit que contenga esa entrada del changelog.
+
+### Timeout de reconciliación o arranque lento
+
+Las listas de direcciones grandes pueden hacer que la reconciliación de arranque sea la parte más lenta del inicio. Comprueba si los logs muestran avisos de scripts masivos, timeouts de comandos o mensajes de fallback del pool.
+
+Acciones que puedes probar:
+
+1. Aumenta `mikrotik.command_timeout` desde su valor por defecto `"30s"` a `"60s"`.
+2. Mantén `crowdsec.origins: ["crowdsec", "cscli"]` en routers pequeños.
+3. Aumenta `mikrotik.pool_size` desde su valor por defecto `4` solo después de comprobar `max-sessions` de la API de RouterOS.
+4. Traslada las pruebas con CAPI completo a una ventana de mantenimiento.
+
+```yaml
+mikrotik:
+  command_timeout: "60s"
+  pool_size: 6
+```
+
+### Mensajes de dirección duplicada
+
+RouterOS puede devolver `already have such entry` cuando una dirección ya está presente. El bouncer lo trata como un duplicado a nivel de dispositivo, localiza la entrada existente y refresca el timeout/comentario cuando es necesario. Los mensajes de duplicado ocasionales son inofensivos.
+
+Los mensajes de duplicado repetidos cada pocos segundos suelen indicar que la caché en memoria no coincide con el estado del router o que el servicio se está reiniciando. Comprueba si hay reinicios, ediciones manuales de la address-list y fallos de reconciliación repetidos.
+
+### Avisos de fallback de scripts masivos
+
+Durante la reconciliación, las adiciones se envían en scripts de RouterOS de hasta 100 entradas. Si un script falla, el bouncer recurre a adiciones individuales para ese bloque y continúa.
+
+Si el fallback ocurre con frecuencia:
+
+1. Revisa `mikrotik.command_timeout`.
+2. Revisa los logs de RouterOS en busca de errores de script o de políticas.
+3. Verifica que el usuario de la API tiene las políticas `read`, `write`, `api` y `sensitive`.
+4. Prueba con orígenes solo locales para reducir el tamaño de la lista.
+
+### Las direcciones IPv6 aparecen con `/128`
+
+RouterOS almacena las direcciones IPv6 individuales en las listas de direcciones con un prefijo `/128` explícito. El bouncer normaliza así las direcciones IPv6 individuales antes de las operaciones de adición, búsqueda y reconciliación. Esto es lo esperado y no significa que CrowdSec haya enviado un rango.
+
+## Registro y depuración
+
+<Tabs>
+  <TabItem label="Registro de depuración">
+
+```yaml
+logging:
+  level: "debug"
+```
+
+O mediante variable de entorno:
+
+```bash
+LOG_LEVEL=debug cs-routeros-bouncer -c config.yml
+```
+
+  </TabItem>
+  <TabItem label="Comprobación de estado">
+
+```bash
+curl http://localhost:2112/health
+```
+
+  </TabItem>
+  <TabItem label="Métricas">
+
+```bash
+curl http://localhost:2112/metrics
+```
+
+  </TabItem>
+  <TabItem label="Estado del router">
+
+```routeros
+# Ver las entradas de la lista de direcciones
+/ip/firewall/address-list print where list=crowdsec-banned
+
+# Contar las entradas
+/ip/firewall/address-list print count-only where list=crowdsec-banned
+
+# Ver las reglas de firewall del bouncer
+/ip/firewall/filter print where comment~"crowdsec-bouncer"
+/ip/firewall/raw print where comment~"crowdsec-bouncer"
+```
+
+  </TabItem>
+</Tabs>
+
+## Problemas específicos de Docker
+
+### El contenedor no puede alcanzar el router
+
+:::caution[Timeout de conexión desde el contenedor Docker]
+La red de Docker puede impedir que el contenedor alcance el router.
+:::
+
+<Steps>
+
+1. **Usa red de host** en Docker Compose:
+
+   ```yaml
+   services:
+     cs-routeros-bouncer:
+       network_mode: host
+   ```
+
+2. **O asegúrate de que la red de Docker** puede enrutar hacia la IP del router
+
+3. **Comprueba la resolución DNS** si usas nombres de host
+
+</Steps>
+
+### Permiso denegado para el archivo de configuración
+
+:::danger[Error: permission denied reading config]
+El usuario del contenedor no puede leer el archivo de configuración montado.
+:::
+
+<Steps>
+
+1. **Comprueba los permisos del archivo**: `chmod 644 config.yml`
+
+2. **Si usas secretos de Docker**, asegúrate de que el secreto está montado correctamente
+
+3. **O usa variables de entorno** en lugar de un archivo de configuración
+
+</Steps>

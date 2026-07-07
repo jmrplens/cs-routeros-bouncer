@@ -1,0 +1,102 @@
+---
+title: Ajuste de rendimiento
+description: Pool de la API de RouterOS, operaciones masivas, timeouts y ajuste de la reconciliación.
+---
+
+La mayoría de los despliegues funcionan bien con los valores por defecto. Ajusta estas opciones cuando la reconciliación de arranque gestione listas CAPI grandes, un router lento agote los tiempos de espera o necesites ventanas de reinicio predecibles.
+
+## Pool de conexiones
+
+`mikrotik.pool_size` controla cuántas sesiones de la API de RouterOS puede usar el bouncer para trabajo en paralelo, como las eliminaciones de la reconciliación.
+
+```yaml
+mikrotik:
+  pool_size: 4
+```
+
+Recomendaciones:
+
+| Clase de router          | Valor sugerido |
+| ------------------------ | -------------- |
+| Router doméstico pequeño | `1`-`2`        |
+| RouterOS 7 de gama media | `4`            |
+| Despliegues CAPI grandes | `6`-`8`        |
+
+El valor configurado debe estar entre `1` y `20`. En el arranque, el bouncer consulta `max-sessions` de la API de RouterOS y limita el pool efectivo a `max-sessions - 2`, garantizando que al menos dos sesiones queden disponibles para otras operaciones de RouterOS.
+
+Comprueba o aumenta el límite de RouterOS:
+
+```routeros
+/ip/service/print where name=api
+/ip/service/set api max-sessions=1000
+```
+
+## Comportamiento de adición masiva
+
+Durante la reconciliación, las adiciones usan scripts temporales de RouterOS en lugar de una llamada a la API por cada IP. Cada script contiene hasta 100 direcciones, manteniendo el mensaje de la API con margen por debajo de los límites de tamaño de RouterOS.
+
+Si un script masivo falla, el bouncer registra un aviso y recurre a adiciones individuales para ese bloque. Las entradas duplicadas se omiten o se refrescan sin reconectar la sesión de la API.
+
+## Tiempos de espera
+
+Aumenta `mikrotik.command_timeout` si RouterOS es lento durante operaciones con listas grandes:
+
+```yaml
+mikrotik:
+  command_timeout: "60s"
+```
+
+Aumenta `mikrotik.connection_timeout` solo cuando el propio login inicial TCP/API sea lento:
+
+```yaml
+mikrotik:
+  connection_timeout: "20s"
+```
+
+## Intervalo de reconciliación
+
+La reconciliación de arranque se ejecuta siempre. La reconciliación periódica repara la deriva después del arranque.
+
+```yaml
+crowdsec:
+  reconciliation_interval: "15m"
+```
+
+Usa `0` para desactivar la reconciliación periódica, o un valor de `1m` o superior para activarla. Los valores entre `0` y `1m` se rechazan en el arranque.
+
+Los intervalos cortos reparan la deriva más rápido, pero listan las entradas de direcciones de RouterOS con más frecuencia. Los intervalos largos reducen el trabajo de API en segundo plano.
+
+## Métricas de tráfico procesado
+
+`metrics.track_processed` crea reglas de conteo de tipo passthrough para que el bouncer pueda informar del tráfico total evaluado, no solo del tráfico descartado.
+
+```yaml
+metrics:
+  track_processed: true
+```
+
+Ponlo a `false` para evitar esas reglas de conteo adicionales:
+
+```yaml
+metrics:
+  track_processed: false
+```
+
+## Ejemplo de referencia
+
+```yaml
+crowdsec:
+  origins: ["crowdsec", "cscli"]
+  reconciliation_interval: "30m"
+
+mikrotik:
+  command_timeout: "60s"
+  pool_size: 6
+
+metrics:
+  enabled: true
+  routeros_poll_interval: "30s"
+  track_processed: true
+```
+
+Para routers pequeños, prefiere el [modo solo local](/cs-routeros-bouncer/es/configuration/capi-blocklists/#modo-solo-local), `pool_size: 1` o `2`, y evita el CAPI completo hasta que hayas medido el tiempo de reconciliación.

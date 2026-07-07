@@ -1,0 +1,193 @@
+---
+title: Configuración de CrowdSec
+description: Conexión a la LAPI, intervalo de sondeo y ajustes de filtrado de decisiones.
+---
+
+import { Badge } from "@astrojs/starlight/components";
+
+Ajustes de la conexión a la [Local API (LAPI) de CrowdSec](https://docs.crowdsec.net/docs/local_api/intro) y del filtrado de decisiones.
+
+## Conexión
+
+### `crowdsec.api_url` <Badge text="Obligatorio" variant="danger" />
+
+**Env:** `CROWDSEC_URL` · **Por defecto:** `http://localhost:8080/`
+
+La URL de la Local API (LAPI) de CrowdSec. Incluye la barra final.
+
+```yaml
+crowdsec:
+  api_url: "http://localhost:8080/"
+```
+
+### `crowdsec.api_key` <Badge text="Obligatorio" variant="danger" />
+
+**Env:** `CROWDSEC_BOUNCER_API_KEY` · **Por defecto:** —
+
+La API key del bouncer. Genera una con:
+
+```bash
+sudo cscli bouncers add cs-routeros-bouncer
+```
+
+### `crowdsec.retry_initial_connect` <Badge text="Opcional" variant="note" />
+
+**Env:** `CROWDSEC_RETRY_INITIAL_CONNECT` · **Por defecto:** `true`
+
+Cuando está habilitado, el bouncer reintenta la conexión a la LAPI en el arranque si la conexión inicial falla. Útil cuando el bouncer arranca antes de que CrowdSec esté listo.
+
+## Sondeo
+
+### `crowdsec.update_frequency` <Badge text="Opcional" variant="note" />
+
+**Env:** `CROWDSEC_UPDATE_FREQUENCY` · **Por defecto:** `10s`
+
+Con qué frecuencia se sondea la LAPI en busca de decisiones nuevas o expiradas. Usa el formato de duración de Go (p. ej., `10s`, `1m`, `30s`).
+
+:::tip
+Los valores más bajos ofrecen una respuesta más rápida, pero aumentan la carga de la LAPI. `10s` es un buen equilibrio para la mayoría de las instalaciones.
+:::
+
+### `crowdsec.reconciliation_interval` <Badge text="Opcional" variant="note" />
+
+**Env:** `CROWDSEC_RECONCILIATION_INTERVAL` · **Por defecto:** `15m`
+
+Con qué frecuencia se obtiene de la LAPI una instantánea completa de las decisiones activas y se reconcilia con la pertenencia a las address-list de MikroTik. Esto repara la desviación cuando una entrada de address-list se elimina manualmente o expira en el router mientras CrowdSec sigue considerando activa la decisión.
+
+`crowdsec.reconciliation_interval` / `CROWDSEC_RECONCILIATION_INTERVAL` usa el formato de duración de Go, como `1m`, `15m` o `1h`.
+
+Establécelo en `0` para deshabilitar la reconciliación periódica. Cualquier valor distinto de cero debe ser de al menos `1m`.
+
+```yaml
+crowdsec:
+  reconciliation_interval: "15m"
+```
+
+### `crowdsec.lapi_metrics_interval` <Badge text="Opcional" variant="note" />
+
+**Env:** `CROWDSEC_LAPI_METRICS_INTERVAL` · **Por defecto:** `15m`
+
+Con qué frecuencia se envían métricas de uso al endpoint `/v1/usage-metrics` de la LAPI de CrowdSec. Establécelo en `0` para deshabilitarlo.
+
+Cada envío incluye:
+
+- **Decisiones activas** — por origen (p. ej., `crowdsec`, `cscli`, `CAPI`) y por tipo de IP (`ipv4`, `ipv6`)
+- **Tráfico descartado** — bytes y paquetes bloqueados por las reglas del firewall de MikroTik (delta desde el último envío)
+- **Tráfico procesado** — bytes y paquetes evaluados por todas las cadenas del bouncer (delta desde el último envío)
+- **Metadatos del bouncer** — tipo, versión, información del sistema operativo, tiempo de actividad
+
+Estos datos aparecen en la CrowdSec Console y ayudan a hacer seguimiento de la eficacia del bouncer.
+
+```yaml
+crowdsec:
+  lapi_metrics_interval: "15m"
+```
+
+## Filtrado de decisiones
+
+### `crowdsec.origins` <Badge text="Opcional" variant="note" />
+
+**Env:** `CROWDSEC_ORIGINS` · **Por defecto:** `[]` (todos los orígenes)
+
+Filtra las decisiones por su origen. Vacío significa que se procesan todas las decisiones.
+
+| Origen     | Descripción                                           |
+| ---------- | ----------------------------------------------------- |
+| `crowdsec` | Decisiones del motor de detección de CrowdSec         |
+| `cscli`    | Decisiones manuales mediante `cscli decisions add`    |
+| `CAPI`     | Blocklists comunitarias de la Central API de CrowdSec |
+| `lists:*`  | Orígenes de listas con nombre, como `lists:<name>`    |
+
+```yaml
+# Solo decisiones locales (sin blocklists comunitarias)
+crowdsec:
+  origins: ["crowdsec", "cscli"]
+```
+
+:::note[Modo solo local]
+Establecer `origins: ["crowdsec", "cscli"]` es la forma recomendada de excluir las blocklists comunitarias (CAPI). Esto evita enviar más de 20.000 IPs al router.
+:::
+
+Cuando se define como variable de entorno, `CROWDSEC_ORIGINS` se separa con espacios:
+
+```bash
+CROWDSEC_ORIGINS="crowdsec cscli"
+```
+
+Dejar `origins` vacío acepta todos los orígenes, incluidos `CAPI` y los orígenes de listas con nombre. Usa `lists:*` como patrón comodín para las entradas `lists:<name>` al definir `origins` o `CROWDSEC_ORIGINS`. Consulta [Blocklists de CAPI](/cs-routeros-bouncer/es/configuration/capi-blocklists/) para las recomendaciones de escala y dimensionamiento del router.
+
+### `crowdsec.scopes` <Badge text="Opcional" variant="note" />
+
+**Env:** `CROWDSEC_SCOPES` · **Por defecto:** `["ip", "range"]`
+
+Ámbitos de decisión a procesar. Valores admitidos: `ip`, `range`.
+
+### `crowdsec.supported_decisions_types` <Badge text="Opcional" variant="note" />
+
+**Env:** `CROWDSEC_DECISIONS_TYPES` · **Por defecto:** `["ban"]`
+
+Solo se procesan las decisiones de estos tipos.
+
+:::caution
+Este bouncer solo implementa la acción **`ban`**, que se traduce en reglas de firewall
+drop/reject en MikroTik. Otros tipos de decisión de CrowdSec, como `captcha` o `throttle`, no
+son aplicables a un bouncer de firewall de red y se ignorarán silenciosamente aunque se listen aquí.
+:::
+
+### `crowdsec.scenarios_containing` <Badge text="Opcional" variant="note" />
+
+**Env:** `CROWDSEC_SCENARIOS_CONTAINING` · **Por defecto:** `[]` (sin filtro)
+
+Solo se procesan las decisiones de escenarios cuyo nombre contenga una de estas subcadenas literales. Vacío significa que no hay filtrado de inclusión.
+
+```yaml
+crowdsec:
+  scenarios_containing: ["ssh", "http"]
+```
+
+Por ejemplo, `"ssh"` coincide con `crowdsecurity/ssh-bf` y con cualquier otro nombre de escenario que contenga `ssh`.
+
+### `crowdsec.scenarios_not_containing` <Badge text="Opcional" variant="note" />
+
+**Env:** `CROWDSEC_SCENARIOS_NOT_CONTAINING` · **Por defecto:** `[]` (sin filtro)
+
+Excluye las decisiones de escenarios cuyo nombre contenga una de estas subcadenas literales.
+
+```yaml
+crowdsec:
+  scenarios_not_containing: ["test", "honeypot"]
+```
+
+Usa los filtros de inclusión y exclusión juntos cuando quieras un subconjunto reducido de decisiones. Si no aparece ninguna decisión, comprueba primero que las subcadenas coinciden con los nombres de escenario que muestra `cscli decisions list -o json`.
+
+## Autenticación TLS
+
+Para la autenticación TLS mutua con la LAPI:
+
+### `crowdsec.cert_path` <Badge text="Opcional" variant="note" />
+
+**Env:** `CROWDSEC_CERT_PATH` · **Por defecto:** —
+
+Ruta al certificado TLS de cliente (formato PEM).
+
+### `crowdsec.key_path` <Badge text="Opcional" variant="note" />
+
+**Env:** `CROWDSEC_KEY_PATH` · **Por defecto:** —
+
+Ruta a la clave TLS de cliente (formato PEM).
+
+### `crowdsec.ca_cert_path` <Badge text="Opcional" variant="note" />
+
+**Env:** `CROWDSEC_CA_CERT_PATH` · **Por defecto:** —
+
+Ruta al certificado de la CA (formato PEM) para verificar el certificado del servidor LAPI.
+
+### `crowdsec.insecure_skip_verify` <Badge text="Opcional" variant="note" />
+
+**Env:** `CROWDSEC_INSECURE_SKIP_VERIFY` · **Por defecto:** `false`
+
+Omite la verificación del certificado TLS en las conexiones a la LAPI.
+
+:::danger
+Úsalo solo en desarrollo/pruebas. Nunca en producción.
+:::

@@ -1,0 +1,107 @@
+---
+title: Guía de pruebas
+description: Suites de pruebas unitarias, de integración y funcionales de cs-routeros-bouncer.
+---
+
+El proyecto tiene tres capas de pruebas. Usa la capa más pequeña que demuestre tu cambio y avanza hacia fuera cuando el comportamiento afecte a RouterOS, Docker o flujos a nivel de servicio.
+
+## Pruebas unitarias
+
+Las pruebas unitarias se ejecutan sin servicios externos:
+
+```bash
+go test ./...
+```
+
+Ejecuciones enfocadas útiles:
+
+```bash
+go test -v ./internal/config/...
+go test -v ./internal/routeros/...
+go test -v ./internal/manager/...
+```
+
+## Pruebas de integración
+
+Las pruebas de integración son pruebas de Go protegidas por la etiqueta de compilación `integration`. Ejercitan builds de Docker y el comportamiento real de la API de RouterOS.
+
+Ejecuta todas las pruebas de integración:
+
+```bash
+go test -v -tags integration -count=1 -timeout 300s ./tests/integration/...
+```
+
+Ejecuta solo las pruebas de integración de Docker:
+
+```bash
+go test -v -tags integration -run TestDocker -count=1 -timeout 300s ./tests/integration/...
+```
+
+Las pruebas de integración de RouterOS leen `ROUTEROS_ADDRESS`, `ROUTEROS_USERNAME`, `ROUTEROS_PASSWORD`, `ROUTEROS_TLS` y `ROUTEROS_TLS_INSECURE`. Si no están definidas, intentan usar `config/test.yaml`.
+
+:::caution
+Las pruebas de integración de RouterOS crean y eliminan reglas de firewall y entradas de address-list de prueba. Usa un router de laboratorio o listas aisladas.
+:::
+
+## Pruebas funcionales
+
+La suite funcional en Bash de `tests/functional/` es una prueba de caja negra de un bouncer compilado e instalado. Valida el servicio a través de SSH, `cscli`, systemd, SNMP y los propios endpoints HTTP del bouncer.
+
+Prepara el entorno:
+
+```bash
+cp tests/functional/.env.example tests/functional/.env
+$EDITOR tests/functional/.env
+```
+
+Infraestructura necesaria:
+
+- MikroTik accesible por SSH.
+- LAPI de CrowdSec con `cscli` disponible.
+- Binario del bouncer compilado.
+- Bouncer configurado como servicio de systemd para las pruebas a nivel de servicio.
+- SNMP para las comprobaciones de CPU/memoria, opcional pero recomendado.
+
+Ejecuta la suite por defecto:
+
+```bash
+tests/functional/run_tests.sh
+```
+
+Ejecuta grupos seleccionados:
+
+```bash
+tests/functional/run_tests.sh t1 t2 t9
+```
+
+Incluye las pruebas de estrés de CAPI:
+
+```bash
+tests/functional/run_tests.sh --capi
+```
+
+Lista los grupos:
+
+```bash
+tests/functional/run_tests.sh --list
+```
+
+| Grupo | Alcance                                                                                       |
+| ----- | --------------------------------------------------------------------------------------------- |
+| `t1`  | Integridad de datos: completitud de IPs, formato, comentarios                                 |
+| `t2`  | Consistencia de la caché: ban/unban, expiración, fast-path                                    |
+| `t3`  | Operaciones masivas: reconciliación, sincronización parcial, limpieza de huérfanos            |
+| `t4`  | Pool de conexiones: establecimiento y cierre                                                  |
+| `t5`  | Casos límite: duplicados, ciclos rápidos, idempotencia de reinicio                            |
+| `t6`  | Monitorización de CPU: estado estable, pico, recuperación                                     |
+| `t7`  | Tiempos: reconciliación y latencia de ban/unban                                               |
+| `t8`  | Prueba de estrés de CAPI, se omite salvo que se indique `--capi`                              |
+| `t9`  | Configuración avanzada de firewall: reject, connection-state, logging, passthrough, whitelist |
+
+:::danger[Hardware real]
+Las pruebas funcionales modifican reglas de firewall, address lists, decisiones de CrowdSec y el servicio del bouncer. No las apuntes a infraestructura de producción a menos que hayas planificado los cambios.
+:::
+
+## Elegir una capa de pruebas
+
+Ejecuta pruebas unitarias para el análisis de configuración, el análisis de decisiones, las métricas y el comportamiento simulado de RouterOS. Ejecuta pruebas de integración para el comportamiento de los builds de Docker y las primitivas reales de la API de RouterOS. Elige las pruebas funcionales cuando el cambio afecte al arranque, la reconciliación, systemd, el comportamiento de la LAPI de CrowdSec, la escala de CAPI o el estado del firewall de extremo a extremo.

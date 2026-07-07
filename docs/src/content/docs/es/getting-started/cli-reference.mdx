@@ -1,0 +1,116 @@
+---
+title: Referencia de la CLI
+description: Flags de ejecución y subcomandos administrativos de cs-routeros-bouncer.
+---
+
+El binario `cs-routeros-bouncer` tiene una superficie de comandos reducida: ejecuta el bouncer, imprime información de versión/ayuda o realiza tareas de instalación/eliminación de systemd.
+
+## Ejecutar el bouncer
+
+Ejecútalo con un archivo de configuración:
+
+```bash
+cs-routeros-bouncer -c /etc/cs-routeros-bouncer/cs-routeros-bouncer.yaml
+```
+
+Flags de ejecución:
+
+| Flag       | Descripción                                             |
+| ---------- | ------------------------------------------------------- |
+| `-c`       | Ruta al archivo de configuración YAML                   |
+| `-version` | Imprime la versión, el commit y la fecha de compilación |
+
+El binario no carga implícitamente una ruta de configuración del host cuando se ejecuta directamente. Pasa `-c` a menos que todos los ajustes requeridos se proporcionen mediante variables de entorno. El instalador de systemd y la imagen de Docker proporcionan su propia ruta `-c`.
+
+## `version`
+
+Imprime la información de compilación:
+
+```bash
+cs-routeros-bouncer version
+```
+
+La forma con flag también está soportada:
+
+```bash
+cs-routeros-bouncer -version
+```
+
+## `setup`
+
+Instala el binario actual como un servicio de systemd:
+
+```bash
+sudo ./cs-routeros-bouncer setup
+```
+
+Qué hace:
+
+1. Copia el binario a la ruta de instalación seleccionada.
+2. Crea el directorio de configuración.
+3. Escribe una configuración de ejemplo si no existe ya una.
+4. Escribe `/etc/systemd/system/cs-routeros-bouncer.service`.
+5. Ejecuta `systemctl daemon-reload`, habilita el servicio y lo inicia.
+
+Flags:
+
+| Flag          | Valor por defecto                    | Descripción                                   |
+| ------------- | ------------------------------------ | --------------------------------------------- |
+| `-bin`        | `/usr/local/bin/cs-routeros-bouncer` | Ruta de instalación del binario               |
+| `-config-dir` | `/etc/cs-routeros-bouncer`           | Directorio para los archivos de configuración |
+
+Ejemplo con rutas personalizadas:
+
+```bash
+sudo ./cs-routeros-bouncer setup \
+  -bin /opt/cs-routeros-bouncer/cs-routeros-bouncer \
+  -config-dir /etc/cs-routeros-bouncer
+```
+
+## `uninstall`
+
+Detiene y elimina el servicio de systemd y el binario instalado:
+
+```bash
+sudo cs-routeros-bouncer uninstall
+```
+
+Flags:
+
+| Flag          | Valor por defecto                    | Descripción                                                |
+| ------------- | ------------------------------------ | ---------------------------------------------------------- |
+| `-bin`        | `/usr/local/bin/cs-routeros-bouncer` | Ruta del binario instalado a eliminar                      |
+| `-config-dir` | `/etc/cs-routeros-bouncer`           | Directorio de configuración a eliminar con `-purge`        |
+| `-purge`      | `false`                              | Elimina también el directorio de configuración configurado |
+
+Por defecto, `uninstall` conserva los archivos de configuración. Si la instalación usó un `-bin` o `-config-dir` personalizado, pasa los mismos valores a `uninstall` para que se eliminen el binario y el directorio de configuración correctos.
+
+Elimina también los archivos de configuración:
+
+```bash
+sudo cs-routeros-bouncer uninstall -purge
+```
+
+Purga una ruta de instalación personalizada:
+
+```bash
+sudo cs-routeros-bouncer uninstall \
+  -bin /opt/cs-routeros-bouncer/cs-routeros-bouncer \
+  -config-dir /opt/cs-routeros-bouncer/config \
+  -purge
+```
+
+## `help`
+
+Imprime la información de uso:
+
+```bash
+cs-routeros-bouncer help
+```
+
+Los flags de ayuda habituales también están soportados:
+
+```bash
+cs-routeros-bouncer -h
+cs-routeros-bouncer --help
+```

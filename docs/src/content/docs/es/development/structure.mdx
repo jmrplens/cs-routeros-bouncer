@@ -1,0 +1,126 @@
+---
+title: Estructura del proyecto
+description: Estructura de directorios y responsabilidades de los paquetes.
+---
+
+import { FileTree } from "@astrojs/starlight/components";
+
+## Estructura de directorios
+
+<FileTree>
+
+- cmd/
+  - benchmark/ Herramienta de benchmark de operaciones RouterOS
+    - ...
+  - cs-routeros-bouncer/
+    - main.go Punto de entrada de la CLI
+- internal/
+  - config/
+    - config.go Struct de configuración y carga
+    - config_test.go
+    - doc.go Documentación del paquete
+  - crowdsec/
+    - bouncer_iface.go Interfaz del bouncer de CrowdSec
+    - crowdsec_test.go
+    - doc.go Documentación del paquete
+    - logrus_adapter.go Adaptador de Logrus a zerolog
+    - logrus_adapter_test.go
+    - mock_bouncer_test.go
+    - stream.go Modo streaming
+    - stream_test.go
+  - manager/
+    - crowdsec_iface.go Interfaz del stream de CrowdSec
+    - doc.go Documentación del paquete
+    - manager.go Orquestador central
+    - manager_test.go
+    - mock_test.go
+    - routeros_iface.go Interfaz del cliente de RouterOS
+    - start_test.go Pruebas de arranque y reconciliación
+  - metrics/
+    - doc.go Documentación del paquete
+    - lapi/ Métricas de uso de la LAPI de CrowdSec
+      - ...
+    - metrics.go Definiciones de métricas de Prometheus
+    - metrics_test.go
+    - server.go Servidor HTTP para /metrics y /health
+  - routeros/
+    - addresslist.go Operaciones de address list
+    - bulk.go Operaciones masivas con scripts
+    - client.go Cliente de la API de RouterOS
+    - client_mock_test.go
+    - conn_iface.go Interfaz de conexión de RouterOS
+    - doc.go Documentación del paquete
+    - firewall.go Operaciones de reglas de firewall
+    - mock_conn_test.go
+    - pool.go Pool de conexiones
+    - routeros_test.go
+- docs/ Documentación (Starlight)
+- local/
+  - docs-legacy/ Documentación original de MkDocs (archivo)
+- grafana/
+  - dashboard.json Dashboard de Grafana
+- config/ Archivos de configuración de ejemplo
+- docker/
+  - Dockerfile Build de Docker
+- go.mod Definición del módulo de Go
+- LICENSE Licencia MIT
+- README.md Readme del proyecto
+
+</FileTree>
+
+## Responsabilidades de los paquetes
+
+### `cmd/cs-routeros-bouncer`
+
+Punto de entrada de la CLI. Se encarga de:
+
+- Enrutado de subcomandos (`setup`, `uninstall`, `version`, `help`) y flags de ejecución (`-c`, `-version`)
+- Gestión de señales (SIGTERM, SIGINT)
+- Coordinación del apagado ordenado
+
+### `internal/config`
+
+Gestión de la configuración:
+
+- Carga la configuración desde un archivo YAML y/o variables de entorno
+- Valida todos los parámetros
+- Proporciona valores por defecto razonables
+- Mapea los nombres de variables de entorno a los campos del struct de configuración
+
+### `internal/crowdsec`
+
+Integración con la LAPI de CrowdSec:
+
+- Cliente HTTP para la Local API de CrowdSec
+- Modo streaming: consulta decisiones nuevas/eliminadas
+- Filtrado de decisiones por origin, scenario y scope
+- Compatibilidad con certificados TLS
+
+### `internal/manager`
+
+Orquestador central que conecta todos los componentes:
+
+- Arranque: se conecta a CrowdSec y MikroTik, crea las reglas de firewall, ejecuta la reconciliación
+- Ejecución: procesa decisiones en streaming (bans/unbans)
+- Apagado: elimina las reglas de firewall, cierra las conexiones
+- Gestión de errores y lógica de reintentos
+
+### `internal/metrics`
+
+Observabilidad:
+
+- Definición y registro de métricas de Prometheus
+- Endpoint de comprobación de salud (`/health`)
+- Recolector de métricas del sistema RouterOS (CPU, memoria, temperatura)
+- Servidor HTTP para los endpoints `/metrics` y `/health`
+
+### `internal/routeros`
+
+Cliente de la API de MikroTik RouterOS:
+
+- Pool de conexiones con tamaño configurable
+- Operaciones de address list (añadir, eliminar, listar)
+- Operaciones de reglas de firewall (crear, borrar, listar)
+- Consultas de información del sistema
+- Ejecución masiva de scripts para la reconciliación
+- Ayudante de ejecución en paralelo (`ParallelExec`)

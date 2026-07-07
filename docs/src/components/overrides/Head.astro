@@ -15,13 +15,28 @@ const AUTHOR_ID = "https://jmrp.io/#person";
 const SOFTWARE_ID = "https://github.com/jmrplens/cs-routeros-bouncer#software";
 const WEBSITE_ID = `${SITE_URL}#website`;
 
-/** Top-level sidebar group labels, keyed by their URL segment, for BreadcrumbList generation. */
-const SEGMENT_LABELS: Record<string, string> = {
-	"getting-started": "Getting Started",
-	configuration: "Configuration",
-	architecture: "Architecture",
-	monitoring: "Monitoring",
-	development: "Development",
+/** Top-level sidebar group labels, keyed by language and URL segment, for BreadcrumbList generation. */
+const SEGMENT_LABELS: Record<string, Record<string, string>> = {
+	en: {
+		"getting-started": "Getting Started",
+		configuration: "Configuration",
+		architecture: "Architecture",
+		monitoring: "Monitoring",
+		development: "Development",
+	},
+	es: {
+		"getting-started": "Primeros pasos",
+		configuration: "Configuración",
+		architecture: "Arquitectura",
+		monitoring: "Monitorización",
+		development: "Desarrollo",
+	},
+};
+
+/** Name of the root breadcrumb, per language. */
+const HOME_LABELS: Record<string, string> = {
+	en: "Home",
+	es: "Inicio",
 };
 
 /**
@@ -32,58 +47,120 @@ const SEGMENT_LABELS: Record<string, string> = {
  */
 const SEGMENT_INDEX_PAGES = new Set(["configuration", "architecture"]);
 
-/** Hand-curated HowTo steps for the step-by-step getting-started pages, keyed by page id/slug. */
-const HOW_TO_STEPS: Record<string, { name: string; text: string }[]> = {
-	"getting-started/quickstart": [
-		{
-			name: "Register the bouncer with CrowdSec",
-			text: "On the machine running CrowdSec, run `sudo cscli bouncers add cs-routeros-bouncer` and save the API key shown in the output.",
-		},
-		{
-			name: "Create a RouterOS API user",
-			text: "Connect to the MikroTik router and create a dedicated user group and user that has only the minimum required API permissions.",
-		},
-		{
-			name: "Deploy the bouncer",
-			text: "Run the bouncer via Docker Compose, or as a binary with a systemd service, pointing it at the CrowdSec LAPI and the RouterOS API.",
-		},
-		{
-			name: "Verify it's working",
-			text: "Check the bouncer's /health endpoint and logs, then confirm new firewall rules and address-list entries appear on the router.",
-		},
-	],
-	"getting-started/installation": [
-		{
-			name: "Choose a deployment method",
-			text: "Pick Docker Compose, a binary with systemd, or building from source, depending on your infrastructure.",
-		},
-		{
-			name: "Install and configure",
-			text: "Deploy the image or binary and set the CrowdSec LAPI URL, bouncer API key, and RouterOS connection details via environment variables or a YAML config file.",
-		},
-		{
-			name: "Verify installation",
-			text: "Check the service status, call the /health endpoint, review the logs, and confirm the router-side firewall rules and address lists were created.",
-		},
-	],
-	"getting-started/router-setup": [
-		{
-			name: "Enable the RouterOS API service",
-			text: "Enable the plaintext `api` (port 8728) service or, recommended for production, the TLS-encrypted `api-ssl` (port 8729) service on the MikroTik router.",
-		},
-		{
-			name: "Create a dedicated API user",
-			text: "Create a RouterOS user group with only the read, write, api, and sensitive policies, then create a user in that group with a strong password.",
-		},
-		{
-			name: "Allow firewall access for the bouncer host",
-			text: "If the router firewall restricts API access, add a rule allowing only the bouncer host's IP to reach the API port.",
-		},
-		{
-			name: "Verify connectivity",
-			text: "Test API connectivity with nc or openssl s_client, or start the bouncer and check its /health endpoint for routeros_connected: true.",
-		},
-	],
+/**
+ * Hand-curated HowTo steps for the step-by-step getting-started pages, keyed
+ * by language, then by locale-stripped page id/slug. The Spanish steps are
+ * translations of the English ones and must stay in sync (same pages, same
+ * step count and order).
+ */
+const HOW_TO_STEPS: Record<
+	string,
+	Record<string, { name: string; text: string }[]>
+> = {
+	en: {
+		"getting-started/quickstart": [
+			{
+				name: "Register the bouncer with CrowdSec",
+				text: "On the machine running CrowdSec, run `sudo cscli bouncers add cs-routeros-bouncer` and save the API key shown in the output.",
+			},
+			{
+				name: "Create a RouterOS API user",
+				text: "Connect to the MikroTik router and create a dedicated user group and user that has only the minimum required API permissions.",
+			},
+			{
+				name: "Deploy the bouncer",
+				text: "Run the bouncer via Docker Compose, or as a binary with a systemd service, pointing it at the CrowdSec LAPI and the RouterOS API.",
+			},
+			{
+				name: "Verify it's working",
+				text: "Check the bouncer's /health endpoint and logs, then confirm new firewall rules and address-list entries appear on the router.",
+			},
+		],
+		"getting-started/installation": [
+			{
+				name: "Choose a deployment method",
+				text: "Pick Docker Compose, a binary with systemd, or building from source, depending on your infrastructure.",
+			},
+			{
+				name: "Install and configure",
+				text: "Deploy the image or binary and set the CrowdSec LAPI URL, bouncer API key, and RouterOS connection details via environment variables or a YAML config file.",
+			},
+			{
+				name: "Verify installation",
+				text: "Check the service status, call the /health endpoint, review the logs, and confirm the router-side firewall rules and address lists were created.",
+			},
+		],
+		"getting-started/router-setup": [
+			{
+				name: "Enable the RouterOS API service",
+				text: "Enable the plaintext `api` (port 8728) service or, recommended for production, the TLS-encrypted `api-ssl` (port 8729) service on the MikroTik router.",
+			},
+			{
+				name: "Create a dedicated API user",
+				text: "Create a RouterOS user group with only the read, write, api, and sensitive policies, then create a user in that group with a strong password.",
+			},
+			{
+				name: "Allow firewall access for the bouncer host",
+				text: "If the router firewall restricts API access, add a rule allowing only the bouncer host's IP to reach the API port.",
+			},
+			{
+				name: "Verify connectivity",
+				text: "Test API connectivity with nc or openssl s_client, or start the bouncer and check its /health endpoint for routeros_connected: true.",
+			},
+		],
+	},
+	es: {
+		"getting-started/quickstart": [
+			{
+				name: "Registra el bouncer en CrowdSec",
+				text: "En la máquina donde se ejecuta CrowdSec, ejecuta `sudo cscli bouncers add cs-routeros-bouncer` y guarda la API key que se muestra en la salida.",
+			},
+			{
+				name: "Crea un usuario de la API de RouterOS",
+				text: "Conéctate al router MikroTik y crea un grupo y un usuario dedicados que tengan solo los permisos mínimos necesarios para la API.",
+			},
+			{
+				name: "Despliega el bouncer",
+				text: "Ejecuta el bouncer con Docker Compose, o como binario con un servicio systemd, apuntando a la LAPI de CrowdSec y a la API de RouterOS.",
+			},
+			{
+				name: "Verifica que funciona",
+				text: "Comprueba el endpoint /health y los logs del bouncer, y confirma que aparecen nuevas reglas de firewall y entradas de address-list en el router.",
+			},
+		],
+		"getting-started/installation": [
+			{
+				name: "Elige un método de despliegue",
+				text: "Elige Docker Compose, un binario con systemd o compilar desde el código fuente, según tu infraestructura.",
+			},
+			{
+				name: "Instala y configura",
+				text: "Despliega la imagen o el binario y define la URL de la LAPI de CrowdSec, la API key del bouncer y los datos de conexión de RouterOS mediante variables de entorno o un archivo de configuración YAML.",
+			},
+			{
+				name: "Verifica la instalación",
+				text: "Comprueba el estado del servicio, llama al endpoint /health, revisa los logs y confirma que se crearon las reglas de firewall y las address lists en el router.",
+			},
+		],
+		"getting-started/router-setup": [
+			{
+				name: "Habilita el servicio API de RouterOS",
+				text: "Habilita el servicio `api` en texto plano (puerto 8728) o, recomendado en producción, el servicio `api-ssl` cifrado con TLS (puerto 8729) en el router MikroTik.",
+			},
+			{
+				name: "Crea un usuario dedicado para la API",
+				text: "Crea un grupo de usuarios de RouterOS solo con las políticas read, write, api y sensitive, y después crea un usuario en ese grupo con una contraseña robusta.",
+			},
+			{
+				name: "Permite el acceso del host del bouncer a través del firewall",
+				text: "Si el firewall del router restringe el acceso a la API, añade una regla que permita llegar al puerto de la API únicamente a la IP del host del bouncer.",
+			},
+			{
+				name: "Verifica la conectividad",
+				text: "Prueba la conectividad de la API con nc u openssl s_client, o arranca el bouncer y comprueba en su endpoint /health que routeros_connected sea true.",
+			},
+		],
+	},
 };
 
 // Defensive: `starlightRoute` is only set by Starlight's routing middleware.
@@ -94,6 +171,19 @@ const { starlightRoute } = Astro.locals;
 const entry = starlightRoute?.entry;
 const id = starlightRoute?.id;
 const lastUpdated = starlightRoute?.lastUpdated;
+
+// Locale handling: the root locale is English (no URL prefix); other locales
+// (currently `es`) prefix both the page id and the URL. All lookup tables
+// below are keyed by the locale-stripped id so one entry serves every locale.
+const locale = starlightRoute?.locale; // e.g. "es"; undefined for the root locale
+const lang = starlightRoute?.lang ?? "en"; // e.g. "en", "es"
+const localePathPrefix = locale ? `${locale}/` : "";
+const strippedId =
+	locale && id !== undefined
+		? id === locale
+			? ""
+			: id.replace(new RegExp(`^${locale}/`), "")
+		: id;
 
 const canonicalUrl = Astro.url.href;
 const title = entry?.data.title;
@@ -114,19 +204,26 @@ const techArticle = entry
 			publisher: { "@id": AUTHOR_ID },
 			about: { "@id": SOFTWARE_ID },
 			isPartOf: { "@id": WEBSITE_ID },
-			inLanguage: "en",
+			inLanguage: lang,
 		}
 	: null;
 
-// Skip breadcrumbs on the homepage itself (id === "") — a single "Home" crumb adds no value.
-const segments = id ? id.split("/") : [];
+// Skip breadcrumbs on the homepage itself (stripped id === "", i.e. `/` or
+// `/es/`) — a single "Home" crumb adds no value.
+const segments = strippedId ? strippedId.split("/") : [];
+const segmentLabels = SEGMENT_LABELS[lang] ?? SEGMENT_LABELS.en;
 const breadcrumbList =
 	entry && segments.length > 0
 		? {
 				"@context": "https://schema.org",
 				"@type": "BreadcrumbList",
 				itemListElement: [
-					{ "@type": "ListItem", position: 1, name: "Home", item: SITE_URL },
+					{
+						"@type": "ListItem",
+						position: 1,
+						name: HOME_LABELS[lang] ?? HOME_LABELS.en,
+						item: `${SITE_URL}${localePathPrefix}`,
+					},
 					// Only emit an intermediate crumb when the segment has a real page
 					// of its own (see SEGMENT_INDEX_PAGES) — otherwise skip it rather
 					// than link to a URL that 404s, then renumber positions to stay
@@ -135,11 +232,12 @@ const breadcrumbList =
 						.map((segment, index) => {
 							const isLast = index === segments.length - 1;
 							if (!isLast && !SEGMENT_INDEX_PAGES.has(segment)) return null;
-							const name = isLast
-								? title
-								: (SEGMENT_LABELS[segment] ?? segment);
+							const name = isLast ? title : (segmentLabels[segment] ?? segment);
 							const pathAcc = segments.slice(0, index + 1).join("/");
-							return { name, item: `${SITE_URL}${pathAcc}/` };
+							return {
+								name,
+								item: `${SITE_URL}${localePathPrefix}${pathAcc}/`,
+							};
 						})
 						.filter((crumb) => crumb !== null)
 						.map((crumb, index) => ({
@@ -151,7 +249,9 @@ const breadcrumbList =
 			}
 		: null;
 
-const howToSteps = id ? HOW_TO_STEPS[id] : undefined;
+const howToSteps = strippedId
+	? (HOW_TO_STEPS[lang] ?? HOW_TO_STEPS.en)[strippedId]
+	: undefined;
 const howTo =
 	entry && howToSteps
 		? {
