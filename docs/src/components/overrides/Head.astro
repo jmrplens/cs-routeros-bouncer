@@ -1,5 +1,6 @@
 ---
 import Default from "@astrojs/starlight/components/Head.astro";
+import { getFirstCommitDate } from "../../lib/latest-release.mjs";
 
 /**
  * Serialize a JSON-LD value for embedding via `set:html` in a `<script>` tag.
@@ -14,6 +15,27 @@ const SITE_URL = "https://jmrplens.github.io/cs-routeros-bouncer/";
 const AUTHOR_ID = "https://jmrp.io/#person";
 const SOFTWARE_ID = "https://github.com/jmrplens/cs-routeros-bouncer#software";
 const WEBSITE_ID = `${SITE_URL}#website`;
+const OG_IMAGE = {
+	"@type": "ImageObject",
+	url: `${SITE_URL}og-image.png`,
+	width: 1200,
+	height: 630,
+};
+
+/**
+ * Locale-stripped ids of pages that are structured reference material
+ * (config-key/metric/CLI tables). They get the more precise `APIReference`
+ * TechArticle subtype instead of plain `TechArticle`.
+ */
+const API_REFERENCE_PAGES = new Set([
+	"configuration",
+	"configuration/mikrotik",
+	"configuration/crowdsec",
+	"configuration/firewall",
+	"configuration/logging-metrics",
+	"getting-started/cli-reference",
+	"monitoring/prometheus",
+]);
 
 /** Top-level sidebar group labels, keyed by language and URL segment, for BreadcrumbList generation. */
 const SEGMENT_LABELS: Record<string, Record<string, string>> = {
@@ -212,16 +234,26 @@ const canonicalUrl = Astro.url.href;
 const title = entry?.data.title;
 const description = entry?.data.description;
 const dateModified = lastUpdated ? lastUpdated.toISOString() : undefined;
+// `filePath` is relative to the docs root (e.g. "src/content/docs/index.mdx"),
+// matching what getFirstCommitDate expects. Undefined for untracked new pages.
+const datePublished = entry?.filePath
+	? getFirstCommitDate(entry.filePath)
+	: undefined;
 
 const techArticle = entry
 	? {
 			"@context": "https://schema.org",
-			"@type": "TechArticle",
+			"@type":
+				strippedId && API_REFERENCE_PAGES.has(strippedId)
+					? "APIReference"
+					: "TechArticle",
 			"@id": `${canonicalUrl}#article`,
 			headline: title,
 			...(description ? { description } : {}),
 			url: canonicalUrl,
 			mainEntityOfPage: canonicalUrl,
+			image: OG_IMAGE,
+			...(datePublished ? { datePublished } : {}),
 			...(dateModified ? { dateModified } : {}),
 			author: { "@id": AUTHOR_ID },
 			publisher: { "@id": AUTHOR_ID },
@@ -290,9 +322,59 @@ const howTo =
 				})),
 			}
 		: null;
+
+/**
+ * Dataset JSON-LD for the benchmarking page, so AI systems can cite the
+ * RB5009 numbers with provenance. The figures mirror the visible tables and
+ * must be updated together with them.
+ */
+const DATASET_TEXT: Record<string, { name: string; description: string }> = {
+	en: {
+		name: "cs-routeros-bouncer RouterOS operation benchmarks",
+		description:
+			"Operation latency and bulk-import timings for cs-routeros-bouncer measured on a MikroTik RB5009UG+S+ (RouterOS 7.22.1): ~1–3 ms per cache-first add, ~400 ms per check-first add, and ~28,700 CAPI-origin entries imported in ~35–36 s with pool_size 10.",
+	},
+	es: {
+		name: "Benchmarks de operaciones RouterOS de cs-routeros-bouncer",
+		description:
+			"Latencia de operaciones y tiempos de importación masiva de cs-routeros-bouncer medidos en un MikroTik RB5009UG+S+ (RouterOS 7.22.1): ~1–3 ms por adición cache-first, ~400 ms por adición check-first y ~28.700 entradas de origen CAPI importadas en ~35–36 s con pool_size 10.",
+	},
+};
+const datasetText = DATASET_TEXT[lang] ?? DATASET_TEXT.en;
+const dataset =
+	entry && strippedId === "development/benchmarking"
+		? {
+				"@context": "https://schema.org",
+				"@type": "Dataset",
+				"@id": `${canonicalUrl}#benchmarks`,
+				name: datasetText.name,
+				description: datasetText.description,
+				url: canonicalUrl,
+				license: "https://opensource.org/licenses/MIT",
+				creator: { "@id": AUTHOR_ID },
+				about: { "@id": SOFTWARE_ID },
+				isPartOf: { "@id": WEBSITE_ID },
+				inLanguage: lang,
+				measurementTechnique:
+					"Functional CAPI test suite (tests/functional/) and cmd/benchmark tool run against a MikroTik RB5009UG+S+ on RouterOS 7.22.1",
+				variableMeasured: [
+					"add operation latency",
+					"remove operation latency",
+					"bulk import wall-clock time",
+					"router CPU peak",
+				],
+			}
+		: null;
 ---
 
 <Default {...Astro.props}><slot /></Default>
+
+{
+	/* X/Twitter falls back to og: tags for title/description, but emitting the
+dedicated tags removes the ambiguity for other card-consuming crawlers. */
+}
+{title && <meta name="twitter:title" content={title} />}
+{description && <meta name="twitter:description" content={description} />}
 
 {
 	techArticle && (
@@ -315,5 +397,10 @@ const howTo =
 {
 	howTo && (
 		<script type="application/ld+json" is:inline set:html={toLdJson(howTo)} />
+	)
+}
+{
+	dataset && (
+		<script type="application/ld+json" is:inline set:html={toLdJson(dataset)} />
 	)
 }

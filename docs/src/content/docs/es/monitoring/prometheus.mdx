@@ -1,6 +1,6 @@
 ---
 title: Métricas de Prometheus
-description: Referencia completa de todas las métricas de Prometheus exportadas por el bouncer.
+description: Referencia completa de las métricas de Prometheus exportadas por cs-routeros-bouncer, con etiquetas, consultas PromQL de ejemplo y el envío a la LAPI.
 ---
 
 import { Badge, Aside } from "@astrojs/starlight/components";
@@ -283,7 +283,9 @@ sum(crowdsec_bouncer_dropped_packets_total) / sum(crowdsec_bouncer_processed_pac
   descartado, ya que cuenta TODOS los paquetes que entran en las cadenas del
   bouncer, no solo los que coinciden con IPs baneadas. Esta proporción es la
   esperada y da contexto sobre cuánto tráfico está evaluando realmente el
-  bouncer.
+  bouncer. La proporción se observó en la [plataforma de
+  benchmark](/cs-routeros-bouncer/es/development/benchmarking/) y varía según tu
+  mezcla de tráfico.
 </Aside>
 
 ## Métricas del sistema RouterOS

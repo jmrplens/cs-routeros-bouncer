@@ -1,0 +1,38 @@
+---
+title: Acerca de
+description: Quién mantiene cs-routeros-bouncer, dónde está listado y cómo se prueba, licencia y soporta el proyecto.
+---
+
+cs-routeros-bouncer es un componente de remediación (bouncer) libre y de código abierto de [CrowdSec](https://www.crowdsec.net/) para [MikroTik RouterOS](https://mikrotik.com/). Sincroniza las decisiones de ban/unban de CrowdSec con las reglas de firewall de RouterOS a través de la API de RouterOS, con reconciliación, métricas de Prometheus y limpieza segura. El proyecto está escrito en Go y publicado bajo la [Licencia MIT](https://github.com/jmrplens/cs-routeros-bouncer/blob/main/LICENSE).
+
+## Mantenedor
+
+El proyecto está escrito y mantenido por **[José Manuel Requena Plens](https://jmrp.io)** (jmrplens):
+
+- [Sitio personal](https://jmrp.io) · [GitHub](https://github.com/jmrplens) · [LinkedIn](https://linkedin.com/in/jmrplens) · [Mastodon](https://mstdn.jmrp.io/@jmrplens)
+- Contacto para problemas de seguridad: consulta la [Política de seguridad](/cs-routeros-bouncer/es/development/security/) (avisos privados de GitHub, PGP disponible)
+
+## Dónde está listado el proyecto
+
+- [CrowdSec Hub](https://app.crowdsec.net/hub/author/jmrplens/remediation-components/cs-routeros-bouncer) — listado oficial como componente de remediación
+- [Repositorio en GitHub](https://github.com/jmrplens/cs-routeros-bouncer) — código fuente, issues y releases
+- [Wikidata: Q140393352](https://www.wikidata.org/wiki/Q140393352) — entidad del grafo de conocimiento
+- [pkg.go.dev](https://pkg.go.dev/github.com/jmrplens/cs-routeros-bouncer) — índice de módulos de Go
+- [GitHub Container Registry](https://github.com/jmrplens/cs-routeros-bouncer/pkgs/container/cs-routeros-bouncer) — imágenes de contenedor
+
+## Cómo se prueba
+
+La suite de pruebas abarca las capas unitaria, de integración y funcional (consulta la [Guía de pruebas](/cs-routeros-bouncer/es/development/testing-guide/)). Las cifras de rendimiento publicadas en esta documentación se midieron en hardware real:
+
+| Componente       | Probado con                                          |
+| ---------------- | ---------------------------------------------------- |
+| Router           | MikroTik RB5009UG+S+ (ARM64, 4 núcleos, 1 GB de RAM) |
+| RouterOS         | 7.22.1 (requiere 7.x con el servicio API habilitado) |
+| CrowdSec         | 1.5+ con la Local API (LAPI)                         |
+| Host del bouncer | Linux (amd64/arm64), Go 1.26.4                       |
+
+Consulta [Benchmarking](/cs-routeros-bouncer/es/development/benchmarking/) para la metodología y las cifras completas.
+
+## Contribuir
+
+Los informes de errores y las pull requests son bienvenidos en [GitHub](https://github.com/jmrplens/cs-routeros-bouncer). Empieza por la [guía de contribución](/cs-routeros-bouncer/es/development/contributing/). Esta documentación es bilingüe (inglés/español); cada página tiene un enlace "Editar página".

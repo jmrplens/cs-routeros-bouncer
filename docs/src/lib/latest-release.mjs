@@ -1,7 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
 
-const docsRoot = fileURLToPath(new URL("../..", import.meta.url));
+// The Astro CLI always runs with the docs package as its working directory
+// (both `astro.config.mjs` loading and the Vite SSR build). Resolving from
+// `import.meta.url` would break for bundled consumers (e.g. the Head
+// override), whose chunks execute from `dist/`, so cwd is the reliable root.
+const docsRoot = process.cwd();
 
 // Check once, at module load, instead of on every call — avoids spawning a
 // doomed `git` process when `git` is missing or the build runs outside a git
@@ -47,4 +50,43 @@ export function getLatestRelease() {
 /** Whether the build is running inside a git checkout with `git` available. */
 export function gitAvailable() {
 	return isGitAvailable;
+}
+
+/** Cache: one git spawn per content file per build, not per render. */
+const firstCommitDates = new Map();
+
+/**
+ * Resolve the date a content file first entered git history, for JSON-LD
+ * `datePublished`. Returns undefined for untracked files (e.g. brand-new
+ * pages not yet committed) so callers can simply omit the property.
+ * @param {string} relativePath path relative to the docs root, e.g. "src/content/docs/index.mdx"
+ * @returns {string | undefined} ISO 8601 date
+ */
+export function getFirstCommitDate(relativePath) {
+	if (!isGitAvailable || !relativePath) return undefined;
+	if (firstCommitDates.has(relativePath)) {
+		return firstCommitDates.get(relativePath);
+	}
+	let date;
+	try {
+		const output = execFileSync(
+			"git",
+			[
+				"log",
+				"--follow",
+				"--diff-filter=A",
+				"--format=%cI",
+				"--",
+				relativePath,
+			],
+			{ cwd: docsRoot, encoding: "utf-8" },
+		).trim();
+		// --follow can list several "A" commits after renames; the oldest is last.
+		const lines = output.split("\n").filter(Boolean);
+		date = lines.length > 0 ? lines[lines.length - 1] : undefined;
+	} catch {
+		date = undefined;
+	}
+	firstCommitDates.set(relativePath, date);
+	return date;
 }

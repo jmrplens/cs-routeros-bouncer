@@ -49,6 +49,7 @@ Key behavior:
 - [Project Structure](https://jmrplens.github.io/cs-routeros-bouncer/development/structure/): Repository layout.
 - [Contributing](https://jmrplens.github.io/cs-routeros-bouncer/development/contributing/): Contribution guidelines.
 - [Security Policy](https://jmrplens.github.io/cs-routeros-bouncer/development/security/): Vulnerability reporting.
+- [About](https://jmrplens.github.io/cs-routeros-bouncer/about/): Maintainer, third-party listings, and the tested hardware/software matrix.
 
 ## Languages
 

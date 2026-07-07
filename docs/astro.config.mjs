@@ -105,7 +105,21 @@ export default defineConfig({
 			},
 			serialize(item) {
 				const lastmod = getLastmod(new URL(item.url).pathname);
-				return lastmod ? { ...item, lastmod } : item;
+				const result = lastmod ? { ...item, lastmod } : { ...item };
+				// The HTML heads emit an x-default hreflang (→ the English page);
+				// mirror it in the sitemap so both sources agree, as Google
+				// recommends. The integration's i18n option only emits the
+				// configured locales, so append x-default here.
+				if (Array.isArray(result.links) && result.links.length > 0) {
+					const enLink = result.links.find((link) => link.lang === "en");
+					if (enLink) {
+						result.links = [
+							...result.links,
+							{ lang: "x-default", url: enLink.url },
+						];
+					}
+				}
+				return result;
 			},
 		}),
 		starlight({
@@ -151,6 +165,22 @@ export default defineConfig({
 						property: "og:image",
 						content:
 							"https://jmrplens.github.io/cs-routeros-bouncer/og-image.png",
+					},
+				},
+				{
+					tag: "meta",
+					attrs: { property: "og:image:width", content: "1200" },
+				},
+				{
+					tag: "meta",
+					attrs: { property: "og:image:height", content: "630" },
+				},
+				{
+					tag: "meta",
+					attrs: {
+						property: "og:image:alt",
+						content:
+							"cs-routeros-bouncer — CrowdSec bouncer for MikroTik RouterOS",
 					},
 				},
 				{
@@ -347,6 +377,8 @@ export default defineConfig({
 								"@id": "https://jmrp.io/#person",
 								name: "José Manuel Requena Plens",
 								alternateName: "jmrplens",
+								description:
+									"Open-source developer; author and maintainer of cs-routeros-bouncer",
 								url: "https://jmrp.io",
 								image: "https://github.com/jmrplens.png",
 								knowsAbout: [
@@ -373,7 +405,7 @@ export default defineConfig({
 								url: "https://jmrplens.github.io/cs-routeros-bouncer/",
 								description:
 									"CrowdSec bouncer for MikroTik RouterOS — automatic firewall management via the RouterOS API",
-								inLanguage: ["en"],
+								inLanguage: ["en", "es"],
 								image: {
 									"@type": "ImageObject",
 									url: "https://jmrplens.github.io/cs-routeros-bouncer/og-image.png",
@@ -410,10 +442,18 @@ export default defineConfig({
 								},
 								screenshot: {
 									"@type": "ImageObject",
-									url: "https://jmrplens.github.io/cs-routeros-bouncer/og-image.png",
-									width: 1200,
-									height: 630,
+									url: "https://jmrplens.github.io/cs-routeros-bouncer/grafana-dashboard.png",
+									width: 1600,
+									height: 4633,
+									caption:
+										"Grafana dashboard shipped with cs-routeros-bouncer showing active decisions, firewall traffic, and RouterOS system metrics",
 								},
+								softwareHelp: {
+									"@type": "CreativeWork",
+									url: "https://jmrplens.github.io/cs-routeros-bouncer/",
+								},
+								softwareRequirements:
+									"CrowdSec 1.5+ with the Local API (LAPI) reachable from the bouncer host; MikroTik RouterOS 7.x with the API service enabled",
 								license: "https://opensource.org/licenses/MIT",
 								isAccessibleForFree: true,
 								keywords:
@@ -606,6 +646,11 @@ export default defineConfig({
 					label: "Troubleshooting",
 					translations: { es: "Solución de problemas" },
 					slug: "troubleshooting",
+				},
+				{
+					label: "About",
+					translations: { es: "Acerca de" },
+					slug: "about",
 				},
 			],
 		}),

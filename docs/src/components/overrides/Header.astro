@@ -7,3 +7,25 @@ const props = Astro.props as Props;
 ---
 
 <Default {...props}><slot /></Default>
+
+{
+	/* Starlight hides the whole right-group (social icons, theme select,
+language select) below the 50rem breakpoint, leaving language switching
+buried at the bottom of the mobile menu drawer. Surface just the language
+select in the mobile header bar: re-enable the group's flex layout and hide
+its other children. These styles are unlayered, so they win over Starlight's
+`@layer`-scoped `sl-hidden` utility without needing `!important`. The header
+shell already reserves right-hand space for the fixed hamburger button
+(see PageFrame's `[data-has-sidebar] .header` padding), so nothing overlaps. */
+}
+<style is:global>
+	@media (max-width: 49.999rem) {
+		.header .right-group {
+			display: flex;
+		}
+		.header .right-group .social-icons,
+		.header .right-group starlight-theme-select {
+			display: none;
+		}
+	}
+</style>
