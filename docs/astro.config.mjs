@@ -396,7 +396,6 @@ export default defineConfig({
 									"https://scholar.google.com/citations?user=9b0kPaUAAAAJ",
 									"https://matrix.to/#/@jmrplens:matrix.jmrp.io",
 									"https://keyoxide.org/0A993B268654DBBA52B7E8D3FCF653391E2C91FC",
-									"https://www.wikidata.org/wiki/Q140455276",
 								],
 							},
 							{
@@ -466,7 +465,6 @@ export default defineConfig({
 								author: { "@id": "https://jmrp.io/#person" },
 								sameAs: [
 									"https://app.crowdsec.net/hub/author/jmrplens/remediation-components/cs-routeros-bouncer",
-									"https://www.wikidata.org/wiki/Q140393352",
 								],
 							},
 							{
