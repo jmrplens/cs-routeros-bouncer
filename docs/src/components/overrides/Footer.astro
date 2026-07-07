@@ -5,17 +5,24 @@ import Default from "@astrojs/starlight/components/Footer.astro";
 // (Starlight sets `lang` on the route data; the root locale is English).
 const FOOTER_STRINGS: Record<
 	string,
-	{ builtWith: string; poweredBy: string; license: string }
+	{
+		builtWith: string;
+		poweredBy: string;
+		license: string;
+		maintainedBy: string;
+	}
 > = {
 	en: {
 		builtWith: "Built with",
 		poweredBy: "Powered by",
 		license: "MIT License",
+		maintainedBy: "Maintained by",
 	},
 	es: {
 		builtWith: "Creado con",
 		poweredBy: "Impulsado por",
 		license: "Licencia MIT",
+		maintainedBy: "Mantenido por",
 	},
 };
 
@@ -28,7 +35,13 @@ const t = FOOTER_STRINGS[lang] ?? FOOTER_STRINGS.en;
 <div class="custom-footer">
 	<div class="footer-inner">
 		<p>
-			{t.builtWith}
+			{t.maintainedBy}
+			<a
+				href="https://jmrp.io"
+				target="_blank"
+				rel="external noopener noreferrer author">José Manuel Requena Plens</a
+			>
+			&middot; {t.builtWith}
 			<a
 				href="https://starlight.astro.build/"
 				target="_blank"

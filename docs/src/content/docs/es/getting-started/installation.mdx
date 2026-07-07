@@ -1,11 +1,11 @@
 ---
 title: Instalación
-description: Despliega cs-routeros-bouncer con Docker, systemd o compilándolo desde el código fuente.
+description: Instala cs-routeros-bouncer con Docker Compose, como binario con el instalador de systemd integrado o compilando desde el código fuente — y verifica que funciona.
 ---
 
 import { Steps, Tabs, TabItem, LinkCard } from "@astrojs/starlight/components";
 
-cs-routeros-bouncer admite varios métodos de despliegue. Elige el que mejor se adapte a tu infraestructura.
+cs-routeros-bouncer se distribuye como imagen de contenedor multiarquitectura, binarios de Linux precompilados con instalador para systemd y código fuente Go compilable. Usa **Docker Compose** si ya ejecutas CrowdSec en contenedores; usa el **instalador de systemd** (`cs-routeros-bouncer setup`) en un host Linux sin contenedores; **compila desde el código fuente** solo si necesitas una plataforma sin release o quieres modificar el código.
 
 <Tabs>
   <TabItem label="Docker Compose" icon="seti:docker">

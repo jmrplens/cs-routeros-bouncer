@@ -1,6 +1,6 @@
 ---
 title: Prometheus Metrics
-description: Complete reference of all Prometheus metrics exported by the bouncer.
+description: Complete reference of every Prometheus metric exported by cs-routeros-bouncer, with labels, example PromQL queries, and the LAPI usage-metrics push.
 ---
 
 import { Badge, Aside } from "@astrojs/starlight/components";
@@ -282,7 +282,9 @@ sum(crowdsec_bouncer_dropped_packets_total) / sum(crowdsec_bouncer_processed_pac
   Processed traffic is typically 200-500x higher than dropped traffic, since it
   counts ALL packets entering the bouncer chains — not just the ones matching
   banned IPs. This ratio is expected and provides context for how much traffic
-  the bouncer is actually evaluating.
+  the bouncer is actually evaluating. The ratio was observed on the [benchmark
+  platform](/cs-routeros-bouncer/development/benchmarking/) and varies with your
+  traffic mix.
 </Aside>
 
 ## RouterOS System Metrics

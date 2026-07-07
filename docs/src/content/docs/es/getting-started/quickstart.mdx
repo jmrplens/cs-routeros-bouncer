@@ -1,22 +1,32 @@
 ---
 title: Inicio rápido
-description: Pon cs-routeros-bouncer en marcha en 5 minutos.
+description: Instala cs-routeros-bouncer con Docker Compose o systemd y sincroniza los baneos de CrowdSec con las reglas de firewall de MikroTik en unos 5 minutos.
 ---
 
 import { Steps, LinkCard, CardGrid } from "@astrojs/starlight/components";
+
+Para instalar cs-routeros-bouncer, registra el bouncer en CrowdSec (`cscli bouncers add`), crea un usuario dedicado de la API de RouterOS y despliega el bouncer con Docker Compose o como binario con systemd. La instalación lleva unos 5 minutos; al terminar, las decisiones de ban de CrowdSec aparecen automáticamente como reglas de firewall en MikroTik.
+
+## ¿Qué necesito antes de empezar?
+
+- **CrowdSec 1.5+** con la Local API (LAPI) accesible desde el host del bouncer
+- **MikroTik RouterOS 7.x** con el servicio API habilitado (puerto 8728, u 8729 para TLS)
+- Un host Linux (o Docker) donde ejecutar el bouncer
+
+## ¿Cómo instalo cs-routeros-bouncer?
 
 <Steps>
 
 1. **Registra el bouncer en CrowdSec**
 
-   En la máquina donde se ejecuta CrowdSec:
+   Los bouncers se autentican ante la LAPI de CrowdSec con una API key (consulta la [documentación de bouncers de CrowdSec](https://docs.crowdsec.net/u/bouncers/intro)). En la máquina donde se ejecuta CrowdSec:
 
    ```bash
    sudo cscli bouncers add cs-routeros-bouncer
    ```
 
    :::note[Guarda la API key]
-   Copia la API key que se muestra en la salida — la necesitarás para la configuración del bouncer.
+   `cscli bouncers add cs-routeros-bouncer` imprime una API key de un solo uso. Configúrala como `crowdsec.api_key` en el YAML, o como la variable de entorno `CROWDSEC_BOUNCER_API_KEY`.
    :::
 
 2. **Crea un usuario de la API de RouterOS**

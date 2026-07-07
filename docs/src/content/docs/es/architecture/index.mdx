@@ -1,6 +1,6 @@
 ---
 title: Arquitectura
-description: Cómo cs-routeros-bouncer conecta la inteligencia de amenazas de CrowdSec con los firewalls de MikroTik.
+description: "Cómo cs-routeros-bouncer conecta la inteligencia de amenazas de CrowdSec con los firewalls MikroTik: componentes, flujo de datos, pool, caché y adición masiva."
 slug: es/architecture
 ---
 
@@ -130,7 +130,7 @@ El bouncer mantiene un pool configurable de conexiones persistentes a la API de 
 
 ### Adición masiva basada en scripts
 
-Para la reconciliación inicial, el bouncer genera scripts de RouterOS que añaden entradas en bloques de 100 IPs por script. Cada entrada usa `:do { ... } on-error={}` para omitir los duplicados de forma controlada. Este enfoque es ~97× más rápido que las llamadas individuales secuenciales a la API para listas grandes.
+Para la reconciliación inicial, el bouncer genera scripts de RouterOS que añaden entradas en bloques de 100 IPs por script. Cada entrada usa `:do { ... } on-error={}` para omitir los duplicados de forma controlada. Este enfoque es ~97× más rápido que las llamadas individuales secuenciales a la API para listas grandes — medido en un RB5009UG+S+ (RouterOS 7.22.1) con ~28.700 entradas de CAPI; consulta [Benchmarking](/cs-routeros-bouncer/es/development/benchmarking/) para la metodología.
 
 ### Caché de direcciones en memoria
 

@@ -1,6 +1,6 @@
 ---
 title: Visión general de la configuración
-description: Todas las opciones de configuración de cs-routeros-bouncer de un vistazo.
+description: "Todas las opciones de configuración de cs-routeros-bouncer de un vistazo: claves YAML, variables de entorno, valores por defecto y referencias detalladas."
 slug: es/configuration
 ---
 
@@ -92,7 +92,7 @@ Los ajustes esenciales para poner en marcha el bouncer. La mayoría de los despl
 
 ### Parámetros avanzados
 
-Opciones de ajuste fino para el filtrado de decisiones, TLS, rendimiento, personalización del firewall y observabilidad. Los valores por defecto funcionan bien en la mayoría de las instalaciones.
+Opciones de ajuste fino para el filtrado de decisiones, TLS, rendimiento, personalización del firewall y observabilidad. Los valores por defecto (sondeo de 10 s, reconciliación de 15 m, `pool_size: 4`) están dimensionados para un único router con hasta unas 30.000 decisiones activas; ajústalos solo por encima de esa escala o en hardware modesto.
 
 #### [CrowdSec](/cs-routeros-bouncer/es/configuration/crowdsec/) — sondeo, filtrado y TLS
 

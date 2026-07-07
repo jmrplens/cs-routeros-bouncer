@@ -1,217 +1,174 @@
 # GEO Audit Report: cs-routeros-bouncer
 
-**Audit Date:** 2026-07-02
+**Audit Date:** 2026-07-07
 **URL:** <https://jmrplens.github.io/cs-routeros-bouncer/>
 **Business Type:** Open-source software documentation (Astro + Starlight, GitHub Pages). Free/MIT-licensed — no pricing, no login, no commercial funnel. Closest audit template: SaaS documentation, adapted for an OSS project.
-**Pages Analyzed:** 27 (full sitemap coverage, all HTTP 200)
+**Pages Analyzed:** 54 sitemap URLs (27 English + 27 Spanish, all HTTP 200); ~18 pages deep-fetched across five parallel analysis passes.
+**Previous Audit:** 2026-07-02 — 62/100 (before the GEO fix-list of PR #60/#61 and the Spanish locale of PR #63).
 
 ---
 
 ## Executive Summary
 
-### Overall GEO Score: 62/100 (Fair)
+### Overall GEO Score: 72/100 (Fair, borderline Good) — up from 62 (+10)
 
-This site has an unusually strong technical and AI-crawler foundation for a small OSS project — a best-in-class `llms.txt`/`llms-full.txt` implementation, every major AI crawler explicitly allowed in `robots.txt`, 100% server-rendered content with no JS dependency, and a genuinely excellent proprietary-benchmark content asset on `/architecture/`. The score is pulled down by two things: an identical `FAQPage` JSON-LD block injected on all 27 pages that matches visible content on **none** of them (a real structured-data trust problem, not a cosmetic one), and weak external brand-authority signals (no Reddit/YouTube/Wikipedia presence, thin backlink profile, site doesn't yet rank in general search for its own name). Content quality is technically excellent but invisible-to-humans on authorship, and links out to zero authoritative third-party sources despite being a bridge product between two other systems (CrowdSec and MikroTik).
+On-site GEO is now essentially done: technical infrastructure scores 96/100 (fully static HTML, 14 AI crawlers explicitly welcomed, Content-Signal, compliant `llms.txt`, reciprocal en↔es hreflang), the July 2 critical issue (site-wide phantom `FAQPage`) is fixed — the FAQ block now matches visible content verbatim in both languages — and there is direct evidence that AI search summaries **already quote the docs nearly verbatim** (the "~1–3 ms per operation" figure and pool-size defaults were reproduced in AI answers during this audit). The new Spanish tree doubles the citable surface and none of the competing MikroTik bouncers have localized docs.
+
+What holds the score at 72 is almost entirely **off-site brand authority (32/100)**: zero community footprint (no Reddit, no forum.mikrotik.com, no CrowdSec Discourse threads), absence from the `awesome-crowdsec` directory while a direct competitor is listed, and a young repo (12 stars, Feb 2026). Second-order gaps: the author remains invisible in rendered content (rich `Person` JSON-LD, but no byline/About page), and the entry pages (quickstart/installation) are the least citation-shaped pages on the site.
 
 ### Score Breakdown
 
-| Category | Score | Weight | Weighted Score |
-|---|---|---|---|
-| AI Citability | 82/100 | 25% | 20.5 |
-| Brand Authority | 30/100 | 20% | 6.0 |
-| Content E-E-A-T | 57/100 | 20% | 11.4 |
-| Technical GEO | 89/100 | 15% | 13.35 |
-| Schema & Structured Data | 43/100 | 10% | 4.3 |
-| Platform Optimization | 60/100 | 10% | 6.0 |
-| **Overall GEO Score** | | | **61.55 ≈ 62/100** |
+| Category | Score | Prev | Δ | Weight | Weighted Score |
+|---|---|---|---|---|---|
+| AI Citability | 87/100 | 82 | +5 | 25% | 21.75 |
+| Brand Authority | 32/100 | 30 | +2 | 20% | 6.40 |
+| Content E-E-A-T | 70/100 | 57 | +13 | 20% | 14.00 |
+| Technical GEO | 96/100 | 89 | +7 | 15% | 14.40 |
+| Schema & Structured Data | 84/100 | 43 | +41 | 10% | 8.40 |
+| Platform Optimization | 74/100 | 60 | +14 | 10% | 7.40 |
+| **Overall GEO Score** | | | | | **72.35 ≈ 72/100** |
 
 ---
 
 ## Critical Issues (Fix Immediately)
 
-**1. `FAQPage` structured data matches visible content on zero pages, sitewide.**
-An identical 4-Q&A `FAQPage` JSON-LD block ("What is cs-routeros-bouncer?", version support, license, IPv6 support) is injected on **all 27 pages**. Independent verification (stripping the `<script type="application/ld+json">` blocks and searching remaining body text) confirmed the matching visible FAQ accordion does **not exist anywhere on the site, including the homepage** — the `<details>` elements found there are Starlight sidebar/TOC widgets, not an FAQ section. This is a direct violation of Google's structured-data content-matching policy and the kind of sitewide, zero-match pattern that risks a manual action on the `FAQPage` type and reduced crawler trust in the site's *other* (accurate) structured data.
-
-- **Affected:** all 27 pages
-- **Fix:** Either (a) build one real, visible FAQ accordion on the homepage using this exact copy and remove the `FAQPage` block from the other 26 pages, or (b) simply delete the `FAQPage` JSON-LD sitewide — `FAQPage` rich results have been restricted to government/health sites since Aug 2023, so there is no rich-result upside to keeping it, only downside risk.
+None. The July 2 critical issue (site-wide `FAQPage` matching zero visible content) is resolved: the block now exists only where the FAQ is visible, matches word-for-word, and is properly localized on `/es/`.
 
 ---
 
 ## High Priority Issues
 
-**2. No visible author/maintainer attribution anywhere on the site.**
-A rich `Person` entity (name, `knowsAbout`, 6 `sameAs` links) exists in every page's JSON-LD `<head>`, but never surfaces in rendered UI — no byline, no "maintained by," no About page, no author name in the footer (footer only says "Built with Starlight · Powered by CrowdSec"). AI systems that weight visible E-E-A-T signals over hidden schema will miss this entirely.
+**1. Not listed in `awesome-crowdsec` while direct competitor `cs-mikrotik-bouncer-alt` is.**
+Verified against the raw directory README. Curated "awesome" lists feed LLM training data and RAG corpora directly; this is the cheapest high-leverage authority action available.
+**Fix:** submit a PR adding cs-routeros-bouncer with a one-line description.
 
-- **Fix:** Add a footer line ("Maintained by José Manuel Requena Plens") linking to jmrp.io/GitHub, or a short `/about/` page mirroring the JSON-LD `Person` data.
+**2. Zero community footprint on the venues AI models weight most for this niche.**
+No threads mention the project on forum.mikrotik.com (existing CrowdSec threads t=187449/t=189948 reference competitor scripts), r/mikrotik, r/crowdsec, or discourse.crowdsec.net. Perplexity answering "best CrowdSec bouncer for MikroTik" today draws on competitor sources. Reddit is empty for all competitors too — a first-mover opportunity.
+**Fix:** one substantive announcement on discourse.crowdsec.net; genuine participation in the existing MikroTik-forum CrowdSec threads; an r/mikrotik write-up. (Human action — cannot be automated honestly.)
 
-**3. Zero contextual outbound citations to authoritative third-party sources, sitewide.**
-Verified identical `external_domains: [github.com, starlight.astro.build, www.crowdsec.net]` on every sampled page (including the 3,570-word firewall config page and the 1,307-word troubleshooting page) — all boilerplate footer/head links, no in-content citations. For a project whose entire purpose is bridging CrowdSec and MikroTik RouterOS, never linking to either system's official docs (`docs.crowdsec.net`, `help.mikrotik.com`) is a real trust and verifiability gap.
+**3. Author invisible in rendered content.**
+`Person` JSON-LD with 6 `sameAs` links and 7 `rel=me` head links exist site-wide, but no byline, no "maintained by" footer credit, no About page. "Requena", "jmrp.io", and "LinkedIn" appear nowhere in visible body text. AI systems reading rendered text (and human trust) miss the strongest expertise signal the site has.
+**Fix:** add "Maintained by [José Manuel Requena Plens](https://jmrp.io)" to the custom footer (both locales) and/or an About/Credits page.
 
-- **Fix:** Add contextual links to CrowdSec's official docs from `/configuration/crowdsec/` and `/configuration/capi-blocklists/`, and to MikroTik's RouterOS API docs from `/configuration/mikrotik/`, `/configuration/firewall/`, and `/getting-started/router-setup/`.
-
-**4. `/development/benchmarking/` is a generic template with no real numbers, while genuine benchmark data exists elsewhere.**
-The dedicated benchmarking page (310 words) has no actual results, while `/architecture/` independently documents real, quotable figures (~28,700 CAPI entries processed in ~35–36s; cache-first add "~97× faster" than sequential API calls; ~400ms/IP for check-first). This is the site's best citability asset and it's stranded on the wrong page.
-
-- **Fix:** Pull the real benchmark figures from `/architecture/` into `/development/benchmarking/` with hardware/RouterOS-version context.
-
-**5. No Reddit, forum, or Q&A community presence.**
-Confirmed via targeted search (`site:reddit.com`, MikroTik forum, CrowdSec Discourse) — zero hits specific to the project. This is the single largest gap for Perplexity, which heavily surfaces community discussion, and a missed backlink source that would also help Google AI Overviews ranking.
-
-- **Fix:** A genuine (non-promotional) post in r/mikrotik, r/CrowdSec, r/selfhosted, or the CrowdSec Discourse forum, linking to specific docs pages rather than just the repo.
-
-**6. No YouTube or video content.**
-No video presence found for the project or author in this context — a real gap for Gemini's multi-format preference and for "how do I install X" queries generally.
-
-- **Fix:** A short (5–10 min) screen-recorded quickstart walkthrough, linked from `/getting-started/quickstart/`.
-
-**7. No per-page `Article`/`TechArticle`/`WebPage` schema — all 27 pages share identical, page-agnostic JSON-LD.**
-Every page ships the exact same `Person`/`WebSite`/`SoftwareApplication`/`SoftwareSourceCode` graph regardless of its own content. There is no machine-readable per-page signal (headline, summary, `dateModified`) despite each page already having a unique, well-written title and meta description.
-
-- **Fix:** Add a `TechArticle` (or `WebPage`) JSON-LD block per page using the existing unique title/description, plus `dateModified` sourced from the already-rendered "Last updated" timestamp (see also Medium #9 below).
+**4. `WebSite.inLanguage` still `["en"]` on the live site.** ✅ *Fixed locally during this audit — pending commit/deploy.*
+The `/es/` pages serve the English-only site-wide graph while their `TechArticle` declares `"es"` — an entity-graph contradiction that dilutes the bilingual signal for Gemini/AIO. The one-line fix (`["en", "es"]`) is applied in `docs/astro.config.mjs` and ships with the next deploy.
 
 ---
 
 ## Medium Priority Issues
 
-**8. Question-phrased headings appear on only 1 of 27 pages (the homepage).** All procedural/reference pages use declarative headings, reducing snippet-extraction odds for AI Overviews and ChatGPT. *Fix:* add a handful of question-style subheadings with direct 40–60 word answers on high-traffic pages (e.g. "How do I enable IPv6 filtering?" on `/configuration/firewall/`).
-
-**9. No `dateModified` in any JSON-LD, despite every page visibly rendering a "Last updated" `<time>` element.** The freshness signal is human-visible but not machine-readable. *Fix:* wire the existing per-page timestamp into the new `TechArticle`/`SoftwareApplication` schema.
-
-**10. Every one of 8 spot-checked pages shows the identical "Last updated" timestamp down to the second (`2026-07-01T19:44:10.000Z`).** This suggests Starlight's `lastUpdated` is resolving from a single bulk commit rather than true per-file git history — as configured, this will always show "just updated" sitewide regardless of which page actually changed, undermining it as a trust/freshness signal going forward. *Fix:* verify Starlight's git-history-based `lastUpdated` config is reading true per-file history, not build/deploy time.
-
-**11. No `HowTo` schema on clearly step-by-step pages** (`/getting-started/quickstart/`, `/getting-started/installation/`, `/getting-started/router-setup/`). *Fix:* add `HowTo`/`HowToStep` JSON-LD mirroring the existing numbered instructions.
-
-**12. No `BreadcrumbList` schema anywhere**, despite Starlight's sidebar already encoding the needed hierarchy (Getting Started / Configuration / Architecture / Monitoring / Development). *Fix:* generate `BreadcrumbList` from the existing sidebar group data.
-
-**13. GitHub repository has zero topics/tags set.** Flagged independently by three subagents as a discoverability and entity-recognition gap. *Fix:* add topics such as `crowdsec`, `mikrotik`, `routeros`, `firewall`, `bouncer`, `network-security`, `go`.
-
-**14. Sitemap has no `<lastmod>` dates on any of the 27 URLs**, despite every page displaying one in its UI — this is the default `@astrojs/sitemap` output unless explicitly wired. *Fix:* configure the sitemap integration's `serialize()` to emit `lastmod` from each page's frontmatter/git history.
-
-**15. `/architecture/` is disproportionately heavy (~230KB raw HTML vs. 60–130KB sitewide average)** because two Mermaid diagrams are inlined as `data:image/svg+xml` URIs. Good for zero-JS crawler visibility, but a real payload cost. *Fix:* extract to static `.svg` files referenced via `<img src>` if diagram count grows, keeping `<title>`/`<desc>` inside the SVG for text-extractability.
-
-**16. Security policy page (`/development/security/`) has no inline contact method.** It instructs "email the maintainer directly" but includes no actual email address or the PGP key link that already exists sitewide via `rel="pgpkey"`. *Fix:* inline the maintainer's contact email or PGP key link directly on the security page.
-
-**17. `SoftwareApplication` schema is missing `softwareVersion`**, despite the homepage visibly showing "v1.4.5". *Fix:* add `softwareVersion` (and ideally `dateModified` for the release) to the existing block.
-
-**18. No `speakable` property anywhere.** A low-effort, direct AI-assistant-readability signal. *Fix:* add `SpeakableSpecification` to the homepage `WebSite`/`TechArticle` targeting the hero description and "How it works" section.
+1. **Quickstart & Installation are the least citable pages** (68 and 65 vs 82–90 elsewhere): no direct-answer intro paragraph, no question-form headings, no prerequisites block at the top, fragment-style headings ("Basic setup"). Fix: add a 40–60-word definition-first lead per page, a visible Requirements block on quickstart, and convert 2–3 key headings to question form.
+2. **`TechArticle` missing `image` and `datePublished`** — `image` disqualifies Article rich results; both are cheap to add in the Head override (og-image.png exists; derive `datePublished` from first git commit like `dateModified`).
+3. **No tested-versions/hardware matrix** — "RouterOS 7.x" is the only compatibility claim outside the benchmarking page. A "Tested with" table (RouterOS versions, hardware, CrowdSec versions, date) is a cheap, high-value Experience signal.
+4. **Outbound citations are thin** — most pages link only the boilerplate footer set. Add deep links to docs.crowdsec.net (LAPI/CAPI/bouncer registration) on config pages and RouterOS filter/raw docs on firewall/architecture pages.
+5. **Wikidata Q140393352 is minimal** — 8 claims, no external identifiers, no sitelinks. Enrich (depends-on CrowdSec, keep P348 version current, add identifiers); bot credentials exist from prior GEO work.
+6. **Short meta descriptions on key pages** (quickstart: 45 chars). Expand to ~120–155 chars including the problem solved — these seed AI snippets.
+7. **Vague qualifiers weaken stat density** — "defaults work well for most setups", "~97× faster" without a methodology anchor. Quantify or link each to the benchmarking page.
+8. **No Google-ecosystem content** (weakest platform: Gemini 55/100). A single 3–5-min YouTube setup walkthrough linked from quickstart covers the biggest gap.
+9. **No third-party coverage** — pitch the CrowdSec blog (they feature community bouncers); the CfgMgmtCamp 2026 Ghent talk "Crowdsec and Mikrotik integration" is worth investigating as a mention vehicle.
 
 ---
 
 ## Low Priority Issues
 
-**19.** No `Content-Signal:` directive in `robots.txt` (site already explicitly welcomes AI crawlers by name — this is the machine-readable complement per contentsignals.org).
-**20.** 2 images on `/architecture/` and 1 on the homepage missing/empty `alt` text (likely diagrams and a decorative duplicate logo — verify intent, add real alt text to the diagrams).
-**21.** HSTS header present but missing `includeSubDomains`.
-**22.** No `<link rel="preload">` for the main render-blocking CSS bundle (marginal impact given ~40–60ms TTFB already).
-**23.** No CSP via `<meta http-equiv>` — the only CSP option available under GitHub Pages' no-custom-response-headers constraint (no `X-Frame-Options`/`X-Content-Type-Options` equivalent exists via meta tag; this is a platform limitation, not fixable without a hosting change).
-**24.** `Person` schema missing `jobTitle`.
-**25.** No dedicated LinkedIn company/project page (only the author's personal profile is linked).
-**26.** Homepage feature-card headers ("Zero Manual Configuration," "Self-Healing State") are marketing phrasing that isn't independently quotable — front-load the supporting number/fact into the header itself.
-**27.** Minor entity-ambiguity risk: a similarly-purposed third-party project (`funkolab/cs-mikrotik-bouncer`) surfaces alongside this one in generic "CrowdSec MikroTik bouncer" searches. Reinforce distinctive positioning ("RouterOS API-based, real-time" vs. address-list/script-based alternatives) in meta descriptions/homepage copy.
-**28.** No Wikipedia article for the project — confirmed absent via direct MediaWiki API search. At ~4 months old, the project likely doesn't yet meet notability guidelines; deprioritize this and continue investing in the already-strong Wikidata entry (Q140393352) instead.
+1. CSP includes `'unsafe-eval'` alongside `'wasm-unsafe-eval'`; if Pagefind only needs WASM, drop the former (test search after).
+2. Sitemap hreflang blocks omit `x-default` (present in HTML heads); add for consistency.
+3. Missing `twitter:title`/`twitter:description` and `og:image:width/height/alt` (falls back to og:, cosmetic).
+4. `FAQPage` block not linked into the entity graph (`@id`, `inLanguage`, `isPartOf`).
+5. `SoftwareApplication.screenshot` duplicates og-image — point at a real screenshot (Grafana dashboard PNG exists); add `softwareHelp` (docs URL) and `softwareRequirements` ("CrowdSec 1.5+ (LAPI), RouterOS 7.x with API enabled").
+6. `Person` missing `jobTitle`/`worksFor`/`description`.
+7. `llms-full.txt` is a curated config reference (9 KB), not the full flattened corpus the emerging convention implies (provenance note mitigates; optionally generate a true dump).
+8. Benchmark "Example output" is illustrative, not a captured run; no screenshots site-wide (WinBox/terminal captures with alt text would help router-setup/troubleshooting).
+9. No Docker Hub listing (GHCR only) — Docker Hub search is itself an AI-cited discovery surface.
+10. IndexNow acceptance only visible in CI logs as non-fatal warnings; surface the HTTP response as a job-summary annotation so silent key-mismatch regressions are noticed.
+11. github.io project path caps domain authority; a custom domain (e.g. `routeros-bouncer.jmrp.io`) would tie the docs to the established author entity (weigh against losing accumulated signals).
+12. `APIReference` (TechArticle subtype) would type `/configuration/` reference pages more precisely; consider a small `Dataset` node for the RB5009 benchmark numbers.
 
 ---
 
 ## Category Deep Dives
 
-### AI Citability (82/100)
+### AI Citability (87/100, +5)
 
-Strong. The `/architecture/` page's proprietary benchmark data (RB5009 pool sizing, ms-level per-IP latency, ~97× speedup claims) is genuinely citation-ready — self-contained, quotable, backed by specific numbers not found elsewhere. `/configuration/firewall/` parameter tables (key/env-var/default/notes) are exactly the shape AI systems quote verbatim. `/troubleshooting/` reuses real benchmark data in support-answer format effectively. Weakest spots: homepage feature-card headers standing alone without their supporting sentence, and `/configuration/examples/` (12 code blocks, thin surrounding prose — valuable but not directly quotable as prose). `llms.txt` (5,690 bytes) and `llms-full.txt` (9,004 bytes) are both spec-compliant and genuinely complete (not stubs), including a self-declared trust note ("if it looks stale, trust the live docs") — a best-in-class implementation requiring no fixes.
+Best pages: troubleshooting (90 — question-form H3s, exact error strings paired with numbered fixes), prometheus reference (90 — one H3 per metric, definition-first, PromQL examples), homepage (88 — visible 5-question FAQ). Weakest: installation (65), quickstart (68) — step-dumps without self-contained summaries. **Direct evidence of extraction:** AI search summaries for both branded and unbranded queries reproduced the "~1–3 ms per operation" figure and reconciliation defaults nearly verbatim during the audit. Rewrite suggestions delivered for the four weakest passages (decision-rule phrasing for install-method choice, quantified defaults, self-contained API-key step, methodology anchor for the 97× claim).
 
-### Brand Authority (30/100)
+### Brand Authority (32/100, +2)
 
-The weakest category. Wikidata (Q140393352) is a strong, high-quality knowledge-graph node updated the same day as this audit. CrowdSec Hub listing is live and functioning well (v1.4.5, 316 downloads, mirrors GitHub star count) — the single most relevant niche-authority signal available for this exact product category. Mastodon shows genuine project-specific activity (a real announcement post), not just a dormant profile link. Google Scholar confirms the author is a real credentialed researcher, though in an unrelated field (acoustics), so it adds general author-trust rather than topical authority. Everything else is absent: no Reddit, no YouTube, no Wikipedia (reasonably, given project age), and LinkedIn is present but not independently verifiable as AI-crawlable (platform blocks bots).
+Present: CrowdSec Hub listing (ranks #1 for the unbranded remediation-component query), GitHub (12★, active, good topics), Wikidata Q140393352 (minimal). Absent: awesome-crowdsec, Reddit, MikroTik forum, CrowdSec Discourse, YouTube, Wikipedia (unrealistic for the niche — CrowdSec itself has none), blogs (only a self-published Mastodon post). Branded queries resolve correctly; unbranded queries are owned by funkolab (archived), nvtkaszpir-alt, and tuxtof. Every remaining GEO point is off-site.
 
-### Content E-E-A-T (57/100)
+### Content E-E-A-T (70/100, +13)
 
-Technical substance is genuinely strong — real error strings, exact RouterOS commands, quantified benchmarks, correct domain vocabulary throughout, and the content reads as authentically human-written (no generic AI filler detected). What's missing is everything that makes that expertise *legible*: no visible author attribution, zero contextual external citations despite the product's entire value proposition being a bridge between two other systems, and the one page specifically meant to showcase performance (`/development/benchmarking/`) is a template. Trust signals are otherwise solid: HTTPS, clear MIT licensing, a genuine security policy with a supported-versions matrix and 48-hour SLA, and "Edit on GitHub" provenance links on every page.
+Experience 19/25 (real RB5009 benchmarks with honest data-source attribution — rare first-hand asset), Expertise 15/25 (deep and accurate, but author invisible on page), Authoritativeness 15/25 (canonical source; thin outbound citations; github.io subdomain), Trust 21/25 (MIT license in footer, security policy with PGP + 48h commitment, changelog, honest hedged claims). Freshness excellent (visible last-updated everywhere, lastmod = audit day). Spanish translation assessed as complete, idiomatic, and professional — a genuine trust signal. Zero AI-slop patterns; assessment "Highly Likely Human".
 
-### Technical GEO (89/100)
+### Technical GEO (96/100, +7)
 
-The strongest category by far. This is a fully static Astro build — verified that 100% of visible text is present in the raw server-delivered HTML with zero JS execution required, meaning every major AI crawler (GPTBot, ClaudeBot, PerplexityBot, etc., all of which the site explicitly allows) sees the complete content. `robots.txt` is clean and comprehensive. Meta tags, canonical URLs, mobile responsiveness, and URL structure are all correct across all 27 pages. TTFB measured at 38–63ms via Fastly CDN. The only real gaps are platform-imposed (GitHub Pages doesn't support custom security headers) or minor (`<lastmod>` missing from the sitemap, one heavy page from inlined diagrams).
+Near-reference implementation: fully static SSG (100% content in raw HTML), robots.txt with 14 explicit AI-crawler allows + Content-Signal, spec-compliant llms.txt (now including the `## Languages` section for `/es/`), reciprocal hreflang triplets (en/es/x-default) in HTML, correct `lang` attributes, single-hop redirects, real 404, HSTS, system fonts (zero webfont requests), CLS-safe images, 54-URL sitemap with plausible per-page lastmod. Remaining gaps are cosmetic or GitHub Pages platform constraints (no custom headers possible).
 
-### Schema & Structured Data (43/100)
+### Schema & Structured Data (84/100, +41 — biggest gain)
 
-The weakest technical category, driven mostly by the sitewide `FAQPage` mismatch (see Critical #1) and the absence of any page-specific structured data — all 27 pages share identical `Person`/`WebSite`/`SoftwareApplication`/`SoftwareSourceCode` JSON-LD regardless of what the page actually contains. What exists is well-formed (100% JSON-LD, correct `@id` linking between entities, no Microdata/RDFa cruft) and the `Person`/`SoftwareApplication` entities themselves are reasonably complete (`sameAs` to 6+ platforms, Wikidata link, CrowdSec Hub link). `BreadcrumbList`, `speakable`, `dateModified`, and `softwareVersion` are all absent but low-effort to add given the underlying data already exists on-page.
+All JSON-LD server-rendered and syntactically valid on every audited page; `@id` graph integrity passes (Person/WebSite/SoftwareApplication/SoftwareSourceCode all resolve). FAQPage now content-faithful word-for-word in both languages (July's critical issue). HowTo matches visible Steps, localized Spanish steps verified. BreadcrumbList sequential, resolving, localized ("Inicio"). `speakable` selectors verified in the DOM. SoftwareApplication carries git-derived `softwareVersion`/`dateModified` and `sameAs` → Hub + Wikidata. Deductions: live `inLanguage` staleness (fixed locally), TechArticle missing `image`/`datePublished`, minor enrichment opportunities.
 
-### Platform Optimization (60/100)
+### Platform Optimization (74/100, +14)
 
-Bing Copilot is the standout (77/100) — Bing Webmaster verification tag confirmed live, and IndexNow submission is already wired into CI, posting to the API after every deploy. ChatGPT web search (69/100) benefits from explicit `OAI-SearchBot`/`ChatGPT-User` allowance and the Wikidata-anchored entity. Perplexity (63/100) has ideal technical access (zero-JS, explicit crawler allowance, accurate freshness signals) but is held back by the same zero-community-presence gap noted in Brand Authority. Google AI Overviews (50/100) is limited by the fact that the docs site doesn't yet rank in general search for its own project name — AIO fundamentally favors already-ranking pages. Gemini (39/100) is weakest, reflecting minimal Google-ecosystem presence (no YouTube, no Knowledge Panel, only 2 images sitewide).
+Bing Copilot 86 (verified Bing indexation via DDG proxy, msvalidate tag, IndexNow-per-deploy confirmed in CI, GitHub/Microsoft ecosystem strength) · ChatGPT 82 (crawler access 25/25, exemplary llms.txt, Wikidata anchoring; thin third-party corroboration) · Google AI Overviews 75 (FAQ block is ideal snippet material; quickstart lacks a direct-answer lead; `/es/` doubles AIO surface for Spanish queries) · Perplexity 72 (source directness and freshness strong; community validation 8/30 is the drag) · Gemini 55 (no YouTube/News presence; Knowledge Graph ingestion needs corroborating sources).
 
 ---
 
 ## Quick Wins (Implement This Week)
 
-1. **Delete or scope the `FAQPage` JSON-LD** — removing it sitewide is a 10-minute fix that eliminates the single largest structured-data risk on the site (Critical #1).
-2. **Add GitHub repo topics** (`crowdsec`, `mikrotik`, `routeros`, `firewall`, `bouncer`, `network-security`, `go`) — a 2-minute change flagged by three independent subagents (Medium #13).
-3. **Add a "Maintained by [name]" footer line** linking to jmrp.io/GitHub — makes the existing `Person` schema legible to human readers, not just crawlers (High #2).
-4. **Add `softwareVersion` to the `SoftwareApplication` JSON-LD** — the version is already displayed visibly ("v1.4.5"), just not in structured data (Medium #17).
-5. **Add 2–3 contextual links to CrowdSec's and MikroTik's official docs** on `/configuration/crowdsec/`, `/configuration/mikrotik/`, and `/configuration/firewall/` — the site currently links to zero authoritative external sources despite being a bridge product (High #3).
+1. **Submit the `awesome-crowdsec` PR** — one line, feeds AI training corpora, closes a competitor asymmetry. (High)
+2. **Footer byline "Maintained by José Manuel Requena Plens" (both locales) + minimal About page** — converts existing machine-readable identity into visible E-E-A-T. (High)
+3. **Deploy the `inLanguage: ["en","es"]` fix** (already applied locally) and add `image` + `datePublished` to TechArticle, `softwareHelp` + `softwareRequirements` to SoftwareApplication. (High/Medium)
+4. **Quickstart lead paragraph + Requirements block + 2–3 question-form headings**; expand key-page meta descriptions to 120–155 chars. (Medium)
+5. **Enrich Wikidata Q140393352** with the existing bot credentials (depends-on, identifiers, current version). (Medium)
 
 ## 30-Day Action Plan
 
-### Week 1: Fix the Trust-Breaking Schema Issue
+### Week 1: On-site quick wins (schema + authorship + entry pages)
 
-- [ ] Remove `FAQPage` JSON-LD from all pages, or build a real homepage FAQ accordion and scope the schema to only that page (Critical #1)
-- [ ] Add GitHub repo topics (Medium #13)
-- [ ] Add visible author/maintainer attribution — footer line + link (High #2)
-- [ ] Add `softwareVersion` to `SoftwareApplication` schema (Medium #17)
+- [ ] Commit/deploy `inLanguage` fix; add TechArticle `image`/`datePublished`; SoftwareApplication `softwareHelp`/`softwareRequirements`; link FAQPage into the graph
+- [ ] Footer byline (en+es) + About/Credits page
+- [ ] Quickstart/Installation: direct-answer intros, Requirements block, question-form headings, meta descriptions
 
-### Week 2: Close the Content Authority Gap
+### Week 2: Entity & directory presence
 
-- [ ] Fill `/development/benchmarking/` with real figures already documented on `/architecture/` (High #4)
-- [ ] Add contextual outbound links to CrowdSec and MikroTik official docs across configuration pages (High #3)
-- [ ] Inline a real contact method (email or PGP link) on `/development/security/` (Medium #16)
-- [ ] Investigate and fix the identical per-second "Last updated" timestamp across all pages (Medium #10)
+- [ ] awesome-crowdsec PR
+- [ ] Wikidata enrichment (properties + identifiers, keep P348 current)
+- [ ] CrowdSec Hub badge/link visible on the homepage
+- [ ] Tested-with matrix (RouterOS versions/hardware/CrowdSec versions/date)
 
-### Week 3: Structured Data Depth
+### Week 3: Community seeding (human actions)
 
-- [ ] Add per-page `TechArticle`/`WebPage` JSON-LD with `dateModified` (High #7)
-- [ ] Add `BreadcrumbList` generated from the Starlight sidebar hierarchy (Medium #12)
-- [ ] Add `HowTo` schema to quickstart/installation/router-setup pages (Medium #11)
-- [ ] Add `<lastmod>` to the sitemap (Medium #14)
+- [ ] Announcement thread on discourse.crowdsec.net
+- [ ] Participate in forum.mikrotik.com CrowdSec threads (t=187449 is the natural home)
+- [ ] r/mikrotik write-up (first-mover — no competitor presence there either)
 
-### Week 4: Off-Site Authority
+### Week 4: Content depth & media
 
-- [ ] Publish one genuine, non-promotional Reddit post (r/mikrotik or r/CrowdSec) linking to specific docs pages (High #5)
-- [ ] Record and publish a short YouTube quickstart walkthrough (High #6)
-- [ ] Add a handful of question-phrased subheadings with direct answers to 3–4 high-traffic pages (Medium #8)
-- [ ] Sweep remaining Low-priority items: alt text on `/architecture/` images, `Content-Signal:` directive, HSTS `includeSubDomains`, CSP meta tag
+- [ ] Deep outbound links: docs.crowdsec.net on config pages, RouterOS filter/raw docs on firewall/architecture pages
+- [ ] Capture one real timestamped benchmark run; 1–2 annotated screenshots with alt text
+- [ ] Optional: 3–5-min YouTube setup walkthrough linked from quickstart (biggest Gemini lever)
+- [ ] Pitch the CrowdSec blog; follow up on the CfgMgmtCamp 2026 talk
 
 ---
 
 ## Appendix: Pages Analyzed
 
-| URL | Title | GEO Issues |
+54 sitemap URLs verified HTTP 200 (27 en + 27 es, reciprocal hreflang). Deep-fetched sample:
+
+| URL | Citability | Notable issues |
 |---|---|---|
-| `/` | CrowdSec Bouncer for MikroTik RouterOS \| cs-routeros-bouncer | FAQ schema mismatch, no author attribution, 1 img missing alt |
-| `/architecture/` | Architecture \| cs-routeros-bouncer | FAQ schema mismatch, heavy HTML (inlined SVGs), 2 imgs missing alt |
-| `/architecture/decisions/` | Decision Processing \| cs-routeros-bouncer | FAQ schema mismatch |
-| `/architecture/firewall-rules/` | Firewall Rules \| cs-routeros-bouncer | FAQ schema mismatch |
-| `/architecture/reconciliation/` | Reconciliation \| cs-routeros-bouncer | FAQ schema mismatch |
-| `/configuration/` | Configuration Overview \| cs-routeros-bouncer | FAQ schema mismatch |
-| `/configuration/capi-blocklists/` | CAPI Blocklists \| cs-routeros-bouncer | FAQ schema mismatch, no external citation |
-| `/configuration/crowdsec/` | CrowdSec Configuration \| cs-routeros-bouncer | FAQ schema mismatch, no link to CrowdSec docs |
-| `/configuration/examples/` | Examples \| cs-routeros-bouncer | FAQ schema mismatch, thin prose around code |
-| `/configuration/firewall/` | Firewall \| cs-routeros-bouncer | FAQ schema mismatch, no MikroTik doc citation |
-| `/configuration/logging-metrics/` | Logging & Metrics \| cs-routeros-bouncer | FAQ schema mismatch |
-| `/configuration/mikrotik/` | MikroTik Configuration \| cs-routeros-bouncer | FAQ schema mismatch, no MikroTik doc citation |
-| `/configuration/performance-tuning/` | Performance Tuning \| cs-routeros-bouncer | FAQ schema mismatch |
-| `/development/benchmarking/` | Benchmarking \| cs-routeros-bouncer | FAQ schema mismatch, generic template (High #4) |
-| `/development/building/` | Building \| cs-routeros-bouncer | FAQ schema mismatch |
-| `/development/contributing/` | Contributing \| cs-routeros-bouncer | FAQ schema mismatch |
-| `/development/security/` | Security \| cs-routeros-bouncer | FAQ schema mismatch, no inline contact method |
-| `/development/structure/` | Project Structure \| cs-routeros-bouncer | FAQ schema mismatch |
-| `/development/testing-guide/` | Testing Guide \| cs-routeros-bouncer | FAQ schema mismatch |
-| `/getting-started/cli-reference/` | CLI Reference \| cs-routeros-bouncer | FAQ schema mismatch |
-| `/getting-started/installation/` | Installation \| cs-routeros-bouncer | FAQ schema mismatch, no HowTo schema |
-| `/getting-started/quickstart/` | Quick Start \| cs-routeros-bouncer | FAQ schema mismatch, no HowTo schema |
-| `/getting-started/router-setup/` | Router Setup \| cs-routeros-bouncer | FAQ schema mismatch, no HowTo schema |
-| `/monitoring/grafana/` | Grafana Dashboard \| cs-routeros-bouncer | FAQ schema mismatch |
-| `/monitoring/health/` | Health Endpoint \| cs-routeros-bouncer | FAQ schema mismatch |
-| `/monitoring/prometheus/` | Prometheus Metrics \| cs-routeros-bouncer | FAQ schema mismatch |
-| `/troubleshooting/` | Troubleshooting \| cs-routeros-bouncer | FAQ schema mismatch |
+| `/` (en + es) | 88 | FAQ block exemplary; hero version badge now git-derived |
+| `/getting-started/quickstart/` (en + es) | 68 | No direct-answer lead, no prerequisites block, noun-phrase headings |
+| `/getting-started/installation/` | 65 | Weakest page: fragment headings, no tables/summary paragraphs |
+| `/getting-started/router-setup/` | — | Best-cited page (8 external links incl. help.mikrotik.com) |
+| `/configuration/` | 85 | Key/Env/Default tables highly extractable |
+| `/configuration/capi-blocklists/` | 78 | Unique scale numbers; some hedged qualifiers |
+| `/configuration/performance-tuning/` | — | Oldest lastmod (2026-05-09), still fine |
+| `/architecture/` | 82 | Unique benchmark asset; 97× claim needs methodology anchor |
+| `/development/benchmarking/` | — | RB5009 first-hand data; example output is illustrative |
+| `/development/security/` | — | PGP + 48h response commitment — above-average trust signal |
+| `/monitoring/prometheus/` | 90 | Reference-grade metric documentation |
+| `/troubleshooting/` | 90 | Best GEO shape on the site |
 
-**Fetch failures:** none — all 27 sitemap URLs returned HTTP 200.
-
-**Prior work note:** this site received a comprehensive GEO pass on 2026-07-01 (PR #58 — `robots.txt`/`llms.txt`/`llms-full.txt`, JSON-LD `@graph`, `rel=me` identity links, Wikidata entity Q140393352) that is directly responsible for the strong Technical GEO and AI Citability scores in this audit. This audit's findings represent the next iteration, not a first pass.
+Site-level files verified: `robots.txt` (root-level, 14 AI-crawler allows, Content-Signal), `llms.txt` (spec-compliant, 33 links, Languages section), `llms-full.txt`, `sitemap-index.xml` → `sitemap-0.xml` (54 URLs, lastmod, hreflang). No fetch failures.

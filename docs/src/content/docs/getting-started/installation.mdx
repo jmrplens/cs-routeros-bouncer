@@ -1,11 +1,11 @@
 ---
 title: Installation
-description: Deploy cs-routeros-bouncer using Docker, systemd, or build from source.
+description: Install cs-routeros-bouncer with Docker Compose, as a binary with the built-in systemd installer, or by building from source — and verify it works.
 ---
 
 import { Steps, Tabs, TabItem, LinkCard } from "@astrojs/starlight/components";
 
-cs-routeros-bouncer supports multiple deployment methods. Choose the one that best fits your infrastructure.
+cs-routeros-bouncer ships as a multi-arch container image, prebuilt Linux binaries with a systemd installer, and buildable Go source. Use **Docker Compose** if you already run CrowdSec in containers; use the **systemd installer** (`cs-routeros-bouncer setup`) on a bare-metal Linux host; **build from source** only if you need an unreleased platform or want to hack on the code.
 
 <Tabs>
   <TabItem label="Docker Compose" icon="seti:docker">

@@ -1,6 +1,6 @@
 ---
 title: Configuration Overview
-description: All cs-routeros-bouncer configuration options at a glance.
+description: "Every cs-routeros-bouncer configuration option at a glance: YAML keys, environment variables, defaults, and links to the detailed reference pages."
 slug: configuration
 ---
 
@@ -92,7 +92,7 @@ The essential settings to get the bouncer running. Most deployments only need th
 
 ### Advanced parameters
 
-Fine-tuning options for decision filtering, TLS, performance, firewall customization, and observability. The defaults work well for most setups.
+Fine-tuning options for decision filtering, TLS, performance, firewall customization, and observability. The defaults (10 s poll interval, 15 m reconciliation, `pool_size: 4`) are sized for a single router handling up to roughly 30,000 active decisions; tune only beyond that scale or on low-end hardware.
 
 #### [CrowdSec](/cs-routeros-bouncer/configuration/crowdsec/) — polling, filtering & TLS
 

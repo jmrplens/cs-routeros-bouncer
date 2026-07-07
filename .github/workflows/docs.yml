@@ -149,3 +149,7 @@ jobs:
             200|202) echo "IndexNow: submitted OK" ;;
             *) echo "::warning title=IndexNow::submission returned HTTP $code (non-fatal); ensure the IndexNow key file is served at the domain root https://${HOST}/" ;;
           esac
+          # Surface the outcome in the job summary on success too, so a silent
+          # 4xx regression (e.g. key-file mismatch) is visible at a glance in
+          # the run overview instead of only inside this step's log.
+          echo "**IndexNow:** submitted ${count} URLs — HTTP ${code}" >> "$GITHUB_STEP_SUMMARY"
