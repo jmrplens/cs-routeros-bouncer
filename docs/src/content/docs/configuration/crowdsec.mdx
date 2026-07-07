@@ -73,6 +73,7 @@ Each push includes:
 
 - **Active decisions** — per-origin (e.g., `crowdsec`, `cscli`, `CAPI`) and per-IP-type (`ipv4`, `ipv6`)
 - **Dropped traffic** — bytes and packets blocked by MikroTik firewall rules (delta since last push)
+- **Processed traffic** — bytes and packets evaluated by all bouncer chains (delta since last push)
 - **Bouncer metadata** — type, version, OS info, uptime
 
 This data appears in the CrowdSec Console and helps track bouncer effectiveness.

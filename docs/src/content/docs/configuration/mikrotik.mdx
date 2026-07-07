@@ -62,10 +62,10 @@ mikrotik:
 
 **Env:** `MIKROTIK_TLS_INSECURE` · **Default:** `false`
 
-Skip TLS certificate verification. Required for self-signed certificates.
+Skip TLS certificate verification. Only needed when the router uses a self-signed certificate.
 
 :::caution
-If your router uses a self-signed certificate, you need to set `tls_insecure: true`. For production, consider using a CA-signed certificate.
+Keep `tls_insecure: false` whenever possible: the recommended production setup is a certificate signed by a CA the bouncer host trusts, so the connection stays both encrypted and verified. Set `tls_insecure: true` only for self-signed certificates or temporary troubleshooting.
 :::
 
 ## Timeouts

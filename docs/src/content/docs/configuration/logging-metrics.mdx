@@ -53,7 +53,7 @@ logging:
 
 **Env:** `METRICS_ENABLED` · **Default:** `false`
 
-Enable the Prometheus metrics endpoint. When enabled, the bouncer exposes metrics at `/metrics` and a health check at `/health`.
+Enable the Prometheus metrics endpoint. When enabled, the bouncer exposes metrics at `/metrics`. The `/health` health check is always served on the metrics listener regardless of this setting.
 
 ### `metrics.listen_addr` <Badge text="Optional" variant="note" />
 

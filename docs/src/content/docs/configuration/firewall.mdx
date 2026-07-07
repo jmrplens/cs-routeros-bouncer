@@ -327,7 +327,7 @@ firewall:
 ```
 
 :::note
-If both `interface` and `interface_list` are set, `interface` takes precedence.
+If both `interface` and `interface_list` are set, both are applied to the rule (RouterOS evaluates them as AND), the same as for `block_input`.
 :::
 
 ---

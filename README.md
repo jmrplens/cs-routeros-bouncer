@@ -46,7 +46,7 @@ Existing MikroTik bouncers have significant limitations that this project addres
 
 - **CrowdSec** 1.5+ with LAPI accessible from the bouncer host
 - **MikroTik RouterOS** 7.x with API enabled (port 8728 or 8729 for TLS)
-- A dedicated RouterOS API user (see [Router Setup](#1-register-the-bouncer-with-crowdsec))
+- A dedicated RouterOS API user (see [Create a RouterOS API user](#2-create-a-routeros-api-user))
 
 ## Quick Start
 
@@ -578,14 +578,18 @@ Enable with `metrics.enabled: true`. Available at `http://localhost:2112/metrics
 | `crowdsec_bouncer_active_decisions`                 | Gauge     | Active decisions by protocol (`ipv4`/`ipv6`)                    |
 | `crowdsec_bouncer_active_decisions_by_origin`       | Gauge     | Active decisions by CrowdSec origin (`crowdsec`/`cscli`/`CAPI`) |
 | `crowdsec_bouncer_decisions_total`                  | Counter   | Total decisions processed (action, protocol, origin)            |
-| `crowdsec_bouncer_errors_total`                     | Counter   | Total errors by type (`api`/`routeros`/`reconcile`)             |
-| `crowdsec_bouncer_operation_duration_seconds`       | Histogram | Operation latency (`add`/`remove`/`reconcile`)                  |
+| `crowdsec_bouncer_errors_total`                     | Counter   | Total errors by operation (`add`/`find`/`remove`/`reconcile`/`firewall`)     |
+| `crowdsec_bouncer_operation_duration_seconds`       | Histogram | Operation latency (`add`/`remove`/`reconcile`/`bulk_add`/`bulk_remove`)      |
+| `crowdsec_bouncer_last_operation_duration_seconds`  | Gauge     | Duration of the most recent operation of each type              |
 | `crowdsec_bouncer_routeros_connected`               | Gauge     | RouterOS connection status (1/0)                                |
 | `crowdsec_bouncer_routeros_cpu_load`                | Gauge     | RouterOS CPU load percentage (0–100)                            |
 | `crowdsec_bouncer_routeros_memory_used_bytes`       | Gauge     | RouterOS used memory in bytes                                   |
 | `crowdsec_bouncer_routeros_memory_total_bytes`      | Gauge     | RouterOS total memory in bytes                                  |
 | `crowdsec_bouncer_routeros_cpu_temperature_celsius` | Gauge     | RouterOS CPU temperature (°C)                                   |
-| `crowdsec_bouncer_reconciliation_total`             | Counter   | Total reconciliation actions (`added`/`removed`)                |
+| `crowdsec_bouncer_routeros_uptime_seconds`          | Gauge     | RouterOS uptime in seconds                                      |
+| `crowdsec_bouncer_routeros_info`                    | Gauge     | RouterOS info metric (`version`, `board_name`; value always 1)  |
+| `crowdsec_bouncer_config_info`                      | Gauge     | Bouncer configuration as info series (`group`/`param`/`value`)  |
+| `crowdsec_bouncer_reconciliation_total`             | Counter   | Total reconciliation actions (`added`/`removed`/`unchanged`)    |
 | `crowdsec_bouncer_dropped_bytes_total`              | Gauge     | Cumulative bytes dropped by firewall rules                      |
 | `crowdsec_bouncer_dropped_packets_total`            | Gauge     | Cumulative packets dropped by firewall rules                    |
 | `crowdsec_bouncer_dropped_bytes_by_proto`           | Gauge     | Dropped bytes by protocol (`ipv4`/`ipv6`)                       |
@@ -623,25 +627,25 @@ The dashboard provides real-time visibility into the bouncer's operation:
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/images/grafana-dashboard-dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="docs/images/grafana-dashboard-light.png">
-    <img alt="Grafana Dashboard" src="docs/images/grafana-dashboard-dark.png" width="100%">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/src/assets/grafana-dashboard-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/src/assets/grafana-dashboard-light.png">
+    <img alt="Grafana Dashboard" src="docs/src/assets/grafana-dashboard-dark.png" width="100%">
   </picture>
 </p>
 
-**Dashboard panels (27 panels in 8 rows):**
+**Dashboard panels (41 panels in 9 rows):**
 
-| Row                          | Panels                                                                                      |
-| ---------------------------- | ------------------------------------------------------------------------------------------- |
-| **Overview**                 | RouterOS Connected, Active Decisions (IPv4/IPv6/Total), Uptime, Bouncer Info                |
-| **Active Decisions**         | Active Decisions Over Time, IPv4/IPv6 Ratio                                                 |
-| **Decision Processing**      | Decisions Processed (Rate), Cumulative Decisions                                            |
-| **Performance & Operations** | Operation Latency (p50/p95/p99), Operation Rate                                             |
-| **Errors & Reconciliation**  | Error Rate, Total Errors, RouterOS Connection, Last Reconciliation, Reconciliation Duration |
-| **Dropped Traffic**          | Dropped Bytes, Dropped Packets, Dropped Traffic Rate, Dropped Traffic (Cumulative)          |
-| **Processed Traffic**        | Processed Traffic Rate (Bytes/s, Packets/s), Drop Rate %                                    |
-| **Decisions by Origin**      | Active Decisions by Origin, Decisions by Origin (Rate), Cumulative Decisions by Origin      |
-| **Process Resources**        | Memory Usage, CPU Usage, Goroutines & File Descriptors                                      |
+| Row                          | Panels                                                                                                                                                                                                                       |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Overview**                 | RouterOS Connected, Active Decisions (IPv4/IPv6/Total), IPv4/IPv6 Ratio, Uptime, Bouncer Info                                                                                                                                  |
+| **RouterOS System**          | RouterOS System, CPU Load Over Time, Memory Usage Over Time, CPU Temperature Over Time, RouterOS Uptime, RouterOS Info                                                                                                         |
+| **Decisions**                | Active Decisions Over Time, Cumulative Decisions, Decisions Processed (Rate)                                                                                                                                                   |
+| **Decisions by Origin**      | Active Decisions by Origin, Decisions by Origin (Rate), Cumulative Decisions by Origin                                                                                                                                         |
+| **Firewall Traffic**         | Processed Bytes, Processed Packets, Dropped Bytes, Dropped Packets, Drop Rate, Processed/Dropped Traffic Rate, Processed/Dropped Traffic by Protocol (Rate), Processed Traffic (Cumulative), Drop Rate Over Time               |
+| **Errors & Reconciliation**  | Error Rate, RouterOS Connection, Reconciliation Duration, Last Reconciliation, Total Errors                                                                                                                                    |
+| **Performance & Operations** | Operation Latency (p50/p95/p99), Operation Rate                                                                                                                                                                                |
+| **Process Resources**        | Memory Usage, CPU Usage, Goroutines & File Descriptors                                                                                                                                                                         |
+| **Configuration**            | Bouncer Configuration                                                                                                                                                                                                          |
 
 ---
 
