@@ -132,7 +132,8 @@ export default defineConfig({
 				es: { label: "Español", lang: "es" },
 			},
 			logo: {
-				src: "./src/assets/logo.svg",
+				light: "./src/assets/logo-light.svg",
+				dark: "./src/assets/logo-dark.svg",
 				alt: "cs-routeros-bouncer",
 			},
 			favicon: "/favicon.svg",

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="cs-routeros-bouncer logo">
+  <defs>
+    <clipPath id="shield"><path d="M128 26 L214 54 L214 130 C214 186 182 220 128 238 C74 220 42 186 42 130 L42 54 Z"/></clipPath>
+    <mask id="cuts" maskUnits="userSpaceOnUse" x="0" y="0" width="256" height="256">
+      <rect width="256" height="256" fill="#fff"/>
+      <rect x="124.5" y="0" width="7.0" height="256" fill="#000"/>
+      <circle cx="128.0" cy="170.0" r="23.0" fill="#000"/>
+      <path d="M 128.0 170.0 L 21.71 106.14 A 124.00 124.00 0 0 1 234.29 106.14 Z" fill="#000"/>
+    </mask>
+  </defs>
+  <g clip-path="url(#shield)">
+    <g mask="url(#cuts)">
+      <rect class="p" x="0" y="0" width="128" height="256" fill="#7986CB"/>
+      <rect class="a" x="128" y="0" width="128" height="256" fill="#26C6BE"/>
+    </g>
+    <circle class="a" cx="128.0" cy="170.0" r="14.0" fill="#26C6BE"/>
+    <path class="a" d="M 93.60 145.91 A 42.0 42.0 0 0 1 162.40 145.91" fill="none" stroke="#26C6BE" stroke-width="18.0" stroke-linecap="round"/>
+    <path class="a" d="M 67.38 127.56 A 74.0 74.0 0 0 1 188.62 127.56" fill="none" stroke="#26C6BE" stroke-width="18.0" stroke-linecap="round"/>
+    <path class="a" d="M 41.17 109.20 A 106.0 106.0 0 0 1 214.83 109.20" fill="none" stroke="#26C6BE" stroke-width="18.0" stroke-linecap="round"/>
+  </g>
+</svg>

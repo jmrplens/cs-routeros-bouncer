@@ -1,11 +1,4 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="cs-routeros-bouncer logo">
-  <style>
-    @media (prefers-color-scheme: dark) {
-      rect.p { fill: #7986CB; }
-      rect.a, circle.a { fill: #26C6BE; }
-      path.a { stroke: #26C6BE; }
-    }
-  </style>
   <defs>
     <clipPath id="shield"><path d="M128 26 L214 54 L214 130 C214 186 182 220 128 238 C74 220 42 186 42 130 L42 54 Z"/></clipPath>
     <mask id="cuts" maskUnits="userSpaceOnUse" x="0" y="0" width="256" height="256">
