@@ -37,9 +37,9 @@ crowdsec_bouncer_active_decisions{proto="ipv6"}
 
 Active decisions broken down by their source. Incremented/decremented in real time during streaming and reset during full reconciliation.
 
-| Label    | Values                                 | Description            |
-| -------- | -------------------------------------- | ---------------------- |
-| `origin` | `crowdsec`, `cscli`, `CAPI`, `lists:*` | Source of the decision |
+| Label    | Values                                      | Description                                                                                                                                                    |
+| -------- | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `origin` | `crowdsec`, `cscli`, `CAPI`, `lists:<name>` | Source of the decision (`lists:<name>` is the literal label for a named blocklist; the `lists:*` wildcard exists only in the `crowdsec.origins` config filter) |
 
 ```text
 # Active decisions by origin

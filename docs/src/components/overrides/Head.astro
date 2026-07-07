@@ -163,6 +163,29 @@ const HOW_TO_STEPS: Record<
 	},
 };
 
+// Build-time guard: every non-English locale must mirror the English HowTo
+// pages exactly (same page ids, same step count and order), otherwise the
+// generated HowTo JSON-LD would silently drift between languages. Failing the
+// build here is the enforcement for the "must stay in sync" contract above.
+for (const [stepsLang, pages] of Object.entries(HOW_TO_STEPS)) {
+	if (stepsLang === "en") continue;
+	const enIds = Object.keys(HOW_TO_STEPS.en).sort().join(", ");
+	const langIds = Object.keys(pages).sort().join(", ");
+	if (enIds !== langIds) {
+		throw new Error(
+			`HOW_TO_STEPS["${stepsLang}"] pages (${langIds}) do not match English pages (${enIds})`,
+		);
+	}
+	for (const [pageId, steps] of Object.entries(pages)) {
+		const enSteps = HOW_TO_STEPS.en[pageId];
+		if (steps.length !== enSteps.length) {
+			throw new Error(
+				`HOW_TO_STEPS["${stepsLang}"]["${pageId}"] has ${steps.length} steps; English has ${enSteps.length}`,
+			);
+		}
+	}
+}
+
 // Defensive: `starlightRoute` is only set by Starlight's routing middleware.
 // It should always be present for content-collection pages, but guard it
 // anyway so a page rendered outside that middleware degrades to the default
