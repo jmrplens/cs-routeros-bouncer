@@ -374,12 +374,20 @@ export default defineConfig({
 						"@context": "https://schema.org",
 						"@graph": [
 							{
+								// This node shares its @id with the canonical Person published
+								// at https://jmrp.io/#person, so both documents describe ONE
+								// entity. Single-valued properties (jobTitle, description,
+								// image) MUST therefore mirror the canonical values verbatim —
+								// a divergent value here does not add detail, it contradicts
+								// the entity and weakens it. Multi-valued properties
+								// (knowsAbout, sameAs) may stay project-scoped: they merge.
 								"@type": "Person",
 								"@id": "https://jmrp.io/#person",
 								name: "José Manuel Requena Plens",
 								alternateName: "jmrplens",
+								jobTitle: "R&D · Firmware & Software Engineer",
 								description:
-									"Open-source developer; author and maintainer of cs-routeros-bouncer",
+									"Firmware and software engineer in Valencia, Spain — industrial embedded systems, open-source tooling, and self-hosted infrastructure.",
 								url: "https://jmrp.io",
 								image: "https://github.com/jmrplens.png",
 								knowsAbout: [
