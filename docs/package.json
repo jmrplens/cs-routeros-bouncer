@@ -1,45 +1,45 @@
 {
-	"name": "docs",
-	"type": "module",
-	"version": "0.0.1",
-	"packageManager": "pnpm@11.10.0",
-	"engines": {
-		"node": ">=24.0.0"
-	},
-	"scripts": {
-		"dev": "astro dev",
-		"start": "astro dev",
-		"analyze": "pnpm run check && pnpm run lint && pnpm run format:check && pnpm run build && pnpm run html:validate",
-		"lint": "eslint .",
-		"format": "prettier --write .",
-		"format:check": "prettier --check .",
-		"html:validate": "test -n \"$(find dist -name '*.html' -print -quit 2>/dev/null)\" || { echo 'No HTML files found in docs/dist. Run pnpm build first.' >&2; exit 1; }; html-validate --max-warnings 0 \"dist/**/*.html\"",
-		"check": "astro check",
-		"identity:sync": "node scripts/sync-identity.mjs",
-		"build": "astro build",
-		"preview": "astro preview",
-		"astro": "astro",
-		"playwright:install": "playwright install --with-deps chromium"
-	},
-	"dependencies": {
-		"@astrojs/sitemap": "^3.7.3",
-		"@astrojs/starlight": "^0.41.3",
-		"astro": "^7.0.6",
-		"rehype-mermaid": "^3.0.0",
-		"sharp": "^0.35.3"
-	},
-	"devDependencies": {
-		"@astrojs/check": "^0.9.9",
-		"@eslint/js": "^10.0.1",
-		"eslint": "^10.6.0",
-		"eslint-plugin-astro": "^2.1.1",
-		"globals": "^17.7.0",
-		"html-validate": "^11.5.5",
-		"markdownlint-cli2": "0.23.0",
-		"playwright": "^1.61.1",
-		"prettier": "^3.9.4",
-		"prettier-plugin-astro": "^0.14.1",
-		"typescript": "^6.0.3",
-		"typescript-eslint": "^8.63.0"
-	}
+  "name": "docs",
+  "type": "module",
+  "version": "0.0.1",
+  "packageManager": "pnpm@11.10.0",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "analyze": "pnpm run check && pnpm run lint && pnpm run format:check && pnpm run build && pnpm run html:validate",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "html:validate": "test -n \"$(find dist -name '*.html' -print -quit 2>/dev/null)\" || { echo 'No HTML files found in docs/dist. Run pnpm build first.' >&2; exit 1; }; html-validate --max-warnings 0 \"dist/**/*.html\"",
+    "check": "astro check",
+    "identity:sync": "node scripts/sync-identity.mjs",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro",
+    "playwright:install": "playwright install --with-deps chromium"
+  },
+  "dependencies": {
+    "@astrojs/sitemap": "^3.7.3",
+    "@astrojs/starlight": "^0.41.3",
+    "astro": "^7.0.6",
+    "rehype-mermaid": "^3.0.0",
+    "sharp": "^0.35.3"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.9",
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.6.0",
+    "eslint-plugin-astro": "^2.1.1",
+    "globals": "^17.7.0",
+    "html-validate": "^11.5.5",
+    "markdownlint-cli2": "0.23.0",
+    "playwright": "^1.61.1",
+    "prettier": "^3.9.4",
+    "prettier-plugin-astro": "^0.14.1",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.63.0"
+  }
 }
