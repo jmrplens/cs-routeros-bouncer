@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- **Go 1.26.5** — bumped the Go toolchain (go directive, CI and Docker build image) from 1.26.4 to 1.26.5 to fix a Go standard library vulnerability reported by govulncheck: GO-2026-5856 (`crypto/tls`, Encrypted Client Hello privacy leak)
+
+### Fixed
+
+- **Documentation site structured data** — the JSON-LD `Person` node shares its `@id` with the canonical entity at `https://jmrp.io/#person` but published a project-scoped `description` ("Open-source developer; author and maintainer of cs-routeros-bouncer"). Because `description` is single-valued, that contradicted the canonical node instead of enriching it. It now mirrors the canonical `description`, and the canonical `jobTitle` was added
+
 ## [1.4.5] - 2026-06-20
 
 ### Fixed
