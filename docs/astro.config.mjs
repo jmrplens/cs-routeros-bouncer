@@ -90,6 +90,131 @@ function routerosLanguage() {
 	};
 }
 
+// --- Canonical identity --------------------------------------------------
+// The `#person` entity is no longer restated here; it is fetched from its
+// single source of truth on jmrp.io and spliced into the graph verbatim. Every
+// property this site used to hand-copy (jobTitle, description, image, sameAs,
+// alternateName) had to be kept in sync by hand across five project sites, and
+// it drifted: two ended up publishing values that contradicted the canonical
+// node, one an avatar URL that had started returning 404.
+//
+// Fetched from raw.githubusercontent.com rather than https://jmrp.io on
+// purpose: this build runs on a CI runner, and jmrp.io sits behind Cloudflare,
+// CrowdSec and a MikroTik bouncer, where a blocked runner IP would silently
+// degrade this site to a stale snapshot. GitHub serves the same bytes and is
+// already a hard dependency of the build — the checkout comes from it.
+const CANONICAL_IDENTITY_URL =
+	"https://raw.githubusercontent.com/jmrplens/jmrp.io/main/public/identity/person.jsonld";
+
+// Committed fallback, only reached if the fetch fails — which, given the URL is
+// on the same host as the checkout, effectively means GitHub is down and there
+// is no build anyway. The warning is deliberately loud so a stale identity
+// never ships unnoticed. Refresh with `pnpm run identity:sync`.
+const identitySnapshot = JSON.parse(
+	fs.readFileSync(
+		new URL("./identity/person.snapshot.json", import.meta.url),
+		"utf8",
+	),
+);
+
+// The live document. Falls back to the snapshot only on a fetch failure.
+const identityDocument = await fetch(CANONICAL_IDENTITY_URL, {
+	signal: AbortSignal.timeout(10_000),
+})
+	.then((response) =>
+		response.ok
+			? response.json()
+			: Promise.reject(new Error(`HTTP ${response.status}`)),
+	)
+	.catch((error) => {
+		console.warn(
+			`\n⚠ [identity] Could not fetch the canonical Person entity (${error.message}).\n` +
+				`  Falling back to the committed snapshot — this build may ship a stale identity.\n`,
+		);
+		return identitySnapshot;
+	});
+
+// `@context` is stripped: the document is standalone, but here it becomes one
+// node of a graph that already declares the context once. Filtered rather
+// than rest-destructured so no unused binding is left for linters to flag.
+const canonicalPerson = Object.fromEntries(
+	Object.entries(identityDocument).filter(([key]) => key !== "@context"),
+);
+
+/**
+ * Topics specific to this project, kept alongside the canonical expertise list
+ * rather than replacing it. `knowsAbout` is multi-valued, so the two sets merge
+ * instead of conflicting — which is why these may stay local while the
+ * single-valued properties above may not. The full original set is listed, not
+ * just the entries the canonical lacks, so this site keeps asserting its own
+ * topics even if the canonical list changes.
+ */
+const projectTopics = [
+	{
+		"@type": "Thing",
+		name: "CrowdSec",
+		"@id": "http://www.wikidata.org/entity/Q119526222",
+	},
+	{
+		"@type": "Thing",
+		name: "MikroTik RouterOS",
+		"@id": "http://www.wikidata.org/entity/Q12036888",
+	},
+	{
+		"@type": "Thing",
+		name: "Network security",
+		"@id": "http://www.wikidata.org/entity/Q989632",
+	},
+	{
+		"@type": "Thing",
+		name: "Go",
+		"@id": "http://www.wikidata.org/entity/Q37227",
+	},
+	{
+		"@type": "Thing",
+		name: "DevOps",
+		"@id": "http://www.wikidata.org/entity/Q3025536",
+	},
+	{
+		"@type": "Thing",
+		name: "Firewall",
+		"@id": "http://www.wikidata.org/entity/Q80998",
+	},
+	{
+		"@type": "Thing",
+		name: "Intrusion detection system",
+		"@id": "http://www.wikidata.org/entity/Q745881",
+	},
+];
+
+/**
+ * Reads a `knowsAbout` entry's label, which may be a string or a Thing.
+ *
+ * @param {string | { name?: string }} topic - Entry from a `knowsAbout` array.
+ * @returns {string} The entry's label.
+ */
+const topicName = (topic) =>
+	typeof topic === "string" ? topic : (topic.name ?? "");
+
+/**
+ * Canonical topics first, then this project's own, de-duplicated by label
+ * (case-insensitively). Canonical entries win a collision because they carry a
+ * verified Wikidata `@id`.
+ */
+const personNode = (() => {
+	const canonical = /** @type {(string | { name?: string })[]} */ (
+		canonicalPerson.knowsAbout ?? []
+	);
+	const seen = new Set(canonical.map((t) => topicName(t).toLowerCase()));
+	return {
+		...canonicalPerson,
+		knowsAbout: [
+			...canonical,
+			...projectTopics.filter((t) => !seen.has(topicName(t).toLowerCase())),
+		],
+	};
+})();
+
 export default defineConfig({
 	site: "https://jmrplens.github.io/cs-routeros-bouncer",
 	base: "/cs-routeros-bouncer",
@@ -373,39 +498,11 @@ export default defineConfig({
 					content: JSON.stringify({
 						"@context": "https://schema.org",
 						"@graph": [
-							{
-								// This node shares its @id with the canonical Person published
-								// at https://jmrp.io/#person, so both documents describe ONE
-								// entity. Single-valued properties (jobTitle, description,
-								// image) MUST therefore mirror the canonical values verbatim —
-								// a divergent value here does not add detail, it contradicts
-								// the entity and weakens it. Multi-valued properties
-								// (knowsAbout, sameAs) may stay project-scoped: they merge.
-								"@type": "Person",
-								"@id": "https://jmrp.io/#person",
-								name: "José Manuel Requena Plens",
-								alternateName: "jmrplens",
-								jobTitle: "R&D · Firmware & Software Engineer",
-								description:
-									"Firmware and software engineer in Valencia, Spain — industrial embedded systems, open-source tooling, and self-hosted infrastructure.",
-								url: "https://jmrp.io",
-								image: "https://github.com/jmrplens.png",
-								knowsAbout: [
-									"CrowdSec",
-									"MikroTik RouterOS",
-									"Go",
-									"Network Security",
-									"DevOps",
-								],
-								sameAs: [
-									"https://github.com/jmrplens",
-									"https://linkedin.com/in/jmrplens",
-									"https://mstdn.jmrp.io/@jmrplens",
-									"https://scholar.google.com/citations?user=9b0kPaUAAAAJ",
-									"https://matrix.to/#/@jmrplens:matrix.jmrp.io",
-									"https://keyoxide.org/0A993B268654DBBA52B7E8D3FCF653391E2C91FC",
-								],
-							},
+							// The canonical Person entity, fetched at build time — see the
+							// "Canonical identity" block above. Spliced verbatim so this document
+							// and jmrp.io describe the same node with the same values, instead of
+							// two hand-maintained copies that drift.
+							personNode,
 							{
 								"@type": "WebSite",
 								"@id":
@@ -471,6 +568,10 @@ export default defineConfig({
 									"CrowdSec bouncer for MikroTik RouterOS — automatic firewall management via the RouterOS API",
 								offers: { "@type": "Offer", price: 0, priceCurrency: "USD" },
 								author: { "@id": "https://jmrp.io/#person" },
+								// Same three agents jmrp.io/projects/ emits for this @id, so the merged
+								// node states one consistent set instead of a partial one per document.
+								creator: { "@id": "https://jmrp.io/#person" },
+								maintainer: { "@id": "https://jmrp.io/#person" },
 								sameAs: [
 									"https://app.crowdsec.net/hub/author/jmrplens/remediation-components/cs-routeros-bouncer",
 								],
@@ -490,6 +591,10 @@ export default defineConfig({
 										"https://github.com/jmrplens/cs-routeros-bouncer#software",
 								},
 								author: { "@id": "https://jmrp.io/#person" },
+								// Same three agents jmrp.io/projects/ emits for this @id, so the merged
+								// node states one consistent set instead of a partial one per document.
+								creator: { "@id": "https://jmrp.io/#person" },
+								maintainer: { "@id": "https://jmrp.io/#person" },
 							},
 						],
 					}),

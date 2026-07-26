@@ -10,6 +10,7 @@ const FOOTER_STRINGS: Record<
 		poweredBy: string;
 		license: string;
 		maintainedBy: string;
+		allProjects: string;
 	}
 > = {
 	en: {
@@ -17,12 +18,14 @@ const FOOTER_STRINGS: Record<
 		poweredBy: "Powered by",
 		license: "MIT License",
 		maintainedBy: "Maintained by",
+		allProjects: "All projects",
 	},
 	es: {
 		builtWith: "Creado con",
 		poweredBy: "Impulsado por",
 		license: "Licencia MIT",
 		maintainedBy: "Mantenido por",
+		allProjects: "Todos los proyectos",
 	},
 };
 
@@ -71,6 +74,19 @@ const t = FOOTER_STRINGS[lang] ?? FOOTER_STRINGS.en;
 				href="https://github.com/jmrplens/cs-routeros-bouncer/blob/main/LICENSE"
 				target="_blank"
 				rel="external noopener noreferrer">{t.license}</a
+			>
+			<span aria-hidden="true">&middot;</span>
+			{
+				/* The maintainer's project index: a path from this project to the
+			    whole portfolio, where every #software node in the identity graph
+			    is listed together. */
+			}
+			<a
+				href={lang === "es"
+					? "https://jmrp.io/es/projects/"
+					: "https://jmrp.io/projects/"}
+				target="_blank"
+				rel="external noopener noreferrer">{t.allProjects}</a
 			>
 		</p>
 	</div>
