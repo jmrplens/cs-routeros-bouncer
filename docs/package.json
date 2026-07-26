@@ -15,6 +15,7 @@
     "format:check": "prettier --check .",
     "html:validate": "test -n \"$(find dist -name '*.html' -print -quit 2>/dev/null)\" || { echo 'No HTML files found in docs/dist. Run pnpm build first.' >&2; exit 1; }; html-validate --max-warnings 0 \"dist/**/*.html\"",
     "check": "astro check",
+    "identity:sync": "node scripts/sync-identity.mjs",
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
