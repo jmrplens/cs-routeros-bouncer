@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - **Go 1.26.5** — bumped the Go toolchain (go directive, CI and Docker build image) from 1.26.4 to 1.26.5 to fix a Go standard library vulnerability reported by govulncheck: GO-2026-5856 (`crypto/tls`, Encrypted Client Hello privacy leak)
+- **`gosec` 2.28.0** — the security scanner now detects AWS temporary access keys under `G101`, and carries false-positive fixes for `G115` (min/max) and `G404` (missing `math/rand` weak-random functions)
 
 ### Fixed
 
@@ -20,7 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Dependencies** — updated the Go dependency closure (including `prometheus/client_golang` 1.23.2 → 1.24.1 and `golang.org/x/{crypto,net,sync,sys,text}`), refreshed the Go tool closure (`golangci-lint`, `actionlint`, `staticcheck`, `govulncheck`, `goimports`), bumped the documentation site's npm dependencies (Astro 7.0.6 → 7.1.6, Starlight, ESLint, Playwright, Prettier and the remaining dev tooling, plus `eslint-plugin-astro` 2 → 3), moved the pinned pnpm release to 11.18.0, and upgraded `actions/setup-go` and `actions/setup-node` to v7
   - `typescript` is deliberately held at 6.x: TypeScript 7's native compiler does not yet expose the programmatic API that `astro check` relies on ([withastro/roadmap#1321](https://github.com/withastro/roadmap/discussions/1321))
-  - `securego/gosec` is deliberately held at 2.27.1 and `go.yaml.in/yaml/v4` pinned to `v4.0.0-rc.3`: gosec 2.28.0 requires the rc.6 YAML API, which does not compile against `rhysd/actionlint` 1.7.12, its latest release
+- **Analysis tools moved out of `go.mod`** — `golangci-lint`, `gosec`, `actionlint`, `staticcheck`, `govulncheck`, `goimports` and `modernize` are no longer tracked through a `tool` directive. They are installed as standalone binaries at versions pinned in the `Makefile` (`make tools`, `make tools-versions`), which CI installs from as the single source of truth
+
+  A `tool` directive forces every linter and the application itself through one MVS graph, so any two tools with incompatible requirements deadlock the whole build. That was not hypothetical: `gosec` 2.28.0 and `rhysd/actionlint` 1.7.12 pull mutually exclusive `go.yaml.in/yaml/v4` revisions, and `golangci-lint` 2.12.2 pins `denis-tingaikin/go-header` at v0.5.0 while v1.0.0 breaks its API. As standalone binaries each tool resolves its own dependencies and cannot conflict. As a side effect `go.mod` drops from 305 to 81 lines and `go.sum` from 757 to 178, leaving only what the shipped binary actually links
+
+  The earlier note in this section claiming `gosec` had to be held at 2.27.1 because "2.28.0 requires the rc.6 YAML API" was wrong: gosec never imports `go.yaml.in/yaml/v4` — its own code is on `yaml/v3` and the rc.6 entry in its `go.mod` is indirect and unused. `gosec` is now on 2.28.0
 
 ## [1.4.5] - 2026-06-20
 

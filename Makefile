@@ -12,6 +12,31 @@ PROJECT_GO_VERSION := $(shell awk '/^go / {print $$2; exit}' go.mod)
 GO_TOOLCHAIN ?= go$(PROJECT_GO_VERSION)
 export GOTOOLCHAIN := $(GO_TOOLCHAIN)
 
+# Analysis tools are installed as standalone pinned binaries rather than tracked
+# in go.mod via a `tool` directive. Keeping them out of the module graph means
+# each tool resolves its own dependencies independently: gosec and actionlint
+# require incompatible go.yaml.in/yaml/v4 revisions, which is unresolvable when
+# a single MVS graph has to satisfy both.
+#
+# These pins are the single source of truth — CI installs from here too.
+# Bump deliberately, in their own commit.
+TOOLS_BIN             := $(CURDIR)/bin/tools
+GOLANGCI_LINT_VERSION := v2.12.2
+GOSEC_VERSION         := v2.28.0
+ACTIONLINT_VERSION    := v1.7.12
+STATICCHECK_VERSION   := v0.7.0
+GOVULNCHECK_VERSION   := v1.6.0
+# goimports and modernize both ship from golang.org/x/tools.
+GOTOOLS_VERSION       := v0.48.0
+
+GOLANGCI_LINT := $(TOOLS_BIN)/golangci-lint
+GOSEC         := $(TOOLS_BIN)/gosec
+ACTIONLINT    := $(TOOLS_BIN)/actionlint
+STATICCHECK   := $(TOOLS_BIN)/staticcheck
+GOVULNCHECK   := $(TOOLS_BIN)/govulncheck
+GOIMPORTS     := $(TOOLS_BIN)/goimports
+MODERNIZE     := $(TOOLS_BIN)/modernize
+
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -23,7 +48,8 @@ LDFLAGS := -s -w -X $(MODULE)/internal/config.Version=$(VERSION) \
 .PHONY: help all build build-all build-linux-amd64 build-linux-arm64 build-darwin-amd64 build-darwin-arm64 build-windows-amd64 \
 	run test test-short test-race test-integration test-docker coverage \
 	fmt goimports goimports-check gofmt-check vet modernize modernize-fix golangci-lint gosec staticcheck govulncheck actionlint mdlint mdlint-fix \
-	lint analyze install-tools docs-install docs-check docs-lint docs-format-check docs-format docs-build docs-html-validate docs-preview docs-analyze \
+	lint analyze install-tools go-mod-download tools tools-versions \
+	docs-install docs-check docs-lint docs-format-check docs-format docs-build docs-html-validate docs-preview docs-analyze \
 	clean install uninstall docker-build docker-push release-snapshot
 
 ## help: show available make targets
@@ -92,13 +118,56 @@ coverage: test
 fmt: goimports
 	gofmt -w -s $(GOFILES)
 
+# Tool installation ----------------------------------------------------------
+# Each binary is tracked by a version-stamped marker, so bumping a *_VERSION
+# variable above forces a reinstall instead of silently reusing a stale build.
+# `go install pkg@version` deliberately ignores the surrounding module, which is
+# what keeps these tools out of go.mod.
+
+$(TOOLS_BIN)/.golangci-lint-$(GOLANGCI_LINT_VERSION):
+	@mkdir -p $(TOOLS_BIN)
+	@rm -f $(GOLANGCI_LINT) $(TOOLS_BIN)/.golangci-lint-*
+	GOBIN=$(TOOLS_BIN) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+	@touch $@
+
+$(TOOLS_BIN)/.gosec-$(GOSEC_VERSION):
+	@mkdir -p $(TOOLS_BIN)
+	@rm -f $(GOSEC) $(TOOLS_BIN)/.gosec-*
+	GOBIN=$(TOOLS_BIN) go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION)
+	@touch $@
+
+$(TOOLS_BIN)/.actionlint-$(ACTIONLINT_VERSION):
+	@mkdir -p $(TOOLS_BIN)
+	@rm -f $(ACTIONLINT) $(TOOLS_BIN)/.actionlint-*
+	GOBIN=$(TOOLS_BIN) go install github.com/rhysd/actionlint/cmd/actionlint@$(ACTIONLINT_VERSION)
+	@touch $@
+
+$(TOOLS_BIN)/.staticcheck-$(STATICCHECK_VERSION):
+	@mkdir -p $(TOOLS_BIN)
+	@rm -f $(STATICCHECK) $(TOOLS_BIN)/.staticcheck-*
+	GOBIN=$(TOOLS_BIN) go install honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION)
+	@touch $@
+
+$(TOOLS_BIN)/.govulncheck-$(GOVULNCHECK_VERSION):
+	@mkdir -p $(TOOLS_BIN)
+	@rm -f $(GOVULNCHECK) $(TOOLS_BIN)/.govulncheck-*
+	GOBIN=$(TOOLS_BIN) go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
+	@touch $@
+
+$(TOOLS_BIN)/.gotools-$(GOTOOLS_VERSION):
+	@mkdir -p $(TOOLS_BIN)
+	@rm -f $(GOIMPORTS) $(MODERNIZE) $(TOOLS_BIN)/.gotools-*
+	GOBIN=$(TOOLS_BIN) go install golang.org/x/tools/cmd/goimports@$(GOTOOLS_VERSION)
+	GOBIN=$(TOOLS_BIN) go install golang.org/x/tools/go/analysis/passes/modernize/cmd/modernize@$(GOTOOLS_VERSION)
+	@touch $@
+
 ## goimports: apply import grouping/order
-goimports:
-	go tool goimports -local $(MODULE) -w $(GOFILES)
+goimports: $(TOOLS_BIN)/.gotools-$(GOTOOLS_VERSION)
+	$(GOIMPORTS) -local $(MODULE) -w $(GOFILES)
 
 ## goimports-check: verify goimports formatting
-goimports-check:
-	@test -z "$$(go tool goimports -local $(MODULE) -l $(GOFILES) | tee /dev/stderr)"
+goimports-check: $(TOOLS_BIN)/.gotools-$(GOTOOLS_VERSION)
+	@test -z "$$($(GOIMPORTS) -local $(MODULE) -l $(GOFILES) | tee /dev/stderr)"
 
 ## gofmt-check: verify gofmt -s formatting
 gofmt-check:
@@ -109,32 +178,32 @@ vet:
 	go vet $(GO_ANALYSIS_PKGS)
 
 ## modernize: run Go's modernize analyzer
-modernize:
-	go tool modernize $(GO_ANALYSIS_PKGS)
+modernize: $(TOOLS_BIN)/.gotools-$(GOTOOLS_VERSION)
+	$(MODERNIZE) $(GO_ANALYSIS_PKGS)
 
 ## modernize-fix: apply modernize suggested fixes
-modernize-fix:
-	go tool modernize -fix $(GO_ANALYSIS_PKGS)
+modernize-fix: $(TOOLS_BIN)/.gotools-$(GOTOOLS_VERSION)
+	$(MODERNIZE) -fix $(GO_ANALYSIS_PKGS)
 
 ## staticcheck: run Staticcheck
-staticcheck:
-	go tool staticcheck $(GO_ANALYSIS_PKGS)
+staticcheck: $(TOOLS_BIN)/.staticcheck-$(STATICCHECK_VERSION)
+	$(STATICCHECK) $(GO_ANALYSIS_PKGS)
 
 ## golangci-lint: run configured golangci-lint suite
-golangci-lint:
-	go tool golangci-lint run $(GO_ANALYSIS_PKGS)
+golangci-lint: $(TOOLS_BIN)/.golangci-lint-$(GOLANGCI_LINT_VERSION)
+	$(GOLANGCI_LINT) run $(GO_ANALYSIS_PKGS)
 
 ## gosec: run standalone Go security analysis
-gosec:
-	go tool gosec -quiet -severity medium -confidence medium -exclude-generated -fmt text $(GO_ANALYSIS_PKGS)
+gosec: $(TOOLS_BIN)/.gosec-$(GOSEC_VERSION)
+	$(GOSEC) -quiet -severity medium -confidence medium -exclude-generated -fmt text $(GO_ANALYSIS_PKGS)
 
 ## govulncheck: scan reachable Go vulnerabilities
-govulncheck:
-	go tool govulncheck $(GO_ANALYSIS_PKGS)
+govulncheck: $(TOOLS_BIN)/.govulncheck-$(GOVULNCHECK_VERSION)
+	$(GOVULNCHECK) $(GO_ANALYSIS_PKGS)
 
 ## actionlint: lint GitHub Actions workflows
-actionlint:
-	go tool actionlint
+actionlint: $(TOOLS_BIN)/.actionlint-$(ACTIONLINT_VERSION)
+	$(ACTIONLINT)
 
 ## mdlint: lint Markdown files with markdownlint-cli2
 mdlint:
@@ -150,9 +219,29 @@ lint: vet staticcheck golangci-lint
 ## analyze: run full static analysis suite
 analyze: gofmt-check goimports-check vet modernize golangci-lint gosec staticcheck govulncheck actionlint mdlint docs-analyze
 
-## install-tools: download Go modules and tool dependencies
-install-tools:
+## install-tools: download Go modules and install pinned analysis binaries
+install-tools: go-mod-download tools
+
+## go-mod-download: download the module dependency graph
+go-mod-download:
 	go mod download
+
+## tools: install every pinned analysis binary into bin/tools
+tools: $(TOOLS_BIN)/.golangci-lint-$(GOLANGCI_LINT_VERSION) \
+	$(TOOLS_BIN)/.gosec-$(GOSEC_VERSION) \
+	$(TOOLS_BIN)/.actionlint-$(ACTIONLINT_VERSION) \
+	$(TOOLS_BIN)/.staticcheck-$(STATICCHECK_VERSION) \
+	$(TOOLS_BIN)/.govulncheck-$(GOVULNCHECK_VERSION) \
+	$(TOOLS_BIN)/.gotools-$(GOTOOLS_VERSION)
+
+## tools-versions: print the pinned analysis tool versions
+tools-versions:
+	@echo "golangci-lint $(GOLANGCI_LINT_VERSION)"
+	@echo "gosec         $(GOSEC_VERSION)"
+	@echo "actionlint    $(ACTIONLINT_VERSION)"
+	@echo "staticcheck   $(STATICCHECK_VERSION)"
+	@echo "govulncheck   $(GOVULNCHECK_VERSION)"
+	@echo "x/tools       $(GOTOOLS_VERSION) (goimports, modernize)"
 
 ## docs-install: install documentation dependencies
 docs-install:
