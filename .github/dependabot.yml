@@ -56,6 +56,15 @@ updates:
         update-types:
           - "minor"
           - "patch"
+    ignore:
+      # TypeScript 7 replaced tsc with the native compiler, which does not yet
+      # expose the programmatic API `astro check` is built on, so the "Astro
+      # docs" job fails on it. Tracked upstream at
+      # https://github.com/withastro/roadmap/discussions/1321
+      # Remove this entry once astro check supports TypeScript 7.
+      - dependency-name: "typescript"
+        update-types:
+          - "version-update:semver-major"
     open-pull-requests-limit: 5
 
   # npm utility scripts used for local screenshots

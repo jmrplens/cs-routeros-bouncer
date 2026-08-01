@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/crowdsecurity/crowdsec/pkg/apiclient"
-
 	"github.com/rs/zerolog"
 
 	"github.com/jmrplens/cs-routeros-bouncer/internal/config"
@@ -51,7 +50,7 @@ type mockStream struct {
 	// RunFunc is called by Run() if set. It receives the same arguments as
 	// the real Run and should send decisions to banCh/deleteCh, then return
 	// when ctx is done. If nil, Run returns runErr immediately.
-	RunFunc func(ctx context.Context, banCh chan<- *crowdsec.Decision, deleteCh chan<- *crowdsec.Decision) error
+	RunFunc func(ctx context.Context, banCh, deleteCh chan<- *crowdsec.Decision) error
 	// ActiveDecisionsFunc lets tests override the snapshot returned to periodic
 	// reconciliation.
 	ActiveDecisionsFunc func(ctx context.Context) ([]*crowdsec.Decision, error)
@@ -71,7 +70,7 @@ func (s *mockStream) Init() error {
 
 // Run implements StreamIface.Run, delegating to RunFunc if set or returning
 // runErr immediately.
-func (s *mockStream) Run(ctx context.Context, banCh chan<- *crowdsec.Decision, deleteCh chan<- *crowdsec.Decision) error {
+func (s *mockStream) Run(ctx context.Context, banCh, deleteCh chan<- *crowdsec.Decision) error {
 	s.mu.Lock()
 	s.runCalled++
 	fn := s.RunFunc
@@ -169,7 +168,7 @@ func TestStart_HappyPath(t *testing.T) {
 		addRuleID:    "*1",
 	}
 	stream := &mockStream{
-		RunFunc: func(ctx context.Context, banCh chan<- *crowdsec.Decision, deleteCh chan<- *crowdsec.Decision) error {
+		RunFunc: func(ctx context.Context, banCh, deleteCh chan<- *crowdsec.Decision) error {
 			// Send one initial ban, then wait for cancel
 			banCh <- &crowdsec.Decision{
 				Proto:  "ip",
@@ -334,7 +333,7 @@ func TestStart_ConnectRetrySuccess(t *testing.T) {
 		addRuleID:   "*1",
 	}
 	stream := &mockStream{
-		RunFunc: func(ctx context.Context, banCh chan<- *crowdsec.Decision, deleteCh chan<- *crowdsec.Decision) error {
+		RunFunc: func(ctx context.Context, banCh, deleteCh chan<- *crowdsec.Decision) error {
 			<-ctx.Done()
 			return nil
 		},
@@ -407,7 +406,7 @@ func TestStart_IdentityError(t *testing.T) {
 		addRuleID:   "*1",
 	}
 	stream := &mockStream{
-		RunFunc: func(ctx context.Context, banCh chan<- *crowdsec.Decision, deleteCh chan<- *crowdsec.Decision) error {
+		RunFunc: func(ctx context.Context, banCh, deleteCh chan<- *crowdsec.Decision) error {
 			<-ctx.Done()
 			return nil
 		},
@@ -487,7 +486,7 @@ func TestStart_StreamRunError(t *testing.T) {
 		addRuleID:   "*1",
 	}
 	stream := &mockStream{
-		RunFunc: func(ctx context.Context, banCh chan<- *crowdsec.Decision, deleteCh chan<- *crowdsec.Decision) error {
+		RunFunc: func(ctx context.Context, banCh, deleteCh chan<- *crowdsec.Decision) error {
 			return errors.New("stream channel closed")
 		},
 	}
@@ -515,7 +514,7 @@ func TestStart_ContextCancelDuringCollect(t *testing.T) {
 		addRuleID:   "*1",
 	}
 	stream := &mockStream{
-		RunFunc: func(ctx context.Context, banCh chan<- *crowdsec.Decision, deleteCh chan<- *crowdsec.Decision) error {
+		RunFunc: func(ctx context.Context, banCh, deleteCh chan<- *crowdsec.Decision) error {
 			select {
 			case <-ctx.Done():
 				return nil

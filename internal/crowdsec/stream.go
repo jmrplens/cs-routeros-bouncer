@@ -47,7 +47,7 @@ func NewStream(cfg config.CrowdSecConfig, version string) *Stream {
 		APIUrl:                 cfg.APIURL,
 		APIKey:                 cfg.APIKey,
 		TickerInterval:         cfg.UpdateFrequency.String(),
-		UserAgent:              fmt.Sprintf("cs-routeros-bouncer/%s", version),
+		UserAgent:              "cs-routeros-bouncer/" + version,
 		Scopes:                 cfg.Scopes,
 		ScenariosContaining:    cfg.ScenariosContaining,
 		ScenariosNotContaining: cfg.ScenariosNotContaining,
@@ -187,39 +187,50 @@ func (s *Stream) Run(ctx context.Context, banCh, deleteCh chan<- *Decision) erro
 				return errors.New("CrowdSec stream channel closed")
 			}
 
-			// Process new decisions (bans)
-			for _, parsed := range parseDecisionBatch(decisions.New, true) {
-				s.logger.Debug().
-					Str("value", parsed.Value).
-					Str("proto", parsed.Proto).
-					Str("type", parsed.Type).
-					Str("origin", parsed.Origin).
-					Dur("duration", parsed.Duration).
-					Msg("new decision")
-
-				select {
-				case banCh <- parsed:
-				case <-ctx.Done():
-					return nil
-				}
+			if !s.forwardBatch(ctx, decisions.New, true, banCh) {
+				return nil
 			}
-
-			// Process deleted decisions (unbans)
-			for _, parsed := range parseDecisionBatch(decisions.Deleted, false) {
-				s.logger.Debug().
-					Str("value", parsed.Value).
-					Str("proto", parsed.Proto).
-					Str("origin", parsed.Origin).
-					Msg("deleted decision")
-
-				select {
-				case deleteCh <- parsed:
-				case <-ctx.Done():
-					return nil
-				}
+			if !s.forwardBatch(ctx, decisions.Deleted, false, deleteCh) {
+				return nil
 			}
 		}
 	}
+}
+
+// forwardBatch parses a decision batch, logs every entry, and forwards it to ch.
+// isBan selects the ban-specific validation and log fields. It reports false
+// when ctx is canceled mid-batch, so the caller can stop the stream loop.
+func (s *Stream) forwardBatch(
+	ctx context.Context,
+	decisions models.GetDecisionsResponse,
+	isBan bool,
+	ch chan<- *Decision,
+) bool {
+	for _, parsed := range parseDecisionBatch(decisions, isBan) {
+		if isBan {
+			s.logger.Debug().
+				Str("value", parsed.Value).
+				Str("proto", parsed.Proto).
+				Str("type", parsed.Type).
+				Str("origin", parsed.Origin).
+				Dur("duration", parsed.Duration).
+				Msg("new decision")
+		} else {
+			s.logger.Debug().
+				Str("value", parsed.Value).
+				Str("proto", parsed.Proto).
+				Str("origin", parsed.Origin).
+				Msg("deleted decision")
+		}
+
+		select {
+		case ch <- parsed:
+		case <-ctx.Done():
+			return false
+		}
+	}
+
+	return true
 }
 
 // parseDecisionBatch converts an LAPI decision response into internal

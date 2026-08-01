@@ -1,86 +1,103 @@
 # golangci-lint v2 configuration for cs-routeros-bouncer.
-# Run: golangci-lint run ./cmd/... ./internal/...
+# Run: make golangci-lint
+# Docs: https://golangci-lint.run/usage/configuration/
+# Based on: https://github.com/maratori/golangci-lint-config
+# Kept aligned with the sibling jmrplens/gitlab-mcp-server configuration.
 
 version: "2"
 
 issues:
+  # Avoid truncating repeated issues (default: 3 is too low for initial lint runs).
   max-same-issues: 50
 
 run:
   go: "1.26"
-  timeout: 10m
+  timeout: 15m
   tests: true
 
 linters:
   default: none
   enable:
-    # Bug detection
-    - govet
-    - staticcheck
-    - errcheck
-    - ineffassign
-    - bodyclose
-    - noctx
-    - durationcheck
-    - nilerr
-    - nilnesserr
-    - nilnil
-    - errname
-    - errorlint
-    - fatcontext
-    - reassign
+    # --- Bug Detection ---
+    - govet # Official Go vet checks
+    - staticcheck # Comprehensive static analysis (SA*, S*, ST*, QF*)
+    - errcheck # Unchecked error return values
+    - ineffassign # Detects ineffectual assignments
+    - bodyclose # HTTP response body not closed
+    - noctx # HTTP requests without context.Context
+    - durationcheck # Multiplying two time.Duration values
+    - nilerr # Returns nil when err is not nil
+    - nilnesserr # Checks err != nil but returns a different nil error
+    - nilnil # Returns nil,nil without reason
+    - errname # Sentinel error naming conventions (ErrFoo)
+    - errorlint # Finds code that breaks error wrapping (errors.Is/As)
+    - fatcontext # Detects nested contexts in loops
+    - reassign # Detects package variable reassignment
 
-    # Security
-    - gosec
+    # --- Security ---
+    - gosec # OWASP-oriented security scanner (G1xx-G7xx)
 
-    # Code quality
-    - revive
-    - gocritic
-    - unconvert
-    - unparam
-    - unused
-    - wastedassign
-    - predeclared
-    - recvcheck
-    - asciicheck
-    - nolintlint
-    - whitespace
+    # --- Code Quality ---
+    - gocyclo # Function cyclomatic complexity guard
+    - gocognit # Cognitive complexity guard
+    - nestif # Nested if complexity guard
+    - maintidx # Maintainability index guard
+    - dupl # Duplicate code guard
+    - revive # Configurable Go linter (golint replacement)
+    - gocritic # ~100 diagnostics: bugs, performance, style
+    - unconvert # Unnecessary type conversions
+    - unparam # Unused function parameters
+    - unused # Unused code (variables, functions, types)
+    - wastedassign # Finds wasted assignment statements
+    - predeclared # Detects shadowing of Go predeclared identifiers
+    - recvcheck # Checks receiver type consistency (pointer vs value)
+    - asciicheck # Checks for non-ASCII identifiers
+    - nolintlint # Reports ill-formed or insufficient nolint directives
+    - whitespace # Detects leading/trailing whitespace in functions
 
-    # Style and modernization
-    - misspell
-    - usestdlibvars
-    - intrange
-    - modernize
-    - usetesting
+    # --- Style & Formatting ---
+    - misspell # Spelling mistakes in comments and strings
+    - usestdlibvars # Use stdlib constants instead of magic values
+    - intrange # for i := 0; i < n; i++ → for i := range n (Go 1.22+)
+    - modernize # Suggests simplifications using modern Go features
+    - usetesting # Reports functions that should use testing.T helpers
 
-    # Performance
-    - perfsprint
-    - prealloc
+    # --- Performance ---
+    - perfsprint # fmt.Sprintf → strconv when possible
+    - prealloc # Slice declarations that could be preallocated
 
-    # Defensive checks
-    - bidichk
-    - copyloopvar
-    - exptostd
-    - iotamixing
-    - loggercheck
-    - makezero
-    - mirror
-    - nakedret
-    - nosprintfhostport
-    - testableexamples
+    # --- Bug Detection (drop-in safe, no findings on current codebase) ---
+    - bidichk # Dangerous bidi unicode (CVE-2021-42574 trojan source protection)
+    - copyloopvar # Loop variable copies (Go 1.22+, copies not needed)
+    - exptostd # Replace golang.org/x/exp with std equivalents
+    - iotamixing # Mixed iota in const blocks
+    - loggercheck # slog/log key-value pair validation
+    - makezero # Slice append after non-zero-length make
+    - mirror # bytes/strings mirror patterns (avoid unnecessary conversions)
+    - nakedret # Naked returns in long functions
+    - nosprintfhostport # Sprintf misuse for host:port URLs (RFC 3986 compliance)
+    - testableexamples # Examples have expected output (Output: comments)
 
-    # Tests
-    - goprintffuncname
-    - tparallel
-    - thelper
-    - contextcheck
-    - errchkjson
+    # --- Style ---
+    - goprintffuncname # Printf-like funcs end in 'f'
+    - tparallel # t.Parallel() correctness
+    - thelper # Test helpers must call t.Helper()
+
+    # --- Bug Detection (require care; documented nolints in source) ---
+    - contextcheck # Context propagation
+    - errchkjson # json.Marshal/Encode error handling
+
+    # --- Linters intentionally NOT enabled (false positives) ---
+    # - dupword: false positives on godoc auto-generated comments split from CamelCase
+    #   identifiers. Auto-fix removes letters that are part of the identifier.
+    # - gocheckcompilerdirectives: false positive on //go:fix inline (valid Go 1.24+
+    #   directive used by gopls/go fix tooling, not yet recognized by the linter).
 
   settings:
     govet:
       enable-all: true
       disable:
-        - fieldalignment
+        - fieldalignment # Too noisy for this project
       settings:
         shadow:
           strict: true
@@ -88,9 +105,6 @@ linters:
     staticcheck:
       checks:
         - "all"
-        - "-ST1000"
-        - "-ST1016"
-        - "-QF1008"
 
     errcheck:
       check-type-assertions: true
@@ -98,14 +112,13 @@ linters:
 
     gosec:
       excludes:
-        - G104
-        - G304
+        - G104 # Unhandled errors (covered by errcheck)
       config:
         global:
-          audit: "false"
+          audit: "true"
 
     revive:
-      severity: warning
+      severity: error
       enable-all-rules: false
       enable-default-rules: true
       rules:
@@ -141,15 +154,16 @@ linters:
         - diagnostic
         - performance
         - style
+        - opinionated
+        - experimental
       disabled-checks:
-        - hugeParam
-        - rangeValCopy
-        - ifElseChain
-        - sloppyReassign
+        - hugeParam # Too strict for config/input structs
+        - rangeValCopy # Often false positives with simple structs
 
     misspell:
       locale: US
       extra-words:
+        # "routeros" is the vendor spelling of the RouterOS API and package name.
         - typo: routeros
           correction: routeros
         - typo: ROUTEROS
@@ -158,24 +172,53 @@ linters:
     nolintlint:
       require-explanation: true
       require-specific: true
+      allow-unused: false
 
     usetesting:
+      context-background: false # Too noisy across existing tests
+      context-todo: true
+      os-chdir: true
+      os-mkdir-temp: true
+      os-setenv: true
       os-temp-dir: true
 
+    gocyclo:
+      min-complexity: 20
+
+    gocognit:
+      min-complexity: 25
+
+    nestif:
+      min-complexity: 5
+
+    maintidx:
+      under: 20
+
+    dupl:
+      threshold: 150
+
     perfsprint:
+      integer-format: true
       int-conversion: true
       err-error: true
       errorf: true
       sprintf1: true
-      strconcat: false
+      strconcat: true
 
   exclusions:
-    warn-unused: true
+    # Keep focused package runs warning-free when exclusions for unrelated
+    # packages are not exercised by the selected target.
+    warn-unused: false
+    # Keep upstream presets that suppress generated comment noise, unchecked
+    # standard-library writes/closes, and common test fixture false positives.
     presets:
       - comments
       - std-error-handling
       - common-false-positives
+
+    # Custom exclusions
     rules:
+      # Test files: relax rules that fight table-driven and fixture-heavy tests.
       - path: "_test\\.go"
         linters:
           - errcheck
@@ -189,6 +232,18 @@ linters:
           - wastedassign
           - fatcontext
           - nilnil
+          - dupl
+
+      # Complexity guards apply to production code only. Table-driven scenario
+      # tests accumulate branches by construction, and splitting them scatters a
+      # single scenario across helpers that are harder to read than the table.
+      # Several already carry `// NOSONAR: ... intentionally stay together.`
+      - path: "_test\\.go"
+        linters:
+          - gocyclo
+          - gocognit
+          - nestif
+          - maintidx
 
 output:
   formats:
@@ -202,9 +257,19 @@ output:
 
 formatters:
   enable:
-    - gofmt
-    - goimports
+    - goimports # Import grouping and ordering
+    - gofumpt # Stricter gofmt-compatible formatting
+    - gci # Enforce deterministic import section grouping
   settings:
+    gofumpt:
+      module-path: github.com/jmrplens/cs-routeros-bouncer
+      extra-rules: true
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/jmrplens/cs-routeros-bouncer)
+      custom-order: true
     goimports:
       local-prefixes:
         - github.com/jmrplens/cs-routeros-bouncer

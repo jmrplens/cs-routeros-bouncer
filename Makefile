@@ -47,7 +47,7 @@ LDFLAGS := -s -w -X $(MODULE)/internal/config.Version=$(VERSION) \
 
 .PHONY: help all build build-all build-linux-amd64 build-linux-arm64 build-darwin-amd64 build-darwin-arm64 build-windows-amd64 \
 	run test test-short test-race test-integration test-docker coverage \
-	fmt goimports goimports-check gofmt-check vet modernize modernize-fix golangci-lint gosec staticcheck govulncheck actionlint mdlint mdlint-fix \
+	fmt fmt-check goimports goimports-check gofmt-check vet modernize modernize-fix golangci-lint gosec staticcheck govulncheck actionlint mdlint mdlint-fix \
 	lint analyze install-tools go-mod-download tools tools-versions \
 	docs-install docs-check docs-lint docs-format-check docs-format docs-build docs-html-validate docs-preview docs-analyze \
 	clean install uninstall docker-build docker-push release-snapshot
@@ -114,9 +114,13 @@ test-docker:
 coverage: test
 	go tool cover -html=coverage.out -o coverage.html
 
-## fmt: format Go sources with gofmt and goimports
-fmt: goimports
-	gofmt -w -s $(GOFILES)
+## fmt: apply every formatter configured in .golangci.yml (goimports, gofumpt, gci)
+fmt: $(TOOLS_BIN)/.golangci-lint-$(GOLANGCI_LINT_VERSION)
+	$(GOLANGCI_LINT) fmt $(GO_ANALYSIS_PKGS)
+
+## fmt-check: report formatting drift without rewriting files
+fmt-check: $(TOOLS_BIN)/.golangci-lint-$(GOLANGCI_LINT_VERSION)
+	$(GOLANGCI_LINT) fmt --diff $(GO_ANALYSIS_PKGS)
 
 # Tool installation ----------------------------------------------------------
 # Each binary is tracked by a version-stamped marker, so bumping a *_VERSION

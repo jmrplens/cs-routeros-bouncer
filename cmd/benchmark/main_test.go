@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	rosClient "github.com/jmrplens/cs-routeros-bouncer/internal/routeros"
-
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
+
+	rosClient "github.com/jmrplens/cs-routeros-bouncer/internal/routeros"
 )
 
 // TestConfigPath verifies benchmark config path selection from argv.
