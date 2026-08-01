@@ -223,7 +223,7 @@ require (
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 	github.com/sashamelentyev/interfacebloat v1.1.0 // indirect
 	github.com/sashamelentyev/usestdlibvars v1.29.0 // indirect
-	github.com/securego/gosec/v2 v2.27.1 // indirect
+	github.com/securego/gosec/v2 v2.28.0 // indirect
 	github.com/shirou/gopsutil/v4 v4.26.7 // indirect
 	github.com/sivchari/containedctx v1.0.3 // indirect
 	github.com/sonatard/noctx v0.5.1 // indirect
@@ -271,7 +271,7 @@ require (
 	go.uber.org/multierr v1.10.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
-	go.yaml.in/yaml/v4 v4.0.0-rc.3 // indirect
+	go.yaml.in/yaml/v4 v4.0.0-rc.6 // indirect
 	golang.org/x/crypto v0.54.0 // indirect
 	golang.org/x/exp/typeparams v0.0.0-20260209203927-2842357ff358 // indirect
 	golang.org/x/mod v0.38.0 // indirect
@@ -303,3 +303,10 @@ tool (
 	golang.org/x/vuln/cmd/govulncheck
 	honnef.co/go/tools/cmd/staticcheck
 )
+
+// rhysd/actionlint uses the go.yaml.in/yaml/v4 rc.3 API, which changed in rc.4.
+// Newer releases of other tools (securego/gosec) carry an rc.6 *indirect*
+// requirement they do not actually use (gosec's own code is on yaml/v3), and
+// MVS would otherwise select it and break the actionlint build.
+// Drop this once actionlint moves past rc.3.
+replace go.yaml.in/yaml/v4 => go.yaml.in/yaml/v4 v4.0.0-rc.3

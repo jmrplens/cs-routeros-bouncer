@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - **Go 1.26.5** — bumped the Go toolchain (go directive, CI and Docker build image) from 1.26.4 to 1.26.5 to fix a Go standard library vulnerability reported by govulncheck: GO-2026-5856 (`crypto/tls`, Encrypted Client Hello privacy leak)
+- **`securego/gosec` 2.28.0** — the security scanner now detects AWS temporary access keys under `G101`, and carries false-positive fixes for `G115` (min/max) and `G404` (missing `math/rand` weak-random functions)
 
 ### Fixed
 
@@ -20,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Dependencies** — updated the Go dependency closure (including `prometheus/client_golang` 1.23.2 → 1.24.1 and `golang.org/x/{crypto,net,sync,sys,text}`), refreshed the Go tool closure (`golangci-lint`, `actionlint`, `staticcheck`, `govulncheck`, `goimports`), bumped the documentation site's npm dependencies (Astro 7.0.6 → 7.1.6, Starlight, ESLint, Playwright, Prettier and the remaining dev tooling, plus `eslint-plugin-astro` 2 → 3), moved the pinned pnpm release to 11.18.0, and upgraded `actions/setup-go` and `actions/setup-node` to v7
   - `typescript` is deliberately held at 6.x: TypeScript 7's native compiler does not yet expose the programmatic API that `astro check` relies on ([withastro/roadmap#1321](https://github.com/withastro/roadmap/discussions/1321))
-  - `securego/gosec` is deliberately held at 2.27.1 and `go.yaml.in/yaml/v4` pinned to `v4.0.0-rc.3`: gosec 2.28.0 requires the rc.6 YAML API, which does not compile against `rhysd/actionlint` 1.7.12, its latest release
+  - `go.yaml.in/yaml/v4` is pinned to `v4.0.0-rc.3` through a `replace` directive: `rhysd/actionlint` 1.7.12 (its latest release, and still the state of its default branch) uses the rc.3 API, which changed in rc.4. `securego/gosec` 2.28.0 carries an rc.6 **indirect** requirement that its own code never uses — gosec itself is on `yaml/v3` — but MVS would otherwise select it and break the actionlint build
 
 ## [1.4.5] - 2026-06-20
 
