@@ -54,7 +54,8 @@ func NewClient(cfg config.MikroTikConfig) *Client {
 func defaultDial(cfg config.MikroTikConfig) (RouterConn, error) {
 	if cfg.TLS {
 		tlsConfig := &tls.Config{
-			InsecureSkipVerify: cfg.TLSInsecure, //nolint:gosec // G402: user-configurable option for self-signed certs
+			// #nosec G402 -- user-configurable option; RouterOS ships a self-signed cert by default.
+			InsecureSkipVerify: cfg.TLSInsecure,
 		}
 		return routeros.DialTLS(cfg.Address, cfg.Username, cfg.Password, tlsConfig)
 	}
