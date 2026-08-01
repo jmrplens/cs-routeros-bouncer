@@ -498,7 +498,8 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("metrics.track_processed", true)
 
 	// Environment variable bindings (flat names for Docker compatibility)
-	envBindings := map[string]string{ //nolint:gosec // G101: environment variable names, not credentials
+	// #nosec G101 -- these are environment variable names, not credential values.
+	envBindings := map[string]string{
 		// CrowdSec
 		"crowdsec.api_url":                   "CROWDSEC_URL",
 		"crowdsec.api_key":                   "CROWDSEC_BOUNCER_API_KEY",

@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Documentation site structured data** — the JSON-LD `Person` node shares its `@id` with the canonical entity at `https://jmrp.io/#person` but published a project-scoped `description` ("Open-source developer; author and maintainer of cs-routeros-bouncer"). Because `description` is single-valued, that contradicted the canonical node instead of enriching it. It now mirrors the canonical `description`, and the canonical `jobTitle` was added
+- **`gosec` suppressions** — the two known false positives in `internal/routeros/client.go` (G402) and `internal/config/config.go` (G101) were annotated with `//nolint:gosec`, which only `golangci-lint` honours, so standalone `gosec` still reported them at default confidence. Both now use `// #nosec GXXX -- reason`, the form `gosec` understands natively and the convention already used elsewhere in the codebase
+
+### Changed
+
+- **Dependencies** — updated the Go dependency closure (including `prometheus/client_golang` 1.23.2 → 1.24.1 and `golang.org/x/{crypto,net,sync,sys,text}`), refreshed the Go tool closure (`golangci-lint`, `actionlint`, `staticcheck`, `govulncheck`, `goimports`), bumped the documentation site's npm dependencies (Astro 7.0.6 → 7.1.6, Starlight, ESLint, Playwright, Prettier and the remaining dev tooling, plus `eslint-plugin-astro` 2 → 3), moved the pinned pnpm release to 11.18.0, and upgraded `actions/setup-go` and `actions/setup-node` to v7
+  - `typescript` is deliberately held at 6.x: TypeScript 7's native compiler does not yet expose the programmatic API that `astro check` relies on ([withastro/roadmap#1321](https://github.com/withastro/roadmap/discussions/1321))
+  - `securego/gosec` is deliberately held at 2.27.1 and `go.yaml.in/yaml/v4` pinned to `v4.0.0-rc.3`: gosec 2.28.0 requires the rc.6 YAML API, which does not compile against `rhysd/actionlint` 1.7.12, its latest release
 
 ## [1.4.5] - 2026-06-20
 
