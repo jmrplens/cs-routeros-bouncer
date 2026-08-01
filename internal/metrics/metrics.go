@@ -381,7 +381,7 @@ func GetAndResetDroppedDeltasByIPType() (ipv4Bytes, ipv4Pkts, ipv6Bytes, ipv6Pkt
 	ipv6Pkts = computeDelta(droppedProtoState.current.IPv6Pkts, droppedProtoState.lastSent.IPv6Pkts)
 
 	droppedProtoState.lastSent = droppedProtoState.current
-	return
+	return ipv4Bytes, ipv4Pkts, ipv6Bytes, ipv6Pkts
 }
 
 // SetProcessedCounters updates the per-ip_type processed counters (cumulative).
@@ -408,7 +408,7 @@ func GetAndResetProcessedDeltas() (ipv4Bytes, ipv4Pkts, ipv6Bytes, ipv6Pkts uint
 	ipv6Pkts = computeDelta(processedProtoState.current.IPv6Pkts, processedProtoState.lastSent.IPv6Pkts)
 
 	processedProtoState.lastSent = processedProtoState.current
-	return
+	return ipv4Bytes, ipv4Pkts, ipv6Bytes, ipv6Pkts
 }
 
 // SetConnected sets the RouterOS connection gauge.

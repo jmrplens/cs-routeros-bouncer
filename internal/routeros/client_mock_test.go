@@ -1271,15 +1271,21 @@ func TestListFirewallRules_FiltersByComment(t *testing.T) {
 	c := newTestClient(mc)
 
 	mc.pushReply(reReply(
-		map[string]string{".id": "*1", "chain": "input", "action": "drop", "comment": "crowdsec-drop-input",
+		map[string]string{
+			".id": "*1", "chain": "input", "action": "drop", "comment": "crowdsec-drop-input",
 			"src-address-list": "blocked", "dst-address-list": "", "in-interface": "ether1",
-			"in-interface-list": "", "out-interface": "", "out-interface-list": ""},
-		map[string]string{".id": "*2", "chain": "forward", "action": "accept", "comment": "other-rule",
+			"in-interface-list": "", "out-interface": "", "out-interface-list": "",
+		},
+		map[string]string{
+			".id": "*2", "chain": "forward", "action": "accept", "comment": "other-rule",
 			"src-address-list": "", "dst-address-list": "", "in-interface": "",
-			"in-interface-list": "", "out-interface": "", "out-interface-list": ""},
-		map[string]string{".id": "*3", "chain": "output", "action": "drop", "comment": "crowdsec-drop-output",
+			"in-interface-list": "", "out-interface": "", "out-interface-list": "",
+		},
+		map[string]string{
+			".id": "*3", "chain": "output", "action": "drop", "comment": "crowdsec-drop-output",
 			"src-address-list": "", "dst-address-list": "blocked", "in-interface": "",
-			"in-interface-list": "", "out-interface": "", "out-interface-list": ""},
+			"in-interface-list": "", "out-interface": "", "out-interface-list": "",
+		},
 	))
 
 	entries, err := c.ListFirewallRules("ip", "filter", "crowdsec-")
@@ -1299,9 +1305,11 @@ func TestListFirewallRules_NoFilter(t *testing.T) {
 	mc := newMockConn()
 	c := newTestClient(mc)
 	mc.pushReply(reReply(
-		map[string]string{".id": "*1", "chain": "input", "action": "drop", "comment": "rule1",
+		map[string]string{
+			".id": "*1", "chain": "input", "action": "drop", "comment": "rule1",
 			"src-address-list": "", "dst-address-list": "", "in-interface": "",
-			"in-interface-list": "", "out-interface": "", "out-interface-list": ""},
+			"in-interface-list": "", "out-interface": "", "out-interface-list": "",
+		},
 	))
 
 	entries, err := c.ListFirewallRules("ip", "filter", "")

@@ -19,7 +19,7 @@ type CrowdSecStream interface {
 
 	// Run starts the decision stream. It sends new bans to banCh and
 	// deleted decisions to deleteCh. It blocks until ctx is canceled.
-	Run(ctx context.Context, banCh chan<- *crowdsec.Decision, deleteCh chan<- *crowdsec.Decision) error
+	Run(ctx context.Context, banCh, deleteCh chan<- *crowdsec.Decision) error
 
 	// ActiveDecisions fetches the current active decisions snapshot from LAPI.
 	ActiveDecisions(ctx context.Context) ([]*crowdsec.Decision, error)
