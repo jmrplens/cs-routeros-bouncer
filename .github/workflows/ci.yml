@@ -25,9 +25,13 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GO_VERSION }}
-      - run: go mod download
+      - name: Cache pinned analysis tools
+        uses: actions/cache@v6
+        with:
+          path: bin/tools
+          key: tools-${{ runner.os }}-${{ hashFiles('Makefile') }}
       - name: Lint GitHub workflows
-        run: go tool actionlint
+        run: make actionlint
 
   markdown:
     name: Markdown
@@ -60,6 +64,11 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
       - run: go mod download
+      - name: Cache pinned analysis tools
+        uses: actions/cache@v6
+        with:
+          path: bin/tools
+          key: tools-${{ runner.os }}-${{ hashFiles('Makefile') }}
       - name: Check gofmt
         run: |
           issues=$(gofmt -l -s cmd internal tests)
@@ -69,13 +78,7 @@ jobs:
             exit 1
           fi
       - name: Check goimports
-        run: |
-          issues=$(go tool goimports -local github.com/jmrplens/cs-routeros-bouncer -l cmd internal tests)
-          if [ -n "$issues" ]; then
-            echo "Files needing goimports:"
-            echo "$issues"
-            exit 1
-          fi
+        run: make goimports-check
 
   go-analysis:
     name: Go analysis
@@ -88,16 +91,21 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
       - run: go mod download
+      - name: Cache pinned analysis tools
+        uses: actions/cache@v6
+        with:
+          path: bin/tools
+          key: tools-${{ runner.os }}-${{ hashFiles('Makefile') }}
       - name: Run go vet
         run: go vet ./cmd/... ./internal/...
       - name: Run modernize
-        run: go tool modernize ./cmd/... ./internal/...
+        run: make modernize
       - name: Run golangci-lint
-        run: go tool golangci-lint run ./cmd/... ./internal/...
+        run: make golangci-lint
       - name: Run gosec
-        run: go tool gosec -quiet -severity medium -confidence medium -exclude-generated -fmt text ./cmd/... ./internal/...
+        run: make gosec
       - name: Run Staticcheck
-        run: go tool staticcheck ./cmd/... ./internal/...
+        run: make staticcheck
 
   vulncheck:
     name: govulncheck
@@ -110,8 +118,13 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
       - run: go mod download
+      - name: Cache pinned analysis tools
+        uses: actions/cache@v6
+        with:
+          path: bin/tools
+          key: tools-${{ runner.os }}-${{ hashFiles('Makefile') }}
       - name: Run govulncheck
-        run: go tool govulncheck ./cmd/... ./internal/...
+        run: make govulncheck
 
   shellcheck:
     name: ShellCheck

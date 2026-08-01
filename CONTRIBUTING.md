@@ -7,7 +7,7 @@ Thank you for your interest in contributing! This guide will help you get starte
 ### Prerequisites
 
 - **Go 1.26.5+** — [Download](https://go.dev/dl/)
-- **golangci-lint** — `go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest`
+- **Analysis tools** — `make tools` installs every linter at the version pinned in the `Makefile` into `bin/tools/`. Do not install them by hand: the pins are what keep local runs and CI in agreement
 - **Docker** (optional) — for container builds and testing
 - **MikroTik router** (optional) — for integration testing
 

@@ -1,6 +1,6 @@
 ---
 title: Building
-description: Build cs-routeros-bouncer from source with Go 1.26.4+, run the test suites and linters, and understand the CI/CD and release process.
+description: Build cs-routeros-bouncer from source with Go 1.26.5+, run the test suites and linters, and understand the CI/CD and release process.
 ---
 
 import {
@@ -13,9 +13,9 @@ import {
 
 ## Prerequisites
 
-- **Go** 1.26.4 or later
+- **Go** 1.26.5 or later
 - **Docker** (for Docker image builds)
-- **golangci-lint** (for linting)
+- **Analysis tools** — installed with `make tools` at the versions pinned in the `Makefile`
 
 ## Building
 
@@ -140,14 +140,17 @@ Integration and functional tests create and delete firewall rules and address-li
 ## Linting
 
 ```bash
-# Install golangci-lint
-go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+# Install every analysis tool at its pinned version into bin/tools/
+make tools
+
+# Show the pinned versions
+make tools-versions
 
 # Run linter
-golangci-lint run
+make golangci-lint
 
 # Run with auto-fix
-golangci-lint run --fix
+./bin/tools/golangci-lint run --fix
 
 # Go vet
 go vet ./...
@@ -197,7 +200,7 @@ The project uses `.golangci.yml` for linter configuration.
 
    ```bash
    go test ./...
-   golangci-lint run
+   make golangci-lint
    ```
 
 3. **Commit with a conventional message**
