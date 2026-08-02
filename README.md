@@ -42,6 +42,25 @@ Existing MikroTik bouncers have significant limitations that this project addres
 | Health endpoint                      |         ❌          |         ❌          |           ✅            |
 | Go (compiled, low resource usage)    |         ✅          |         ✅          |           ✅            |
 
+## Background
+
+This bouncer exists because of a specific setup, not as an exercise. It is the
+enforcement end of a pipeline that starts with a MikroTik router deliberately
+exposing closed ports to catch scanners, and with an nginx tier that slows down
+the ones that get through:
+
+- [Implementing a MikroTik honeypot](https://jmrp.io/blog/006-implementing-mikrotik-honeypot/)
+  — RAW-table detection that turns a scanner's first reconnaissance packet into an
+  address-list entry, and how those events reach CrowdSec.
+- [Implementing a tarpit in nginx](https://jmrp.io/blog/005-implementing-tarpit-nginx/)
+  — the nginx half of the same setup, including a write-up of the failure mode
+  where Brotli silently compressed the tarpit payload below the rate-limit
+  threshold and disabled the throttle for months.
+
+Both run on the author's own network against real traffic; the decisions in this
+bouncer (state reconciliation on restart, individual IP add/remove, origin
+filtering) come from that.
+
 ## Requirements
 
 - **CrowdSec** 1.5+ with LAPI accessible from the bouncer host
