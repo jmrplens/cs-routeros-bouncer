@@ -168,12 +168,21 @@ function yamlList(contents, key, relativePath) {
 	const body = yamlBlock(contents, key, relativePath);
 	const items = [];
 	for (const line of body.split("\n")) {
-		// Captured greedily and trimmed in JS rather than with a lazy group
-		// followed by `[ \t]*$`: those two overlap, so the engine can backtrack
-		// across a long run of trailing whitespace deciding which of them owns
-		// it. Trimming afterwards is unambiguous, linear, and easier to read.
-		const item = /^[ \t]*-[ \t]+(.*)$/.exec(line);
-		if (item) items.push(item[1].trim().replace(/^["']|["']$/g, ""));
+		// Parsed with string operations rather than a pattern. Every regex shape
+		// for "dash, whitespace, rest of line" puts two whitespace-matching
+		// pieces next to each other, and the engine can backtrack over how the
+		// run between them is split. Slicing is unambiguous by construction,
+		// obviously linear, and says what it does.
+		const trimmed = line.trim();
+		if (!trimmed.startsWith("-")) continue;
+		const rest = trimmed.slice(1);
+		// A bare `-` opens a nested block, and `-foo` is not a list item at all;
+		// only `- value` is. Preserves the previous pattern's `[ \t]+`.
+		if (rest === "" || (rest[0] !== " " && rest[0] !== "\t")) continue;
+		const value = rest.trim();
+		if (value !== "") {
+			items.push(value.replace(/^["']|["']$/g, ""));
+		}
 	}
 	if (items.length === 0) {
 		throw new Error(
