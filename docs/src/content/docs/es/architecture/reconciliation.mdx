@@ -40,6 +40,40 @@ Por defecto, la reconciliación se ejecuta al arrancar y después cada `15m`. Co
 
 </Steps>
 
+La comparación se hace por familia de protocolo y por address-list. Entran dos conjuntos —lo que CrowdSec dice que debe estar bloqueado y lo que el router tiene ahora mismo— y salen dos listas.
+
+```mermaid
+flowchart TB
+    accTitle: La comparación de reconciliación: entra la instantánea, entra el estado del router, salen adiciones y eliminaciones
+    accDescr: Una instantánea de decisiones activas se convierte en el conjunto deseado, una entrada por decisión de esta familia de protocolo, indexada por dirección normalizada. La address-list del router se convierte en el conjunto presente, pero solo con las entradas cuyo comentario empieza por el prefijo configurado; las entradas con cualquier otro comentario no se listan, no se comparan y no se eliminan nunca. Comparar ambos conjuntos dirección a dirección da las entradas que hay que añadir y las que hay que eliminar. Las adiciones pasan por un script de RouterOS de hasta cien entradas, y si un script falla se recurre a una llamada a la API por entrada; las eliminaciones pasan por el pool de conexiones cuando se pudo abrir, y una a una por la conexión principal cuando no. Una vez cambiado el router, la caché de direcciones en memoria y las métricas de reconciliación se actualizan con el resultado.
+    SNAP["Decisiones activas: la ráfaga de arranque, o una instantánea nueva"] -.-> WANT["Deseado: una entrada por decisión de esta familia"]
+    LIST["La address-list del router"] -.-> HAVE["Presente: entradas cuyo comentario empieza por comment_prefix"]
+    LIST -. "cualquier otro comentario" .-> FOREIGN["No se listan, no se comparan, no se eliminan"]
+    WANT -.-> DIFF{"comparar dirección a dirección"}
+    HAVE -.-> DIFF
+    DIFF -. "deseada y no presente" .-> TOADD["Para añadir"]
+    DIFF -. "presente y no deseada" .-> TOREM["Para eliminar"]
+    TOADD -.-> BULK["Adición masiva: un script por cada 100 entradas"]
+    BULK -. "el script falla" .-> ONEBY["Una llamada por entrada en su lugar"]
+    TOREM -.-> DELE["Eliminación: por el pool, o una a una"]
+    BULK --> ADDED["Entradas añadidas"]
+    ONEBY --> ADDED
+    DELE --> REMOVED["Entradas eliminadas"]
+    ADDED -.-> CACHE["Caché de direcciones y métricas actualizadas"]
+    REMOVED -.-> CACHE
+
+    CACHE ~~~ LEG
+    subgraph LEG["Leyenda"]
+        direction TB
+        LA["continua"] --> LB["una escritura: cambia el estado del router"]
+        LC["discontinua"] -.-> LD["una lectura o una comprobación: el router no se toca"]
+    end
+```
+
+El filtro por prefijo sobre el conjunto _presente_ es lo que hace seguro apuntar la reconciliación a una lista compartida. El bouncer pide a RouterOS la lista por su nombre y después se queda solo con las entradas cuyo comentario empieza por el `comment_prefix` configurado, así que una dirección que añadiste a mano —o que mantiene otra herramienta— ni siquiera entra en la comparación, y la rama de «presente y no deseada» no puede alcanzarla.
+
+La comparación es por dirección normalizada, no por decisión: varias decisiones sobre la misma IP se colapsan en una sola entrada deseada, y solo la última leída aporta el timeout y el comentario con los que se escribe.
+
 ## Rendimiento
 
 Medido en un MikroTik RB5009UG+S+ (ARM64, 4 núcleos @ 1400 MHz, 1 GB de RAM, RouterOS 7.22.1) con `mikrotik.pool_size: 10`:

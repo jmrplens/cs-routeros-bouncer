@@ -56,6 +56,44 @@ La colocación es local a cada menú. Un bloque de `filter` se posiciona dentro 
 
 El bouncer puede colocar su bloque gestionado (las reglas relacionadas que crea y mueve juntas) arriba, abajo, en una posición numérica de `print` de RouterOS, o relativa a un comentario existente perteneciente a otra regla. Si el bloqueo de salida está habilitado, el bloque de output se mueve con el mismo orden interno. Por defecto, el bouncer reutiliza la misma estrategia de colocación para IPv4 e IPv6. Las anulaciones por tabla y por protocolo pueden enviar los bloques de `filter`, `raw`, IPv4 e IPv6 a ubicaciones distintas. La precedencia es: colocación global, anulación global de tabla, anulación de protocolo y, por último, anulación de tabla del protocolo.
 
+La colocación se calcula sobre los **candidatos**: todas las reglas que ya están en ese menú y cuyo comentario no lleva la firma `@cs-routeros-bouncer`. Las reglas del propio bouncer quedan fuera de esa cuenta, así que una `position` numérica significa el mismo lugar esté o no el bloque ya en el router. El diagrama siguiente es el mecanismo completo, reintentos incluidos: cada peldaño que falla cae al siguiente, y el último peldaño siempre es _dejar el bloque donde RouterOS lo añadió_. La colocación nunca aborta el arranque.
+
+```mermaid
+flowchart TB
+    accTitle: La escalera de colocación de reglas, con sus reintentos y sus alternativas
+    accDescr: Cuando ya existen todas las reglas del bloque, el bouncer lee la estrategia configurada. La estrategia bottom termina ahí. Cualquier otra estrategia lista primero las reglas de ese menú de firewall y se queda con las que no llevan la firma del bouncer como candidatas; si el listado falla, el bloque se queda al final. Las estrategias top y position apuntan a la candidata cero o al índice configurado, y un índice más allá de la última candidata deja el bloque al final. Las estrategias por comentario buscan un ancla, por coincidencia exacta o por subcadena, y apuntan al ancla misma en before_comment o a la candidata siguiente en after_comment; si en after_comment el ancla es la última candidata, el bloque se queda al final. Un ancla que no aparece, o un movimiento que RouterOS rechaza, recurre a top de manera predeterminada o a bottom si así se configura. El movimiento recorre la lista de candidatas hacia abajo, probando la siguiente cada vez que RouterOS lo rechaza, y deja el bloque al final cuando ya no queda ninguna.
+    A["Ya existen todas las reglas del bloque"] --> S{"estrategia"}
+    S -. "bottom" .-> B["Se queda al final"]
+    S -. "cualquier otra" .-> L["Listar las reglas de este menú"]
+    L -. "el listado falla" .-> B
+    L -. "candidatas" .-> K{"¿por ancla?"}
+    K -. "no" .-> I["Destino: candidata 0, o el índice"]
+    K -. "sí" .-> AN{"¿aparece el ancla?"}
+    AN -. "sí" .-> J["Destino: el ancla, o la siguiente"]
+    AN -. "no" .-> F{"alternativa"}
+    F -. "top" .-> I
+    F -. "bottom" .-> B
+    I -. "índice demasiado alto" .-> B
+    J -. "el ancla es la última" .-> B
+    I --> M["Mover el bloque delante de ella"]
+    J --> M
+    M --> P["Bloque colocado"]
+    M -. "rechazado" .-> R["Siguiente candidata hacia abajo"]
+    M -. "rechazado, con ancla" .-> F
+    R --> M
+    R -. "no queda ninguna" .-> B
+
+    subgraph LEG["Leyenda"]
+        direction TB
+        LA["continua"] --> LB["una escritura: cambia el estado del router"]
+        LC["discontinua"] -.-> LD["una lectura o una comprobación: el router no se toca"]
+    end
+```
+
+Dos peldaños merecen una segunda lectura. El reintento es por candidata, no por intento: cuando RouterOS rechaza mover el bloque delante de una regla —una regla dinámica o integrada, por ejemplo— el bouncer apunta a la regla siguiente y vuelve a intentarlo, y por eso un bloque `top` puede acabar unas posiciones más abajo de lo que su nombre sugiere. Y `fallback` solo existe para las estrategias por comentario: una `position` numérica más allá del final no tiene ancla que fallar, así que simplemente se añade al final.
+
+El movimiento tampoco es atómico para todo el bloque. Cada regla se mueve por separado, en el orden del bloque, así que un fallo a mitad de camino puede dejar el bloque partido alrededor del destino; el orden lo completa la siguiente pasada de colocación.
+
 | Estrategia       | Comportamiento                                                                                                                                                                                                    |
 | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `top`            | Mueve el bloque antes de la primera regla utilizable que no sea del bouncer. Si RouterOS rechaza la posición, por ejemplo antes de reglas dinámicas o integradas, el bouncer reintenta con posiciones inferiores. |
@@ -115,7 +153,7 @@ Cuando el bouncer recibe SIGTERM o SIGINT:
 Este diseño implica que la protección continúa después de detener el bouncer, durante lo que le quede de timeout a cada entrada, y que un reinicio rápido nunca deja el router desprotegido en ese intervalo. También implica que no hay que ejecutar ningún borrado masivo al apagar.
 
 :::caution
-Una decisión que no lleva duración se escribe **sin timeout alguno**. Esa entrada no expira: permanece en la address-list hasta que la siguiente reconciliación la retire, o hasta que la elimines a mano. Las reglas desaparecen con el daemon; esas entradas no.
+Una decisión cuya duración resuelve a cero o menos se escribe **sin timeout alguno** —CrowdSec sí emite duraciones restantes negativas—. (Una decisión que no trae campo de duración se descarta en `parseDecisionBatch` y nunca llega al router.) Esa entrada no expira: permanece en la address-list hasta que la siguiente reconciliación la retire, o hasta que la elimines a mano. Las reglas desaparecen con el daemon; esas entradas no.
 :::
 
 <LinkCard

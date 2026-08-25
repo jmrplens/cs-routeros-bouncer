@@ -1,21 +1,76 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="cs-routeros-bouncer logo">
-  <defs>
-    <clipPath id="shield"><path d="M128 26 L214 54 L214 130 C214 186 182 220 128 238 C74 220 42 186 42 130 L42 54 Z"/></clipPath>
-    <mask id="cuts" maskUnits="userSpaceOnUse" x="0" y="0" width="256" height="256">
-      <rect width="256" height="256" fill="#fff"/>
-      <rect x="124.5" y="0" width="7.0" height="256" fill="#000"/>
-      <circle cx="128.0" cy="170.0" r="23.0" fill="#000"/>
-      <path d="M 128.0 170.0 L 21.71 106.14 A 124.00 124.00 0 0 1 234.29 106.14 Z" fill="#000"/>
-    </mask>
-  </defs>
-  <g clip-path="url(#shield)">
-    <g mask="url(#cuts)">
-      <rect class="p" x="0" y="0" width="128" height="256" fill="#7986CB"/>
-      <rect class="a" x="128" y="0" width="128" height="256" fill="#26C6BE"/>
-    </g>
-    <circle class="a" cx="128.0" cy="170.0" r="14.0" fill="#26C6BE"/>
-    <path class="a" d="M 93.60 145.91 A 42.0 42.0 0 0 1 162.40 145.91" fill="none" stroke="#26C6BE" stroke-width="18.0" stroke-linecap="round"/>
-    <path class="a" d="M 67.38 127.56 A 74.0 74.0 0 0 1 188.62 127.56" fill="none" stroke="#26C6BE" stroke-width="18.0" stroke-linecap="round"/>
-    <path class="a" d="M 41.17 109.20 A 106.0 106.0 0 0 1 214.83 109.20" fill="none" stroke="#26C6BE" stroke-width="18.0" stroke-linecap="round"/>
-  </g>
+	<!--
+		THE MARK — a shield, a dot, and three concentric arcs rising from it:
+		a packet, and the rules a RouterOS firewall lays across its path. The
+		geometry is unchanged from the drawing the committed rasters and the
+		CrowdSec Hub listing were cut from; only its colour has moved.
+
+		IT CARRIES NO BRAND COLOUR OF ITS OWN. It used to: two hex literals
+		per file (CrowdSec indigo beside MikroTik teal), in a palette no
+		stylesheet declared, so `scripts/check-contrast.mjs` could not see
+		them and they drifted. Now the elements carry class hooks only, and
+		`src/styles/brand.css` paints them from the project's own colour
+		tokens when the mark is INLINED into the page, which is how the
+		header lockup renders it, via `brandSvg()` in `src/lib/brand.ts`.
+		(Those token names are spelled with a double hyphen, which an XML
+		comment may not contain — hence the circumlocution. brandSvg()
+		rejects a file that gets this wrong: a comment that breaks XML
+		well-formedness leaves the header fine, because inlining strips the
+		comments, and silently breaks every <img> copy of the mark.)
+
+		The <style> below is the STANDALONE path, and only that: this file is
+		also served as a plain <img> by the home-page hero, where no page
+		token can reach it. `brandSvg()` deletes the whole block when it
+		inlines the mark — a <style> inside inline SVG applies to the entire
+		host document, which is a bug, not a fallback.
+
+		The standalone colours are the UA's own ink and subordinate tone
+		rather than a hand-copied hex pair, so there is nothing here that can
+		drift from theme.css. `color-scheme: dark` pins them: CanvasText
+		resolves white and GrayText a light grey NO MATTER what the reader's
+		OS prefers, which is what this file needs — Starlight picks between
+		this file and logo-light.svg from the SITE theme, and an OS preference
+		that disagreed would otherwise paint black ink on the near-black page.
+		(Verified in Chromium and WebKit; logo-light.svg pins `light`.)
+	-->
+	<style>
+		svg {
+			color-scheme: dark;
+		}
+		.rb-mark__body,
+		.rb-mark__dot {
+			fill: CanvasText;
+		}
+		.rb-mark__arc {
+			stroke: GrayText;
+		}
+	</style>
+	<defs>
+		<!--
+			These two ids are document-global once the mark is inlined, so
+			`brandSvg()` suffixes them per call site. Two lockups on one page
+			would otherwise both resolve `url(#rb-mark-shield)` to the first.
+		-->
+		<clipPath id="rb-mark-shield">
+			<path d="M128 26 L214 54 L214 130 C214 186 182 220 128 238 C74 220 42 186 42 130 L42 54 Z"/>
+		</clipPath>
+		<!--
+			Mask mechanics, not palette: white shows, black cuts. The cuts are
+			the centre channel, the socket around the dot, and the wedge the
+			arcs radiate through.
+		-->
+		<mask id="rb-mark-cuts" maskUnits="userSpaceOnUse" x="0" y="0" width="256" height="256">
+			<rect width="256" height="256" fill="white"/>
+			<rect x="124.5" y="0" width="7.0" height="256" fill="black"/>
+			<circle cx="128.0" cy="170.0" r="23.0" fill="black"/>
+			<path d="M 128.0 170.0 L 21.71 106.14 A 124.00 124.00 0 0 1 234.29 106.14 Z" fill="black"/>
+		</mask>
+	</defs>
+	<g clip-path="url(#rb-mark-shield)">
+		<rect class="rb-mark__body" mask="url(#rb-mark-cuts)" x="0" y="0" width="256" height="256"/>
+		<circle class="rb-mark__dot" cx="128.0" cy="170.0" r="14.0"/>
+		<path class="rb-mark__arc" d="M 93.60 145.91 A 42.0 42.0 0 0 1 162.40 145.91" fill="none" stroke-width="18.0" stroke-linecap="round"/>
+		<path class="rb-mark__arc" d="M 67.38 127.56 A 74.0 74.0 0 0 1 188.62 127.56" fill="none" stroke-width="18.0" stroke-linecap="round"/>
+		<path class="rb-mark__arc" d="M 41.17 109.20 A 106.0 106.0 0 0 1 214.83 109.20" fill="none" stroke-width="18.0" stroke-linecap="round"/>
+	</g>
 </svg>

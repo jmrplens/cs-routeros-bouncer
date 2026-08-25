@@ -9,6 +9,47 @@ How the bouncer processes incoming CrowdSec decisions.
 
 ## Processing flow
 
+A decision can be dropped in two places, and only two: by the **Local API**, which never sends what the bouncer's query excludes, and by the **bouncer itself**, which checks a handful of things before it touches RouterOS. There is no third stage — no in-process rule pipeline, no per-decision policy. Everything that survives both lanes ends up in an address list, and nothing else does.
+
+```mermaid
+flowchart TB
+    accTitle: Where a CrowdSec decision can be dropped before it reaches the router
+    accDescr: Three lanes. In lane one the Local API applies the scope, origin and scenario filters carried on the bouncer's query, so anything they exclude is never sent and nothing local records it. In lane two the bouncer drops a new decision that carries no duration, one whose type is not in the enforced set, and one for a disabled protocol family, all without a log line; a duration it cannot parse is warned about and enforced as four hours rather than dropped, and a ban whose address is already in the in-memory cache is skipped without an API call. An expiry is skipped when its address is not in the cache or no longer on the router. In lane three, what is left is added to or removed from the address list.
+    subgraph LAPI["Lane 1 · CrowdSec LAPI, server side"]
+        ALL["Every decision the LAPI holds"]
+        ALL -. "scope, origin, scenario" .-> N1["Never sent, never logged"]
+        ALL -. "matches the query" .-> SENT["Sent to the bouncer"]
+    end
+    subgraph BOUNCER["Lane 2 · Bouncer, in process"]
+        SENT -. "ban" .-> D{"duration?"}
+        D -. "missing" .-> N2["Dropped, no log line"]
+        D -. "unparseable" .-> W["Warned, enforced as 4h"]
+        D -. "present" .-> T{"type enforced?"}
+        W -.-> T
+        T -. "no" .-> N2
+        T -. "yes" .-> PR{"family enabled?"}
+        PR -. "no" .-> N2
+        PR -. "yes" .-> CA{"in the cache?"}
+        CA -. "yes: duplicate ban" .-> N3["Skipped, entry left as it is"]
+        SENT -. "expiry" .-> CD{"in the cache, and still on the router?"}
+        CD -. "no" .-> N3
+        N3 ~~~ CD
+    end
+    subgraph ROUTER["Lane 3 · MikroTik"]
+        CA -- "no" --> ADD["Added to the address list"]
+        CD -- "yes" --> DEL["Removed from the address list"]
+    end
+
+    ADD ~~~ LEG
+    subgraph LEG["Legend"]
+        direction TB
+        LA["solid"] --> LB["a write: router state changes"]
+        LC["dashed"] -.-> LD["a read or a test: router untouched"]
+    end
+```
+
+Two details the lanes flatten. The duration requirement applies to bans and to every decision in a reconciliation snapshot, but not to expiries — those routinely arrive without one. And the expiry lane hides a read: the cache is checked first, and only if the address is in it does the bouncer look the entry up on the router, which is where an entry that expired on MikroTik in the meantime drops out.
+
 <Steps>
 
 1. **Receive decision from LAPI**
@@ -26,9 +67,11 @@ How the bouncer processes incoming CrowdSec decisions.
    | `scenarios_containing`     | `crowdsec.scenarios_containing`     | empty — no restriction   |
    | `scenarios_not_containing` | `crowdsec.scenarios_not_containing` | empty — nothing excluded |
 
+   The periodic reconciliation snapshot sends one more: `type=ban`, and only while `crowdsec.supported_decisions_types` is left at its default. The Local API matches that parameter exactly rather than as a set, so a wider configured set has to be fetched whole and narrowed in the bouncer instead. The live stream carries no type filter at all, which is why the type check below is the bouncer's own.
+
 3. **Parse the decision**
 
-   The bouncer keeps only decisions of type `ban`; any other type is discarded silently. New decisions that carry no duration are discarded as well. A duration that cannot be parsed is logged as a warning (`failed to parse decision duration`) and falls back to 4h. Each decision that survives parsing **on the live stream** is logged at debug level as `new decision` or `deleted decision`. The periodic reconciliation snapshot parses decisions the same way but logs nothing per decision.
+   The bouncer keeps only the decision types it is configured to enforce — `ban` unless `crowdsec.supported_decisions_types` names others — and any other type is discarded silently. New decisions that carry no duration are discarded as well. A duration that cannot be parsed is logged as a warning (`failed to parse decision duration`) and falls back to 4h. Each decision that survives parsing **on the live stream** is logged at debug level as `new decision` or `deleted decision`. The periodic reconciliation snapshot parses decisions the same way but logs nothing per decision.
 
 4. **Apply action**
    - **Ban** → Add IP/range to the MikroTik address list

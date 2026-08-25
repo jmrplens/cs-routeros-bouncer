@@ -1,0 +1,107 @@
+---
+/**
+ * Renders a light/dark image pair from the light half of it.
+ *
+ * The repository keeps theme-paired screenshots side by side —
+ * `grafana-dashboard-light.png` and `grafana-dashboard-dark.png` — so the dark
+ * twin is DERIVED here rather than named again at every call site: a page that
+ * spells both paths out is a page where one of them can be swapped and the
+ * other forgotten, and the mismatch only shows in one theme.
+ *
+ *   <ThemeImage src="grafana-dashboard-light.png" alt="…" caption="…" />
+ *
+ * Three things this refuses to do quietly, because each of them ships as a
+ * defect that nobody sees in the theme they happen to be using:
+ *
+ *   - an EMPTY alt. A screenshot is content here, never decoration; an empty
+ *     alt would hide it from a screen reader entirely.
+ *   - a NO-OP derivation. If `src` carries no `-light`/`_light` marker the
+ *     derived name is the same file, and the "pair" is one image shown twice.
+ *   - a MISSING twin. Better a failed build than a page that renders a broken
+ *     image for half its readers.
+ *
+ * Both variants are marked `loading="lazy"`, and that is load-bearing rather
+ * than habit: `display: none` suppresses a LAZY fetch, but not an eager one.
+ * An eager pair downloads both palettes on every visit and throws one away —
+ * for this pair, roughly three quarters of a megabyte of it.
+ *
+ * Sizes come off disk. Astro reads the intrinsic width and height of an
+ * imported image at build time, and they are emitted as attributes so the
+ * browser reserves the box before the bytes arrive instead of reflowing the
+ * page around a tall screenshot. `src/styles/diagram.css` owns which of the
+ * two is visible, keyed off the same `data-theme` attribute as the palette.
+ */
+import { Image } from "astro:assets";
+// The type is a global in Astro projects, but only for the type-checker: ESLint's
+// `no-undef` sees an undeclared name. Importing it satisfies both.
+import type { ImageMetadata } from "astro";
+
+interface Props {
+	/** File name of the LIGHT variant, relative to `src/assets/`. */
+	src: string;
+	/** Alternative text. Describes the image; must not be empty. */
+	alt: string;
+	/** Optional caption, rendered under the pair. */
+	caption?: string;
+}
+
+const { src, alt, caption } = Astro.props;
+
+if (!alt?.trim()) {
+	throw new Error(
+		`ThemeImage: \`${src}\` was given no alt text. These images carry ` +
+			"information, so an empty alt is never the right answer here.",
+	);
+}
+
+const darkSrc = src.replace(/([-_])light(\.[^.]+)$/, "$1dark$2");
+if (darkSrc === src) {
+	throw new Error(
+		`ThemeImage: cannot derive a dark twin from \`${src}\`. Pass the LIGHT ` +
+			"variant, named `<name>-light.<ext>` or `<name>_light.<ext>`.",
+	);
+}
+
+// Eager so the pair is resolved at build time, which is also what makes a
+// missing twin a build failure rather than a 404 in one theme.
+const assets = import.meta.glob<{ default: ImageMetadata }>(
+	"../assets/*.{png,jpg,jpeg,webp,avif,gif,svg}",
+	{ eager: true },
+);
+
+/**
+ * The imported asset for one file name in `src/assets/`.
+ * @param {string} name file name, e.g. `grafana-dashboard-light.png`
+ */
+function asset(name: string): ImageMetadata {
+	const entry = assets[`../assets/${name}`];
+	if (!entry) {
+		throw new Error(
+			`ThemeImage: \`src/assets/${name}\` does not exist. A theme pair needs ` +
+				"both halves committed.",
+		);
+	}
+	return entry.default;
+}
+
+const light = asset(src);
+const dark = asset(darkSrc);
+---
+
+<figure class="theme-image">
+	<Image
+		class="theme-image__light"
+		src={light}
+		alt={alt}
+		loading="lazy"
+		decoding="async"
+	/>
+	<Image
+		class="theme-image__dark"
+		src={dark}
+		alt={alt}
+		loading="lazy"
+		decoding="async"
+	/>
+	{caption && <figcaption>{caption}</figcaption>}
+</figure>

@@ -1,0 +1,109 @@
+/* ============================================================
+   sidebar.css — the levels of the navigation tree.
+   ============================================================
+
+   REGISTERED AFTER chrome.css, which already owns two sidebar
+   rules: the `aria-current` accent edge and the 44 px coarse-
+   pointer touch target. Nothing here overrides either. This
+   sheet only adds the level distinctions the tree never had —
+   before it, the entire sidebar styling was that one
+   `aria-current` rule.
+
+   WHAT THE TREE ACTUALLY IS. Read out of the `sidebar` array in
+   astro.config.mjs and confirmed against the built markup in
+   `dist/`:
+
+     ul.top-level
+       ├─ li > details > summary > .group-label > .large  5 groups
+       │    └─ ul > li > a                               25 pages
+       └─ li > a.large                                    2 standalone
+                                                          links
+
+   32 rows in all, from 7 top-level entries.
+
+   TWO levels, not three: no group in the tree contains another
+   group. The child rules below are therefore written against
+   `ul ul` rather than a fixed depth — a third level, if one is
+   ever added, nests inside that selector and inherits the same
+   rail and indent instead of needing new selectors.
+
+   No class is renamed or removed here. Every hook this sheet
+   uses (`top-level`, `group-label`, `large`) is emitted by
+   Starlight's SidebarSublist.astro and appears in `dist/` beside
+   its `astro-*` scope class; nothing in `src/content/` writes
+   any of them.
+
+   CASCADE. Starlight's sidebar CSS lives in
+   `@layer starlight.core`. This sheet is unlayered, like every
+   other sheet in `customCss`, so a plain selector wins over the
+   framework's without `!important`.
+
+   COLOUR. No literals: every value is a `--rb-*` token from
+   theme.css or an `--sl-*` name Starlight derives from them, so
+   scripts/check-contrast.mjs still sees the palette these rules
+   paint.
+   ============================================================ */
+
+/* ------------------------------------------------------------------
+   LEVEL 1 — GROUPS AS BLOCKS
+   Starlight separates top-level entries by 0.75rem (0.5rem from
+   50rem up), which is barely more than the gap between the pages
+   inside a group, so the seven top-level entries read as one
+   32-row list. Widen
+   the gap and close each header with a hairline, and each group
+   becomes a block a reader can skip past in one movement.
+   ------------------------------------------------------------------ */
+nav.sidebar .top-level > li + li {
+	margin-top: 1.5rem;
+}
+
+nav.sidebar summary {
+	/* Block padding only — Starlight's inline padding is the shared
+	   `--sl-sidebar-item-padding-inline`, and keeps the header's text
+	   aligned with the links under it. */
+	padding-block: 0.15rem 0.45rem;
+	margin-block-end: 0.5rem;
+	border-block-end: 1px solid var(--rb-border);
+}
+
+/* The group headers and the two standalone top-level links carry the
+   same weight: both are level 1. They stay visually distinct anyway —
+   a header has a caret and a hairline, a link has neither — so the
+   weight says "top level" and the rest says "heading or destination".
+   Deliberately NOT `text-transform: uppercase`: Safari/VoiceOver reads
+   some transformed labels letter by letter, and this is the primary
+   navigation. */
+nav.sidebar .group-label > .large,
+nav.sidebar .top-level > li > a.large {
+	font-weight: 700;
+	letter-spacing: 0.01em;
+}
+
+/* ------------------------------------------------------------------
+   LEVEL 2 — PAGES BEHIND A RAIL
+   Starlight already draws a rail on nested items, but it paints it
+   `--sl-color-hairline-light`, which this palette resolves to
+   `--sl-color-gray-6` in the light theme — `--rb-surface`, #f5f8f9,
+   against a #ffffff sidebar. That is a 1.04:1 line: it is not a
+   subtle rail, it is an invisible one. `--rb-border` is the token
+   this project declares for exactly this job and is restated in both
+   theme blocks.
+   ------------------------------------------------------------------ */
+nav.sidebar ul ul li {
+	margin-inline-start: 0.4rem;
+	padding-inline-start: 0.7rem;
+	border-inline-start-color: var(--rb-border);
+}
+
+nav.sidebar ul ul a {
+	padding-block: 0.4em;
+}
+
+/* The rail segment beside the hovered or keyboard-focused entry
+   steps up one stop. It is a second, redundant signal — Starlight
+   already lifts the label to `--sl-color-white` on hover and
+   a11y.css draws the focus ring — so nothing depends on noticing it. */
+nav.sidebar ul ul li:has(> a:hover),
+nav.sidebar ul ul li:has(> a:focus-visible) {
+	border-inline-start-color: var(--rb-border-strong);
+}

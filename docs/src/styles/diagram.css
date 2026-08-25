@@ -1,0 +1,113 @@
+/* ============================================================
+   diagram.css — figures: mermaid diagrams and theme-paired images.
+   ============================================================
+
+   THE DRAWING CONVENTION. Every diagram on this site is read the
+   same way, and the rule is written here because this is the file
+   a contributor opens when a diagram looks wrong:
+
+     SOLID edge   a WRITE. The bouncer changes router state:
+                  adding an address-list entry, moving a rule,
+                  removing one.
+     DASHED edge  a READ, a filter, or a discard. Nothing on the
+                  router changes: streaming decisions from the
+                  LAPI, listing an address list, checking drift.
+
+   Three channels carry that distinction, so a diagram survives
+   greyscale, colour vision deficiency and a black-and-white
+   printout, in that order of importance:
+
+     1. the line pattern      (solid / dashed — always present)
+     2. colour                (`themeCSS` at the rehypeMermaid
+                              registration in astro.config.mjs
+                              re-points dashed edges to the accent;
+                              solid edges keep `lineColor`)
+     3. a legend INSIDE each diagram, drawn from the same two edge
+        kinds, so it is part of the image and survives being
+        copied, printed or embedded elsewhere.
+
+   Nothing here can reach inside a diagram: rehype-mermaid renders
+   with `strategy: "img-svg"`, so each diagram is an <img> with an
+   SVG data URI, and a page stylesheet stops at its border. Colour
+   inside the drawing is set at build time — see astro.config.mjs.
+   This file styles the BOX around it.
+
+   Which is also why `chrome.css`'s `.rehype-mermaid svg` rule does
+   nothing: that class only exists under the `inline-svg` strategy,
+   and no element in `dist/` carries it. The rules below are what
+   actually reaches a diagram on this site.
+
+   One inherited constraint still holds, and it is the reason the
+   selectors below never touch `background`: the light and dark
+   renders are swapped by flipping the `media` attribute of the
+   <picture>'s dark <source>, so a background painted on the box
+   would stay put while the drawing on it changed.
+
+   NO COLOUR LITERALS. `src/styles/theme.css` owns the palette and
+   `scripts/check-contrast.mjs` gates it by resolving `--rb-*`
+   tokens; a raw hex here is invisible to that gate.
+   ------------------------------------------------------------ */
+
+/* ---- Mermaid figures ----------------------------------------
+   The <picture> pairs a light and a dark render of the same
+   diagram. Both are line art on the page colour, so they need the
+   page to give them room, not a card: a filled panel behind a
+   diagram whose own background is already the page colour just
+   draws a second, slightly-off rectangle. */
+.sl-markdown-content picture:has(img[id^="mermaid-"]) {
+	display: block;
+	margin-block: 1.5rem;
+}
+
+.sl-markdown-content img[id^="mermaid-"] {
+	display: block;
+	max-width: 100%;
+	height: auto;
+	margin-inline: auto;
+}
+
+/* ---- Theme-paired images (ThemeImage.astro) -----------------
+   Two <img> elements, not a <picture>: the site's theme is a
+   `data-theme` attribute the reader can set by hand, and a
+   <source media="(prefers-color-scheme: …)"> would keep showing
+   the operating system's choice after that. Selecting on the same
+   attribute theme.css keys off makes the pair follow the toggle.
+
+   `:root` is the DARK theme here, exactly as in theme.css: the
+   dark variant is the one shown until `data-theme="light"` says
+   otherwise. */
+.theme-image {
+	display: block;
+	margin-block: 1.5rem;
+}
+
+.theme-image img {
+	display: block;
+	width: 100%;
+	height: auto;
+	border: 1px solid var(--rb-border);
+	border-radius: var(--rb-radius);
+}
+
+/* Specificity, not order, decides here: `.theme-image img` is (0,1,1) and
+   would beat a bare `.theme-image__light` at (0,1,0), leaving the light
+   variant visible in the dark theme and rendering the pair twice. Matching
+   the element keeps both selectors at the same weight. */
+.theme-image img.theme-image__light {
+	display: none;
+}
+
+:root[data-theme="light"] .theme-image__dark {
+	display: none;
+}
+
+:root[data-theme="light"] .theme-image__light {
+	display: block;
+}
+
+.theme-image figcaption {
+	margin-block-start: 0.5rem;
+	color: var(--sl-color-gray-3);
+	font-size: var(--sl-text-sm);
+	text-align: center;
+}

@@ -215,11 +215,171 @@ const personNode = (() => {
 	};
 })();
 
+/* --- Mermaid, in the project palette ------------------------------------
+ *
+ * Every diagram is rendered twice — once light, once dark — and rehype-mermaid
+ * wraps the pair in a <picture> whose dark <source> the theme-swap script
+ * further down toggles. Both renders are coloured from `src/styles/theme.css`,
+ * READ here rather than restated: a hex copied into this file is a second
+ * palette, and a second palette drifts the first time the real one moves.
+ *
+ * In that sheet `:root` carries the DARK palette and `:root[data-theme="light"]`
+ * overrides it, so the light palette is base + overrides — the same reading
+ * `scripts/check-contrast.mjs` performs on the same file.
+ */
+const themeSheet = fs.readFileSync(
+	new URL("./src/styles/theme.css", import.meta.url),
+	"utf8",
+);
+
+/**
+ * The `--rb-*` stops declared in one top-level block of theme.css.
+ *
+ * Only blocks whose selector starts a line are read, which is what keeps the
+ * indented `:root` overrides inside `@media (prefers-contrast: more)` out: that
+ * block is an opt-in override, not the palette this site renders by default.
+ *
+ * @param {string} selector exact selector text, at the start of a line
+ * @returns {Record<string, string>} token name (without the `--rb-` prefix) → hex
+ */
+function paletteBlock(selector) {
+	const source = themeSheet.replaceAll(/\/\*[\s\S]*?\*\//g, "");
+	const block = new RegExp(
+		`^${selector.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\{([^}]*)\\}`,
+		"m",
+	).exec(source);
+	if (block === null) {
+		throw new Error(`no \`${selector}\` block in src/styles/theme.css`);
+	}
+	return Object.fromEntries(
+		[...block[1].matchAll(/--rb-([\w-]+):\s*(#[0-9a-fA-F]{3,8})\s*;/g)].map(
+			(match) => [match[1], match[2]],
+		),
+	);
+}
+
+const PALETTES = {
+	dark: paletteBlock(":root"),
+	light: {
+		...paletteBlock(":root"),
+		...paletteBlock(':root[data-theme="light"]'),
+	},
+};
+
+/**
+ * The mermaid config for one colour scheme.
+ *
+ * `theme: "base"` is the built-in theme meant to be customised through
+ * `themeVariables`; the others derive their own from a handful of seeds and
+ * overwrite most of what is passed in. A MISSPELLED variable name is not an
+ * error in mermaid: it is dropped in silence and the stock colour ships. Half
+ * of that is caught here — every value goes through `stop()`, which throws on a
+ * token theme.css does not declare — but nothing checks the KEYS, so after
+ * editing this map, decode one built diagram out of `dist/` (the `srcset` of a
+ * `<picture><source>` is a percent-encoded SVG) and confirm the palette is
+ * really in the SVG's own `<style>` block. A mermaid-stock grey there means a
+ * key above is misspelled.
+ *
+ * When you grep, mind the form: `themeVariables` values survive as the hex
+ * written here, but everything routed through `themeCSS` goes through the
+ * browser's CSSOM, which rewrites colours — the accent comes out of the build
+ * as an `rgb(r, g, b)` triplet rather than the `#rrggbb` theme.css declares, so
+ * grepping the SVG for the hex alone reads as a failure when the colour is
+ * right there.
+ *
+ * THE DRAWING CONVENTION, which the diagrams and their legends restate:
+ *   SOLID edge  = a WRITE. Router state changes.
+ *   DASHED edge = a READ, a filter or a discard. The router is untouched.
+ * Line pattern carries it, colour repeats it (`themeCSS` below), and every
+ * diagram prints a legend — so the distinction survives greyscale, colour
+ * vision deficiency and a black-and-white printout.
+ *
+ * @param {"dark" | "light"} scheme
+ * @returns {Record<string, unknown>} a mermaid config
+ */
+function mermaidTheme(scheme) {
+	const palette = PALETTES[scheme];
+	/** @param {string} name */
+	const stop = (name) => {
+		const value = palette[name];
+		if (value === undefined) {
+			throw new Error(`theme.css declares no --rb-${name} for ${scheme}`);
+		}
+		return value;
+	};
+	return {
+		theme: "base",
+		themeVariables: {
+			background: stop("page"),
+			primaryColor: stop("surface-raised"),
+			primaryBorderColor: stop("border-strong"),
+			primaryTextColor: stop("heading"),
+			secondaryColor: stop("surface"),
+			secondaryBorderColor: stop("border"),
+			secondaryTextColor: stop("heading"),
+			tertiaryColor: stop("surface"),
+			tertiaryBorderColor: stop("border"),
+			tertiaryTextColor: stop("heading"),
+			// Solid edges — writes. The highest-emphasis stop the palette has.
+			lineColor: stop("heading"),
+			textColor: stop("body"),
+			mainBkg: stop("surface-raised"),
+			nodeBorder: stop("border-strong"),
+			nodeTextColor: stop("heading"),
+			clusterBkg: stop("surface"),
+			clusterBorder: stop("border"),
+			titleColor: stop("heading"),
+			edgeLabelBackground: stop("page"),
+			// Sequence diagrams derive almost nothing from the stops above, and
+			// their stock note colour is a yellow that belongs to no palette here.
+			actorBkg: stop("surface-raised"),
+			actorBorder: stop("border-strong"),
+			actorTextColor: stop("heading"),
+			actorLineColor: stop("muted"),
+			signalColor: stop("heading"),
+			signalTextColor: stop("body"),
+			labelBoxBkgColor: stop("surface"),
+			labelBoxBorderColor: stop("border"),
+			labelTextColor: stop("heading"),
+			loopTextColor: stop("body"),
+			noteBkgColor: stop("accent-soft"),
+			noteBorderColor: stop("accent"),
+			noteTextColor: stop("heading"),
+			activationBkgColor: stop("surface-raised"),
+			activationBorderColor: stop("border-strong"),
+			sequenceNumberColor: stop("page"),
+		},
+		// The redundant second channel. `lineColor` above paints every edge, so
+		// only the read/filter/discard half is re-pointed here, by the pattern
+		// class mermaid already puts on it.
+		themeCSS: `
+			.edge-pattern-dotted,
+			.edge-pattern-dashed { stroke: ${stop("accent")} !important; }
+		`,
+	};
+}
+
 export default defineConfig({
 	site: "https://jmrplens.github.io/cs-routeros-bouncer",
 	base: "/cs-routeros-bouncer",
 	markdown: {
-		rehypePlugins: [[rehypeMermaid, { strategy: "img-svg", dark: true }]],
+		rehypePlugins: [
+			[
+				rehypeMermaid,
+				{
+					strategy: "img-svg",
+					// A truthy `dark` is what makes rehype-mermaid render the second
+					// image and emit <picture><source id="mermaid-dark-…">, which the
+					// theme-swap script below keys off. `dark: true` would render that
+					// twin with mermaid's STOCK dark theme, so the edge colours would
+					// stop matching the legend printed inside every diagram — on the
+					// theme this site defaults to. The dark twin of the same config
+					// keeps the pair identical apart from the palette.
+					dark: mermaidTheme("dark"),
+					mermaidConfig: mermaidTheme("light"),
+				},
+			],
+		],
 	},
 	integrations: [
 		routerosLanguage(),
@@ -256,11 +416,6 @@ export default defineConfig({
 				root: { label: "English", lang: "en" },
 				es: { label: "Español", lang: "es" },
 			},
-			logo: {
-				light: "./src/assets/logo-light.svg",
-				dark: "./src/assets/logo-dark.svg",
-				alt: "cs-routeros-bouncer",
-			},
 			favicon: "/favicon.svg",
 			social: [
 				{
@@ -286,10 +441,23 @@ export default defineConfig({
 				"./src/styles/theme.css",
 				"./src/styles/typography.css",
 				"./src/styles/chrome.css",
+				// After chrome.css, which already carries two sidebar rules this
+				// one must not fight: the aria-current accent edge and the
+				// coarse-pointer touch target.
+				"./src/styles/sidebar.css",
 				"./src/styles/code.css",
 				"./src/styles/tables.css",
 				"./src/styles/home.css",
 				"./src/styles/rules.css",
+				// Figures: the box around a mermaid diagram, and the light/dark
+				// image pairs ThemeImage.astro renders. It reaches no diagram
+				// internals — those are an <img> with an SVG data URI, coloured
+				// at build time by the mermaid config near the top of this file.
+				"./src/styles/diagram.css",
+				// The lockup, after the sheets whose header and type rules it has
+				// to win against. It is the mark's only palette: the drawing in
+				// src/assets carries class hooks and no colour of its own.
+				"./src/styles/brand.css",
 				"./src/styles/a11y.css",
 			],
 			expressiveCode: {
@@ -299,6 +467,19 @@ export default defineConfig({
 				Header: "./src/components/overrides/Header.astro",
 				Footer: "./src/components/overrides/Footer.astro",
 				Head: "./src/components/overrides/Head.astro",
+				// Replaces the `logo:` <img> pair Starlight used to emit: the mark
+				// is inlined so brand.css can paint it from --rb-*, and the
+				// wordmark beside it is live type on the same baseline.
+				SiteTitle: "./src/components/overrides/SiteTitle.astro",
+				// Wraps Starlight's sidebar to scroll the current entry into view.
+				Sidebar: "./src/components/overrides/Sidebar.astro",
+				// Replaces Starlight's prev/next cards so each names its group.
+				// The sidebar tree below is deliberately NOT relabelled to do
+				// this: "Overview" is unambiguous where it renders, under a
+				// group header that already says Configuration or Architecture.
+				// It is the pagination card that drops that context, so the card
+				// is where it is put back.
+				Pagination: "./src/components/overrides/Pagination.astro",
 			},
 			head: [
 				{

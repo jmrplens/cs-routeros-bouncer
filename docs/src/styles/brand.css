@@ -1,0 +1,135 @@
+/* ============================================================
+   brand.css — the lockup: the mark, and the wordmark beside it.
+   ============================================================
+
+   This sheet is the mark's ONLY palette. The drawing in
+   `src/assets/logo-*.svg` carries class hooks and no colour of
+   its own, so when `brandSvg()` inlines it (see
+   `src/lib/brand.ts`) the ink below is what paints it — from the
+   same `--rb-*` tokens as the rest of the page, following the
+   theme switch, and visible to `scripts/check-contrast.mjs`.
+
+   That is the whole point of the exercise. The mark used to hold
+   four hex literals across two files — CrowdSec indigo beside
+   MikroTik teal — and not one of them appeared in any stylesheet.
+   The gate could not see them, so nothing noticed when the site
+   palette moved and the mark did not.
+
+   THE CO-BRANDING IS RETIRED. That indigo/teal split borrowed two
+   companies' colours for a project neither has endorsed, and at
+   the ~23px the header renders it, a two-colour split is not a
+   signal, it is mush. One ink for the shield body and the dot; a
+   subordinate tone for the arcs, which are the quieter half of
+   the drawing in every sense.
+
+   The two inks are `--rb-heading` and `--rb-muted`, both already
+   gated against `--rb-page`: check-contrast.mjs measures
+   `--sl-color-white` (→ --rb-heading) and `--sl-color-gray-3`
+   (→ --rb-muted) on `--sl-color-black` (→ --rb-page) in both
+   themes. No new pair is needed for the wordmark, and none is
+   needed for the arcs either — they clear the text threshold,
+   which is stricter than the 3:1 that would apply to a graphic.
+
+   This sheet declares no tokens. theme.css owns the palette. */
+
+/* ------------------------------------------------------------------
+   THE LOCKUP
+   Starlight's own SiteTitle shipped these rules in a scoped
+   `@layer starlight.core` block; overriding the component removes
+   them, so the layout it relied on is restated here rather than
+   inherited by luck.
+
+   `align-items: baseline` is the composition: an inline SVG's
+   baseline is its bottom edge, so the shield sits ON the wordmark's
+   baseline instead of being centred against it, and the two read as
+   one line of type rather than an image with a caption.
+   ------------------------------------------------------------------ */
+.site-title {
+	align-items: baseline;
+	gap: 0.5rem;
+	/* Lets the wordmark's ellipsis engage instead of overflowing the
+	   header on a narrow viewport. */
+	min-width: 0;
+	color: inherit;
+	text-decoration: none;
+	white-space: nowrap;
+	/* The mark is sized in `em`, so this one declaration scales the
+	   whole lockup. */
+	font-size: 1rem;
+}
+
+.rb-mark {
+	/* ~23px against the 16px wordmark: the cap height of the shield
+	   reads as the cap height of the type. */
+	height: 1.45em;
+	width: auto;
+	max-width: 100%;
+	/* Never let the header's flex row squeeze the drawing out of
+	   proportion; the wordmark is the part that gives way. */
+	flex: none;
+}
+
+.rb-mark__body,
+.rb-mark__dot {
+	fill: var(--rb-heading);
+}
+
+.rb-mark__arc {
+	stroke: var(--rb-muted);
+}
+
+/* ------------------------------------------------------------------
+   THE WORDMARK
+   Live type, not outlines. `cs-routeros-bouncer` is a binary name,
+   so it is set in the mono face at the same size the docs set a
+   command in — and because it is real text, the lockup's accessible
+   name comes free and the mark can be aria-hidden.
+
+   The stem takes the strong ink and the affixes the muted one, so
+   the name reads the way a config key reads: the scope quiet, the
+   thing it names loud.
+   ------------------------------------------------------------------ */
+.rb-wordmark {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	font-family: var(--sl-font-mono);
+	font-weight: 600;
+	/* Mono faces set wide; this pulls a 19-character binary name back
+	   to something a header can hold. */
+	letter-spacing: -0.02em;
+	/* The segments are already lowercase. This keeps them that way if
+	   the site title is ever re-cased upstream. */
+	text-transform: lowercase;
+}
+
+.rb-wordmark__stem {
+	color: var(--rb-heading);
+}
+
+.rb-wordmark__affix {
+	color: var(--rb-muted);
+}
+
+/* Below the width where the full binary name fits, the wordmark is hidden
+   VISUALLY but kept in the accessibility tree.
+
+   Measured: it needs 177px, and the header allocates 1px at 320px and 41px at
+   360px — so it rendered as "cs-…", a fragment that names nothing and is worse
+   than showing the mark alone. `display: none` would have been the obvious fix
+   and the wrong one: the wordmark IS the link's accessible name, so hiding it
+   that way leaves a link announced as nothing at exactly the widths where a
+   screen reader is most likely in use. */
+@media (max-width: 50rem) {
+	.rb-wordmark {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+		border: 0;
+	}
+}

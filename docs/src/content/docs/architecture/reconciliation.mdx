@@ -40,6 +40,40 @@ By default, reconciliation runs at startup and then every `15m`. Configure `crow
 
 </Steps>
 
+The diff itself is per protocol family and per address list. Two sets go in — what CrowdSec says should be blocked, and what the router currently holds — and two lists come out.
+
+```mermaid
+flowchart TB
+    accTitle: The reconciliation diff: snapshot in, router state in, adds and removes out
+    accDescr: A snapshot of active decisions becomes the wanted set, one entry per decision for this protocol family, keyed by normalised address. The address list on the router becomes the present set, but only the entries whose comment starts with the configured comment prefix; entries with any other comment are never listed, never compared and never removed. Comparing the two sets address by address yields the entries to add and the entries to remove. Additions go through a bulk RouterOS script of up to a hundred entries, falling back to one API call per entry when a script fails; removals go through the connection pool when it opened, and one by one on the main connection otherwise. Once the router has been changed, the in-memory address cache and the reconciliation metrics are updated from the result.
+    SNAP["Active decisions: the startup burst, or a fresh snapshot"] -.-> WANT["Wanted: one entry per decision for this family"]
+    LIST["The address list on the router"] -.-> HAVE["Present: entries whose comment starts with comment_prefix"]
+    LIST -. "any other comment" .-> FOREIGN["Never listed, never compared, never removed"]
+    WANT -.-> DIFF{"compare, address by address"}
+    HAVE -.-> DIFF
+    DIFF -. "wanted, not present" .-> TOADD["To add"]
+    DIFF -. "present, not wanted" .-> TOREM["To remove"]
+    TOADD -.-> BULK["Bulk add: one script per 100 entries"]
+    BULK -. "script fails" .-> ONEBY["One call per entry instead"]
+    TOREM -.-> DELE["Remove: through the pool, or one by one"]
+    BULK --> ADDED["Entries added"]
+    ONEBY --> ADDED
+    DELE --> REMOVED["Entries removed"]
+    ADDED -.-> CACHE["Address cache and metrics updated"]
+    REMOVED -.-> CACHE
+
+    CACHE ~~~ LEG
+    subgraph LEG["Legend"]
+        direction TB
+        LA["solid"] --> LB["a write: router state changes"]
+        LC["dashed"] -.-> LD["a read or a test: router untouched"]
+    end
+```
+
+The prefix filter on the _present_ set is what makes reconciliation safe to point at a shared list. The bouncer asks RouterOS for the list by name and then keeps only the entries whose comment starts with the configured `comment_prefix`, so an address you added by hand — or one another tool maintains — is not in the comparison at all, and the "present, not wanted" branch can never reach it.
+
+The comparison is by normalised address, not by decision: several decisions for the same IP collapse to one wanted entry, and only the last one read supplies the timeout and comment written with it.
+
 ## Performance
 
 Measured on a MikroTik RB5009UG+S+ (ARM64, 4 cores @ 1400 MHz, 1 GB RAM, RouterOS 7.22.1) with `mikrotik.pool_size: 10`:

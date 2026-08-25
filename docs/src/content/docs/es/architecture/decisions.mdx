@@ -9,6 +9,47 @@ Cómo procesa el bouncer las decisiones entrantes de CrowdSec.
 
 ## Flujo de procesamiento
 
+Una decisión puede descartarse en dos sitios, y solo en dos: en la **Local API**, que nunca envía lo que la consulta del bouncer excluye, y en el **propio bouncer**, que comprueba unas pocas cosas antes de tocar RouterOS. No hay una tercera etapa: ni una cadena de filtros dentro del bouncer, ni una política por decisión. Todo lo que sobrevive a los dos carriles acaba en una address-list, y nada más lo hace.
+
+```mermaid
+flowchart TB
+    accTitle: Dónde puede descartarse una decisión de CrowdSec antes de llegar al router
+    accDescr: Tres carriles. En el primero, la Local API aplica los filtros de scope, origen y escenario que viajan en la consulta del bouncer, así que lo que excluyen nunca se envía y nada local lo registra. En el segundo, el bouncer descarta una decisión nueva sin duración, una cuyo tipo no está en el conjunto que aplica y una de una familia de protocolo desactivada, todo ello sin dejar registro; una duración que no puede analizar se advierte y se aplica como cuatro horas en lugar de descartarse, y un ban cuya dirección ya está en la caché en memoria se omite sin llamar a la API. Una expiración se omite si su dirección no está en la caché o ya no está en el router. En el tercero, lo que queda se añade a la address-list o se elimina de ella.
+    subgraph LAPI["Carril 1 · LAPI de CrowdSec, lado servidor"]
+        ALL["Todas las decisiones que tiene la LAPI"]
+        ALL -. "scope, origen, escenario" .-> N1["Nunca se envía, nunca se registra"]
+        ALL -. "cumple la consulta" .-> SENT["Se envía al bouncer"]
+    end
+    subgraph BOUNCER["Carril 2 · Bouncer, en proceso"]
+        SENT -. "ban" .-> D{"¿duración?"}
+        D -. "falta" .-> N2["Descartada, sin registro"]
+        D -. "no se puede analizar" .-> W["Advertencia, se aplica como 4h"]
+        D -. "presente" .-> T{"¿tipo aplicado?"}
+        W -.-> T
+        T -. "no" .-> N2
+        T -. "sí" .-> PR{"¿familia habilitada?"}
+        PR -. "no" .-> N2
+        PR -. "sí" .-> CA{"¿en la caché?"}
+        CA -. "sí: ban duplicado" .-> N3["Se omite, la entrada se deja como está"]
+        SENT -. "expiración" .-> CD{"¿en la caché y todavía en el router?"}
+        CD -. "no" .-> N3
+        N3 ~~~ CD
+    end
+    subgraph ROUTER["Carril 3 · MikroTik"]
+        CA -- "no" --> ADD["Añadida a la address-list"]
+        CD -- "sí" --> DEL["Eliminada de la address-list"]
+    end
+
+    ADD ~~~ LEG
+    subgraph LEG["Leyenda"]
+        direction TB
+        LA["continua"] --> LB["una escritura: cambia el estado del router"]
+        LC["discontinua"] -.-> LD["una lectura o una comprobación: el router no se toca"]
+    end
+```
+
+Dos detalles que los carriles aplanan. La exigencia de duración vale para los bans y para toda decisión de una instantánea de reconciliación, pero no para las expiraciones, que llegan sin ella con normalidad. Y el carril de expiración esconde una lectura: primero se consulta la caché y solo si la dirección está en ella el bouncer busca la entrada en el router, que es donde queda fuera una entrada que mientras tanto expiró en MikroTik.
+
 <Steps>
 
 1. **Recibir la decisión de la LAPI**
@@ -26,9 +67,11 @@ Cómo procesa el bouncer las decisiones entrantes de CrowdSec.
    | `scenarios_containing`     | `crowdsec.scenarios_containing`     | vacío — sin restricción    |
    | `scenarios_not_containing` | `crowdsec.scenarios_not_containing` | vacío — no se excluye nada |
 
+   La instantánea periódica de reconciliación envía uno más: `type=ban`, y solo mientras `crowdsec.supported_decisions_types` se deje con su valor por defecto. La Local API compara ese parámetro de forma exacta y no como conjunto, así que un conjunto configurado más amplio hay que traerlo entero y acotarlo en el bouncer. El stream en vivo no lleva ningún filtro de tipo, y por eso la comprobación de tipo de más abajo es del propio bouncer.
+
 3. **Analizar la decisión**
 
-   El bouncer solo conserva las decisiones de tipo `ban`; cualquier otro tipo se descarta en silencio. Las decisiones nuevas que no traen duración también se descartan. Una duración que no se puede analizar se registra como advertencia (`failed to parse decision duration`) y se recurre a 4h. Cada decisión que supera el análisis **en el stream en vivo** se registra a nivel debug como `new decision` o `deleted decision`. La instantánea periódica de reconciliación analiza las decisiones igual, pero no registra nada por decisión.
+   El bouncer solo conserva los tipos de decisión que está configurado para aplicar —`ban` salvo que `crowdsec.supported_decisions_types` nombre otros— y cualquier otro tipo se descarta en silencio. Las decisiones nuevas que no traen duración también se descartan. Una duración que no se puede analizar se registra como advertencia (`failed to parse decision duration`) y se recurre a 4h. Cada decisión que supera el análisis **en el stream en vivo** se registra a nivel debug como `new decision` o `deleted decision`. La instantánea periódica de reconciliación analiza las decisiones igual, pero no registra nada por decisión.
 
 4. **Aplicar la acción**
    - **Ban** → Añadir la IP/rango a la address-list de MikroTik

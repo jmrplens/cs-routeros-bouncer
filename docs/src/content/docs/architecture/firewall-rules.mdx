@@ -56,6 +56,44 @@ Placement is menu-local. A `filter` block is positioned within `/ip firewall fil
 
 The bouncer can place its managed block (the related rules it creates and moves together) at the top, at the bottom, at a numeric RouterOS `print` position, or relative to an existing comment owned by another rule. If output blocking is enabled, the output block is moved with the same internal ordering. By default, the bouncer reuses the same placement strategy for IPv4 and IPv6. Table and protocol overrides can send `filter`, `raw`, IPv4, and IPv6 blocks to different locations. Precedence is global placement, global table override, protocol override, then protocol table override.
 
+Placement runs against the **candidates**: every rule already in that menu whose comment does not carry the `@cs-routeros-bouncer` signature. The bouncer's own rules are excluded from that count, so a numeric `position` means the same place whether or not the block is already on the router. The diagram below is the whole mechanism, retries included — each rung that fails falls to the next, and the last rung is always _leave the block where RouterOS appended it_. Placement never aborts startup.
+
+```mermaid
+flowchart TB
+    accTitle: The rule-placement ladder, with its retry and fallback semantics
+    accDescr: Once every rule in a block exists, the bouncer reads the configured strategy. The bottom strategy stops there. Every other strategy first lists the rules in that firewall menu and keeps the ones without the bouncer signature as candidates; if the listing fails, the block is left at the bottom. Top and position target candidate zero or the configured index, and an index past the last candidate leaves the block at the bottom. The comment strategies look for an anchor comment, matched exactly or as a substring, and target the anchor itself for before_comment or the candidate after it for after_comment; an after_comment anchor that is the last candidate leaves the block at the bottom. A missing anchor, or a move RouterOS refuses, falls back to top by default or to bottom if configured. The move walks down the candidate list, trying the next candidate each time RouterOS refuses, and leaves the block at the bottom once no candidate is left.
+    A["Every rule in the block exists"] --> S{"strategy"}
+    S -. "bottom" .-> B["Left at the bottom"]
+    S -. "any other" .-> L["List this menu's rules"]
+    L -. "listing fails" .-> B
+    L -. "candidates" .-> K{"anchored?"}
+    K -. "no" .-> I["Target: candidate 0, or the index"]
+    K -. "yes" .-> AN{"anchor found?"}
+    AN -. "yes" .-> J["Target: the anchor, or the next one"]
+    AN -. "no" .-> F{"fallback"}
+    F -. "top" .-> I
+    F -. "bottom" .-> B
+    I -. "index too high" .-> B
+    J -. "anchor is last" .-> B
+    I --> M["Move the block in front of it"]
+    J --> M
+    M --> P["Positioned"]
+    M -. "refused" .-> R["Next candidate down"]
+    M -. "refused, anchored" .-> F
+    R --> M
+    R -. "none left" .-> B
+
+    subgraph LEG["Legend"]
+        direction TB
+        LA["solid"] --> LB["a write: router state changes"]
+        LC["dashed"] -.-> LD["a read or a test: router untouched"]
+    end
+```
+
+Two rungs are worth reading twice. The retry is per candidate, not per attempt: when RouterOS refuses to move the block in front of a rule — a dynamic or built-in rule, for instance — the bouncer targets the next rule down and tries again, which is why a `top` block can settle a few positions lower than the name suggests. And `fallback` only exists for the comment strategies; a numeric `position` past the end has no anchor to miss, so it appends instead.
+
+A move is not atomic across the block either. Each rule is moved on its own, in block order, so a failure part-way through can leave the block split around the target; the ordering is completed by the next placement pass.
+
 | Strategy         | Behavior                                                                                                                                                                       |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `top`            | Moves the block before the first usable non-bouncer rule. If RouterOS refuses the position, for example before dynamic or built-in rules, the bouncer retries lower positions. |
@@ -115,7 +153,7 @@ When the bouncer receives SIGTERM or SIGINT:
 This design means protection continues after the bouncer stops, for whatever is left of each entry's timeout, and a quick restart never leaves the router unprotected in the gap. It also means no mass delete has to run during shutdown.
 
 :::caution
-A decision that carries no duration is written with **no timeout at all**. That entry does not expire: it stays in the address list until the next reconciliation drops it, or until you remove it by hand. The rules disappear with the daemon; those entries do not.
+A decision whose duration resolves to zero or less is written with **no timeout at all** — CrowdSec does emit negative remaining durations. (A decision carrying no duration field at all is discarded in `parseDecisionBatch` and never reaches the router.) That entry does not expire: it stays in the address list until the next reconciliation drops it, or until you remove it by hand. The rules disappear with the daemon; those entries do not.
 :::
 
 <LinkCard

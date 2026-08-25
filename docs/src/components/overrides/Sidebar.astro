@@ -1,0 +1,104 @@
+---
+import Default from "@astrojs/starlight/components/Sidebar.astro";
+
+type Props = Record<string, unknown>;
+
+const props = Astro.props as Props;
+---
+
+{
+	/* Wraps — never replaces — Starlight's sidebar, so the tree, the
+state persister and the mobile menu footer all stay upstream's. The
+only addition is the custom element below, which brings the current
+entry into view inside the sidebar's own scroll container.
+
+WHY THIS IS NEEDED, precisely. Starlight does persist the sidebar's
+scroll offset (SidebarPersister.astro + components-internals/
+SidebarPersistState.ts), but only under three conditions: the viewport
+is at least 50em wide, `sessionStorage` holds an `sl-sidebar-state`
+entry, and its `hash` matches this page's sidebar. So the pane still
+arrives at its own top for a reader who lands on a deep page from
+outside the site or from search, and on every narrow viewport, where
+the restore is skipped outright. And even when the restore does run it
+replays the PREVIOUS page's offset, which is not the same thing as
+showing the page you are now on — jump from Getting Started to
+Reconciliation and the restored offset still points at Getting
+Started. */
+}
+<rb-sidebar-reveal><Default {...props}><slot /></Default></rb-sidebar-reveal>
+
+<style>
+	/* The pane's own flex layout has to keep seeing the sidebar's
+	   children — the same reason Starlight gives its
+	   `sl-sidebar-state-persist` wrapper `display: contents`. */
+	rb-sidebar-reveal {
+		display: contents;
+	}
+</style>
+
+<script>
+	/**
+	 * Scrolls the sidebar so the current page's entry is visible.
+	 *
+	 * Three constraints shape this:
+	 *
+	 * 1. It scrolls `#starlight__sidebar` and nothing else. `scrollIntoView()`
+	 *    walks every scrollable ancestor, including the document, so it can
+	 *    move the article the reader arrived to read. Setting the pane's own
+	 *    `scrollTop` cannot.
+	 * 2. It never calls `focus()`. Focus stays where the browser put it — the
+	 *    top of the document — so the skip link and the tab order are
+	 *    untouched.
+	 * 3. It reads `prefers-reduced-motion` in JS rather than leaning on the
+	 *    `scroll-behavior: auto !important` rule in a11y.css. A `behavior`
+	 *    passed in the options object beats the CSS property, so that rule
+	 *    does not reach this call.
+	 *
+	 * As a module script this runs after the inline scroll-restore script at
+	 * the end of Starlight's `<sl-sidebar-state-persist>`, so a restored
+	 * offset is what gets measured — if it already shows the current entry,
+	 * this does nothing.
+	 */
+	class SidebarReveal extends HTMLElement {
+		connectedCallback() {
+			const scroller = document.getElementById("starlight__sidebar");
+			const current = this.querySelector<HTMLAnchorElement>(
+				'a[aria-current="page"]',
+			);
+			if (!scroller || !current) return;
+
+			const pane = scroller.getBoundingClientRect();
+			const entry = current.getBoundingClientRect();
+			// Breathing room, so an entry pinned to the very edge of the pane
+			// does not count as "visible".
+			const margin = 24;
+			if (
+				entry.top >= pane.top + margin &&
+				entry.bottom <= pane.bottom - margin
+			) {
+				return;
+			}
+
+			// Centre the entry in the pane, clamped to the scroll range. On a
+			// short tree the clamp collapses to 0 and this is a no-op.
+			const centred =
+				scroller.scrollTop +
+				(entry.top - pane.top) -
+				(pane.height - entry.height) / 2;
+			const top = Math.max(
+				0,
+				Math.min(centred, scroller.scrollHeight - scroller.clientHeight),
+			);
+			if (top === scroller.scrollTop) return;
+
+			scroller.scrollTo({
+				top,
+				behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
+					? "auto"
+					: "smooth",
+			});
+		}
+	}
+
+	customElements.define("rb-sidebar-reveal", SidebarReveal);
+</script>
