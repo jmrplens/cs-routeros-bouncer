@@ -5,8 +5,9 @@
 # runner's Go, which breaks every time go.mod moves to a Go version the CodeQL
 # runtime has not shipped yet (first hit here: Go 1.27.0, 2026-08 — autobuild
 # reported "go.mod requires go >= 1.27.0 (running go 1.26.6; GOTOOLCHAIN=local)").
-# Coverage mirrors what default setup analyzed: actions and go, with the
-# default query suite and a weekly scheduled scan.
+# Coverage keeps what default setup analyzed (actions, go) and adds
+# javascript-typescript for the Astro/Starlight documentation site under docs/,
+# which default setup was not scanning. Default query suite, weekly scan.
 
 name: CodeQL
 
@@ -41,6 +42,8 @@ jobs:
             build-mode: none
           - language: go
             build-mode: manual
+          - language: javascript-typescript
+            build-mode: none
     steps:
       - uses: actions/checkout@v7
         with:
