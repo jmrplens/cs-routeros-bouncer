@@ -126,11 +126,11 @@ Esto es significativamente más rápido que el enfoque de "comprobar primero" (~
 
 ### Pool de conexiones
 
-El bouncer mantiene un pool configurable de conexiones persistentes a la API de RouterOS. Durante la reconciliación, el trabajo se distribuye por el pool mediante el helper genérico `ParallelExec`; en un RB5009 con `pool_size: 10`, el trabajo completo de adición masiva en RouterOS para ~28.700 entradas de origen CAPI se completó en ~35–36 s.
+El bouncer mantiene un pool configurable de conexiones persistentes a la API de RouterOS. El pool solo se usa para las eliminaciones: durante la reconciliación, las entradas obsoletas se eliminan de forma concurrente por el pool mediante el helper genérico `ParallelExec`. En la prueba de CAPI con el RB5009, eliminar ~26.800 entradas exclusivas de CAPI llevó ~77 s de trabajo de eliminación en RouterOS. Si el pool no se puede abrir, las eliminaciones recurren a la conexión principal.
 
 ### Adición masiva basada en scripts
 
-Para la reconciliación inicial, el bouncer genera scripts de RouterOS que añaden entradas en bloques de 100 IPs por script. Cada entrada usa `:do { ... } on-error={}` para omitir los duplicados de forma controlada. Este enfoque es ~97× más rápido que las llamadas individuales secuenciales a la API para listas grandes — medido en un RB5009UG+S+ (RouterOS 7.22.1) con ~28.700 entradas de CAPI; consulta [Benchmarking](/cs-routeros-bouncer/es/development/benchmarking/) para la metodología.
+Para la reconciliación inicial, el bouncer genera scripts de RouterOS que añaden entradas en bloques de 100 IPs por script. Cada entrada usa `:do { ... } on-error={}` para omitir los duplicados de forma controlada. Las adiciones masivas no usan el pool de conexiones: se ejecutan de forma secuencial por la conexión principal. Aun así, este enfoque es ~97× más rápido que las llamadas individuales secuenciales a la API para listas grandes — medido en un RB5009UG+S+ (RouterOS 7.22.1), donde ~28.700 entradas de CAPI supusieron ~35–36 s de trabajo de adición masiva en RouterOS; consulta [Benchmarking](/cs-routeros-bouncer/es/development/benchmarking/) para la metodología.
 
 ### Caché de direcciones en memoria
 

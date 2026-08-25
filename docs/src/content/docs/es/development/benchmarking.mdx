@@ -56,12 +56,12 @@ Para el rendimiento real de arranque del bouncer, prefiere las pruebas funcional
 
 Estas cifras provienen de la suite de pruebas funcionales de CAPI (`tests/functional/`) ejecutada contra un MikroTik RB5009, no de la herramienta de operaciones individuales `cmd/benchmark` anterior. Consulta [Arquitectura: Pool de conexiones](/cs-routeros-bouncer/es/architecture/#pool-de-conexiones) y [Adición masiva basada en scripts](/cs-routeros-bouncer/es/architecture/#adición-masiva-basada-en-scripts) para conocer los mecanismos detrás de estos números.
 
-| Escenario                                                                           | Resultado                          |
-| ----------------------------------------------------------------------------------- | ---------------------------------- |
-| Adición optimista cache-first (la dirección aún no está en el router)               | ~1–3 ms por operación              |
-| Adición check-first (listar entradas antes de añadir, evitado por la caché)         | ~400 ms por IP                     |
-| Adición masiva basada en scripts frente a llamadas secuenciales a la API            | ~97× más rápida para lotes grandes |
-| Adición masiva completa en RB5009, ~28.700 entradas de origen CAPI, `pool_size: 10` | ~35–36 s en total                  |
+| Escenario                                                                   | Resultado                          |
+| --------------------------------------------------------------------------- | ---------------------------------- |
+| Adición optimista cache-first (la dirección aún no está en el router)       | ~1–3 ms por operación              |
+| Adición check-first (listar entradas antes de añadir, evitado por la caché) | ~400 ms por IP                     |
+| Adición masiva basada en scripts frente a llamadas secuenciales a la API    | ~97× más rápida para lotes grandes |
+| Adición masiva completa en RB5009, ~28.700 entradas de origen CAPI          | ~35–36 s en total                  |
 
 La diferencia entre cache-first (~1-3 ms) y check-first (~400 ms) es la razón por la que existe la caché de direcciones en memoria descrita en [Arquitectura](/cs-routeros-bouncer/es/architecture/#caché-de-direcciones-en-memoria): permite al bouncer saltarse el viaje de ida y vuelta listar-y-añadir de RouterOS para las direcciones que ya conoce.
 

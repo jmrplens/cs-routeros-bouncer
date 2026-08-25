@@ -9,7 +9,9 @@
   "scripts": {
     "dev": "astro dev",
     "start": "astro dev",
-    "analyze": "pnpm run check && pnpm run lint && pnpm run format:check && pnpm run build && pnpm run html:validate",
+    "analyze": "pnpm run i18n:check && pnpm run contrast:check && pnpm run check && pnpm run lint && pnpm run format:check && pnpm run build && pnpm run html:validate",
+    "i18n:check": "node scripts/check-i18n-parity.mjs",
+    "contrast:check": "node scripts/check-contrast.mjs",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

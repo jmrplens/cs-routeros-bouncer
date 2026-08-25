@@ -18,11 +18,13 @@ cs-routeros-bouncer -c /path/to/config.yaml
 
 Los asistentes de despliegue eligen sus propias rutas:
 
-| Método de despliegue          | Ruta de configuración usada                                                                                       |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Servicio systemd `setup`      | `/etc/cs-routeros-bouncer/cs-routeros-bouncer.yaml`                                                               |
-| Imagen Docker                 | Variables de entorno por defecto; `/etc/cs-routeros-bouncer/config.yaml` se carga automáticamente si está montado |
-| Ejecución directa del binario | Sin archivo implícito; usa `-c`                                                                                   |
+| Método de despliegue          | Ruta de configuración usada                                                                                    |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Servicio systemd `setup`      | `/etc/cs-routeros-bouncer/cs-routeros-bouncer.yaml`                                                            |
+| Imagen Docker                 | Variables de entorno por defecto; el `/etc/cs-routeros-bouncer/config.yaml` implícito se carga si está montado |
+| Ejecución directa del binario | `-c` cuando se indica; en caso contrario `/etc/cs-routeros-bouncer/config.yaml` si ese archivo existe          |
+
+La carga implícita de `/etc/cs-routeros-bouncer/config.yaml` es una propiedad del binario, no de la imagen Docker: cualquier ejecución sin `-c` carga ese archivo cuando existe y, si no, funciona solo con variables de entorno.
 
 Los valores de cadena YAML pueden contener marcadores explícitos `${VAR}`. Solo se expanden los marcadores con llaves; los caracteres `$` literales de los secretos se conservan.
 
@@ -80,8 +82,8 @@ Los ajustes esenciales para poner en marcha el bouncer. La mayoría de los despl
 | ------------------------- | -------------------------- | ------------------------ | ---------------------------------------------- |
 | `crowdsec.api_url`        | `CROWDSEC_URL`             | `http://localhost:8080/` | URL de la LAPI de CrowdSec                     |
 | `crowdsec.api_key`        | `CROWDSEC_BOUNCER_API_KEY` | _(obligatorio)_          | API key del bouncer                            |
-| `mikrotik.address`        | `MIKROTIK_HOST`            | `192.168.0.1:8728`       | Dirección de la API de RouterOS (`host:port`)  |
-| `mikrotik.username`       | `MIKROTIK_USER`            | `crowdsec`               | Usuario de la API                              |
+| `mikrotik.address`        | `MIKROTIK_HOST`            | _(obligatorio)_          | Dirección de la API de RouterOS (`host:port`)  |
+| `mikrotik.username`       | `MIKROTIK_USER`            | _(obligatorio)_          | Usuario de la API                              |
 | `mikrotik.password`       | `MIKROTIK_PASS`            | _(obligatorio)_          | Contraseña de la API                           |
 | `firewall.ipv4.enabled`   | `FIREWALL_IPV4_ENABLED`    | `true`                   | Habilitar el bloqueo IPv4                      |
 | `firewall.ipv6.enabled`   | `FIREWALL_IPV6_ENABLED`    | `true`                   | Habilitar el bloqueo IPv6                      |
@@ -89,6 +91,8 @@ Los ajustes esenciales para poner en marcha el bouncer. La mayoría de los despl
 | `firewall.raw.enabled`    | `FIREWALL_RAW_ENABLED`     | `true`                   | Crear reglas raw/prerouting                    |
 | `firewall.deny_action`    | `FIREWALL_DENY_ACTION`     | `drop`                   | Acción: `drop` o `reject`                      |
 | `logging.level`           | `LOG_LEVEL`                | `info`                   | Nivel de log: `debug`, `info`, `warn`, `error` |
+
+`mikrotik.address` y `mikrotik.username` no tienen valor por defecto. Los valores `192.168.0.1:8728` y `crowdsec` que aparecen en `config/cs-routeros-bouncer.yaml` son valores de ejemplo, no valores por defecto.
 
 ### Parámetros avanzados
 
@@ -172,7 +176,7 @@ Los alias retrocompatibles como `FIREWALL_INPUT_*` y `FIREWALL_OUTPUT_*` se sigu
 | Clave de configuración           | Variable de entorno              | Valor por defecto | Descripción                                                                |
 | -------------------------------- | -------------------------------- | ----------------- | -------------------------------------------------------------------------- |
 | `logging.format`                 | `LOG_FORMAT`                     | `text`            | Formato de log: `text` o `json`                                            |
-| `logging.file`                   | `LOG_FILE`                       |                   | Ruta del archivo de log (vacío = solo stdout)                              |
+| `logging.file`                   | `LOG_FILE`                       |                   | Se acepta pero no está implementado; los logs siempre van a stderr         |
 | `metrics.enabled`                | `METRICS_ENABLED`                | `false`           | Habilitar el endpoint `/metrics` de Prometheus                             |
 | `metrics.listen_addr`            | `METRICS_ADDR`                   | `0.0.0.0`         | Dirección de escucha                                                       |
 | `metrics.listen_port`            | `METRICS_PORT`                   | `2112`            | Puerto de escucha                                                          |

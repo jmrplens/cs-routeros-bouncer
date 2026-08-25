@@ -20,7 +20,9 @@ Flags de ejecución:
 | `-c`       | Ruta al archivo de configuración YAML                   |
 | `-version` | Imprime la versión, el commit y la fecha de compilación |
 
-El binario no carga implícitamente una ruta de configuración del host cuando se ejecuta directamente. Pasa `-c` a menos que todos los ajustes requeridos se proporcionen mediante variables de entorno. El instalador de systemd y la imagen de Docker proporcionan su propia ruta `-c`.
+Cuando se omite `-c`, el binario comprueba `/etc/cs-routeros-bouncer/config.yaml` en cada ejecución y lo usa si ese archivo existe. El orden de resolución es: una ruta `-c` explícita tiene prioridad, después la ruta implícita `/etc/cs-routeros-bouncer/config.yaml` y, si ese archivo no existe, el bouncer arranca en modo solo entorno (variables de entorno más los valores por defecto integrados). Este comportamiento está integrado en el binario, así que se aplica siempre que arranque sin `-c` — incluida la imagen Docker, cuyo entrypoint no pasa ninguno. La unidad systemd que escribe `setup` siempre pasa un `-c` explícito, así que nunca llega a la ruta implícita.
+
+Ten en cuenta que la ruta implícita es `config.yaml`, mientras que `setup` escribe su configuración de ejemplo como `cs-routeros-bouncer.yaml` y se la pasa al servicio con un `-c` explícito.
 
 ## `version`
 

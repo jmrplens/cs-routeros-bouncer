@@ -66,9 +66,15 @@ Todas las opciones de configuración pueden establecerse mediante variables de e
 1. **Descarga la última versión**
 
    ```bash
-   # Sustituye la arquitectura según necesites: amd64, arm64, armv7
-   wget https://github.com/jmrplens/cs-routeros-bouncer/releases/latest/download/cs-routeros-bouncer_linux_amd64.tar.gz
-   tar xzf cs-routeros-bouncer_linux_amd64.tar.gz
+   # Los archivos de la release incluyen la versión, así que resuelve primero la última etiqueta
+   VERSION=$(curl -fsSL https://api.github.com/repos/jmrplens/cs-routeros-bouncer/releases/latest | sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p' | head -n1)
+   [ -n "$VERSION" ] || { echo "no se pudo resolver la última versión; elige una etiqueta en la página de Releases" >&2; exit 1; }
+
+   # Sustituye la arquitectura según necesites, p. ej. x86_64, i386, arm64, armv6, armv7
+   ARCH=x86_64
+
+   wget "https://github.com/jmrplens/cs-routeros-bouncer/releases/download/v${VERSION}/cs-routeros-bouncer_${VERSION}_linux_${ARCH}.tar.gz"
+   tar xzf "cs-routeros-bouncer_${VERSION}_linux_${ARCH}.tar.gz"
    ```
 
 2. **Ejecuta la instalación automatizada**
@@ -103,16 +109,19 @@ La configuración generada es `/etc/cs-routeros-bouncer/cs-routeros-bouncer.yaml
 <summary>Pasos de instalación manual (haz clic para expandir)</summary>
 
 ```bash
-# Descarga
-wget https://github.com/jmrplens/cs-routeros-bouncer/releases/latest/download/cs-routeros-bouncer_linux_amd64.tar.gz
-tar xzf cs-routeros-bouncer_linux_amd64.tar.gz
+# Descarga (p. ej. x86_64, i386, arm64, armv6, armv7 — consulta los assets de la release para la lista completa)
+VERSION=$(curl -fsSL https://api.github.com/repos/jmrplens/cs-routeros-bouncer/releases/latest | sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p' | head -n1)
+[ -n "$VERSION" ] || { echo "no se pudo resolver la última versión; elige una etiqueta en la página de Releases" >&2; exit 1; }
+ARCH=x86_64
+wget "https://github.com/jmrplens/cs-routeros-bouncer/releases/download/v${VERSION}/cs-routeros-bouncer_${VERSION}_linux_${ARCH}.tar.gz"
+tar xzf "cs-routeros-bouncer_${VERSION}_linux_${ARCH}.tar.gz"
 
 # Instala el binario
 sudo install -m 755 cs-routeros-bouncer /usr/local/bin/
 
-# Crea el directorio de configuración y copia la configuración
+# Crea el directorio de configuración y copia la configuración (el .tar.gz la incluye en config/)
 sudo mkdir -p /etc/cs-routeros-bouncer
-sudo cp cs-routeros-bouncer.yaml /etc/cs-routeros-bouncer/cs-routeros-bouncer.yaml
+sudo cp config/cs-routeros-bouncer.yaml /etc/cs-routeros-bouncer/cs-routeros-bouncer.yaml
 
 # Edita la configuración
 sudo nano /etc/cs-routeros-bouncer/cs-routeros-bouncer.yaml

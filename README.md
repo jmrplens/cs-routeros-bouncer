@@ -126,9 +126,14 @@ Download the latest release from the [Releases page](https://github.com/jmrplens
 **Automatic setup (recommended):**
 
 ```bash
-# Download (replace with your architecture: amd64, arm64, armv7)
-wget https://github.com/jmrplens/cs-routeros-bouncer/releases/latest/download/cs-routeros-bouncer_linux_amd64.tar.gz
-tar xzf cs-routeros-bouncer_linux_amd64.tar.gz
+# Resolve the latest version (release assets embed it in the filename)
+VERSION=$(curl -fsSL https://api.github.com/repos/jmrplens/cs-routeros-bouncer/releases/latest | sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p' | head -n1)
+[ -n "$VERSION" ] || { echo "could not resolve the latest version; pick a tag from the Releases page" >&2; exit 1; }
+
+# Download (replace with your architecture, e.g. x86_64, i386, arm64, armv6, armv7)
+ARCH=x86_64
+wget "https://github.com/jmrplens/cs-routeros-bouncer/releases/download/v${VERSION}/cs-routeros-bouncer_${VERSION}_linux_${ARCH}.tar.gz"
+tar xzf "cs-routeros-bouncer_${VERSION}_linux_${ARCH}.tar.gz"
 
 # Automated install: copies binary, creates config, installs and starts systemd service
 sudo ./cs-routeros-bouncer setup
@@ -167,14 +172,17 @@ sudo cs-routeros-bouncer uninstall \
 <summary><strong>Manual setup</strong></summary>
 
 ```bash
-# Download
-wget https://github.com/jmrplens/cs-routeros-bouncer/releases/latest/download/cs-routeros-bouncer_linux_amd64.tar.gz
-tar xzf cs-routeros-bouncer_linux_amd64.tar.gz
+# Download (e.g. x86_64, i386, arm64, armv6, armv7 — see the release assets for the full list)
+VERSION=$(curl -fsSL https://api.github.com/repos/jmrplens/cs-routeros-bouncer/releases/latest | sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p' | head -n1)
+[ -n "$VERSION" ] || { echo "could not resolve the latest version; pick a tag from the Releases page" >&2; exit 1; }
+ARCH=x86_64
+wget "https://github.com/jmrplens/cs-routeros-bouncer/releases/download/v${VERSION}/cs-routeros-bouncer_${VERSION}_linux_${ARCH}.tar.gz"
+tar xzf "cs-routeros-bouncer_${VERSION}_linux_${ARCH}.tar.gz"
 
-# Install
+# Install (the archive ships the sample config under config/)
 sudo install -m 755 cs-routeros-bouncer /usr/local/bin/
 sudo mkdir -p /etc/cs-routeros-bouncer
-sudo cp cs-routeros-bouncer.yaml /etc/cs-routeros-bouncer/cs-routeros-bouncer.yaml
+sudo cp config/cs-routeros-bouncer.yaml /etc/cs-routeros-bouncer/cs-routeros-bouncer.yaml
 
 # Edit configuration
 sudo nano /etc/cs-routeros-bouncer/cs-routeros-bouncer.yaml
@@ -233,8 +241,8 @@ The essential settings to get the bouncer running. Most deployments only need th
 | ------------------------- | -------------------------- | ------------------------ | ------------------------------------------- |
 | `crowdsec.api_url`        | `CROWDSEC_URL`             | `http://localhost:8080/` | CrowdSec LAPI URL                           |
 | `crowdsec.api_key`        | `CROWDSEC_BOUNCER_API_KEY` | _(required)_             | Bouncer API key                             |
-| `mikrotik.address`        | `MIKROTIK_HOST`            | `192.168.0.1:8728`       | RouterOS API address (`host:port`)          |
-| `mikrotik.username`       | `MIKROTIK_USER`            | `crowdsec`               | API username                                |
+| `mikrotik.address`        | `MIKROTIK_HOST`            | _(required)_             | RouterOS API address (`host:port`)          |
+| `mikrotik.username`       | `MIKROTIK_USER`            | _(required)_             | API username                                |
 | `mikrotik.password`       | `MIKROTIK_PASS`            | _(required)_             | API password                                |
 | `firewall.ipv4.enabled`   | `FIREWALL_IPV4_ENABLED`    | `true`                   | Enable IPv4 blocking                        |
 | `firewall.ipv6.enabled`   | `FIREWALL_IPV6_ENABLED`    | `true`                   | Enable IPv6 blocking                        |
@@ -277,7 +285,7 @@ Fine-tuning options for decision filtering, TLS, performance, firewall customiza
 | `mikrotik.tls_insecure`       | `MIKROTIK_TLS_INSECURE` | `false` | Skip TLS certificate verification for RouterOS                |
 | `mikrotik.connection_timeout` | `MIKROTIK_CONN_TIMEOUT` | `10s`   | Connection timeout                                            |
 | `mikrotik.command_timeout`    | `MIKROTIK_CMD_TIMEOUT`  | `30s`   | Command execution timeout                                     |
-| `mikrotik.pool_size`          | `MIKROTIK_POOL_SIZE`    | `4`     | Number of parallel API connections for bulk operations (1–20) |
+| `mikrotik.pool_size`          | `MIKROTIK_POOL_SIZE`    | `4`     | RouterOS API sessions used for parallel work such as reconciliation removals (1–20) |
 
 > **Auto-capping:** On startup the bouncer queries the router's `max-sessions` for the API service and automatically reduces `pool_size` if it would exceed the router limit. To check or change the limit on your router:
 >
@@ -343,7 +351,7 @@ Fine-tuning options for decision filtering, TLS, performance, firewall customiza
 | Config Key                       | Env Variable                     | Default   | Description                                                          |
 | -------------------------------- | -------------------------------- | --------- | -------------------------------------------------------------------- |
 | `logging.format`                 | `LOG_FORMAT`                     | `text`    | Log format: `text` or `json`                                         |
-| `logging.file`                   | `LOG_FILE`                       |           | Log to file (empty = stdout only)                                    |
+| `logging.file`                   | `LOG_FILE`                       |           | Accepted but **not implemented** — all output goes to stderr          |
 | `metrics.enabled`                | `METRICS_ENABLED`                | `false`   | Enable Prometheus `/metrics` endpoint                                |
 | `metrics.listen_addr`            | `METRICS_ADDR`                   | `0.0.0.0` | Metrics server listen address                                        |
 | `metrics.listen_port`            | `METRICS_PORT`                   | `2112`    | Metrics server listen port                                           |
@@ -689,7 +697,7 @@ The dashboard provides real-time visibility into the bouncer's operation:
 - Check logs for placement fallback messages:
   - systemd: `journalctl -u cs-routeros-bouncer -f | grep -i placement`
   - Docker: `docker logs cs-routeros-bouncer | grep -i placement`
-  - Standalone: check the file configured by `logging.file`, or stdout if no log file is configured
+  - Standalone: `journalctl -u cs-routeros-bouncer`, or the process stderr if you run it by hand
 - Ensure `firewall.rule_placement: "top"` is set, or use structured placement with `strategy: "position"`, `before_comment`, or `after_comment`. Also check any YAML-only `firewall.ipv4.rule_placement` or `firewall.ipv6.rule_placement` override.
 
 </details>

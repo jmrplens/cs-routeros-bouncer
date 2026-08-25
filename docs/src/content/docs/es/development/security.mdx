@@ -65,14 +65,14 @@ Los endpoints `/metrics` y `/health` no requieren autenticación. Restringe el a
 
 El comando `setup` escribe una unidad de systemd con hardening habilitado:
 
-| Ajuste                    | Propósito                                                                     |
-| ------------------------- | ----------------------------------------------------------------------------- |
-| `NoNewPrivileges=yes`     | Impide la escalada de privilegios a través de transiciones exec               |
-| `ProtectSystem=strict`    | Monta las rutas del sistema en solo lectura para el servicio                  |
-| `ProtectHome=yes`         | Bloquea el acceso directo a los directorios home                              |
-| `ReadWritePaths=/var/log` | Permite escribir archivos de log cuando `logging.file` apunta bajo `/var/log` |
-| `PrivateTmp=yes`          | Proporciona al servicio un directorio temporal aislado                        |
-| `LimitNOFILE=65536`       | Deja margen para las sesiones de la API de RouterOS y los endpoints HTTP      |
+| Ajuste                    | Propósito                                                                        |
+| ------------------------- | -------------------------------------------------------------------------------- |
+| `NoNewPrivileges=yes`     | Impide la escalada de privilegios a través de transiciones exec                  |
+| `ProtectSystem=strict`    | Monta las rutas del sistema en solo lectura para el servicio                     |
+| `ProtectHome=yes`         | Bloquea el acceso directo a los directorios home                                 |
+| `ReadWritePaths=/var/log` | Permite escribir logs bajo `/var/log` cuando rediriges ahí la salida del proceso |
+| `PrivateTmp=yes`          | Proporciona al servicio un directorio temporal aislado                           |
+| `LimitNOFILE=65536`       | Deja margen para las sesiones de la API de RouterOS y los endpoints HTTP         |
 
 Si mantienes un archivo de unidad manual, conserva estos ajustes salvo que tu despliegue tenga una razón concreta para relajar alguno.
 

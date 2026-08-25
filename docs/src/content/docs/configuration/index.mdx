@@ -18,11 +18,13 @@ cs-routeros-bouncer -c /path/to/config.yaml
 
 Deployment helpers choose their own paths:
 
-| Deployment method       | Config path used                                                                                   |
-| ----------------------- | -------------------------------------------------------------------------------------------------- |
-| `setup` systemd service | `/etc/cs-routeros-bouncer/cs-routeros-bouncer.yaml`                                                |
-| Docker image            | Environment variables by default; `/etc/cs-routeros-bouncer/config.yaml` is auto-loaded if mounted |
-| Direct binary execution | No implicit file; use `-c`                                                                         |
+| Deployment method       | Config path used                                                                                              |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `setup` systemd service | `/etc/cs-routeros-bouncer/cs-routeros-bouncer.yaml`                                                           |
+| Docker image            | Environment variables by default; the implicit `/etc/cs-routeros-bouncer/config.yaml` is picked up if mounted |
+| Direct binary execution | `-c` when given; otherwise `/etc/cs-routeros-bouncer/config.yaml` if that file exists                         |
+
+The implicit `/etc/cs-routeros-bouncer/config.yaml` fallback is a property of the binary, not of the Docker image: any invocation without `-c` loads that file when it exists and otherwise runs in environment-variables-only mode.
 
 YAML string values may contain explicit `${VAR}` placeholders. Only braced placeholders are expanded; literal `$` characters in secrets are preserved.
 
@@ -80,8 +82,8 @@ The essential settings to get the bouncer running. Most deployments only need th
 | ------------------------- | -------------------------- | ------------------------ | ------------------------------------------- |
 | `crowdsec.api_url`        | `CROWDSEC_URL`             | `http://localhost:8080/` | CrowdSec LAPI URL                           |
 | `crowdsec.api_key`        | `CROWDSEC_BOUNCER_API_KEY` | _(required)_             | Bouncer API key                             |
-| `mikrotik.address`        | `MIKROTIK_HOST`            | `192.168.0.1:8728`       | RouterOS API address (`host:port`)          |
-| `mikrotik.username`       | `MIKROTIK_USER`            | `crowdsec`               | API username                                |
+| `mikrotik.address`        | `MIKROTIK_HOST`            | _(required)_             | RouterOS API address (`host:port`)          |
+| `mikrotik.username`       | `MIKROTIK_USER`            | _(required)_             | API username                                |
 | `mikrotik.password`       | `MIKROTIK_PASS`            | _(required)_             | API password                                |
 | `firewall.ipv4.enabled`   | `FIREWALL_IPV4_ENABLED`    | `true`                   | Enable IPv4 blocking                        |
 | `firewall.ipv6.enabled`   | `FIREWALL_IPV6_ENABLED`    | `true`                   | Enable IPv6 blocking                        |
@@ -89,6 +91,8 @@ The essential settings to get the bouncer running. Most deployments only need th
 | `firewall.raw.enabled`    | `FIREWALL_RAW_ENABLED`     | `true`                   | Create raw/prerouting rules                 |
 | `firewall.deny_action`    | `FIREWALL_DENY_ACTION`     | `drop`                   | Action: `drop` or `reject`                  |
 | `logging.level`           | `LOG_LEVEL`                | `info`                   | Log level: `debug`, `info`, `warn`, `error` |
+
+`mikrotik.address` and `mikrotik.username` have no built-in defaults. The `192.168.0.1:8728` and `crowdsec` values that appear in `config/cs-routeros-bouncer.yaml` are sample values, not defaults.
 
 ### Advanced parameters
 
@@ -172,7 +176,7 @@ Backward-compatible aliases such as `FIREWALL_INPUT_*` and `FIREWALL_OUTPUT_*` a
 | Config Key                       | Env Variable                     | Default   | Description                                                     |
 | -------------------------------- | -------------------------------- | --------- | --------------------------------------------------------------- |
 | `logging.format`                 | `LOG_FORMAT`                     | `text`    | Log format: `text` or `json`                                    |
-| `logging.file`                   | `LOG_FILE`                       |           | Log file path (empty = stdout only)                             |
+| `logging.file`                   | `LOG_FILE`                       |           | Accepted but not implemented; logs always go to stderr          |
 | `metrics.enabled`                | `METRICS_ENABLED`                | `false`   | Enable Prometheus `/metrics` endpoint                           |
 | `metrics.listen_addr`            | `METRICS_ADDR`                   | `0.0.0.0` | Listen address                                                  |
 | `metrics.listen_port`            | `METRICS_PORT`                   | `2112`    | Listen port                                                     |

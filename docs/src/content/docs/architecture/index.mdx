@@ -126,11 +126,11 @@ This is significantly faster than the "check-first" approach (~400 ms per IP), w
 
 ### Connection pool
 
-The bouncer maintains a configurable pool of persistent RouterOS API connections. During reconciliation, work is distributed across the pool using the generic `ParallelExec` helper; on an RB5009 with `pool_size: 10`, full RouterOS bulk-add work for ~28,700 CAPI-origin entries completed in ~35–36 s.
+The bouncer maintains a configurable pool of persistent RouterOS API connections. The pool serves removals only: during reconciliation, stale entries are deleted concurrently across the pool using the generic `ParallelExec` helper. In the RB5009 CAPI test, removing ~26,800 CAPI-only entries took ~77 s of RouterOS removal work. If the pool cannot be opened, removals fall back to the main connection.
 
 ### Script-based bulk add
 
-For initial reconciliation, the bouncer generates RouterOS scripts that add entries in chunks of 100 IPs per script. Each entry uses `:do { ... } on-error={}` to gracefully skip duplicates. This approach is ~97× faster than individual sequential API calls for large lists — measured on an RB5009UG+S+ (RouterOS 7.22.1) with ~28,700 CAPI entries; see [Benchmarking](/cs-routeros-bouncer/development/benchmarking/) for the methodology.
+For initial reconciliation, the bouncer generates RouterOS scripts that add entries in chunks of 100 IPs per script. Each entry uses `:do { ... } on-error={}` to gracefully skip duplicates. Bulk adds do not use the connection pool: they run sequentially over the main connection. This approach is still ~97× faster than individual sequential API calls for large lists — measured on an RB5009UG+S+ (RouterOS 7.22.1), where ~28,700 CAPI entries took ~35–36 s of RouterOS bulk-add work; see [Benchmarking](/cs-routeros-bouncer/development/benchmarking/) for the methodology.
 
 ### In-memory address cache
 
