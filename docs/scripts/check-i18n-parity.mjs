@@ -35,6 +35,13 @@ const DOCS_DIR = fileURLToPath(new URL("../src/content/docs", import.meta.url));
 // Adding a locale here is the only change needed when astro.config.mjs grows one;
 // leaving it out would classify the new locale's pages as untranslated English.
 const LOCALES = ["es"];
+
+// HTML accepts BOTH `-->` and `--!>` as a comment terminator. Matching only the
+// first leaves a comment closed with the second looking unterminated, which
+// would swallow every heading after it — the same silent-truncation failure the
+// unclosed-fence check exists to prevent. (CodeQL js/bad-tag-filter flags the
+// one-form regex for exactly this reason.)
+const COMMENT_END = /--!?>/;
 const PAGE_EXTENSIONS = new Set([".md", ".mdx"]);
 
 /**
@@ -165,7 +172,7 @@ function frontmatterShape(frontmatter) {
  * `[2, 3, 3, 2]`. Heading text is ignored — it is translated by definition;
  * the shape of the outline is what has to match.
  * @param {string} body
- * @returns {{ levels: number[], unclosedFence: boolean }}
+ * @returns {{ levels: number[], unterminated: string | null }}
  */
 function headingLevels(body) {
 	/** @type {number[]} */
@@ -178,7 +185,7 @@ function headingLevels(body) {
 
 	for (const line of body.split(/\r?\n/)) {
 		if (inComment) {
-			if (line.includes("-->")) inComment = false;
+			if (COMMENT_END.test(line)) inComment = false;
 			continue;
 		}
 		// Up to three leading spaces still count, per CommonMark; four or more
@@ -201,8 +208,12 @@ function headingLevels(body) {
 			continue; // Never read headings out of a code block.
 		}
 
-		// An `<!--` with no `-->` on the same line opens a comment span.
-		if (/<!--/.test(line) && !/-->/.test(line.slice(line.indexOf("<!--")))) {
+		// An `<!--` not terminated on the same line opens a comment span.
+		const commentStart = line.indexOf("<!--");
+		if (
+			commentStart !== -1 &&
+			!COMMENT_END.test(line.slice(commentStart + 4))
+		) {
 			inComment = true;
 			continue;
 		}
@@ -210,9 +221,14 @@ function headingLevels(body) {
 		const heading = /^ {0,3}(#{1,6})(?:[ \t]|$)/.exec(line);
 		if (heading) levels.push(heading[1].length);
 	}
-	// A fence left open at EOF silently swallows every heading after it, so the
-	// outline this returns is not trustworthy — the caller fails the page instead.
-	return { levels, unclosedFence: fence !== null };
+	// A fence — or a comment — left open at EOF silently swallows every heading
+	// after it, so the outline this returns is not trustworthy. The caller fails
+	// the page rather than comparing a truncated outline against another one.
+	return {
+		levels,
+		unterminated:
+			fence !== null ? "code fence" : inComment ? "HTML comment" : null,
+	};
 }
 
 /**
@@ -290,11 +306,13 @@ for (const locale of LOCALES) {
 		// An unclosed fence hides every heading after it, so the outline compared
 		// below would be meaningless — and two pages can agree on a truncated
 		// outline while differing after the fence. Fail the page instead.
-		if (english.unclosedFence) {
-			unreadableOutlines.push(`${page} — unclosed code fence`);
+		if (english.unterminated !== null) {
+			unreadableOutlines.push(`${page} — unterminated ${english.unterminated}`);
 		}
-		if (translated.unclosedFence) {
-			unreadableOutlines.push(`${locale}/${page} — unclosed code fence`);
+		if (translated.unterminated !== null) {
+			unreadableOutlines.push(
+				`${locale}/${page} — unterminated ${translated.unterminated}`,
+			);
 		}
 
 		const onlyEnglish = missingFrom(english.keys, translated.keys);
@@ -365,7 +383,7 @@ report(
 report(
 	"Outlines that could not be read",
 	unreadableOutlines,
-	"A code fence is never closed, so every heading after it is invisible to this check.",
+	"A code fence or HTML comment is never closed, so every heading after it is invisible to this check.",
 );
 
 const failures =
