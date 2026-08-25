@@ -138,7 +138,7 @@ const CONFIG_SCHEMA = "docs/src/data/config-schema.json";
 function yamlBlock(contents, key, relativePath) {
 	const header = matchOrThrow(
 		contents,
-		new RegExp(`^([ \\t]*)${key}:[ \\t]*$`, "m"),
+		new RegExp(String.raw`^([ \t]*)${key}:[ \t]*$`, "m"),
 		relativePath,
 		`the \`${key}:\` block`,
 	);
@@ -168,8 +168,12 @@ function yamlList(contents, key, relativePath) {
 	const body = yamlBlock(contents, key, relativePath);
 	const items = [];
 	for (const line of body.split("\n")) {
-		const item = /^[ \t]*-[ \t]+(.+?)[ \t]*$/.exec(line);
-		if (item) items.push(item[1].replace(/^["']|["']$/g, ""));
+		// Captured greedily and trimmed in JS rather than with a lazy group
+		// followed by `[ \t]*$`: those two overlap, so the engine can backtrack
+		// across a long run of trailing whitespace deciding which of them owns
+		// it. Trimming afterwards is unambiguous, linear, and easier to read.
+		const item = /^[ \t]*-[ \t]+(.*)$/.exec(line);
+		if (item) items.push(item[1].trim().replace(/^["']|["']$/g, ""));
 	}
 	if (items.length === 0) {
 		throw new Error(
@@ -374,13 +378,24 @@ export const releasePlatforms = (() => {
 	//   - goos: windows
 	//     goarch: arm
 	const ignoreBlock = yamlBlock(builds, "ignore", GORELEASER);
-	const ignored = new Set(
-		[
-			...ignoreBlock.matchAll(
-				/-[ \t]*goos:[ \t]*["']?([\w-]+)["']?[ \t]*\n[ \t]*goarch:[ \t]*["']?([\w-]+)["']?/g,
-			),
-		].map(([, goos, goarch]) => `${goos}/${goarch}`),
-	);
+	// Walked line by line rather than matched with one two-line pattern. The
+	// combined regex reached a complexity of 22 for what is really two simple
+	// lookups, and a reader had to hold both lines of YAML in their head to see
+	// what it captured.
+	const ignored = new Set();
+	let pendingGoos = null;
+	for (const line of ignoreBlock.split("\n")) {
+		const goos = /^[ \t]*-[ \t]*goos:[ \t]*["']?([\w-]+)["']?/.exec(line);
+		if (goos) {
+			pendingGoos = goos[1];
+			continue;
+		}
+		const goarch = /^[ \t]*goarch:[ \t]*["']?([\w-]+)["']?/.exec(line);
+		if (goarch && pendingGoos !== null) {
+			ignored.add(`${pendingGoos}/${goarch[1]}`);
+			pendingGoos = null;
+		}
+	}
 	if (ignored.size === 0) {
 		throw new Error(
 			`repo-stats.mjs: the \`ignore:\` list in ${GORELEASER} parsed as empty, ` +
