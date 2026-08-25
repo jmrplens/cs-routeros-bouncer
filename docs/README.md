@@ -3,7 +3,7 @@
 [![Built with Starlight](https://astro.badg.es/v2/built-with-starlight/tiny.svg)](https://starlight.astro.build)
 
 Documentation site for **cs-routeros-bouncer**, the CrowdSec bouncer for MikroTik RouterOS.
-Live at: <https://jmrplens.github.io/cs-routeros-bouncer>
+Live at: <https://jmrp.io/docs/cs-routeros-bouncer>
 
 ## Project Structure
 
