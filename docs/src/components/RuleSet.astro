@@ -134,7 +134,15 @@ const shown = families.length > 0 ? families : [...FAMILIES];
 	{
 		selected.map((rule) => {
 			const gloss = ruleGloss(rule, locale);
-			const list = addressListName(rule, shown[0]);
+			// Every family this card renders, not just the first: the code frame above
+			// lists both, so a meta row naming only the IPv4 list understates the IPv6
+			// half of the very rule it is describing.
+			// A whitelist name is supplied by the operator and is the same for both
+			// families, so rendering it once per family repeated it verbatim.
+			const lists = [
+				...new Set(shown.map((family) => addressListName(rule, family))),
+			];
+			const paths = shown.map((family) => menuPath(rule, family));
 			const defaultLabel =
 				rule.settingDefault === "unset" ? labels.unset : rule.settingDefault;
 			return (
@@ -154,7 +162,12 @@ const shown = families.length > 0 ? families : [...FAMILIES];
 						<div>
 							<dt>{labels.table}</dt>
 							<dd>
-								<code>{menuPath(rule, shown[0])}</code>
+								{paths.map((path, i) => (
+									<>
+										<code>{path}</code>
+										{i < paths.length - 1 ? " · " : ""}
+									</>
+								))}
 							</dd>
 						</div>
 						<div>
@@ -172,7 +185,16 @@ const shown = families.length > 0 ? families : [...FAMILIES];
 						<div>
 							<dt>{labels.list}</dt>
 							<dd>
-								{list ? <code>{list}</code> : <em>{labels.noList}</em>}
+								{lists[0] ? (
+									lists.map((name, i) => (
+										<>
+											<code>{name}</code>
+											{i < lists.length - 1 ? " · " : ""}
+										</>
+									))
+								) : (
+									<em>{labels.noList}</em>
+								)}
 								{rule.match?.kind === "whitelist" && (
 									<em class="rule-card__hint"> ({labels.sampleList})</em>
 								)}

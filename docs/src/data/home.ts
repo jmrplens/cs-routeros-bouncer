@@ -108,8 +108,23 @@ const stockRuleCount = ruleCount(defaultRules);
 /** How many rule *kinds* that is, before the IPv4/IPv6 doubling. */
 const stockRuleKinds = defaultRules.length;
 
-/** The one decision type `parseDecision()` in internal/crowdsec/stream.go accepts. */
-const implementedDecisionType = supportedDecisionTypes.join(", ");
+/**
+ * The decision type enforced out of the box.
+ *
+ * Both locales set this inside a sentence written in the singular ("… is the
+ * only one enforced by default"). Joining a longer list would render a list
+ * inside that sentence and no gate would notice, so the cardinality is asserted
+ * rather than assumed — the default is now operator-configurable, which makes
+ * the schema default the only thing holding the prose up.
+ */
+if (supportedDecisionTypes.length !== 1) {
+	throw new Error(
+		`The landing copy states one enforced decision type, but the schema default ` +
+			`for crowdsec.supported_decisions_types is [${supportedDecisionTypes.join(", ")}]. ` +
+			`Rewrite the "One decision type" fact in both locales before changing that default.`,
+	);
+}
+const implementedDecisionType = supportedDecisionTypes[0];
 
 /**
  * The RouterOS API service ports.

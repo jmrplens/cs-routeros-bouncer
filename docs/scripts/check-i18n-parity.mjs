@@ -380,6 +380,15 @@ function componentCalls(body) {
 		}
 	}
 
+	// A component named inside inline code or a comment is prose about the
+	// component, not an invocation of it. `\`<ConfigOption path="x" />\`` in one
+	// locale's explanation would otherwise fail a gate about what the two pages
+	// RENDER, which is the opposite of useful.
+	stripped = stripped
+		.replace(/<!--[\s\S]*?-->/g, "")
+		.replace(/\{\/\*[\s\S]*?\*\/\}/g, "")
+		.replace(/`[^`\n]*`/g, "");
+
 	// Capitalised tag name is what distinguishes a component from raw HTML.
 	for (const match of stripped.matchAll(/<([A-Z][A-Za-z0-9]*)([^>]*?)\/?>/g)) {
 		const [, name, attrs] = match;

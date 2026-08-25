@@ -101,7 +101,13 @@ const lifecycle = addressListLifecycle.i18n[locale];
  * and the block now sits next to the `<details>` it describes, which is the
  * arrangement that makes a mismatch visible in review.
  */
-const SITE_URL = "https://jmrplens.github.io/cs-routeros-bouncer/";
+// The deploy origin is declared once, in astro.config.mjs. Restating it here
+// would let the schema's @id and isPartOf keep pointing at the old origin after
+// a domain or base change, with nothing failing.
+// Astro.site carries no trailing slash, and every use below concatenates a
+// path onto it — without normalising, the Spanish @id came out as
+// ".../cs-routeros-bounceres/#faq". Verified in the built HTML, not assumed.
+const SITE_URL = `${(Astro.site?.href ?? "/").replace(/\/+$/, "")}/`;
 const faqSchema = {
 	"@context": "https://schema.org",
 	"@type": "FAQPage",

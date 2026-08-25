@@ -365,13 +365,39 @@ function parseRequiredKeys(source) {
  * @param {string} source
  * @returns {Map<string, string>} leaf yaml name -> condition text
  */
-function parseConditionalRequirements(source) {
+function parseConditionalRequirements(source, constants) {
 	/** @type {Map<string, string>} */
 	const conditions = new Map();
+	// The condition's VALUE lives in the fmt.Errorf argument that fills the
+	// verb, not in the format string. Stripping the verb and stopping there
+	// emitted `strategy=` — a condition with its only informative half removed,
+	// which reads like a real value to anyone who does not open config.go.
 	for (const match of source.matchAll(
-		/"%s\.(\w+) is required when ([^"]+)"/g,
+		/"%s\.(\w+) is required when ([^"]+)"([^)\n]*)\)/g,
 	)) {
-		conditions.set(match[1], match[2].replace(/%q|%s|%v/g, "").trim());
+		const [, field, template, argumentTail] = match;
+		const verb = /%[qsv]/.exec(template);
+		if (!verb) {
+			conditions.set(field, template.trim());
+			continue;
+		}
+		// The last argument is the one filling the trailing verb.
+		const args = argumentTail
+			.split(",")
+			.map((a) => a.trim())
+			.filter(Boolean);
+		const last = args.at(-1);
+		const resolved = last && constants.get(last);
+		if (resolved !== undefined) {
+			conditions.set(field, template.replace(/%[qsv]/, resolved).trim());
+			continue;
+		}
+		// A runtime variable: say what the condition depends on rather than
+		// publishing a truncated equality with nothing on its right-hand side.
+		conditions.set(
+			field,
+			`the configured ${template.replace(/\s*=?\s*%[qsv]/, "").trim()} requires it`,
+		);
 	}
 	return conditions;
 }
@@ -663,7 +689,10 @@ async function buildSchema() {
 	const defaults = parseDefaults(source, constants);
 	const envBindings = parseEnvBindings(source, constants);
 	const requiredKeys = parseRequiredKeys(source);
-	const conditionalRequirements = parseConditionalRequirements(source);
+	const conditionalRequirements = parseConditionalRequirements(
+		source,
+		constants,
+	);
 	const structLiteralDefaults = parseStructLiteralDefaults(
 		source,
 		constants,
