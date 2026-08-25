@@ -178,7 +178,7 @@ function yamlList(contents, key, relativePath) {
 		const rest = trimmed.slice(1);
 		// A bare `-` opens a nested block, and `-foo` is not a list item at all;
 		// only `- value` is. Preserves the previous pattern's `[ \t]+`.
-		if (rest === "" || (rest[0] !== " " && rest[0] !== "\t")) continue;
+		if (!rest.startsWith(" ") && !rest.startsWith("\t")) continue;
 		const value = rest.trim();
 		if (value !== "") {
 			items.push(value.replace(/^["']|["']$/g, ""));
