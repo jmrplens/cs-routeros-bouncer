@@ -1,0 +1,102 @@
+/* ============================================================
+   home.css — the landing page's "how it works" flow.
+   ============================================================
+
+   Spacing is deliberately not tokenised globally: a site-wide
+   spacing scale would have to be right for every component and ends
+   up right for none. Instead this component names its own three
+   constraints ONCE, on its own root, with the reason beside each —
+   so the breakpoints below re-point one custom property instead of
+   rewriting the grid, the card height and the icon box three times.
+   ============================================================ */
+
+.flow-steps {
+	/* The only thing the breakpoints change. Four steps read as one
+	   row on a wide screen and must not wrap to 3 + 1. */
+	--rb-flow-columns: 4;
+	/* Floor for every card, so `grid-auto-rows: 1fr` equalises them
+	   at a height that already fits icon + title + two description
+	   lines at the narrowest column this grid ever produces. Raising
+	   the column count without raising this is what makes the last
+	   card jump. */
+	--rb-flow-card-min-height: 11rem;
+	/* Square, and sized so the two-digit monospace ordinal clears its
+	   own border at the body font size. */
+	--rb-flow-icon-size: 2.5rem;
+
+	display: grid;
+	grid-template-columns: repeat(var(--rb-flow-columns), minmax(0, 1fr));
+	grid-auto-rows: 1fr;
+	gap: 1rem;
+	margin-block: 2rem;
+}
+
+.flow-step {
+	position: relative;
+	display: flex;
+	box-sizing: border-box;
+	min-height: var(--rb-flow-card-min-height);
+	flex-direction: column;
+	align-items: flex-start;
+	justify-content: flex-start;
+	padding: 1rem;
+	border: 1px solid var(--rb-border);
+	border-radius: var(--rb-radius);
+	background: var(--rb-surface-raised);
+	text-align: left;
+	transition:
+		border-color 0.2s ease,
+		box-shadow 0.2s ease,
+		transform 0.2s ease;
+}
+.flow-step:hover {
+	border-color: var(--rb-border-strong);
+	box-shadow: 0 0.75rem 1.5rem var(--rb-shadow);
+	transform: translateY(-2px);
+}
+
+/* The ordinal is `aria-hidden` decoration — the step's title carries
+   the order in words — so it may sit at incidental contrast. */
+.flow-step__icon {
+	display: grid;
+	width: var(--rb-flow-icon-size);
+	height: var(--rb-flow-icon-size);
+	place-items: center;
+	margin-bottom: 0.875rem;
+	border: 1px solid color-mix(in srgb, var(--rb-accent) 40%, transparent);
+	border-radius: 0.75rem;
+	background: color-mix(
+		in srgb,
+		var(--rb-accent) 12%,
+		var(--rb-surface-raised)
+	);
+	color: var(--rb-accent);
+	font-family: var(--sl-font-mono);
+	font-size: 0.8rem;
+	font-weight: 800;
+	letter-spacing: 0;
+}
+
+.flow-step__title {
+	margin-bottom: 0.4rem;
+	font-size: 0.95rem;
+	font-weight: 700;
+}
+
+.flow-step__desc {
+	color: var(--sl-color-gray-3);
+	font-size: 0.8rem;
+	line-height: 1.6;
+}
+
+@media (max-width: 64rem) {
+	.flow-steps {
+		--rb-flow-columns: 2;
+	}
+}
+
+@media (max-width: 36rem) {
+	.flow-steps {
+		--rb-flow-columns: 1;
+	}
+}

@@ -351,7 +351,7 @@ Fine-tuning options for decision filtering, TLS, performance, firewall customiza
 | Config Key                       | Env Variable                     | Default   | Description                                                          |
 | -------------------------------- | -------------------------------- | --------- | -------------------------------------------------------------------- |
 | `logging.format`                 | `LOG_FORMAT`                     | `text`    | Log format: `text` or `json`                                         |
-| `logging.file`                   | `LOG_FILE`                       |           | Accepted but **not implemented** — all output goes to stderr          |
+| `logging.file`                   | `LOG_FILE`                       |           | Also write logs to this file (absolute path; stderr always kept)      |
 | `metrics.enabled`                | `METRICS_ENABLED`                | `false`   | Enable Prometheus `/metrics` endpoint                                |
 | `metrics.listen_addr`            | `METRICS_ADDR`                   | `0.0.0.0` | Metrics server listen address                                        |
 | `metrics.listen_port`            | `METRICS_PORT`                   | `2112`    | Metrics server listen port                                           |

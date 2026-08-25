@@ -1,0 +1,209 @@
+/* ============================================================
+   chrome.css — everything around the prose: hero, cards, sidebar,
+   pagination, asides, diagrams.
+   ============================================================ */
+
+:root {
+	/* A Starlight layout token receiving a value — not a new one. */
+	--sl-content-pad-x: clamp(1rem, 3vw, 2rem);
+}
+
+/* ------------------------------------------------------------------
+   HERO
+   Starlight paints no hero background of its own, so there is
+   nothing here to reset — only the type scale and the actions.
+   ------------------------------------------------------------------ */
+.hero {
+	padding-block: 4.75rem 5.25rem;
+}
+
+.hero .stack {
+	gap: 2rem;
+}
+
+.hero .copy {
+	gap: 1.25rem;
+}
+
+.hero h1 {
+	max-width: 11ch;
+	font-size: 3.75rem;
+	line-height: 1.02;
+	letter-spacing: 0;
+}
+
+.hero .tagline {
+	max-width: 34rem;
+	color: var(--sl-color-gray-2);
+	font-size: 1.2rem;
+	line-height: 1.7;
+}
+
+.hero .actions {
+	gap: 1rem;
+	align-items: center;
+}
+
+/* The label is painted `--sl-color-black`, which is the PAGE colour
+   in both themes: dark ink on the bright dark-theme accent, white on
+   the deep light-theme accent. One declaration, both themes. */
+.hero .actions a.primary {
+	border: none;
+	border-radius: 999px;
+	background: var(--sl-color-text-accent);
+	color: var(--sl-color-black);
+	box-shadow: 0 0.75rem 1.5rem var(--rb-shadow);
+	font-weight: 700;
+	letter-spacing: 0;
+	transition:
+		transform 0.15s ease,
+		box-shadow 0.15s ease,
+		background-color 0.15s ease;
+}
+
+.hero .actions a.primary:hover {
+	background: var(--sl-color-accent-high);
+	box-shadow: 0 1rem 2rem var(--rb-shadow);
+	transform: translateY(-1px);
+}
+
+.hero .actions a.minimal {
+	font-weight: 650;
+	letter-spacing: 0;
+}
+
+.hero > img {
+	width: 16rem;
+	height: 16rem;
+	filter: drop-shadow(0 1.25rem 2.5rem var(--rb-shadow));
+}
+
+@media (max-width: 48rem) {
+	.hero {
+		padding-block: 2.5rem 3rem;
+		text-align: center;
+	}
+	.hero h1 {
+		max-width: none;
+		font-size: 2.75rem;
+	}
+	.hero .tagline {
+		font-size: 1.05rem;
+	}
+	.hero .actions {
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+	.hero > img {
+		width: 11rem;
+		height: 11rem;
+	}
+}
+
+/* ------------------------------------------------------------------
+   CARDS AND LINK CARDS
+   ------------------------------------------------------------------ */
+.card,
+.link-card {
+	border-radius: var(--rb-radius);
+	transition:
+		border-color 0.2s ease,
+		box-shadow 0.2s ease,
+		transform 0.2s ease;
+}
+.card:hover {
+	box-shadow: 0 0.25rem 0.75rem var(--rb-shadow);
+	transform: translateY(-2px);
+}
+.link-card:hover {
+	border-color: var(--rb-border-strong);
+	box-shadow: 0 0.125rem 0.5rem var(--rb-shadow);
+}
+
+/* ------------------------------------------------------------------
+   SIDEBAR
+   `aria-current` is an accent use, never a status one.
+   ------------------------------------------------------------------ */
+nav.sidebar a[aria-current="page"] {
+	padding-inline-start: 0.625rem;
+	border-inline-start: 3px solid var(--sl-color-text-accent);
+	font-weight: 600;
+}
+
+/* ------------------------------------------------------------------
+   PAGINATION
+   ------------------------------------------------------------------ */
+.pagination-links a {
+	border-radius: var(--rb-radius);
+	transition:
+		border-color 0.2s ease,
+		background 0.2s ease;
+}
+.pagination-links a:hover {
+	border-color: var(--rb-border-strong);
+	background: var(--rb-surface);
+}
+
+/* ------------------------------------------------------------------
+   ASIDES
+   Starlight builds these from --sl-color-<hue>-low/-high, which
+   theme.css points at the status axis. Every variant renders its
+   name ("Danger", "Caution"…) as the title, so the colour is the
+   second signal and never the only one.
+   ------------------------------------------------------------------ */
+.starlight-aside {
+	border-radius: var(--rb-radius);
+	border-inline-start-width: 4px;
+}
+
+/* ------------------------------------------------------------------
+   MERMAID DIAGRAMS
+   rehype-mermaid emits a <picture> with a light and a dark <source>;
+   the inline script in astro.config.mjs flips the `media` attribute
+   on theme change. Nothing here may set a background on the SVG, or
+   the swapped-in variant sits on the wrong one.
+   ------------------------------------------------------------------ */
+.rehype-mermaid svg {
+	max-width: 100%;
+	height: auto;
+	margin-block: 1rem;
+	border-radius: var(--rb-radius);
+}
+
+/* ------------------------------------------------------------------
+   TOUCH TARGETS — 44 x 44 px minimum (WCAG 2.2 AA, 2.5.8)
+   ------------------------------------------------------------------ */
+@media (pointer: coarse) {
+	nav.sidebar a,
+	.pagination-links a {
+		display: inline-flex;
+		min-height: 44px;
+		align-items: center;
+	}
+}
+
+/* ---------------------------------------------------------------------------
+   Generated configuration reference (ConfigOption.astro)
+
+   The component emits these hooks; without them the metadata line renders as
+   undifferentiated body copy and reads as prose the author wrote, which is
+   exactly what it is not. Uses only tokens from theme.css.
+   -------------------------------------------------------------------------- */
+.config-option {
+	margin: 0 0 1rem;
+	padding: 0.5rem 0.75rem;
+	background: var(--rb-surface);
+	border-left: 2px solid var(--rb-border-strong);
+	border-radius: 0 var(--rb-radius) var(--rb-radius) 0;
+	font-size: var(--sl-text-sm);
+	line-height: 1.7;
+}
+
+.config-option strong {
+	color: var(--sl-color-white);
+	font-weight: 600;
+}
+
+.config-option-table {
+	margin-block: 1rem;
+}

@@ -1,13 +1,17 @@
 #!/usr/bin/env node
 /**
- * Gates the colour contrast of the Starlight theme in `src/styles/custom.css`.
+ * Gates the colour contrast of the Starlight theme in `src/styles/`.
  *
- * The palette lives in that sheet, but the *pairs* it renders as are decided by
- * a mix of its own rules and Starlight's. Every pair below was read out of one
- * or the other and carries the citation in `where`; none of them is a
- * combination that never reaches the screen. Only the pairing is hard-coded —
- * the colours are always resolved from the sheet, so the gate follows the
- * palette when it moves.
+ * The palette lives in `theme.css`, but the *pairs* it renders as are decided
+ * by a mix of the project's own rules and Starlight's. Every pair below was
+ * read out of one or the other and carries the citation in `where`; none of
+ * them is a combination that never reaches the screen. Only the pairing is
+ * hard-coded — the colours are always resolved from the sheets, so the gate
+ * follows the palette when it moves.
+ *
+ * The sheets are not listed here: they are read out of the `customCss` array in
+ * `astro.config.mjs`, in registration order, so the gate measures exactly what
+ * Starlight loads and a sheet added there can never quietly escape it.
  *
  * Thresholds (WCAG 2.2 AA):
  *   4.5 : 1  normal text                                     — 1.4.3
@@ -20,13 +24,13 @@
 import { readFileSync } from "node:fs";
 import process from "node:process";
 
-const SHEET = new URL("../src/styles/custom.css", import.meta.url);
+const CONFIG = new URL("../astro.config.mjs", import.meta.url);
 
 /* ------------------------------------------------------------------
    1. STYLESHEET PARSING
    ------------------------------------------------------------------ */
 
-/** Removes `/* … *\/` comments. The sheet has no comment-like string literals. */
+/** Removes `/* … *\/` comments. The sheets have no comment-like string literals. */
 function stripComments(text) {
 	return text.replaceAll(/\/\*[\s\S]*?\*\//g, "");
 }
@@ -89,16 +93,44 @@ function customProperties(body) {
 	return declarations;
 }
 
-let sheetSource;
+/**
+ * The stylesheets Starlight loads, in registration order, read out of the
+ * `customCss` array in `astro.config.mjs` rather than restated here — a second
+ * list would be one more thing to forget to update. Only quoted `.css` paths
+ * are collected, so the comments inside that array are ignored.
+ */
+function registeredSheets(configSource) {
+	const array = /customCss:\s*\[([\s\S]*?)\]/.exec(configSource);
+	if (array === null) {
+		throw new Error("no `customCss` array found in astro.config.mjs");
+	}
+	const paths = [...array[1].matchAll(/"([^"]+\.css)"/g)].map(
+		(match) => match[1],
+	);
+	if (paths.length === 0) {
+		throw new Error(
+			"the `customCss` array in astro.config.mjs lists no sheets",
+		);
+	}
+	return paths;
+}
+
+let sheets;
 try {
-	sheetSource = readFileSync(SHEET, "utf8");
+	sheets = registeredSheets(readFileSync(CONFIG, "utf8")).map((path) => ({
+		path,
+		source: readFileSync(new URL(`../${path}`, import.meta.url), "utf8"),
+	}));
 } catch (error) {
 	// A raw ENOENT stack trace tells a CI reader nothing about the cause.
-	console.error(`✗ cannot read ${SHEET}: ${error.code ?? error.message}`);
+	console.error(`✗ cannot read the registered stylesheets: ${error.message}`);
 	process.exit(1);
 }
 
-const blocks = parseBlocks(stripComments(sheetSource));
+// Concatenated in registration order, which is the order the cascade sees them.
+const blocks = parseBlocks(
+	stripComments(sheets.map((sheet) => sheet.source).join("\n")),
+);
 
 /** Merges every unconditional block matching `selector`, in source order. */
 function tokensOf(selector) {
@@ -330,18 +362,22 @@ const NON_TEXT = 3;
 const PAGE_BG = "var(--sl-color-black)";
 const TEXT = "var(--sl-color-gray-2)"; // Starlight: --sl-color-text
 const HEADING = "var(--sl-color-white)";
-const BRAND = "rgb(var(--brand-primary))";
+const ACCENT = "var(--sl-color-text-accent)";
 
 /**
- * `.flow-step` background — the `color-mix()` in the default (dark) cascade,
- * the `:root[data-theme="light"] .flow-step` override in the light one.
+ * `.flow-step` background. One declaration now covers both themes, because
+ * `--rb-surface-raised` is restated in each theme block instead of the card
+ * improvising a `color-mix()` in one and a literal white in the other.
  */
-const FLOW_STEP_BG = {
-	dark: sourced(".flow-step", "background"),
-	light: sourced(':root[data-theme="light"] .flow-step', "background"),
-};
+const FLOW_STEP_BG = sourced(".flow-step", "background");
 
-/** Starlight asides: `--sl-color-<hue>-high` title over `--sl-color-<hue>-low`. */
+/**
+ * Starlight asides: `--sl-color-<hue>-high` title over `--sl-color-<hue>-low`.
+ * theme.css points red / green / orange at the drop / allow / warn status axis
+ * and blue / purple at the informational hues, so these pairs are what actually
+ * gates the status ramp. Each variant also prints its name as the aside title,
+ * which is the redundancy rule the axis is documented under.
+ */
 const ASIDE_HUES = [
 	["note", "blue"],
 	["tip", "purple"],
@@ -372,7 +408,7 @@ const PAIRS = [
 	},
 	{
 		label: "markdown headings on the page background",
-		where: "starlight/style/markdown.css — h1–h6 (30px, 600)",
+		where: "starlight/style/markdown.css — h1–h6 from the --sl-text-h* ladder",
 		fg: HEADING,
 		bg: [PAGE_BG],
 		minimum: NORMAL_TEXT,
@@ -380,7 +416,7 @@ const PAIRS = [
 	{
 		label: "links in prose on the page background",
 		where: "starlight/style/markdown.css — a { color: --sl-color-text-accent }",
-		fg: "var(--sl-color-text-accent)",
+		fg: ACCENT,
 		bg: [PAGE_BG],
 		minimum: NORMAL_TEXT,
 	},
@@ -394,75 +430,71 @@ const PAIRS = [
 	},
 	{
 		label: "hero title on the page background",
-		where: "custom.css — .hero h1 (60px, 600) → large text",
+		where: "chrome.css — .hero h1 (60px, 600) → large text",
 		fg: HEADING,
 		bg: [PAGE_BG],
 		minimum: LARGE_TEXT,
 	},
 	{
 		label: "hero tagline on the page background",
-		where: "custom.css — .hero .tagline (19px, 400)",
+		where: "chrome.css — .hero .tagline (19px, 400)",
 		fg: TEXT,
 		bg: [PAGE_BG],
 		minimum: NORMAL_TEXT,
 	},
 	{
 		label: "hero primary call-to-action label on its button",
-		where: "custom.css — .hero .actions a.primary { background, color }",
+		where: "chrome.css — .hero .actions a.primary { background, color }",
 		// Starlight's own LinkButton paints .primary labels --sl-color-black; the
 		// sheet overrides that. Delete the override and this must measure the
-		// framework value and fail, not keep reporting the override's white.
+		// framework value and fail, not keep reporting the override's colour.
 		fg: sourced(".hero .actions a.primary", "color", "var(--sl-color-black)"),
-		bg: [BRAND],
+		bg: [sourced(".hero .actions a.primary", "background")],
 		minimum: NORMAL_TEXT,
 	},
 	{
 		label: "hero primary call-to-action label, hover",
-		where: "custom.css — .hero .actions a.primary:hover",
+		where: "chrome.css — .hero .actions a.primary:hover",
 		fg: sourced(".hero .actions a.primary", "color", "var(--sl-color-black)"),
-		bg: ["rgb(var(--brand-dark))"],
+		bg: [sourced(".hero .actions a.primary:hover", "background")],
 		minimum: NORMAL_TEXT,
 	},
 	{
 		label: "skip-to-content link label",
-		where: "custom.css — .skip-link:focus",
+		where: "a11y.css — .skip-link:focus",
 		fg: sourced(".skip-link:focus", "color"),
 		bg: [sourced(".skip-link:focus", "background")],
 		minimum: NORMAL_TEXT,
 	},
 	{
 		label: "inline code on its tinted background",
-		where:
-			"custom.css — :not(pre) > code { background: --sl-color-accent-low }",
+		where: "code.css — :not(pre) > code { background: --sl-color-accent-low }",
 		fg: TEXT,
-		bg: ["var(--sl-color-accent-low)"],
+		bg: [sourced(":not(pre) > code", "background")],
 		minimum: NORMAL_TEXT,
 	},
 	{
-		label: "table header text (bare tables)",
-		where: "custom.css — th { background: --sl-color-accent-low }",
-		fg: HEADING,
-		bg: ["var(--sl-color-accent-low)"],
+		label: "highlighted text in prose",
+		where: "typography.css — mark { background, color }",
+		fg: sourced("mark", "color"),
+		bg: [sourced("mark", "background")],
 		minimum: NORMAL_TEXT,
 	},
 	{
-		label: "table header text (prose tables)",
-		where: "custom.css — .sl-markdown-content th, translucent over the page",
+		// Tables are styled once now, under .sl-markdown-content — the second,
+		// bare `table`/`th` rule set that used to shadow it is gone, and so is
+		// the pair that measured it.
+		label: "table header text",
+		where: "tables.css — .sl-markdown-content th",
 		fg: HEADING,
-		bg: [
-			PAGE_BG,
-			{
-				dark: "rgba(var(--brand-primary), 0.15)",
-				light: "rgba(var(--brand-primary), 0.08)",
-			},
-		],
+		bg: [sourced(".sl-markdown-content th", "background")],
 		minimum: NORMAL_TEXT,
 	},
 	{
 		label: "table body text on a hovered row",
-		where: "custom.css — .sl-markdown-content tr:hover td",
+		where: "tables.css — .sl-markdown-content tr:hover td",
 		fg: TEXT,
-		bg: [PAGE_BG, "rgba(var(--brand-primary), 0.03)"],
+		bg: [PAGE_BG, sourced(".sl-markdown-content tr:hover td", "background")],
 		minimum: NORMAL_TEXT,
 	},
 	{
@@ -470,35 +502,47 @@ const PAIRS = [
 		where:
 			"starlight/components/SidebarSublist.astro — text-invert on text-accent",
 		fg: { dark: "var(--sl-color-accent-low)", light: "var(--sl-color-black)" },
-		bg: ["var(--sl-color-text-accent)"],
+		bg: [ACCENT],
 		minimum: NORMAL_TEXT,
 	},
 	{
 		label: "flow-step title on the step card",
-		where: "custom.css — .flow-step__title (15px, 700)",
+		where: "home.css — .flow-step__title (15px, 700)",
 		fg: TEXT,
 		bg: [FLOW_STEP_BG],
 		minimum: NORMAL_TEXT,
 	},
 	{
 		label: "flow-step description on the step card",
-		where: "custom.css — .flow-step__desc (12.8px, 400), landing page",
+		where: "home.css — .flow-step__desc (12.8px, 400), landing page",
 		fg: "var(--sl-color-gray-3)",
 		bg: [FLOW_STEP_BG],
 		minimum: NORMAL_TEXT,
 	},
 	{
-		label: "code-block copy-button glyph",
+		// The `$` is the signal that this is a shell frame; it replaced the three
+		// fake traffic lights, so it has to be readable rather than decorative.
+		label: "terminal prompt glyph in a code frame",
 		where:
-			"custom.css — .expressive-code .copy, --ec-copy-foreground on --ec-copy-bg",
-		fg: "var(--ec-copy-foreground)",
-		bg: ["var(--ec-copy-bg)"],
+			"code.css — .expressive-code .frame.is-terminal .ec-line .code::before",
+		fg: sourced(
+			".expressive-code .frame.is-terminal .ec-line .code::before",
+			"color",
+		),
+		bg: ["var(--rb-code-bg)"],
+		minimum: NORMAL_TEXT,
+	},
+	{
+		label: "code-block copy-button glyph",
+		where: "code.css — .expressive-code .copy button::after on .copy",
+		fg: sourced(".expressive-code .copy button::after", "background-color"),
+		bg: [sourced(".expressive-code .copy", "background-color")],
 		minimum: NON_TEXT,
 	},
 	{
 		label: "focus indicator against the page background",
-		where: "custom.css — :focus-visible outline, plus its dark-theme override",
-		fg: { dark: "#9fa8da", light: BRAND },
+		where: "a11y.css — :focus-visible { outline: 2px solid ... }",
+		fg: ACCENT,
 		bg: [PAGE_BG],
 		minimum: NON_TEXT,
 	},
@@ -540,24 +584,23 @@ const PAIRS = [
 	{
 		label: "flow-step ordinal glyph on its tinted tile",
 		where:
-			"custom.css — .flow-step__icon, aria-hidden decoration; 1.4.3 Incidental",
-		fg: BRAND,
-		bg: [FLOW_STEP_BG, "rgba(var(--brand-accent), 0.08)"],
+			"home.css — .flow-step__icon, aria-hidden decoration; 1.4.3 Incidental",
+		fg: sourced(".flow-step__icon", "color"),
+		bg: [FLOW_STEP_BG, sourced(".flow-step__icon", "background")],
 		minimum: null,
 	},
 	{
 		label: "card and flow-step hairline on the page background",
-		where:
-			"custom.css — .flow-step border; decorative boundary, outside 1.4.11",
-		fg: "var(--sl-color-gray-5)",
+		where: "home.css — .flow-step border; decorative boundary, outside 1.4.11",
+		fg: "var(--rb-border)",
 		bg: [PAGE_BG],
 		minimum: null,
 	},
 	{
-		label: "current sidebar entry accent border on its pill",
-		where: "custom.css — the pill fill and 600 weight already carry the state",
-		fg: BRAND,
-		bg: ["var(--sl-color-text-accent)"],
+		label: "code-frame hairline on the frame background",
+		where: "code.css — .expressive-code .frame border; decorative boundary",
+		fg: "var(--rb-code-border)",
+		bg: ["var(--rb-code-bg)"],
 		minimum: null,
 	},
 ];
@@ -593,14 +636,6 @@ function isColorToken(value, tokens) {
 	} catch {
 		return false;
 	}
-}
-
-function colorTokenNames(tokens) {
-	return new Set(
-		[...tokens]
-			.filter(([, value]) => isColorToken(value, tokens))
-			.map(([name]) => name),
-	);
 }
 
 /* ------------------------------------------------------------------
@@ -671,7 +706,8 @@ function forTheme(value, theme) {
 
 let failures = 0;
 
-console.log("custom.css — colour contrast gate (WCAG 2.2 AA)\n");
+console.log("src/styles — colour contrast gate (WCAG 2.2 AA)");
+console.log(`${sheets.map((sheet) => sheet.path).join("\n")}\n`);
 
 for (const theme of ["dark", "light"]) {
 	const tokens = PALETTES[theme];
@@ -721,32 +757,57 @@ for (const theme of ["dark", "light"]) {
 }
 
 console.log("Light / dark token symmetry");
-const inDark = colorTokenNames(PALETTES.dark);
-const inLight = colorTokenNames(PALETTES.light);
-const lopsided = [...new Set([...inDark, ...inLight])]
-	.filter((name) => inDark.has(name) !== inLight.has(name))
+// Compare the DECLARED blocks, not the resolved palettes. The light palette is
+// built as {...dark, ...lightOverrides} — the cascade, reproduced — so every
+// dark token is present in it by inheritance. Diffing the resolved maps can
+// therefore only ever catch a light-ONLY token, and silently misses the
+// dangerous direction: a colour declared on the bare `:root` (dark) and never
+// restated for light keeps its dark value on a white page. That is precisely
+// the near-invisible-hairline failure this check exists to prevent.
+const darkDeclared = tokensOf(":root");
+const lightDeclared = tokensOf(':root[data-theme="light"]');
+
+/** Colour tokens declared in a block, ignoring theme-agnostic ones. */
+function declaredColorTokens(declared, resolved) {
+	return new Set(
+		[...declared.keys()].filter((name) => {
+			const value = resolved.get(name);
+			return value !== undefined && isColorToken(value, resolved);
+		}),
+	);
+}
+
+const darkColors = declaredColorTokens(darkDeclared, PALETTES.dark);
+const lightColors = declaredColorTokens(lightDeclared, PALETTES.light);
+const lopsided = [...new Set([...darkColors, ...lightColors])]
+	.filter((name) => darkColors.has(name) !== lightColors.has(name))
 	.sort();
 if (lopsided.length === 0) {
-	console.log("  PASS  every colour token is defined for both themes");
+	console.log("  PASS  every colour token is declared in both theme blocks");
 }
 for (const name of lopsided) {
-	const only = inDark.has(name) ? "dark" : "light";
+	const only = darkColors.has(name) ? "dark" : "light";
 	const reason = KNOWN_ASYMMETRY.get(name);
 	if (reason) {
 		console.log(`  KNOWN ${name} is ${only}-only — ${reason}`);
 		continue;
 	}
 	failures += 1;
-	console.log(`  FAIL  ${name} is defined for ${only} only`);
+	console.log(
+		`  FAIL  ${name} is declared for ${only} only` +
+			(only === "dark"
+				? ` — it keeps its dark value (${PALETTES.dark.get(name)}) on a light page`
+				: ""),
+	);
 }
 
-const lightOverrides = tokensOf(':root[data-theme="light"]');
-const shared = [...inDark].filter((name) => !lightOverrides.has(name)).sort();
-if (shared.length > 0) {
-	console.log(
-		"  INFO  shared across both themes — the light block never restates them:",
-	);
-	for (const name of shared) {
+// Non-colour tokens (radius, font stacks) legitimately live in one block.
+const sharedNonColor = [...darkDeclared.keys()]
+	.filter((name) => !darkColors.has(name) && !lightDeclared.has(name))
+	.sort();
+if (sharedNonColor.length > 0) {
+	console.log("  INFO  theme-agnostic, declared once:");
+	for (const name of sharedNonColor) {
 		console.log(`          ${name}: ${base.get(name)}`);
 	}
 }
@@ -761,7 +822,7 @@ if (conditionalTokenBlocks.length > 0) {
 if (failures > 0) {
 	console.error(
 		`\n✗ ${failures} contrast ${failures === 1 ? "failure" : "failures"} in ` +
-			"src/styles/custom.css",
+			"the registered stylesheets",
 	);
 	process.exit(1);
 }

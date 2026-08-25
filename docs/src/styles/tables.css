@@ -1,0 +1,42 @@
+/* ============================================================
+   tables.css — one place, one set of rules.
+   ============================================================
+
+   Tables used to be styled twice, under two section numbers: bare
+   `table`/`th`/`td` in one place and `.sl-markdown-content table` in
+   another, with the second silently winning on specificity. This is
+   the merged rule set. Prose tables scroll horizontally rather than
+   forcing the page to.
+   ============================================================ */
+
+.sl-markdown-content table {
+	display: block;
+	width: 100%;
+	overflow-x: auto;
+	overflow-y: hidden;
+	border-collapse: separate;
+	border-spacing: 0;
+	border-radius: var(--rb-radius);
+	font-size: 0.85rem;
+}
+
+.sl-markdown-content th {
+	background: var(--sl-color-accent-low);
+	font-weight: 700;
+	text-align: left;
+	white-space: nowrap;
+}
+
+.sl-markdown-content td,
+.sl-markdown-content th {
+	padding: 0.625rem 0.875rem;
+	border-bottom: 1px solid var(--rb-border);
+}
+
+.sl-markdown-content tr:last-child td {
+	border-bottom: none;
+}
+
+.sl-markdown-content tr:hover td {
+	background: var(--rb-surface);
+}

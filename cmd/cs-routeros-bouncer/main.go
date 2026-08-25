@@ -158,8 +158,9 @@ func runBouncer(args []string) {
 	}
 	zerolog.SetGlobalLevel(level)
 
-	if cfg.Logging.Format == "json" {
-		log.Logger = zerolog.New(os.Stderr).With().Timestamp().Logger()
+	logOut, err := configureLogOutput(cfg.Logging)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to configure logging")
 	}
 
 	log.Info().
@@ -205,17 +206,15 @@ func runBouncer(args []string) {
 		log.Error().Err(shutdownErr).Msg("error shutting down health/metrics server")
 	}
 
-	if startErr != nil {
-		// Context cancellation from SIGTERM/SIGINT is a clean shutdown, not a failure.
-		if ctx.Err() != nil {
-			log.Info().Msg("cs-routeros-bouncer stopped")
-			return
-		}
+	// Context cancellation from SIGTERM/SIGINT is a clean shutdown, not a failure.
+	if startErr != nil && ctx.Err() == nil {
 		log.Error().Err(startErr).Msg("cs-routeros-bouncer stopped with error")
+		closeLogOutput(logOut)
 		os.Exit(1)
 	}
 
 	log.Info().Msg("cs-routeros-bouncer stopped")
+	closeLogOutput(logOut)
 }
 
 // resolveRunConfigPath chooses the explicit config path or the optional Docker default.

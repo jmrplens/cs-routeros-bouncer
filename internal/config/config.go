@@ -656,7 +656,7 @@ func expandConfigEnv(cfg *Config) error {
 
 	cfg.Logging.Level = expandConfigValue(cfg.Logging.Level, "LOG_LEVEL")
 	cfg.Logging.Format = expandConfigValue(cfg.Logging.Format, "LOG_FORMAT")
-	cfg.Logging.File = expandConfigValue(cfg.Logging.File, "LOG_FILE")
+	cfg.Logging.File = strings.TrimSpace(expandConfigValue(cfg.Logging.File, "LOG_FILE"))
 	cfg.Metrics.ListenAddr = expandConfigValue(cfg.Metrics.ListenAddr, "METRICS_ADDR")
 	return nil
 }
@@ -796,6 +796,9 @@ func (c *Config) Validate() error {
 		return err
 	}
 	if err := c.validateFirewall(); err != nil {
+		return err
+	}
+	if err := c.validateLogging(); err != nil {
 		return err
 	}
 	return c.validateIntervals()
@@ -1035,6 +1038,22 @@ func (c *Config) validateBlockOutputOptions() error {
 		if c.Firewall.BlockOutput.Interface == "" && c.Firewall.BlockOutput.InterfaceList == "" {
 			return errors.New("firewall.block_output requires interface or interface_list when enabled")
 		}
+	}
+	return nil
+}
+
+// validateLogging checks the optional log file destination. Only the shape of
+// the path is checked here; whether it can actually be opened is decided at
+// startup, where the failure can name the real filesystem error.
+func (c *Config) validateLogging() error {
+	if c.Logging.File == "" {
+		return nil
+	}
+	if strings.ContainsFunc(c.Logging.File, unicode.IsControl) {
+		return errors.New("logging.file must not contain control characters")
+	}
+	if strings.HasSuffix(c.Logging.File, string(os.PathSeparator)) {
+		return fmt.Errorf("logging.file must be a file path, got a directory %q", c.Logging.File)
 	}
 	return nil
 }
