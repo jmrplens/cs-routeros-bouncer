@@ -344,19 +344,45 @@ function stripEnclosedSpans(text) {
 	const spans = [
 		["<!--", "-->"],
 		["{/*", "*/}"],
-		["`", "`"],
 	];
 	let out = "";
 	let i = 0;
 	outer: while (i < text.length) {
+		// A code span is delimited by a RUN of backticks and closes only on a run
+		// of the same length, which is what lets ``a ` b`` hold a backtick.
+		// Treating every backtick as a one-character delimiter closed the span at
+		// the first tick of a `` pair and left the rest — component examples
+		// included — visible to the scan.
+		if (text[i] === "`") {
+			let run = 0;
+			while (text[i + run] === "`") run += 1;
+			const fence = "`".repeat(run);
+			// Only a run of EXACTLY this length closes it; a longer run is content.
+			let j = i + run;
+			let end = -1;
+			while (j < text.length) {
+				if (text[j] !== "`") {
+					if (text[j] === "\n") break; // a code span never spans a line
+					j += 1;
+					continue;
+				}
+				let closing = 0;
+				while (text[j + closing] === "`") closing += 1;
+				if (closing === run) {
+					end = j;
+					break;
+				}
+				j += closing;
+			}
+			// Unterminated, or the line ended first: treat the delimiter as text so
+			// a stray backtick in prose cannot swallow the rest of the document.
+			i = end === -1 ? i + run : end + fence.length;
+			continue outer;
+		}
+
 		for (const [open, close] of spans) {
 			if (!text.startsWith(open, i)) continue;
 			const end = text.indexOf(close, i + open.length);
-			// A backtick span never spans a line; a comment may.
-			if (open === "`") {
-				const newline = text.indexOf("\n", i + 1);
-				if (end === -1 || (newline !== -1 && newline < end)) break;
-			}
 			i = end === -1 ? text.length : end + close.length;
 			continue outer;
 		}

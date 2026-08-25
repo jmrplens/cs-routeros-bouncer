@@ -41,7 +41,7 @@ Formato de salida del log:
 
 <ConfigOption path="logging.file" />
 
-Ruta absoluta a un archivo de log. Déjala vacía —el valor por defecto— y el bouncer escribe solo en stderr, igual que antes de que esta clave hiciera nada.
+Ruta a un archivo de log. Déjala vacía —el valor por defecto— y el bouncer escribe solo en stderr, igual que antes de que esta clave hiciera nada.
 
 Cuando se define, las líneas de log van a **stderr y al archivo**. El archivo es una adición, no un desvío: `journalctl -u cs-routeros-bouncer` y `docker logs` siguen funcionando. Se abre en modo append, así que un reinicio nunca descarta el historial de baneos, y se crea con modo `0640` porque las líneas registran las IP de los clientes baneados.
 

@@ -41,7 +41,7 @@ Log output format:
 
 <ConfigOption path="logging.file" />
 
-Absolute path to a log file. Leave it empty — the default — and the bouncer writes to stderr only, exactly as before this key did anything.
+Path to a log file. Leave it empty — the default — and the bouncer writes to stderr only, exactly as before this key did anything.
 
 When set, log lines go to **both** stderr and the file. The file is an addition, not a redirection: `journalctl -u cs-routeros-bouncer` and `docker logs` keep working. The file is opened in append mode, so a restart never discards ban history, and created with mode `0640` because log lines record the IP addresses of banned clients.
 
