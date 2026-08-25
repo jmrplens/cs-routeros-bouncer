@@ -1,0 +1,202 @@
+---
+/**
+ * Renders the managed firewall rules from `src/data/rules.mjs` — the module
+ * that reads the truth out of `internal/manager/manager.go`, so the English
+ * page, its Spanish twin and the landing page all show the same rules with
+ * the same comments.
+ *
+ * Only the gloss is translated. Every chain, action, attribute, setting path
+ * and comment string comes from the shared structural fields, which is why a
+ * rule cannot be right in one locale and stale in the other.
+ *
+ *   <RuleSet />                          every rule, both families
+ *   <RuleSet scope="default" />          only what a stock configuration writes
+ *   <RuleSet scope="conditional" />      only the rules a setting has to turn on
+ *   <RuleSet table="raw" />              one RouterOS menu
+ *   <RuleSet families={["v4"]} />        drop the IPv6 twin from the frames
+ */
+import { Code } from "@astrojs/starlight/components";
+import {
+	managedRules,
+	addressListName,
+	menuPath,
+	ruleCommand,
+	ruleGloss,
+	FAMILIES,
+} from "../data/rules.mjs";
+
+interface Props {
+	/** Which rules to render. `all` by default. */
+	scope?: "all" | "default" | "conditional";
+	/** Restrict to one RouterOS menu. */
+	table?: "filter" | "raw";
+	/** Protocol families to show in each code frame. Both by default. */
+	families?: ("v4" | "v6")[];
+	/** Render the "N rules on the router" line above the list. */
+	count?: boolean;
+}
+
+const {
+	scope = "all",
+	table,
+	families = [...FAMILIES],
+	count = false,
+} = Astro.props;
+
+// Starlight serves the Spanish mirror under `/es/`; the English pages sit at
+// the root locale, so there is no positive marker to test for on that side.
+const isSpanish = Astro.url.pathname.split("/").includes("es");
+const locale = isSpanish ? "es" : "en";
+
+const labels = isSpanish
+	? {
+			table: "Tabla",
+			chain: "Chain",
+			action: "Acción",
+			list: "Address-list",
+			noList: "ninguna",
+			sampleList: "ejemplo; el nombre lo eliges tú",
+			byDefault: "Se crea por defecto.",
+			notByDefault: "No se crea por defecto.",
+			gatedOn: "Depende de",
+			requires: "Requiere",
+			defaultIs: "por defecto",
+			unset: "sin definir",
+			optional: "Atributos que solo aparecen si se configuran:",
+			countOne: "reglas en el router con la configuración de partida:",
+			countTwo: "tipos de regla ×",
+			countFamilies: "familias de protocolo.",
+			state: {
+				allow: "acepta",
+				drop: "descarta",
+				count: "solo cuenta",
+			},
+		}
+	: {
+			table: "Table",
+			chain: "Chain",
+			action: "Action",
+			list: "Address list",
+			noList: "none",
+			sampleList: "example; the name is yours",
+			byDefault: "Created by default.",
+			notByDefault: "Not created by default.",
+			gatedOn: "Gated on",
+			requires: "Requires",
+			defaultIs: "default",
+			unset: "unset",
+			optional: "Attributes that appear only when configured:",
+			countOne: "rules on the router with a stock configuration:",
+			countTwo: "rule kinds ×",
+			countFamilies: "protocol families.",
+			state: {
+				allow: "accepts",
+				drop: "drops",
+				count: "counts only",
+			},
+		};
+
+type RuleState = "allow" | "drop" | "count";
+
+const stateOf = (action: string): RuleState => {
+	if (action === "accept") return "allow";
+	if (action === "passthrough") return "count";
+	return "drop";
+};
+
+const selected = managedRules
+	.filter((rule) =>
+		scope === "all"
+			? true
+			: scope === "default"
+				? rule.createdByDefault
+				: !rule.createdByDefault,
+	)
+	.filter((rule) => (table ? rule.table === table : true));
+
+const shown = families.length > 0 ? families : [...FAMILIES];
+---
+
+{
+	count && (
+		<p class="rule-set__count">
+			{/* Derived from the families this instance actually renders, not from a
+			    hardcoded 2 — the `families` prop can select a single family, and a
+			    card that lists one family while claiming two is the drift this
+			    module exists to prevent. */}
+			<strong>{selected.length * shown.length}</strong> {labels.countOne}{" "}
+			{selected.length} {labels.countTwo} {shown.length} {labels.countFamilies}
+		</p>
+	)
+}
+
+<ul class="rule-set">
+	{
+		selected.map((rule) => {
+			const gloss = ruleGloss(rule, locale);
+			const list = addressListName(rule, shown[0]);
+			const defaultLabel =
+				rule.settingDefault === "unset" ? labels.unset : rule.settingDefault;
+			return (
+				<li class="rule-card" data-state={stateOf(rule.action)}>
+					<h3 class="rule-card__name">
+						{gloss.name}
+						<span class="rule-card__state">
+							{labels.state[stateOf(rule.action)]}
+						</span>
+					</h3>
+					<p class="rule-card__purpose">{gloss.purpose}</p>
+					<Code
+						code={shown.map((family) => ruleCommand(rule, family)).join("\n")}
+						lang="routeros"
+					/>
+					<dl class="rule-card__meta">
+						<div>
+							<dt>{labels.table}</dt>
+							<dd>
+								<code>{menuPath(rule, shown[0])}</code>
+							</dd>
+						</div>
+						<div>
+							<dt>{labels.chain}</dt>
+							<dd>
+								<code>{rule.chain}</code>
+							</dd>
+						</div>
+						<div>
+							<dt>{labels.action}</dt>
+							<dd>
+								<code>{rule.action}</code>
+							</dd>
+						</div>
+						<div>
+							<dt>{labels.list}</dt>
+							<dd>
+								{list ? <code>{list}</code> : <em>{labels.noList}</em>}
+								{rule.match?.kind === "whitelist" && (
+									<em class="rule-card__hint"> ({labels.sampleList})</em>
+								)}
+							</dd>
+						</div>
+					</dl>
+					<p class="rule-card__availability">
+						{rule.createdByDefault ? labels.byDefault : labels.notByDefault}{" "}
+						{rule.createdByDefault ? labels.gatedOn : labels.requires}{" "}
+						<code>{rule.enabledBy}</code> ({labels.defaultIs}{" "}
+						<code>{defaultLabel}</code>).
+					</p>
+					{gloss.note && <p class="rule-card__note">{gloss.note}</p>}
+					<p class="rule-card__optional">
+						{labels.optional}{" "}
+						{rule.optionalAttributes.map((option, index) => (
+							<>
+								{index > 0 && ", "}
+								<code>{option.attribute}</code> (<code>{option.setting}</code>)
+							</>
+						))}
+					</p>
+				</li>
+			);
+		})
+	}
+</ul>

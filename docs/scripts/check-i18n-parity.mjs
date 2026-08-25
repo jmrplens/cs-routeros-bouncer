@@ -332,6 +332,71 @@ function headingLevels(body) {
 }
 
 /**
+ * Collect the MDX component invocations in a page body, as a multiset keyed by
+ * component name plus its identifying attribute.
+ *
+ * Heading outlines cannot see these. A page can keep its `## Frequently asked
+ * questions` heading in both locales while one of them loses the
+ * `<Home section="faq" />` underneath it — the outline still matches, every
+ * gate stays green, and a whole section (here, a live rich-results surface)
+ * silently disappears from that locale. The same holds for a dropped
+ * `<ConfigOption path="…" />` or `<RuleSet scope="…" />`.
+ *
+ * Only the identifying attribute is compared, never free text: `title` and
+ * friends are translated by definition. Components inside fenced code blocks
+ * are skipped — they are examples, not invocations.
+ *
+ * @param {string} body
+ * @returns {Map<string, number>}
+ */
+function componentCalls(body) {
+	/** @type {Map<string, number>} */
+	const calls = new Map();
+	// Attributes that identify WHICH instance of a component this is. Anything
+	// else is presentation or prose and may legitimately differ per locale.
+	const identifying = ["section", "path", "paths", "scope", "name", "id"];
+
+	// Strip fenced code blocks first, then scan the remaining text as a whole:
+	// Prettier wraps a long invocation across several lines, so a line-by-line
+	// scan sees `<ConfigOption` with no attributes and reports a phantom
+	// mismatch against the locale whose copy happened to fit on one line.
+	let stripped = "";
+	let fence = null;
+	for (const line of body.split(/\r?\n/)) {
+		const fenceMatch = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+		if (fence === null) {
+			if (fenceMatch) {
+				fence = { char: fenceMatch[1][0], length: fenceMatch[1].length };
+				continue;
+			}
+			stripped += line + "\n";
+		} else if (
+			fenceMatch !== null &&
+			fenceMatch[1][0] === fence.char &&
+			fenceMatch[1].length >= fence.length &&
+			fenceMatch[2].trim() === ""
+		) {
+			fence = null;
+		}
+	}
+
+	// Capitalised tag name is what distinguishes a component from raw HTML.
+	for (const match of stripped.matchAll(/<([A-Z][A-Za-z0-9]*)([^>]*?)\/?>/g)) {
+		const [, name, attrs] = match;
+		let key = name;
+		for (const attribute of identifying) {
+			const found = new RegExp(`\\b${attribute}=["']([^"']*)["']`).exec(attrs);
+			if (found) {
+				key = `${name}[${attribute}=${found[1]}]`;
+				break;
+			}
+		}
+		calls.set(key, (calls.get(key) ?? 0) + 1);
+	}
+	return calls;
+}
+
+/**
  * @param {string} relativePath page path relative to DOCS_DIR
  * @returns {{ keys: Set<string>, counts: Map<string, number>, flow: string[], levels: number[], unterminated: string | null }}
  */
@@ -342,7 +407,7 @@ function readPage(relativePath) {
 		frontmatter === null
 			? { keys: new Set(), counts: new Map(), flow: [] }
 			: frontmatterShape(frontmatter);
-	return { ...shape, ...headingLevels(body) };
+	return { ...shape, ...headingLevels(body), components: componentCalls(body) };
 }
 
 /** @param {Set<string>} a @param {Set<string>} b @returns {string[]} */
@@ -677,6 +742,7 @@ if (englishPages.length === 0) {
 /** @type {string[]} */ const orphanTranslations = [];
 /** @type {string[]} */ const frontmatterMismatches = [];
 /** @type {string[]} */ const headingMismatches = [];
+/** @type {string[]} */ const componentMismatches = [];
 /** @type {string[]} */ const unreadableOutlines = [];
 /** @type {string[]} */ const unreadableFrontmatter = [];
 
@@ -759,6 +825,28 @@ for (const locale of LOCALES) {
 			frontmatterMismatches.push(`${locale}/${page} — ${details.join("; ")}`);
 		}
 
+		// A component invocation present in one locale and not the other drops a
+		// whole rendered section while the heading above it survives.
+		const componentKeys = [
+			...new Set([
+				...english.components.keys(),
+				...translated.components.keys(),
+			]),
+		].sort();
+		const componentDiff = [];
+		for (const key of componentKeys) {
+			const inEnglish = english.components.get(key) ?? 0;
+			const inTranslated = translated.components.get(key) ?? 0;
+			if (inEnglish !== inTranslated) {
+				componentDiff.push(
+					`${key}: ${inEnglish} in en, ${inTranslated} in ${locale}`,
+				);
+			}
+		}
+		if (componentDiff.length > 0) {
+			componentMismatches.push(`${page} — ${componentDiff.join("; ")}`);
+		}
+
 		if (english.levels.join(",") !== translated.levels.join(",")) {
 			headingMismatches.push(
 				`${page} — en: [${english.levels.join(" ")}] (${english.levels.length} headings)\n` +
@@ -801,6 +889,11 @@ report(
 	"The sequence of heading levels must match — a difference means a section was dropped, added or re-nested.",
 );
 report(
+	"Component invocation mismatches",
+	componentMismatches,
+	"A component rendered in one locale and not the other drops a whole section while its heading survives.",
+);
+report(
 	"Outlines that could not be read",
 	unreadableOutlines,
 	"A code fence or HTML comment is never closed, so every heading after it is invisible to this check.",
@@ -816,6 +909,7 @@ const failures =
 	orphanTranslations.length +
 	frontmatterMismatches.length +
 	headingMismatches.length +
+	componentMismatches.length +
 	unreadableOutlines.length +
 	unreadableFrontmatter.length;
 
@@ -832,5 +926,5 @@ if (failures > 0) {
 // meant to: catching that needs per-string provenance, not a structural diff.
 console.log(
 	`✓ i18n parity: ${englishPages.length} English pages, ${twinCount} twin(s) across ${LOCALES.join(", ")} — ` +
-		"page set, frontmatter keys and heading outline match (structure only; body text is not compared).",
+		"page set, frontmatter keys, heading outline and component invocations match (structure only; body prose is not compared).",
 );

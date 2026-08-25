@@ -1,23 +1,32 @@
 ---
 title: Firewall Rules
-description: How cs-routeros-bouncer creates, orders, and cleans up MikroTik firewall filter and raw rules, and how it identifies its managed rule blocks.
+description: The firewall rules cs-routeros-bouncer writes to MikroTik, rendered from the daemon's own rule definitions, plus how it orders, identifies and cleans them up.
 ---
 
 import { Steps, LinkCard } from "@astrojs/starlight/components";
+import RuleSet from "../../../components/RuleSet.astro";
 
 How the bouncer creates and manages [RouterOS firewall](https://help.mikrotik.com/docs/spaces/ROS/pages/250708066/Firewall) rules.
 
-## Rule types
+## Rules the daemon writes
 
-The bouncer can create rules in three locations:
+The bouncer does not write one rule per table. It writes an ordered **block** per chain, and it writes that block once for every protocol family it is enabled for — `firewall.ipv4.enabled` and `firewall.ipv6.enabled` are both `true` by default, so the stock configuration builds every rule below twice, against `crowdsec-banned` for IPv4 and `crowdsec6-banned` for IPv6. A block is also built once per entry in `firewall.filter.chains` and `firewall.raw.chains`; add a chain there and the whole block is repeated in it.
 
-| Type           | RouterOS path                        | Purpose                                                         |
-| -------------- | ------------------------------------ | --------------------------------------------------------------- |
-| Filter input   | `/ip/firewall/filter`                | Block incoming traffic (after connection tracking)              |
-| Raw prerouting | `/ip/firewall/raw`                   | Block incoming traffic (before connection tracking — lower CPU) |
-| Filter output  | `/ip/firewall/filter` (output chain) | Block outgoing traffic to banned IPs                            |
+Inside a block the order is fixed — whitelist, counting, deny — and the block is only moved into position once every rule in it exists, so RouterOS never evaluates a half-built block.
 
-Each type has an IPv6 equivalent (e.g., `/ipv6/firewall/filter`).
+### Created by default
+
+<RuleSet scope="default" count />
+
+The two `passthrough` counting rules are the ones no earlier version of this page listed, and they are the reason a stock router shows eight bouncer rules where the documentation used to describe four. They are created by `metrics.track_processed`, which defaults to `true`.
+
+A counting rule matches no address list, carries no `src-address-list`, and takes no decision: `passthrough` in RouterOS only increments the rule's byte and packet counters and moves on. That is deliberate — the bouncer reads those counters to report how much traffic its chains _evaluated_, which is the denominator for how much of it was dropped. It is also why the rule looks, on a router you are auditing by eye, exactly like somebody's forgotten scratch rule. It is not one.
+
+`metrics.track_processed` is read on its own, not behind `metrics.enabled` — which defaults to `false`. A router whose bouncer exposes no metrics endpoint at all still carries both counting rules, quietly counting for nobody. Setting `metrics.track_processed: false` removes them, and with them the `crowdsec_bouncer_processed_*` metrics; the dropped counters, which come from the deny rules themselves, are unaffected.
+
+### Created only when a setting asks for them
+
+<RuleSet scope="conditional" />
 
 ## Rule creation flow
 
@@ -29,39 +38,15 @@ On startup, the bouncer follows this sequence:
 
    Scans for bouncer-managed rules by matching the comment pattern.
 
-2. **Clean state**
+2. **Reuse or create**
 
-   Removes any existing rules to ensure a fresh start.
+   A rule whose exact comment is already on the router is adopted, not duplicated; anything missing is created.
 
-3. **Create new rules**
-
-   Creates rules according to the current configuration.
-
-4. **Place at configured position**
+3. **Place the block at the configured position**
 
    Places the managed block according to the effective `rule_placement` for that protocol and table: top, bottom, a numeric RouterOS position, or an anchor comment.
 
 </Steps>
-
-## Rule structure
-
-Each rule has:
-
-- **Chain**: `input`, `forward`, `prerouting`, or `output`
-- **Action**: `drop` or `reject` (with optional `reject-with`)
-- **Interface**: Optional input/output interface restriction
-- **Connection state**: Optional connection-state matcher (filter only)
-- **Log settings**: Optional logging with configurable prefix
-- **Comment**: Structured identifier for management
-
-Example rule as seen in RouterOS:
-
-```routeros
-/ip/firewall/filter print where comment~"crowdsec-bouncer"
-# chain=input action=drop src-address-list=crowdsec-banned
-#   in-interface=ether1 log=no
-#   comment="crowdsec-bouncer:filter-input-input-v4 @cs-routeros-bouncer"
-```
 
 ## Rule placement
 
@@ -81,14 +66,6 @@ The bouncer can place its managed block (the related rules it creates and moves 
 
 Comment placement uses `fallback` (`top` by default, or `bottom`) when the anchor is missing or cannot be used. Numeric `position` ignores `fallback` because an out-of-range position naturally means append.
 
-```routeros
-# Rules appear near the configured location; retry or fallback placement can choose a later valid target.
-/ip/firewall/filter print
-# 0  chain=input action=drop src-address-list=crowdsec-banned ...
-# 1  chain=forward action=drop src-address-list=crowdsec-banned ...
-# 2  ... (your other rules)
-```
-
 ## Rule identification
 
 Rules are identified by a structured comment:
@@ -105,31 +82,41 @@ Rules are identified by a structured comment:
 | `direction` | `input`, `output`, `whitelist`, or `counting`                   |
 | `protocol`  | `v4` or `v6`                                                    |
 
+RouterOS prints the comment above the rule it belongs to, so the whole managed block is visible in one query:
+
+```routeros
+/ip/firewall/filter print where comment~"crowdsec"
+# 0  ;;; crowdsec-bouncer:filter-input-counting-v4 @cs-routeros-bouncer
+#       chain=input action=passthrough
+# 1  ;;; crowdsec-bouncer:filter-input-input-v4 @cs-routeros-bouncer
+#       chain=input action=drop src-address-list=crowdsec-banned
+```
+
 :::note
-The `@cs-routeros-bouncer` suffix is always appended and is used to distinguish rules created by this bouncer from rules that may happen to have similar comments.
+The `@cs-routeros-bouncer` suffix is always appended and is used to distinguish rules created by this bouncer from rules that may happen to have similar comments. It is not configurable, which is what makes crash recovery possible after `comment_prefix` has been changed.
 :::
 
-## Cleanup on shutdown
+## Cleanup, and what is left behind
 
-When the bouncer receives a SIGTERM signal:
+When the bouncer receives SIGTERM or SIGINT:
 
 <Steps>
 
-1. **Remove rules**
+1. **Remove the rules**
 
-   All firewall rules with matching comments are removed.
+   Every firewall rule the bouncer created is removed, counting rules included.
 
-2. **Preserve address lists**
+2. **Leave the address lists alone**
 
-   Address list entries are **not** removed — they expire naturally via their timeout.
+   Address-list entries are **not** removed. They expire on the MikroTik timeout they were written with, which is the duration of the CrowdSec decision that created them.
 
 </Steps>
 
-This design means:
+This design means protection continues after the bouncer stops, for whatever is left of each entry's timeout, and a quick restart never leaves the router unprotected in the gap. It also means no mass delete has to run during shutdown.
 
-- Protection continues briefly after bouncer stops (until entries expire)
-- No mass-delete operations are needed on shutdown
-- Quick restart doesn't leave the router unprotected during the gap
+:::caution
+A decision that carries no duration is written with **no timeout at all**. That entry does not expire: it stays in the address list until the next reconciliation drops it, or until you remove it by hand. The rules disappear with the daemon; those entries do not.
+:::
 
 <LinkCard
   title="Firewall Configuration"

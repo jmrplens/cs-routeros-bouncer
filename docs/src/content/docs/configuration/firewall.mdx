@@ -673,6 +673,10 @@ firewall:
 <details>
 <summary>Full RouterOS rules generated (IPv4)</summary>
 
+:::note[This listing shows an all-options-enabled example]
+It is a worked example with whitelist, `forward`, `output` and logging all turned on — not a stock configuration. It also omits the passthrough counting rules that `metrics.track_processed` creates by default. For the authoritative, generated list of every rule the daemon writes, see [Rules the daemon writes](/cs-routeros-bouncer/architecture/firewall-rules/), which renders from the same module the code is read from.
+:::
+
 ```routeros
 # Filter — input chain (whitelist + reject with connection-state):
 /ip/firewall/filter add chain=input action=accept src-address-list=crowdsec-whitelist in-interface=ether1 connection-state=new log=yes log-prefix="cs-filter" comment="crowdsec-bouncer:filter-input-whitelist-v4 @cs-routeros-bouncer"

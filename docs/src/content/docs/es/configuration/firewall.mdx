@@ -490,7 +490,11 @@ firewall:
 ```
 
 <details>
-<summary>Ejemplo de salida de log de RouterOS</summary>
+<summary>Reglas completas de RouterOS generadas (IPv4)</summary>
+
+:::note[Este listado es un ejemplo con todas las opciones activadas]
+Es un ejemplo trabajado con whitelist, `forward`, `output` y logging activados — no una configuración de fábrica. Además omite las reglas passthrough de conteo que `metrics.track_processed` crea por defecto. Para la lista autoritativa y generada de todas las reglas que escribe el demonio, consulta [Reglas que escribe el demonio](/cs-routeros-bouncer/es/architecture/firewall-rules/), que se renderiza desde el mismo módulo del que se lee el código.
+:::
 
 ```text
 jan/15 14:30:01 firewall,info cs-filter input: in:ether1 out:(unknown 0), src-mac 00:11:22:33:44:55, proto TCP (SYN), 185.220.101.1:45678->192.168.1.1:22, len 60

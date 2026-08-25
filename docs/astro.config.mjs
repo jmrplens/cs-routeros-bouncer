@@ -289,6 +289,7 @@ export default defineConfig({
 				"./src/styles/code.css",
 				"./src/styles/tables.css",
 				"./src/styles/home.css",
+				"./src/styles/rules.css",
 				"./src/styles/a11y.css",
 			],
 			expressiveCode: {

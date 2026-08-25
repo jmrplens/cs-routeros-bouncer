@@ -1,0 +1,263 @@
+---
+/**
+ * Renders one section of the landing page from `src/data/home.ts`.
+ *
+ * The landing is two files — `index.mdx` and `es/index.mdx` — and everything
+ * inside them except the `##` headings comes from here, so the two pages differ
+ * only in the prose the contract requires each of them to supply. Headings stay
+ * in the MDX because Starlight builds "On this page" from the markdown AST; see
+ * the long note at the top of `home.ts`.
+ *
+ *   <Home section="flow" />          the numbered how-it-works strip
+ *   <Home section="why" />           the lead sentence and the feature cards
+ *   <Home section="disclosure" />    what it writes to your router, and what it does not
+ *   <Home section="requirements" />  CrowdSec / RouterOS / API user
+ *   <Home section="faq" />           the <details> list AND its FAQPage JSON-LD
+ *   <Home section="explore" />       the link cards
+ *
+ * TWO THINGS THIS COMPONENT OWNS RATHER THAN THE CONTRACT
+ *
+ * 1. THE RULES. The disclosure block lists the literal rules from
+ *    `../../data/rules.mjs`, which reads them out of `internal/manager/manager.go`.
+ *    They are not restated in `home.ts` in either language: chain, action,
+ *    address list and comment are structural, identical in both locales, and a
+ *    landing page that retyped them would be the fifth copy of a rule set that
+ *    has already been wrong twice.
+ *
+ * 2. THE SHUTDOWN CAVEAT. `addressListLifecycle` carries its own translated
+ *    title, body and caveat — the "entries are not removed, and a decision with
+ *    no duration produces an entry with no timeout at all" point. It is
+ *    appended to the limits list here, from the module, for the same reason.
+ */
+import { Card, CardGrid, Code, LinkCard } from "@astrojs/starlight/components";
+
+import { home, type HomeContent, type Segment } from "../../data/home";
+import {
+	FAMILIES,
+	addressListLifecycle,
+	defaultRules,
+	ruleCommand,
+} from "../../data/rules.mjs";
+
+interface Props {
+	/** Which part of the landing to render. */
+	section: "flow" | "why" | "disclosure" | "requirements" | "faq" | "explore";
+}
+
+const { section } = Astro.props;
+
+// Starlight serves the Spanish mirror under `/es/`; the English pages sit at
+// the root locale, so there is no positive marker to test for on that side.
+// Same test as RuleSet.astro and ConfigOption.astro, deliberately.
+const locale: HomeContent["locale"] = Astro.url.pathname
+	.split("/")
+	.includes("es")
+	? "es"
+	: "en";
+const content = home[locale];
+
+/**
+ * The few strings the contract does not carry, because they label markup this
+ * component invents rather than content an author writes.
+ */
+const labels =
+	locale === "es"
+		? {
+				caveat: "Advertencia",
+				rulesTitle: "Reglas que escribe una configuración de partida",
+			}
+		: {
+				caveat: "Caveat",
+				rulesTitle: "Rules a stock configuration writes",
+			};
+
+/**
+ * The stock rule set, in the order the daemon creates it: `enabledProtos()`
+ * walks the protocol families on the outside and writes the whole block for
+ * each, so IPv4's four rules precede IPv6's four.
+ */
+const ruleListing = FAMILIES.flatMap((family) =>
+	defaultRules.map((rule) => ruleCommand(rule, family)),
+).join("\n");
+
+const lifecycle = addressListLifecycle.i18n[locale];
+
+/**
+ * The FAQ, as `FAQPage` structured data, generated from the same `content.faq`
+ * array that renders the visible `<details>` below. The two were separate
+ * hand-written copies until now, in two languages — four versions of every
+ * answer, none of them checked against another.
+ *
+ * `@id`, `inLanguage` and `isPartOf` are unchanged from the block this
+ * replaces, so the FAQ still hangs off the `#website` node `astro.config.mjs`
+ * emits site-wide and the crawler sees the same node it already knows.
+ *
+ * ONE THING DID CHANGE: the script is emitted in the `<body>` rather than the
+ * `<head>`. Starlight's `head:` frontmatter takes static YAML only, so a block
+ * generated from an array cannot go there — and the alternative, the site-wide
+ * `head` array in `astro.config.mjs`, would put this page's FAQ on all 57
+ * pages. Google reads JSON-LD from either element
+ * (https://developers.google.com/search/docs/appearance/structured-data/intro-structured-data),
+ * and the block now sits next to the `<details>` it describes, which is the
+ * arrangement that makes a mismatch visible in review.
+ */
+const SITE_URL = "https://jmrplens.github.io/cs-routeros-bouncer/";
+const faqSchema = {
+	"@context": "https://schema.org",
+	"@type": "FAQPage",
+	"@id": `${SITE_URL}${locale === "es" ? "es/" : ""}#faq`,
+	inLanguage: locale,
+	isPartOf: { "@id": `${SITE_URL}#website` },
+	mainEntity: content.faq.map((entry) => ({
+		"@type": "Question",
+		name: entry.question,
+		acceptedAnswer: { "@type": "Answer", text: entry.answer },
+	})),
+};
+
+/**
+ * Escapes `<` so a `</script>` sequence inside an answer cannot close the tag
+ * early and corrupt the page. Same guard as `overrides/Head.astro`.
+ */
+const faqJson = JSON.stringify(faqSchema).replace(/</g, "\\u003c");
+---
+
+{
+	section === "flow" && (
+		<ol class="flow-steps">
+			{content.flow.map((step, index) => (
+				<li class="flow-step">
+					{/*
+					  The ordinal is decoration: the <ol> already gives a screen
+					  reader "item 2 of 4", so announcing "02" as well would be the
+					  same fact twice.
+					*/}
+					<span class="flow-step__icon" aria-hidden="true">
+						{String(index + 1).padStart(2, "0")}
+					</span>
+					<span class="flow-step__title">{step.title}</span>
+					<span class="flow-step__desc">{step.description}</span>
+				</li>
+			))}
+		</ol>
+	)
+}
+
+{
+	section === "why" && (
+		<>
+			<p>
+				{content.why.lead}{" "}
+				<a href={content.why.link.href}>{content.why.link.text}</a>.
+			</p>
+			<CardGrid>
+				{content.why.cards.map((card) => (
+					<Card title={card.title}>{card.body}</Card>
+				))}
+			</CardGrid>
+		</>
+	)
+}
+
+{
+	section === "disclosure" && (
+		<div class="disclosure">
+			<p class="disclosure__lead">{content.disclosure.lead}</p>
+
+			<section class="disclosure__panel" aria-labelledby="disclosure-writes">
+				<h3 class="disclosure__title" id="disclosure-writes">
+					{content.disclosure.writes.title}
+				</h3>
+				<p class="disclosure__caption">{content.disclosure.writes.caption}</p>
+				<Code code={ruleListing} lang="routeros" title={labels.rulesTitle} />
+				<p class="disclosure__footnote">
+					{content.disclosure.writes.footnote.map((run: Segment) =>
+						typeof run === "string" ? run : <code>{run.code}</code>,
+					)}
+				</p>
+			</section>
+
+			<section class="disclosure__panel" aria-labelledby="disclosure-limits">
+				<h3 class="disclosure__title" id="disclosure-limits">
+					{content.disclosure.limits.title}
+				</h3>
+				<dl class="disclosure__facts">
+					{content.disclosure.limits.facts.map((fact) => (
+						<div class="disclosure__fact">
+							<dt>{fact.term}</dt>
+							<dd>
+								{fact.detail.map((run: Segment) =>
+									typeof run === "string" ? run : <code>{run.code}</code>,
+								)}
+								{fact.link && (
+									<>
+										{" "}
+										<a href={fact.link.href}>{fact.link.text}</a>
+									</>
+								)}
+							</dd>
+						</div>
+					))}
+					{/*
+					  The last fact is not authored: it is `addressListLifecycle` from
+					  rules.mjs, which derives it from `Shutdown()` in manager.go. Both
+					  locales get it from the same module, so it cannot be translated
+					  into a different promise.
+					*/}
+					<div class="disclosure__fact">
+						<dt>{lifecycle.title}</dt>
+						<dd>
+							{lifecycle.body}
+							<span class="disclosure__caveat">
+								<strong>{labels.caveat}:</strong> {lifecycle.caveat}
+							</span>
+						</dd>
+					</div>
+				</dl>
+			</section>
+		</div>
+	)
+}
+
+{
+	section === "requirements" && (
+		<ul class="requirements">
+			{content.requirements.map((requirement) => (
+				<li>
+					<strong>{requirement.term}</strong> {requirement.detail}
+					{requirement.note && (
+						<span class="requirements__note"> ({requirement.note})</span>
+					)}
+				</li>
+			))}
+		</ul>
+	)
+}
+
+{
+	section === "faq" && (
+		<>
+			{content.faq.map((entry) => (
+				<details>
+					<summary>{entry.question}</summary>
+					<p>{entry.answer}</p>
+				</details>
+			))}
+			<script type="application/ld+json" is:inline set:html={faqJson} />
+		</>
+	)
+}
+
+{
+	section === "explore" && (
+		<CardGrid>
+			{content.explore.map((link) => (
+				<LinkCard
+					title={link.title}
+					description={link.description}
+					href={link.href}
+				/>
+			))}
+		</CardGrid>
+	)
+}
