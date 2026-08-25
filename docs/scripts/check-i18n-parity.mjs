@@ -332,6 +332,41 @@ function headingLevels(body) {
 }
 
 /**
+ * Remove HTML comments, MDX expression comments and inline code spans, in one
+ * left-to-right pass. Unterminated spans consume the rest of the input, which
+ * is the safe direction: the alternative is emitting text the author had
+ * commented out.
+ * @param {string} text
+ * @returns {string}
+ */
+function stripEnclosedSpans(text) {
+	/** Opening marker to its terminator. Order matters only for shared prefixes. */
+	const spans = [
+		["<!--", "-->"],
+		["{/*", "*/}"],
+		["`", "`"],
+	];
+	let out = "";
+	let i = 0;
+	outer: while (i < text.length) {
+		for (const [open, close] of spans) {
+			if (!text.startsWith(open, i)) continue;
+			const end = text.indexOf(close, i + open.length);
+			// A backtick span never spans a line; a comment may.
+			if (open === "`") {
+				const newline = text.indexOf("\n", i + 1);
+				if (end === -1 || (newline !== -1 && newline < end)) break;
+			}
+			i = end === -1 ? text.length : end + close.length;
+			continue outer;
+		}
+		out += text[i];
+		i += 1;
+	}
+	return out;
+}
+
+/**
  * Collect the MDX component invocations in a page body, as a multiset keyed by
  * component name plus its identifying attribute.
  *
@@ -384,10 +419,14 @@ function componentCalls(body) {
 	// component, not an invocation of it. `\`<ConfigOption path="x" />\`` in one
 	// locale's explanation would otherwise fail a gate about what the two pages
 	// RENDER, which is the opposite of useful.
-	stripped = stripped
-		.replace(/<!--[\s\S]*?-->/g, "")
-		.replace(/\{\/\*[\s\S]*?\*\/\}/g, "")
-		.replace(/`[^`\n]*`/g, "");
+	//
+	// Scanned in one left-to-right pass rather than by chained .replace(): a
+	// single regex pass can leave an opening marker behind — `<!--<!-- x -->`
+	// removes the inner comment and leaves a bare `<!--` for the component scan
+	// to walk straight past. (CodeQL flags exactly this as incomplete
+	// multi-character sanitization.) Consuming each span as it is entered
+	// cannot leave a partial marker.
+	stripped = stripEnclosedSpans(stripped);
 
 	// Capitalised tag name is what distinguishes a component from raw HTML.
 	for (const match of stripped.matchAll(/<([A-Z][A-Za-z0-9]*)([^>]*?)\/?>/g)) {
