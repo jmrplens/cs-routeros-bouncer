@@ -41,6 +41,25 @@ function token(css, selector, name) {
 }
 
 const css = readFileSync(THEME, "utf8");
+
+// The rail is the one colour the standalone copies must carry as a literal:
+// there is no system colour for a brand accent (AccentColor is the READER's
+// OS accent, not ours). Assert it still equals the token, so the one literal
+// in the drawing cannot drift the way the retired mark's four hex values did.
+function assertRailMatchesToken(accent) {
+	const svg = readFileSync(MARK, "utf8");
+	const declared = /\.rb-mark__rail\s*\{[^}]*fill:\s*([^;]+);/.exec(svg);
+	if (!declared) {
+		throw new Error(`${MARK}: no standalone fill for .rb-mark__rail to check`);
+	}
+	if (declared[1].trim().toLowerCase() !== accent.toLowerCase()) {
+		throw new Error(
+			`${MARK} paints the rail ${declared[1].trim()} but theme.css declares ` +
+				`--rb-accent: ${accent} for the light theme. Update the drawing, or the ` +
+				`favicon and the header will show different brands.`,
+		);
+	}
+}
 const palette = {
 	// The rasters are cut from the LIGHT theme: a favicon sits on browser
 	// chrome, and an app icon on a launcher, neither of which follows the
@@ -53,6 +72,8 @@ const palette = {
 
 /** The mono family the site's own stack resolves to on a Linux renderer. */
 const MONO = "DejaVu Sans Mono";
+
+assertRailMatchesToken(palette.accent);
 
 /** Append concrete colours so the standalone file renders outside a browser. */
 function standaloneMark() {
@@ -67,8 +88,9 @@ function standaloneMark() {
 	const close = svg.lastIndexOf("</svg>");
 	if (close === -1) throw new Error(`${MARK}: no closing </svg>`);
 	const override = `<style>
-		.rb-mark__body, .rb-mark__dot { fill: ${palette.ink}; }
-		.rb-mark__arc { stroke: ${palette.grid}; }
+		.rb-mark__lane { fill: ${palette.ink}; }
+		.rb-mark__halt { fill: ${palette.grid}; }
+		.rb-mark__rail { fill: ${palette.accent}; }
 	</style>`;
 	return Buffer.from(svg.slice(0, close) + override + svg.slice(close));
 }
@@ -84,21 +106,35 @@ function standaloneMark() {
  */
 function socialCard() {
 	const mark = readFileSync(MARK, "utf8");
-	// Lift the mark's own <defs> and shapes into the card, scaled and offset.
-	const inner = mark.slice(mark.indexOf("<defs>"), mark.lastIndexOf("</svg>"));
+	// Lift the mark's shapes into the card. Taken from the end of the opening
+	// <svg> tag rather than from a <defs> block: the mark has none, and slicing
+	// from a missing marker silently produced a card with no mark on it — which
+	// shipped once, because the byte count still changed and nobody looked.
+	const open = mark.indexOf(">", mark.indexOf("<svg")) + 1;
+	const close = mark.lastIndexOf("</svg>");
+	if (open <= 0 || close <= open)
+		throw new Error(`${MARK}: cannot find the mark body`);
+	const inner = mark.slice(open, close);
+	if (!/<(path|rect|circle|g)\b/.test(inner)) {
+		throw new Error(`${MARK}: the extracted body carries no shapes`);
+	}
+	// Laid out for a 64-unit mark: 200px tall is scale 3.125. The previous
+	// layout carried a 0.86 scale tuned for a 256-unit drawing, which rendered
+	// the new mark at a twelfth of its intended size.
 	return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
 	<style>
-		.rb-mark__body, .rb-mark__dot { fill: ${palette.ink}; }
-		.rb-mark__arc { stroke: ${palette.grid}; }
-		.name { font-family: "${MONO}"; font-size: 62px; font-weight: 600; fill: ${palette.ink}; }
+		.rb-mark__lane { fill: ${palette.ink}; }
+		.rb-mark__halt { fill: ${palette.grid}; }
+		.rb-mark__rail { fill: ${palette.accent}; }
+		.name { font-family: "${MONO}"; font-size: 60px; font-weight: 600; fill: ${palette.ink}; }
 		.affix { fill: ${palette.grid}; }
-		.tag { font-family: "${MONO}"; font-size: 30px; fill: ${palette.grid}; }
+		.tag { font-family: "${MONO}"; font-size: 24px; fill: ${palette.grid}; }
 	</style>
 	<rect width="1200" height="630" fill="${palette.ground}"/>
-	<rect x="0" y="0" width="1200" height="6" fill="${palette.accent}"/>
-	<g transform="translate(96 168) scale(0.86)">${inner}</g>
-	<text x="330" y="300" class="name"><tspan class="affix">cs-</tspan>routeros<tspan class="affix">-bouncer</tspan></text>
-	<text x="332" y="356" class="tag">CrowdSec decisions, enforced as MikroTik firewall rules</text>
+	<rect x="0" y="0" width="1200" height="8" fill="${palette.accent}"/>
+	<g transform="translate(112 215) scale(3.125)">${inner}</g>
+	<text x="360" y="330" class="name"><tspan class="affix">cs-</tspan>routeros<tspan class="affix">-bouncer</tspan></text>
+	<text x="362" y="382" class="tag">CrowdSec decisions, enforced as MikroTik firewall rules</text>
 </svg>`);
 }
 

@@ -70,9 +70,9 @@
 	/* Accent ramp: soft fill → accent → high emphasis. `strong` is
 	   always the end furthest from the page, so it lightens here and
 	   darkens in the light block. */
-	--rb-accent: #2fb8bb;
-	--rb-accent-strong: #5fd0d2;
-	--rb-accent-soft: #143134;
+	--rb-accent: #807dc0;
+	--rb-accent-strong: #bebcde;
+	--rb-accent-soft: #171630;
 
 	/* Status axis — see the two rules in the header comment. */
 	--rb-status-drop: #e0605c;
@@ -157,9 +157,9 @@
 	--rb-body: #333d45;
 	--rb-muted: #556069;
 
-	--rb-accent: #0a6a6c;
-	--rb-accent-strong: #084f51;
-	--rb-accent-soft: #e2edee;
+	--rb-accent: #4d4a98;
+	--rb-accent-strong: #413f80;
+	--rb-accent-soft: #eae9f5;
 
 	--rb-status-drop: #b3352f;
 	--rb-status-drop-soft: #fbe7e6;

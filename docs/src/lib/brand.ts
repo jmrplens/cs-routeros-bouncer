@@ -148,11 +148,24 @@ const MARK_IDS: readonly string[] = [...MARK.matchAll(/\sid="([^"]+)"/g)]
 	.map((match) => match[1])
 	.filter((id): id is string => id !== undefined);
 
-if (MARK_IDS.length === 0) {
+// No assertion that ids EXIST. The mark this replaced needed a clipPath and a
+// mask, and their ids were document-global: inlining the lockup twice on one
+// page made the second `url(#rb-mark-shield)` resolve to the first element.
+// The current drawing is four rectangles and needs no ids at all, so having
+// none is the fixed state rather than a symptom — an earlier version of this
+// file threw here, and the assertion outlived the problem it was guarding.
+//
+// The namespacing below still runs, so an id reintroduced later is still made
+// per-call-site. What IS worth failing on is a url() reference with no
+// matching id, which would silently render nothing.
+const MARK_REFS: readonly string[] = [...MARK.matchAll(/url\(#([^)]+)\)/g)]
+	.map((match) => match[1])
+	.filter((ref): ref is string => ref !== undefined);
+const danglingRefs = MARK_REFS.filter((ref) => !MARK_IDS.includes(ref));
+if (danglingRefs.length > 0) {
 	throw new Error(
-		"the mark declares no ids — brandSvg()'s namespacing has nothing to do, " +
-			"which means either the <defs> were dropped or the id syntax changed " +
-			"out from under the regex.",
+		`the mark references ${danglingRefs.map((r) => `#${r}`).join(", ")} but ` +
+			"declares no such id, so that element would render as nothing.",
 	);
 }
 

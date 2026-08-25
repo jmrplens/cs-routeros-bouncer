@@ -59,7 +59,7 @@
 }
 
 .rb-mark {
-	/* ~23px against the 16px wordmark: the cap height of the shield
+	/* ~23px against the 16px wordmark: the rail's full height
 	   reads as the cap height of the type. */
 	height: 1.45em;
 	width: auto;
@@ -69,13 +69,28 @@
 	flex: none;
 }
 
-.rb-mark__body,
-.rb-mark__dot {
+/* The three roles the mark draws, and why each takes the token it does.
+
+   The RAIL is the boundary the daemon maintains, so it takes the accent:
+   the boundary is what the product IS — the traffic is not ours.
+
+   A LANE that crosses takes the heading ink at full strength; the one that
+   HALTS takes the muted tone. Those two are 2.75:1 apart in luminance, so
+   they stay distinguishable in greyscale — which matters, because the
+   accent and the muted tone measure 1.01:1 apart in the light theme and
+   would collapse into one tone if the pass/stop distinction rode on them.
+   It does not: the crossing lanes are visibly LONGER than the halted one,
+   and colour only reinforces what the geometry already says. */
+.rb-mark__lane {
 	fill: var(--rb-heading);
 }
 
-.rb-mark__arc {
-	stroke: var(--rb-muted);
+.rb-mark__halt {
+	fill: var(--rb-muted);
+}
+
+.rb-mark__rail {
+	fill: var(--rb-accent);
 }
 
 /* ------------------------------------------------------------------

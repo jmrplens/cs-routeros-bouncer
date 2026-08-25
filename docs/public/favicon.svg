@@ -1,69 +1,50 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="cs-routeros-bouncer logo">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="cs-routeros-bouncer logo">
 	<!--
-		THE MARK — a shield, a dot, and three concentric arcs rising from it:
-		a packet, and the rules a RouterOS firewall lays across its path. The
-		geometry is unchanged from the drawing the committed rasters and the
-		CrowdSec Hub listing were cut from; only its colour has moved.
+		THE MARK — traffic meeting a boundary. Four lanes run left to right;
+		three cross the rail and continue, one stops dead at it. That is what
+		this daemon does, and the proportion is deliberate: a firewall does
+		not block everything, it blocks the exception.
 
-		IT CARRIES NO BRAND COLOUR OF ITS OWN. It used to: a hex pair for
-		light and another for dark (CrowdSec indigo beside MikroTik teal),
-		in a palette no stylesheet declared, so `scripts/check-contrast.mjs`
-		could not see them and they drifted. The co-branding is retired: one
-		ink for the shield body and the dot, a subordinate tone for the arcs.
+		The pass/stop distinction is carried by LENGTH before it is carried
+		by colour, so the mark still reads in greyscale and on paper. That is
+		not decoration: the accent and the subordinate tone measure 1.01 to 1
+		apart in the light theme, so anything relying on that pair alone to
+		tell two things apart would collapse into one tone.
 
-		This copy is NEVER inlined — it is the tab icon and the manifest
-		icon, always fetched as its own document — so the <style> below is
-		the only thing that can colour it, and it is safe here. Inlined it
-		would not be: a <style> inside inline SVG applies to the whole host
-		document. `brandSvg()` strips it for that reason, which is also what
-		keeps this file usable as an inline source if it is ever pointed at.
+		NO ids, NO defs, NO clipPath, NO mask. The mark this replaced used a
+		clipPath and a mask whose ids were document-global and collided the
+		moment it was inlined twice on one page — which the header lockup
+		plus any hero does.
 
-		Unlike the two <img> copies in src/assets, this one has no site theme
-		to agree with: the tab strip it is drawn on belongs to the browser.
-		`color-scheme: light dark` is exactly that statement — CanvasText and
-		GrayText then follow the reader's own scheme, light or dark, which is
-		what the `@media (prefers-color-scheme: dark)` block that used to sit
-		here was hand-rolling with two hex pairs. Same behaviour, no literals
-		to drift. (Verified in Chromium and WebKit.)
+		The tab icon and the manifest icon, always fetched as its own
+		document — so the <style> below is the only thing that can colour it,
+		and it is safe here. Unlike the two <img> copies this one has no site
+		theme to agree with: the tab strip belongs to the browser, so
+		`color-scheme: light dark` lets CanvasText follow the reader.
+
+		The lane and halt colours are the UA's own ink and subordinate tone
+		rather than a hand-copied pair, so nothing there can drift. The rail
+		is the one exception: there is no system colour for a brand accent
+		(AccentColor is the READER's OS accent, not ours), so it carries the
+		light-theme accent as a literal. scripts/render-brand-rasters.mjs
+		asserts that literal still equals the token in theme.css, so it
+		cannot drift either.
 	-->
 	<style>
 		svg {
 			color-scheme: light dark;
 		}
-		.rb-mark__body,
-		.rb-mark__dot {
+		.rb-mark__lane {
 			fill: CanvasText;
 		}
-		.rb-mark__arc {
-			stroke: GrayText;
+		.rb-mark__halt {
+			fill: GrayText;
+		}
+		.rb-mark__rail {
+			fill: #4d4a98;
 		}
 	</style>
-	<defs>
-		<!--
-			These two ids are document-global once the mark is inlined, so
-			`brandSvg()` suffixes them per call site. Two lockups on one page
-			would otherwise both resolve `url(#rb-mark-shield)` to the first.
-		-->
-		<clipPath id="rb-mark-shield">
-			<path d="M128 26 L214 54 L214 130 C214 186 182 220 128 238 C74 220 42 186 42 130 L42 54 Z"/>
-		</clipPath>
-		<!--
-			Mask mechanics, not palette: white shows, black cuts. The cuts are
-			the centre channel, the socket around the dot, and the wedge the
-			arcs radiate through.
-		-->
-		<mask id="rb-mark-cuts" maskUnits="userSpaceOnUse" x="0" y="0" width="256" height="256">
-			<rect width="256" height="256" fill="white"/>
-			<rect x="124.5" y="0" width="7.0" height="256" fill="black"/>
-			<circle cx="128.0" cy="170.0" r="23.0" fill="black"/>
-			<path d="M 128.0 170.0 L 21.71 106.14 A 124.00 124.00 0 0 1 234.29 106.14 Z" fill="black"/>
-		</mask>
-	</defs>
-	<g clip-path="url(#rb-mark-shield)">
-		<rect class="rb-mark__body" mask="url(#rb-mark-cuts)" x="0" y="0" width="256" height="256"/>
-		<circle class="rb-mark__dot" cx="128.0" cy="170.0" r="14.0"/>
-		<path class="rb-mark__arc" d="M 93.60 145.91 A 42.0 42.0 0 0 1 162.40 145.91" fill="none" stroke-width="18.0" stroke-linecap="round"/>
-		<path class="rb-mark__arc" d="M 67.38 127.56 A 74.0 74.0 0 0 1 188.62 127.56" fill="none" stroke-width="18.0" stroke-linecap="round"/>
-		<path class="rb-mark__arc" d="M 41.17 109.20 A 106.0 106.0 0 0 1 214.83 109.20" fill="none" stroke-width="18.0" stroke-linecap="round"/>
-	</g>
+	<path class="rb-mark__lane" d="M4 4h56v8H4zM4 20h44v8H4zM4 52h52v8H4z"/>
+	<path class="rb-mark__halt" d="M4 36h16v8H4z"/>
+	<path class="rb-mark__rail" d="M20 0h8v64h-8z"/>
 </svg>
