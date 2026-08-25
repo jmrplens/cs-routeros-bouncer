@@ -356,9 +356,9 @@ export const en: HomeContent = {
 					detail: [
 						"Of the CrowdSec decision types, ",
 						{ code: implementedDecisionType },
-						" is the only one implemented, and that is not configurable: the Local API query is built with ",
-						{ code: "type=ban" },
-						" hardcoded. A captcha or throttle decision is never requested in the first place, because a router has nowhere to serve a captcha.",
+						" is the only one enforced by default. The bouncer has exactly one action — put the address on a list the firewall drops — so a captcha decision could be listed in ",
+						{ code: "crowdsec.supported_decisions_types" },
+						" but would be enforced as a block, which is not what a captcha means. The setting is there for custom decision types that do mean \u201cblock\u201d.",
 					],
 					link: {
 						text: "How decisions are processed",
@@ -575,11 +575,13 @@ export const es: HomeContent = {
 					detail: [
 						"De los tipos de decisión de CrowdSec, ",
 						{ code: implementedDecisionType },
-						" es el único implementado. Una decisión de captcha o de throttle llega al bouncer y se descarta, en silencio y a propósito, porque un router no tiene dónde servir un captcha.",
+						" es el único que se aplica por defecto. El bouncer tiene exactamente una acción —poner la dirección en una lista que el firewall descarta— así que una decisión de captcha podría listarse en ",
+						{ code: "crowdsec.supported_decisions_types" },
+						" pero se aplicaría como bloqueo, que no es lo que significa un captcha. El ajuste está para tipos personalizados que sí signifiquen \u201cbloquear\u201d.",
 					],
 					link: {
-						text: "crowdsec.supported_decisions_types",
-						href: "/cs-routeros-bouncer/es/configuration/crowdsec/",
+						text: "Cómo se procesan las decisiones",
+						href: "/cs-routeros-bouncer/es/architecture/decisions/",
 					},
 				},
 				{
@@ -589,7 +591,17 @@ export const es: HomeContent = {
 						{ code: "firewall.rule_placement.strategy" },
 						" vale ",
 						{ code: placementDefault },
-						". Para quien tiene su conjunto de reglas ordenado a conciencia, esto es lo más determinante que le hace el bouncer, y está a una opción de ir a otro sitio.",
+						" por defecto. Para quien tiene su conjunto de reglas ordenado a conciencia esto es lo más determinante que le hace el bouncer, así que conviene decir que la ubicación es lo más configurable de todo esto, no lo menos: cinco estrategias (",
+						{ code: "top" },
+						", ",
+						{ code: "bottom" },
+						", ",
+						{ code: "before_comment" },
+						", ",
+						{ code: "after_comment" },
+						", ",
+						{ code: "position" },
+						"), cada una redefinible por tabla y por familia de protocolo, con un fallback para cuando la regla ancla no existe.",
 					],
 					link: {
 						text: "Ubicación de las reglas",
@@ -609,9 +621,14 @@ export const es: HomeContent = {
 					},
 				},
 				{
-					term: "La reconciliación carga el router",
+					term: "Cada pasada de reconciliación cuesta CPU del router",
 					detail: [
-						"La CPU de RouterOS se nota ocupada mientras corre una reconciliación: al arrancar y siempre que haya desviación real que reparar. Después se calma. Una carga que sigue alta cuando la reconciliación ya ha terminado es una avería que investigar, no el funcionamiento normal.",
+						"No solo al arrancar, ni solo cuando hay desviación que reparar: la pasada corre en cada tick de ",
+						{ code: "crowdsec.reconciliation_interval" },
+						" y vuelve a leer la lista de direcciones entera, porque RouterOS resuelve las consultas de address-list con un escaneo lineal sin índice. Medido en un RB5009 con 21.600 entradas: un transitorio con pico del 29-34% sobre una base del 7%, de unos seis segundos, en 11 de 11 ciclos consecutivos. Con el intervalo por defecto de 15 minutos son cuatro transitorios por hora.",
+						" Es probable que tu monitorización no lo vea: el OID SNMP estándar ",
+						{ code: "hrProcessorLoad" },
+						" reporta una media de un minuto, que aplana un pico de seis segundos hasta un 9% aproximado.",
 					],
 					link: {
 						text: "Ajuste de rendimiento",

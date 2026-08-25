@@ -111,7 +111,7 @@ func TestParseDecisionValid(t *testing.T) {
 		Scope:    new("Ip"),
 		Value:    new("1.2.3.4"),
 		Type:     new("ban"),
-	})
+	}, defaultEnforcedTypes())
 
 	if d == nil {
 		t.Fatal("expected non-nil decision")
@@ -137,7 +137,7 @@ func TestParseDecisionIPv6(t *testing.T) {
 		Scope:    new("Ip"),
 		Value:    new("2001:db8::1"),
 		Type:     new("ban"),
-	})
+	}, defaultEnforcedTypes())
 
 	if d == nil {
 		t.Fatal("expected non-nil decision")
@@ -157,7 +157,7 @@ func TestParseDecisionNilFields(t *testing.T) {
 		Type:     new("ban"),
 		Origin:   nil,
 		Scenario: nil,
-	})
+	}, defaultEnforcedTypes())
 
 	if d == nil {
 		t.Fatal("expected non-nil decision")
@@ -177,7 +177,7 @@ func TestParseDecisionNilValue(t *testing.T) {
 		Scope:    new("Ip"),
 		Value:    nil,
 		Type:     new("ban"),
-	})
+	}, defaultEnforcedTypes())
 	if d != nil {
 		t.Error("expected nil decision for nil Value")
 	}
@@ -190,7 +190,7 @@ func TestParseDecisionNilType(t *testing.T) {
 		Scope:    new("Ip"),
 		Value:    new("10.0.0.1"),
 		Type:     nil,
-	})
+	}, defaultEnforcedTypes())
 	if d != nil {
 		t.Error("expected nil decision for nil Type")
 	}
@@ -204,7 +204,7 @@ func TestParseDecisionNonBanType(t *testing.T) {
 		Scope:    new("Ip"),
 		Value:    new("10.0.0.1"),
 		Type:     new("captcha"),
-	})
+	}, defaultEnforcedTypes())
 	if d != nil {
 		t.Error("expected nil decision for non-ban type")
 	}
@@ -337,7 +337,7 @@ func TestParseDecisionWithRange(t *testing.T) {
 		Scope:    new("Range"),
 		Value:    new("10.0.0.0/8"),
 		Type:     new("ban"),
-	})
+	}, defaultEnforcedTypes())
 	if d == nil {
 		t.Fatal("expected non-nil decision")
 	}
@@ -356,7 +356,7 @@ func TestParseDecisionIPv6Range(t *testing.T) {
 		Scope:    new("Range"),
 		Value:    new("2001:db8::/32"),
 		Type:     new("ban"),
-	})
+	}, defaultEnforcedTypes())
 	if d == nil {
 		t.Fatal("expected non-nil decision")
 	}
@@ -376,7 +376,7 @@ func TestParseDecisionBadDurationFallback(t *testing.T) {
 		Scope:    new("Ip"),
 		Value:    new("1.2.3.4"),
 		Type:     new("ban"),
-	})
+	}, defaultEnforcedTypes())
 	if d == nil {
 		t.Fatal("expected non-nil decision")
 	}
@@ -392,7 +392,7 @@ func TestParseDecisionNilDuration(t *testing.T) {
 		Scope:    new("Ip"),
 		Value:    new("10.0.0.1"),
 		Type:     new("ban"),
-	})
+	}, defaultEnforcedTypes())
 	if d == nil {
 		t.Fatal("expected non-nil decision")
 	}
@@ -409,7 +409,7 @@ func TestParseDecisionCaseInsensitiveBan(t *testing.T) {
 			Duration: new("1h"),
 			Value:    new("1.2.3.4"),
 			Type:     new(banType),
-		})
+		}, defaultEnforcedTypes())
 		if d == nil {
 			t.Errorf("expected non-nil decision for type %q", banType)
 		}

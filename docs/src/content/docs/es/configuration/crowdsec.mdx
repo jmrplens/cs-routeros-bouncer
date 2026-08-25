@@ -127,12 +127,16 @@ Dejar `origins` vacío acepta todos los orígenes, incluidos `CAPI` y `lists`. L
 
 <ConfigOption path="crowdsec.supported_decisions_types" />
 
-Solo se procesan las decisiones de estos tipos.
+Tipos de decisión que aplica este bouncer. Todos los tipos listados se tratan igual: la dirección va a la address-list y las reglas de firewall gestionadas actúan sobre ella.
 
-:::caution
-Este bouncer solo implementa la acción **`ban`**, que se traduce en reglas de firewall
-drop/reject en MikroTik. Otros tipos de decisión de CrowdSec, como `captcha` o `throttle`, no
-son aplicables a un bouncer de firewall de red y se ignorarán silenciosamente aunque se listen aquí.
+El tipo de decisión de CrowdSec es un string libre —solo `ban` está definido como constante, y `cscli decisions add --type loquesea` se acepta— así que un escenario propio que emita un tipo personalizado puede aplicarse nombrándolo aquí.
+
+:::caution[Solo hay una acción, sea cual sea el tipo]
+El bouncer sabe hacer exactamente una cosa con una dirección: ponerla en una lista que las reglas de firewall descartan o rechazan. Listar `captcha` aquí no hace que un router sirva un captcha, ni listar `throttle` crea una cola: esas decisiones simplemente se aplicarían como bloqueos, que casi seguro no es lo que quieres. Usa esto para tipos personalizados que signifiquen "bloquear", no para las otras acciones integradas de CrowdSec.
+:::
+
+:::note[Dejar el valor por defecto no cuesta nada; ampliarlo sí]
+La Local API compara su parámetro `type` de forma **exacta**: `type=ban,captcha` no devuelve nada, y omitir el parámetro devuelve todos los tipos. Así que con el valor por defecto `["ban"]` el bouncer pide solo baneos y el filtrado lo hace el servidor. Configura cualquier otra cosa y tendrá que traerse **todas** las decisiones y filtrarlas en local, en cada instantánea de reconciliación. En una Local API que además sirva a un bouncer web con captchas, eso es tráfico real traído solo para descartarlo.
 :::
 
 ### `crowdsec.scenarios_containing` <Badge text="Opcional" variant="note" />

@@ -819,6 +819,15 @@ func (c *Config) validateCrowdSec() error {
 	if parsedAPIURL.Scheme == "" || parsedAPIURL.Host == "" {
 		return fmt.Errorf("crowdsec.api_url must include scheme and host, got %q", c.CrowdSec.APIURL)
 	}
+	// Every entry must be a usable type name. CrowdSec accepts arbitrary types,
+	// so this cannot check membership in a fixed set — only that the operator
+	// did not configure a blank that would silently widen or narrow nothing.
+	for i, t := range c.CrowdSec.SupportedDecisionTypes {
+		if strings.TrimSpace(t) == "" {
+			return fmt.Errorf("crowdsec.supported_decisions_types[%d] is empty", i)
+		}
+	}
+
 	return nil
 }
 

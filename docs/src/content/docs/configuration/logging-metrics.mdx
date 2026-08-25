@@ -48,7 +48,7 @@ When set, log lines go to **both** stderr and the file. The file is an addition,
 :::caution[The parent directory must already exist]
 The bouncer does not create directories. If the parent is missing, or the path is not writable, startup **fails** with the path and the OS error rather than falling back silently to stderr — a log file you configured and did not get is worse than no log file.
 
-Under the hardened systemd unit written by `setup`, `ReadWritePaths=/var/log` is the only writable location, so a path outside `/var/log` will fail even if it exists. Relative paths resolve against `/` under systemd, so always give an absolute path.
+Any file path is accepted. Under the hardened systemd unit written by `setup`, `ReadWritePaths=/var/log` is the only writable location, so a path outside `/var/log` will fail even if it exists — and a relative path resolves against `/` there, not against your shell's working directory. Give an absolute path under `/var/log` for systemd deployments.
 :::
 
 There is no built-in rotation, and the file handle is held for the process lifetime. A rotation tool that renames the file (`logrotate` without `copytruncate`) will leave the bouncer writing to the renamed inode until it restarts — use `copytruncate`, or rely on `journalctl` and leave this key unset.

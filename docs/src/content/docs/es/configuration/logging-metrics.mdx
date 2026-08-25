@@ -48,7 +48,7 @@ Cuando se define, las líneas de log van a **stderr y al archivo**. El archivo e
 :::caution[El directorio padre debe existir ya]
 El bouncer no crea directorios. Si falta el padre, o la ruta no es escribible, el arranque **falla** indicando la ruta y el error del sistema, en lugar de caer en silencio a stderr: un archivo de log que configuraste y no obtuviste es peor que no tener ninguno.
 
-Bajo la unidad systemd endurecida que escribe `setup`, `ReadWritePaths=/var/log` es la única ubicación escribible, así que una ruta fuera de `/var/log` fallará aunque exista. Las rutas relativas se resuelven contra `/` bajo systemd, así que indica siempre una ruta absoluta.
+Se acepta cualquier ruta de archivo. Bajo la unidad systemd endurecida que escribe `setup`, `ReadWritePaths=/var/log` es la única ubicación escribible, así que una ruta fuera de `/var/log` fallará aunque exista — y ahí una ruta relativa se resuelve contra `/`, no contra el directorio de trabajo de tu shell. Para despliegues con systemd, indica una ruta absoluta bajo `/var/log`.
 :::
 
 No hay rotación integrada y el descriptor del archivo se mantiene abierto durante toda la vida del proceso. Una herramienta de rotación que renombre el archivo (`logrotate` sin `copytruncate`) dejará al bouncer escribiendo en el inodo renombrado hasta que reinicie: usa `copytruncate`, o apóyate en `journalctl` y deja esta clave sin definir.

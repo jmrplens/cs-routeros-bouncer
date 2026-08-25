@@ -127,12 +127,16 @@ Decision scopes to process. Supported values: `ip`, `range`.
 
 <ConfigOption path="crowdsec.supported_decisions_types" />
 
-Only decisions of these types are processed.
+Decision types this bouncer enforces. Every listed type is treated the same way: the address goes on the address list and the managed firewall rules act on it.
 
-:::caution
-This bouncer only implements the **`ban`** action, which translates to drop/reject firewall
-rules on MikroTik. Other CrowdSec decision types such as `captcha` or `throttle` are not
-applicable to a network firewall bouncer and will be silently ignored even if listed here.
+CrowdSec's decision type is a free string — only `ban` is a defined constant, and `cscli decisions add --type anything` is accepted — so a scenario of your own that emits a custom type can be enforced by naming it here.
+
+:::caution[There is only one action, whatever the type]
+The bouncer has exactly one thing it can do to an address: put it on a list the firewall rules drop or reject. Listing `captcha` here does not make a router serve a captcha, and listing `throttle` does not create a queue — those decisions would simply be enforced as blocks, which is almost certainly not what you want. Use this for custom types that mean "block", not for CrowdSec's other built-in actions.
+:::
+
+:::note[Leaving the default costs nothing; widening it has a price]
+The Local API matches its `type` query parameter **exactly** — `type=ban,captcha` returns nothing at all, and omitting the parameter returns every type. So with the default `["ban"]` the bouncer asks the Local API for bans only and the server does the filtering. Configure anything else and it must fetch **all** decisions and filter them locally, on every reconciliation snapshot. On a Local API that also serves a web bouncer issuing captchas, that is real traffic fetched only to be discarded.
 :::
 
 ### `crowdsec.scenarios_containing` <Badge text="Optional" variant="note" />
