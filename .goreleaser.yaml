@@ -177,7 +177,7 @@ release:
     ## CrowdSec Bouncer for MikroTik RouterOS — {{ .Tag }}
 
     Install via binary download, Docker, or build from source.
-    See [documentation](https://jmrplens.github.io/cs-routeros-bouncer/) for setup instructions.
+    See [documentation](https://jmrp.io/docs/cs-routeros-bouncer/) for setup instructions.
   footer: |
     ---
     **Docker:** `docker pull ghcr.io/jmrplens/cs-routeros-bouncer:{{ .Version }}`

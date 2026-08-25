@@ -4,6 +4,7 @@ description: Configura el registro de cs-routeros-bouncer (nivel y formato) y el
 ---
 
 import { Badge, LinkCard } from "@astrojs/starlight/components";
+import ConfigOption from "../../../../components/ConfigOption.astro";
 
 Ajustes para el registro del bouncer y las métricas de Prometheus.
 
@@ -11,7 +12,7 @@ Ajustes para el registro del bouncer y las métricas de Prometheus.
 
 ### `logging.level` <Badge text="Opcional" variant="note" />
 
-**Env:** `LOG_LEVEL` · **Predeterminado:** `info`
+<ConfigOption path="logging.level" />
 
 Nivel de detalle del log:
 
@@ -29,7 +30,7 @@ logging:
 
 ### `logging.format` <Badge text="Opcional" variant="note" />
 
-**Env:** `LOG_FORMAT` · **Predeterminado:** `text`
+<ConfigOption path="logging.format" />
 
 Formato de salida del log:
 
@@ -38,31 +39,37 @@ Formato de salida del log:
 
 ### `logging.file` <Badge text="Opcional" variant="note" />
 
-**Env:** `LOG_FILE` · **Predeterminado:** — (no implementado)
+<ConfigOption path="logging.file" />
 
-El analizador de configuración acepta esta clave, pero todavía no está implementada: el valor se carga en la configuración y luego nunca se usa. El bouncer no abre ningún archivo de log y todas las líneas van a stderr sea cual sea el valor de esta clave.
+Ruta a un archivo de log. Déjala vacía —el valor por defecto— y el bouncer escribe solo en stderr, igual que antes de que esta clave hiciera nada.
 
-:::caution[No implementado]
-Configurar `logging.file` o `LOG_FILE` no tiene ningún efecto actualmente. Para conservar los logs en disco, captura la salida del proceso: `journalctl -u cs-routeros-bouncer`, el sistema de logs de Docker o una redirección de shell como `cs-routeros-bouncer -c config.yaml 2>> /var/log/cs-routeros-bouncer.log`.
+Cuando se define, las líneas de log van a **stderr y al archivo**. El archivo es una adición, no un desvío: `journalctl -u cs-routeros-bouncer` y `docker logs` siguen funcionando. Se abre en modo append, así que un reinicio nunca descarta el historial de baneos, y se crea con modo `0640` porque las líneas registran las IP de los clientes baneados.
+
+:::caution[El directorio padre debe existir ya]
+El bouncer no crea directorios. Si falta el padre, o la ruta no es escribible, el arranque **falla** indicando la ruta y el error del sistema, en lugar de caer en silencio a stderr: un archivo de log que configuraste y no obtuviste es peor que no tener ninguno.
+
+Se acepta cualquier ruta de archivo. Bajo la unidad systemd endurecida que escribe `setup`, `ReadWritePaths=/var/log` es la única ubicación escribible, así que una ruta fuera de `/var/log` fallará aunque exista — y ahí una ruta relativa se resuelve contra `/`, no contra el directorio de trabajo de tu shell. Para despliegues con systemd, indica una ruta absoluta bajo `/var/log`.
 :::
+
+No hay rotación integrada y el descriptor del archivo se mantiene abierto durante toda la vida del proceso. Una herramienta de rotación que renombre el archivo (`logrotate` sin `copytruncate`) dejará al bouncer escribiendo en el inodo renombrado hasta que reinicie: usa `copytruncate`, o apóyate en `journalctl` y deja esta clave sin definir.
 
 ## Métricas de Prometheus
 
 ### `metrics.enabled` <Badge text="Opcional" variant="note" />
 
-**Env:** `METRICS_ENABLED` · **Predeterminado:** `false`
+<ConfigOption path="metrics.enabled" />
 
 Habilita el endpoint de métricas de Prometheus. Cuando está habilitado, el bouncer expone métricas en `/metrics`. La comprobación de salud `/health` se sirve siempre en el listener de métricas, independientemente de este ajuste.
 
 ### `metrics.listen_addr` <Badge text="Opcional" variant="note" />
 
-**Env:** `METRICS_ADDR` · **Predeterminado:** `0.0.0.0`
+<ConfigOption path="metrics.listen_addr" />
 
 Dirección de escucha del servidor HTTP de métricas.
 
 ### `metrics.listen_port` <Badge text="Opcional" variant="note" />
 
-**Env:** `METRICS_PORT` · **Predeterminado:** `2112`
+<ConfigOption path="metrics.listen_port" />
 
 Puerto de escucha del servidor HTTP de métricas.
 
@@ -75,7 +82,7 @@ metrics:
 
 ### `metrics.routeros_poll_interval` <Badge text="Opcional" variant="note" />
 
-**Env:** `METRICS_ROUTEROS_POLL_INTERVAL` · **Predeterminado:** `30s`
+<ConfigOption path="metrics.routeros_poll_interval" />
 
 Frecuencia con la que se consulta RouterOS para obtener métricas del sistema (carga de CPU, memoria, temperatura). Configúralo en `0` para deshabilitar la recopilación de métricas del sistema.
 
@@ -86,7 +93,7 @@ metrics:
 
 ### `metrics.track_processed` <Badge text="Avanzado" variant="caution" />
 
-**Env:** `METRICS_TRACK_PROCESSED` · **Predeterminado:** `true`
+<ConfigOption path="metrics.track_processed" />
 
 Habilita el seguimiento del tráfico procesado (no bloqueado) a través del firewall. Cuando está habilitado, el bouncer crea reglas de conteo passthrough en RouterOS para medir todo el tráfico que pasa por las cadenas monitorizadas y envía los datos tanto a Prometheus como a LAPI.
 

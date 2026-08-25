@@ -275,7 +275,23 @@ export default defineConfig({
 			},
 			lastUpdated: true,
 			pagination: true,
-			customCss: ["./src/styles/custom.css"],
+			customCss: [
+				// The palette sheet goes first, and stays first. It is
+				// deliberately unlayered, so its `:root` block beats the tokens
+				// Starlight declares inside `@layer starlight.base` without
+				// needing `!important`; and it is first so every sheet after it
+				// can read the tokens it declares. The rest are single-concern
+				// sheets, ordered so later ones may override earlier ones —
+				// a11y last, so focus and skip-link styling always wins.
+				"./src/styles/theme.css",
+				"./src/styles/typography.css",
+				"./src/styles/chrome.css",
+				"./src/styles/code.css",
+				"./src/styles/tables.css",
+				"./src/styles/home.css",
+				"./src/styles/rules.css",
+				"./src/styles/a11y.css",
+			],
 			expressiveCode: {
 				emitExternalStylesheet: false,
 			},
@@ -339,7 +355,7 @@ export default defineConfig({
 					tag: "meta",
 					attrs: {
 						name: "theme-color",
-						content: "#3F51B5",
+						content: "#0e1316",
 					},
 				},
 				{

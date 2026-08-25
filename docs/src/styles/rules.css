@@ -1,0 +1,156 @@
+/* ============================================================
+   rules.css — the managed firewall rule cards.
+   ============================================================
+
+   Renders `src/components/RuleSet.astro`, which renders
+   `src/data/rules.mjs`. One component, two locales, three pages,
+   so everything here is keyed off `.rule-set` and touches nothing
+   the rest of the site owns.
+
+   COLOUR: every value is a token from theme.css. Two consequences
+   worth writing down, because both are easy to undo by accident:
+
+   * The card sits on `--rb-surface-raised`, the same ground as
+     `.flow-step`, and its text uses only `--sl-color-gray-2` and
+     `--sl-color-gray-3`. Those exact pairs are already measured by
+     `scripts/check-contrast.mjs`, so this component inherits a
+     gated palette instead of inventing an ungated one.
+   * The status ramp appears only as the 3px rail down the side of
+     a card. It is never the sole signal: `.rule-card__state`
+     prints "drops" / "accepts" / "counts only" beside it, which is
+     the redundancy rule theme.css sets out. Greyscale, or with any
+     colour vision deficiency, the card still says what it does.
+   ============================================================ */
+
+.rule-set {
+	/* Card padding, named once so the meta row and the rail below
+	   stay aligned with it when it is retuned. */
+	--rb-rule-pad: 1rem;
+	/* Width of the status rail. Wide enough to read as deliberate at
+	   a glance, narrow enough not to become the card's main colour. */
+	--rb-rule-rail: 3px;
+
+	display: grid;
+	margin-block: 1.5rem;
+	padding-inline-start: 0;
+	gap: 1rem;
+	list-style: none;
+}
+
+.rule-card {
+	overflow: hidden;
+	padding: var(--rb-rule-pad);
+	border: 1px solid var(--rb-border);
+	border-inline-start: var(--rb-rule-rail) solid var(--rb-border-strong);
+	border-radius: var(--rb-radius);
+	background: var(--rb-surface-raised);
+}
+
+/* The rail. Redundant with the word in `.rule-card__state` — see the
+   header comment. */
+.rule-card[data-state="drop"] {
+	border-inline-start-color: var(--rb-status-drop);
+}
+.rule-card[data-state="allow"] {
+	border-inline-start-color: var(--rb-status-allow);
+}
+.rule-card[data-state="count"] {
+	border-inline-start-color: var(--rb-status-warn);
+}
+
+.rule-card__name {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	margin-block: 0 0.5rem;
+	gap: 0.5rem;
+	font-size: 1rem;
+	line-height: 1.3;
+}
+
+/* The word that carries the state. Bordered rather than filled, so it
+   reads on the card without needing a tinted ground of its own. */
+.rule-card__state {
+	padding: 0.05rem 0.4rem;
+	border: 1px solid var(--rb-border-strong);
+	border-radius: 0.25rem;
+	color: var(--sl-color-gray-3);
+	font-family: var(--sl-font-mono);
+	font-size: 0.7rem;
+	font-weight: 400;
+	letter-spacing: 0.02em;
+	white-space: nowrap;
+}
+
+.rule-card__purpose {
+	margin-block: 0;
+	color: var(--sl-color-gray-2);
+	font-size: 0.9rem;
+	line-height: 1.6;
+}
+
+/* The mechanical facts, four narrow columns that collapse to a stack
+   on a phone rather than squeezing a RouterOS path to two characters. */
+.rule-card__meta {
+	display: grid;
+	margin-block: 0.75rem;
+	grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+	gap: 0.5rem var(--rb-rule-pad);
+}
+
+.rule-card__meta dt {
+	color: var(--sl-color-gray-3);
+	font-size: 0.7rem;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+.rule-card__meta dd {
+	margin: 0.15rem 0 0;
+	font-size: 0.8rem;
+}
+
+.rule-card__meta dd em {
+	color: var(--sl-color-gray-3);
+	font-style: normal;
+}
+
+.rule-card__availability,
+.rule-card__note,
+.rule-card__optional {
+	margin-block: 0.5rem 0;
+	color: var(--sl-color-gray-3);
+	font-size: 0.8rem;
+	line-height: 1.6;
+}
+
+/* The setting names run long and are the part a reader retypes, so they
+   keep the mono face at a size that stays legible against the body copy
+   they sit under. */
+.rule-card :is(.rule-card__availability, .rule-card__optional) code {
+	font-size: 0.95em;
+}
+
+/* Expressive Code sets its own block margins; inside a card the frame is
+   one element among several, so it follows the card's rhythm instead. */
+.rule-card .expressive-code {
+	margin-block: 0.75rem;
+}
+
+/* The headline number: how many rules a stock configuration actually
+   lands on the router. It is the fact the old prose listings got wrong,
+   so it is stated above the list rather than left to be counted. */
+.rule-set__count {
+	margin-block: 1.5rem 0.5rem;
+	color: var(--sl-color-gray-2);
+	font-size: 0.9rem;
+}
+
+/* The whitelist rules render a placeholder list name — `firewall.block_input.whitelist`
+   has no default, so there is no real value to show. The hint beside it says so,
+   and is muted because it is a caveat about the example, not part of it. */
+.rule-card__hint {
+	color: var(--sl-color-gray-3);
+	font-size: 0.75rem;
+	font-style: normal;
+}

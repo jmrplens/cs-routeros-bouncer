@@ -82,6 +82,7 @@ func TestLoadDefaults(t *testing.T) {
 		{name: "Firewall block input interface list", want: "", got: func() any { return cfg.Firewall.BlockInput.InterfaceList }},
 		{name: "Logging level", want: "info", got: func() any { return cfg.Logging.Level }},
 		{name: "Logging format", want: "text", got: func() any { return cfg.Logging.Format }},
+		{name: "Logging file", want: "", got: func() any { return cfg.Logging.File }},
 		{name: "Metrics enabled", want: false, got: func() any { return cfg.Metrics.Enabled }},
 		{name: "Metrics listen address", want: "0.0.0.0", got: func() any { return cfg.Metrics.ListenAddr }},
 		{name: "Metrics listen port", want: 2112, got: func() any { return cfg.Metrics.ListenPort }},
@@ -1559,5 +1560,81 @@ func TestRouterOSPollIntervalNegative(t *testing.T) {
 	cfg.Metrics.RouterOSPollInterval = -1 * time.Second
 	if err := cfg.Validate(); err == nil {
 		t.Error("expected error for negative poll interval")
+	}
+}
+
+// TestValidateLoggingFile verifies the shape checks applied to the optional
+// logging.file destination. Whether the path can actually be opened is decided
+// at startup, not here.
+func TestValidateLoggingFile(t *testing.T) {
+	tests := []struct {
+		name    string
+		file    string
+		wantErr string
+	}{
+		{name: "empty keeps the stderr default"},
+		{name: "absolute path", file: "/var/log/cs-routeros-bouncer.log"},
+		{name: "relative path", file: "cs-routeros-bouncer.log"},
+		{name: "directory path", file: "/var/log/", wantErr: "logging.file must be a file path"},
+		{name: "control characters", file: "/var/log/cs-routeros-bouncer\n.log", wantErr: "control characters"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := Config{
+				CrowdSec: CrowdSecConfig{APIKey: "key", APIURL: "http://localhost:8080/"},
+				MikroTik: MikroTikConfig{Address: "1.2.3.4:8728", Username: "admin", Password: "pass", PoolSize: 4},
+				Firewall: FirewallConfig{
+					IPv4: ProtoConfig{Enabled: true}, IPv6: ProtoConfig{Enabled: true},
+					Filter: FilterConfig{Enabled: true}, Raw: RawConfig{Enabled: true},
+					DenyAction: "drop",
+				},
+				Logging: LoggingConfig{Level: "info", Format: "text", File: tt.file},
+			}
+
+			err := cfg.Validate()
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("logging.file %q should be valid: %v", tt.file, err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("expected error for logging.file %q", tt.file)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error should mention %q: %v", tt.wantErr, err)
+			}
+		})
+	}
+}
+
+// TestLoadLoggingFileFromEnv verifies LOG_FILE populates logging.file and that
+// surrounding whitespace is trimmed, so a blank value keeps the stderr default
+// instead of creating a file whose name is a space.
+func TestLoadLoggingFileFromEnv(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+		want  string
+	}{
+		{name: "path", value: "/var/log/cs-routeros-bouncer.log", want: "/var/log/cs-routeros-bouncer.log"},
+		{name: "padded path", value: "  /var/log/cs-routeros-bouncer.log  ", want: "/var/log/cs-routeros-bouncer.log"},
+		{name: "whitespace only", value: "   ", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setMinimalEnv(t)
+			t.Setenv("LOG_FILE", tt.value)
+
+			cfg, err := Load("")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if cfg.Logging.File != tt.want {
+				t.Errorf("expected logging.file %q, got %q", tt.want, cfg.Logging.File)
+			}
+		})
 	}
 }

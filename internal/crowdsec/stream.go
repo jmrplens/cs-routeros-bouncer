@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -36,7 +38,14 @@ type Stream struct {
 	bouncer BouncerEngine
 	cfg     config.CrowdSecConfig
 	logger  zerolog.Logger
+	// enforcedTypes is resolved once at construction; parseDecision consults it
+	// for every decision on both the live stream and the snapshot path.
+	enforcedTypes map[string]struct{}
 }
+
+// defaultDecisionType is the only type CrowdSec defines as a constant, and the
+// only one a firewall can act on without further machinery.
+const defaultDecisionType = "ban"
 
 // activeDecisionPageSize caps each CrowdSec active-decision page request.
 const activeDecisionPageSize = 1000
@@ -71,8 +80,9 @@ func NewStream(cfg config.CrowdSecConfig, version string) *Stream {
 			streamPtr:    &bouncer.Stream,
 			apiClientPtr: &bouncer.APIClient,
 		},
-		cfg:    cfg,
-		logger: log.With().Str("component", "crowdsec").Logger(),
+		cfg:           cfg,
+		logger:        log.With().Str("component", "crowdsec").Logger(),
+		enforcedTypes: enforcedDecisionTypes(cfg),
 	}
 }
 
@@ -83,6 +93,7 @@ func (s *Stream) Init() error {
 		Dur("ticker", s.cfg.UpdateFrequency).
 		Strs("origins", s.cfg.Origins).
 		Strs("scopes", s.cfg.Scopes).
+		Strs("decision_types", slices.Sorted(maps.Keys(s.enforcedTypes))).
 		Msg("initializing CrowdSec stream bouncer")
 
 	if err := s.bouncer.Init(); err != nil {
@@ -125,14 +136,18 @@ func (s *Stream) ActiveDecisions(ctx context.Context) ([]*Decision, error) {
 		}
 	}
 
-	return parseDecisionBatch(data, true), nil
+	return parseDecisionBatch(data, true, s.enforcedTypes), nil
 }
 
 // activeDecisionListPath builds a filtered /decisions request for the periodic
 // reconciliation snapshot without using the delta-stream startup mode.
 func (s *Stream) activeDecisionListPath(client *apiclient.ApiClient, limit, offset int) string {
 	values := url.Values{}
-	values.Set("type", "ban")
+	// See onlyDefaultDecisionType: the Local API matches `type` exactly, so a
+	// wider configured set has to be filtered client-side instead.
+	if onlyDefaultDecisionType(s.enforcedTypes) {
+		values.Set("type", defaultDecisionType)
+	}
 	values.Set("limit", strconv.Itoa(limit))
 	values.Set("offset", strconv.Itoa(offset))
 	if len(s.cfg.Scopes) > 0 {
@@ -206,7 +221,7 @@ func (s *Stream) forwardBatch(
 	isBan bool,
 	ch chan<- *Decision,
 ) bool {
-	for _, parsed := range parseDecisionBatch(decisions, isBan) {
+	for _, parsed := range parseDecisionBatch(decisions, isBan, s.enforcedTypes) {
 		if isBan {
 			s.logger.Debug().
 				Str("value", parsed.Value).
@@ -236,7 +251,7 @@ func (s *Stream) forwardBatch(
 // parseDecisionBatch converts an LAPI decision response into internal
 // decisions. New bans require a duration; deleted decisions do not always
 // include one, so callers choose that validation rule explicitly.
-func parseDecisionBatch(decisions models.GetDecisionsResponse, requireDuration bool) []*Decision {
+func parseDecisionBatch(decisions models.GetDecisionsResponse, requireDuration bool, enforced map[string]struct{}) []*Decision {
 	parsed := make([]*Decision, 0, len(decisions))
 	for _, d := range decisions {
 		if d == nil {
@@ -245,7 +260,7 @@ func parseDecisionBatch(decisions models.GetDecisionsResponse, requireDuration b
 		if requireDuration && d.Duration == nil {
 			continue
 		}
-		decision := parseDecision(d)
+		decision := parseDecision(d, enforced)
 		if decision == nil {
 			continue
 		}
@@ -254,8 +269,60 @@ func parseDecisionBatch(decisions models.GetDecisionsResponse, requireDuration b
 	return parsed
 }
 
+// enforcedDecisionTypes returns the decision types this bouncer acts on, lower
+// cased for comparison. CrowdSec's Decision.Type is a free string — only "ban"
+// is a defined constant, and `cscli decisions add --type anything` is accepted —
+// so an operator running a scenario that emits a custom type can name it here
+// and have it enforced as a block.
+func enforcedDecisionTypes(cfg config.CrowdSecConfig) map[string]struct{} {
+	types := make(map[string]struct{}, len(cfg.SupportedDecisionTypes))
+	for _, t := range cfg.SupportedDecisionTypes {
+		if trimmed := strings.ToLower(strings.TrimSpace(t)); trimmed != "" {
+			types[trimmed] = struct{}{}
+		}
+	}
+	if len(types) == 0 {
+		types[defaultDecisionType] = struct{}{}
+	}
+	return types
+}
+
+// onlyDefaultDecisionType reports whether the configured set is exactly the
+// default. When it is, the snapshot query can keep its server-side `type=ban`
+// filter: the Local API matches that parameter EXACTLY (verified — `type=a,b`
+// returns nothing, and omitting it returns every type), so supporting a wider
+// set means fetching everything and filtering here. That is the right trade
+// only for operators who asked for it; on a busy Local API the default set
+// would otherwise pull captcha decisions across the wire on every
+// reconciliation snapshot just to discard them.
+func onlyDefaultDecisionType(types map[string]struct{}) bool {
+	// Empty means unconfigured, which is the default set — same reasoning as
+	// isEnforced: an unset map must not silently change the query.
+	if len(types) == 0 {
+		return true
+	}
+	if len(types) != 1 {
+		return false
+	}
+	_, ok := types[defaultDecisionType]
+	return ok
+}
+
+// isEnforced reports whether a decision type should be acted on. An empty set
+// means the default: a Stream assembled without NewStream (tests, and any future
+// construction path) must not silently discard every decision it is handed —
+// that failure mode looks exactly like a quiet Local API.
+func isEnforced(enforced map[string]struct{}, decisionType string) bool {
+	normalised := strings.ToLower(strings.TrimSpace(decisionType))
+	if len(enforced) == 0 {
+		return normalised == defaultDecisionType
+	}
+	_, ok := enforced[normalised]
+	return ok
+}
+
 // parseDecision converts a CrowdSec SDK decision model to our internal Decision type.
-func parseDecision(d *models.Decision) *Decision {
+func parseDecision(d *models.Decision, enforced map[string]struct{}) *Decision {
 	if d.Value == nil || d.Type == nil {
 		return nil
 	}
@@ -263,8 +330,8 @@ func parseDecision(d *models.Decision) *Decision {
 	value := *d.Value
 	decType := *d.Type
 
-	// Only process supported decision types
-	if !strings.EqualFold(decType, "ban") {
+	// Only process the decision types this bouncer was configured to enforce.
+	if !isEnforced(enforced, decType) {
 		return nil
 	}
 

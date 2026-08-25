@@ -1,0 +1,93 @@
+/* ============================================================
+   a11y.css — focus, motion, contrast, print.
+   Loaded last so its focus and skip-link rules win.
+   ============================================================ */
+
+/* ------------------------------------------------------------------
+   FOCUS INDICATORS  (WCAG 2.2 AA — 1.4.11, 2.4.11)
+   One rule for both themes: the accent already clears 3:1 against
+   the page in each, so the `[data-theme="dark"]` override this
+   replaced is not just redundant, it never applied before
+   Starlight's inline theme script had run.
+   ------------------------------------------------------------------ */
+:focus-visible {
+	outline: 2px solid var(--sl-color-text-accent);
+	outline-offset: 2px;
+	border-radius: 2px;
+}
+
+/* Skip-to-content — Starlight provides it, this only restyles it. */
+.skip-link:focus {
+	position: fixed;
+	top: 1rem;
+	left: 1rem;
+	z-index: var(--rb-z-skip-link);
+	padding: 0.75rem 1.25rem;
+	border-radius: var(--rb-radius);
+	background: var(--sl-color-text-accent);
+	color: var(--sl-color-black);
+	font-weight: 600;
+}
+
+/* ------------------------------------------------------------------
+   REDUCED MOTION
+   `!important` is load-bearing here: it has to beat animation and
+   transition declarations wherever they were authored, including
+   framework and component-scoped styles.
+   ------------------------------------------------------------------ */
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+		scroll-behavior: auto !important;
+	}
+}
+
+/* ------------------------------------------------------------------
+   HIGH CONTRAST  (prefers-contrast: more)
+   The palette side of this lives in theme.css, scoped per theme.
+   What is left here is structural: thicker boundaries.
+   ------------------------------------------------------------------ */
+@media (prefers-contrast: more) {
+	.hero {
+		border: 2px solid var(--sl-color-accent);
+	}
+	.card,
+	.link-card,
+	.flow-step {
+		border-width: 2px;
+	}
+}
+
+/* ------------------------------------------------------------------
+   PRINT
+   Paper is one background, so these greys are literals rather than
+   theme tokens on purpose — the palette does not reach the page.
+   `!important` beats the layered layout rules being stripped.
+   ------------------------------------------------------------------ */
+@media print {
+	nav.sidebar,
+	header,
+	.right-sidebar,
+	.pagination-links,
+	footer {
+		display: none !important;
+	}
+	main {
+		max-width: 100% !important;
+		padding: 0 !important;
+	}
+	a[href^="http"]::after {
+		content: " (" attr(href) ")";
+		color: #555;
+		font-size: 0.8em;
+	}
+	pre {
+		border: 1px solid #ccc;
+		white-space: pre-wrap;
+		word-break: break-all;
+	}
+}

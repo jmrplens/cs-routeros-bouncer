@@ -1,0 +1,240 @@
+/* ============================================================
+   home.css — the landing page: the flow strip and the
+   disclosure block.
+   ============================================================
+
+   Spacing is deliberately not tokenised globally: a site-wide
+   spacing scale would have to be right for every component and ends
+   up right for none. Instead each component here names its own
+   constraints ONCE, on its own root, with the reason beside each —
+   so the breakpoints below re-point one custom property instead of
+   rewriting the grid, the card height and the ordinal box three
+   times.
+
+   Every colour is a `--rb-*` or `--sl-*` token from theme.css. A raw
+   hex is invisible to `scripts/check-contrast.mjs`, which resolves
+   the palette out of the sheets registered in astro.config.mjs — a
+   literal here would ship a colour no gate has ever measured.
+   ============================================================ */
+
+/* ------------------------------------------------------------
+   1. THE FLOW STRIP — "How it works"
+   ------------------------------------------------------------ */
+
+.flow-steps {
+	/* The only thing the breakpoints change. Four steps read as one
+	   row on a wide screen and must not wrap to 3 + 1. */
+	--rb-flow-columns: 4;
+	/* Floor for every card, so `grid-auto-rows: 1fr` equalises them
+	   at a height that already fits ordinal + title + two description
+	   lines at the narrowest column this grid ever produces. Raising
+	   the column count without raising this is what makes the last
+	   card jump. */
+	--rb-flow-card-min-height: 11rem;
+	/* Square, and sized so the two-digit monospace ordinal clears its
+	   own border at the body font size. */
+	--rb-flow-icon-size: 2.5rem;
+
+	display: grid;
+
+	/* It is an <ol> now — the order is the content, so a screen reader
+	   should hear "2 of 4" rather than have to infer it from a
+	   decorative numeral. That means undoing the list affordances
+	   Starlight gives markdown lists. */
+	padding-inline-start: 0;
+	margin-block: 2rem;
+	grid-auto-rows: 1fr;
+	grid-template-columns: repeat(var(--rb-flow-columns), minmax(0, 1fr));
+	gap: 1rem;
+	list-style: none;
+}
+
+.flow-step {
+	position: relative;
+	display: flex;
+	box-sizing: border-box;
+	min-height: var(--rb-flow-card-min-height);
+	flex-direction: column;
+	align-items: flex-start;
+	justify-content: flex-start;
+	padding: 1rem;
+	border: 1px solid var(--rb-border);
+	border-radius: var(--rb-radius);
+	background: var(--rb-surface-raised);
+	text-align: left;
+	transition:
+		border-color 0.2s ease,
+		box-shadow 0.2s ease,
+		transform 0.2s ease;
+}
+.flow-step:hover {
+	border-color: var(--rb-border-strong);
+	box-shadow: 0 0.75rem 1.5rem var(--rb-shadow);
+	transform: translateY(-2px);
+}
+
+/* The ordinal is `aria-hidden` decoration — the <ol> already carries
+   the order — so it may sit at incidental contrast.
+
+   The class still says `__icon` although there is no icon in it and
+   never was: `scripts/check-contrast.mjs` names this selector to
+   resolve the pair it measures, and that script belongs to the gate,
+   not to this sheet. Renaming here silently turns the pair into
+   `unresolved`, which the gate reports as a FAIL — which is exactly
+   what it is meant to do, and exactly why the name stays. */
+.flow-step__icon {
+	display: grid;
+	width: var(--rb-flow-icon-size);
+	height: var(--rb-flow-icon-size);
+	place-items: center;
+	margin-bottom: 0.875rem;
+	border: 1px solid color-mix(in srgb, var(--rb-accent) 40%, transparent);
+	border-radius: 0.75rem;
+	background: color-mix(
+		in srgb,
+		var(--rb-accent) 12%,
+		var(--rb-surface-raised)
+	);
+	color: var(--rb-accent);
+	font-family: var(--sl-font-mono);
+	font-size: 0.8rem;
+	font-weight: 800;
+	letter-spacing: 0;
+}
+
+.flow-step__title {
+	margin-bottom: 0.4rem;
+	font-size: 0.95rem;
+	font-weight: 700;
+}
+
+.flow-step__desc {
+	color: var(--sl-color-gray-3);
+	font-size: 0.8rem;
+	line-height: 1.6;
+}
+
+@media (max-width: 64rem) {
+	.flow-steps {
+		--rb-flow-columns: 2;
+	}
+}
+
+@media (max-width: 36rem) {
+	.flow-steps {
+		--rb-flow-columns: 1;
+	}
+}
+
+/* ------------------------------------------------------------
+   2. THE DISCLOSURE BLOCK — "What it writes to your router"
+   ------------------------------------------------------------
+
+   A datasheet, not a pitch. The reader is about to give a Go binary
+   write access to a production firewall, and what persuades them is
+   the limits stated plainly — so this block is ruled and typeset
+   like a spec sheet: horizontal rules, a mono-ish label column, no
+   illustration, no gradient, nothing that could be mistaken for
+   marketing.
+
+   The two panels stack rather than sitting side by side. The rule
+   listing is real RouterOS `add` lines, which run past 120 columns;
+   half of a doc-width column would turn every one of them into a
+   horizontal scrollbar. */
+
+.disclosure {
+	/* One rule weight for the panel separators and one for the rows
+	   inside them, so the hierarchy is legible in greyscale. */
+	--rb-disclosure-rule: 2px solid var(--rb-border-strong);
+	--rb-disclosure-hairline: 1px solid var(--rb-border);
+
+	margin-block: 2rem;
+}
+
+.disclosure__lead {
+	max-width: 60ch;
+	color: var(--rb-body);
+	line-height: 1.7;
+}
+
+.disclosure__panel {
+	margin-block-start: 2rem;
+	padding-block-start: 1rem;
+	border-top: var(--rb-disclosure-rule);
+}
+
+.disclosure__title {
+	margin-block: 0 0.5rem;
+	color: var(--rb-heading);
+	font-size: 0.95rem;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+.disclosure__caption,
+.disclosure__footnote {
+	max-width: 66ch;
+	color: var(--sl-color-gray-3);
+	font-size: 0.875rem;
+	line-height: 1.65;
+}
+
+.disclosure__footnote {
+	margin-block-start: 0.75rem;
+}
+
+.disclosure__facts {
+	margin-block: 0;
+}
+
+/* Each fact is a row of the sheet: a term, a statement, a rule
+   between them. `<div>` wrappers inside the <dl> keep dt and dd
+   together, which is what lets the border sit on the pair. */
+.disclosure__fact {
+	padding-block: 0.9rem;
+	border-top: var(--rb-disclosure-hairline);
+}
+.disclosure__fact:first-of-type {
+	border-top: 0;
+	padding-block-start: 0;
+}
+
+.disclosure__fact dt {
+	margin-block-end: 0.3rem;
+	color: var(--rb-heading);
+	font-size: 0.95rem;
+	font-weight: 700;
+}
+
+.disclosure__fact dd {
+	max-width: 68ch;
+	margin-inline-start: 0;
+	color: var(--rb-body);
+	font-size: 0.925rem;
+	line-height: 1.7;
+}
+
+/* The one warning tone on the page. The colour is never the message:
+   the row opens with the literal word "Caveat" / "Advertencia", so
+   the block reads the same in greyscale, in a screen reader, and to
+   a reader who cannot separate the warn hue from the surface. */
+.disclosure__caveat {
+	display: block;
+	padding: 0.6rem 0.8rem;
+	border-left: 3px solid var(--rb-status-warn);
+	border-radius: 0 var(--rb-radius) var(--rb-radius) 0;
+	margin-block-start: 0.7rem;
+	background: var(--rb-status-warn-soft);
+}
+
+/* ------------------------------------------------------------
+   3. REQUIREMENTS
+   ------------------------------------------------------------ */
+
+/* The parenthetical some requirements carry — a port pair, a caveat —
+   set back from the requirement itself so the list scans as three
+   things, not six. */
+.requirements__note {
+	color: var(--sl-color-gray-3);
+}

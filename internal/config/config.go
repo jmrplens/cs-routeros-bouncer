@@ -656,7 +656,7 @@ func expandConfigEnv(cfg *Config) error {
 
 	cfg.Logging.Level = expandConfigValue(cfg.Logging.Level, "LOG_LEVEL")
 	cfg.Logging.Format = expandConfigValue(cfg.Logging.Format, "LOG_FORMAT")
-	cfg.Logging.File = expandConfigValue(cfg.Logging.File, "LOG_FILE")
+	cfg.Logging.File = strings.TrimSpace(expandConfigValue(cfg.Logging.File, "LOG_FILE"))
 	cfg.Metrics.ListenAddr = expandConfigValue(cfg.Metrics.ListenAddr, "METRICS_ADDR")
 	return nil
 }
@@ -798,6 +798,9 @@ func (c *Config) Validate() error {
 	if err := c.validateFirewall(); err != nil {
 		return err
 	}
+	if err := c.validateLogging(); err != nil {
+		return err
+	}
 	return c.validateIntervals()
 }
 
@@ -816,6 +819,15 @@ func (c *Config) validateCrowdSec() error {
 	if parsedAPIURL.Scheme == "" || parsedAPIURL.Host == "" {
 		return fmt.Errorf("crowdsec.api_url must include scheme and host, got %q", c.CrowdSec.APIURL)
 	}
+	// Every entry must be a usable type name. CrowdSec accepts arbitrary types,
+	// so this cannot check membership in a fixed set — only that the operator
+	// did not configure a blank that would silently widen or narrow nothing.
+	for i, t := range c.CrowdSec.SupportedDecisionTypes {
+		if strings.TrimSpace(t) == "" {
+			return fmt.Errorf("crowdsec.supported_decisions_types[%d] is empty", i)
+		}
+	}
+
 	return nil
 }
 
@@ -1035,6 +1047,22 @@ func (c *Config) validateBlockOutputOptions() error {
 		if c.Firewall.BlockOutput.Interface == "" && c.Firewall.BlockOutput.InterfaceList == "" {
 			return errors.New("firewall.block_output requires interface or interface_list when enabled")
 		}
+	}
+	return nil
+}
+
+// validateLogging checks the optional log file destination. Only the shape of
+// the path is checked here; whether it can actually be opened is decided at
+// startup, where the failure can name the real filesystem error.
+func (c *Config) validateLogging() error {
+	if c.Logging.File == "" {
+		return nil
+	}
+	if strings.ContainsFunc(c.Logging.File, unicode.IsControl) {
+		return errors.New("logging.file must not contain control characters")
+	}
+	if strings.HasSuffix(c.Logging.File, string(os.PathSeparator)) {
+		return fmt.Errorf("logging.file must be a file path, got a directory %q", c.Logging.File)
 	}
 	return nil
 }

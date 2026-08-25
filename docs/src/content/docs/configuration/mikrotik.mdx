@@ -4,6 +4,7 @@ description: "Configure the RouterOS API connection for cs-routeros-bouncer: add
 ---
 
 import { Badge } from "@astrojs/starlight/components";
+import ConfigOption from "../../../components/ConfigOption.astro";
 
 Settings for the [MikroTik RouterOS API](https://help.mikrotik.com/docs/spaces/ROS/pages/47579160/API) connection.
 
@@ -11,7 +12,7 @@ Settings for the [MikroTik RouterOS API](https://help.mikrotik.com/docs/spaces/R
 
 ### `mikrotik.address` <Badge text="Required" variant="danger" />
 
-**Env:** `MIKROTIK_HOST` · **Default:** —
+<ConfigOption path="mikrotik.address" />
 
 RouterOS API address in `host:port` format. There is no built-in default: the bouncer exits with `mikrotik.address is required` if this value is empty. The `192.168.0.1:8728` used below is the sample value shipped in [`config/cs-routeros-bouncer.yaml`](https://github.com/jmrplens/cs-routeros-bouncer/blob/main/config/cs-routeros-bouncer.yaml), not a default.
 
@@ -25,13 +26,13 @@ mikrotik:
 
 ### `mikrotik.username` <Badge text="Required" variant="danger" />
 
-**Env:** `MIKROTIK_USER` · **Default:** —
+<ConfigOption path="mikrotik.username" />
 
 The RouterOS API username. There is no built-in default: the bouncer exits with `mikrotik.username is required` if this value is empty. The `crowdsec` name is the sample value shipped in [`config/cs-routeros-bouncer.yaml`](https://github.com/jmrplens/cs-routeros-bouncer/blob/main/config/cs-routeros-bouncer.yaml), not a default. Use a dedicated user with minimal permissions. See [Router Setup](/cs-routeros-bouncer/getting-started/router-setup/) for creating the user.
 
 ### `mikrotik.password` <Badge text="Required" variant="danger" />
 
-**Env:** `MIKROTIK_PASS` · **Default:** —
+<ConfigOption path="mikrotik.password" />
 
 The RouterOS API password.
 
@@ -48,7 +49,7 @@ export MIKROTIK_PASS="your-secure-password"
 
 ### `mikrotik.tls` <Badge text="Optional" variant="note" />
 
-**Env:** `MIKROTIK_TLS` · **Default:** `false`
+<ConfigOption path="mikrotik.tls" />
 
 Enable TLS for the RouterOS API connection. Requires the `api-ssl` service on the router (port 8729).
 
@@ -60,7 +61,7 @@ mikrotik:
 
 ### `mikrotik.tls_insecure` <Badge text="Optional" variant="note" />
 
-**Env:** `MIKROTIK_TLS_INSECURE` · **Default:** `false`
+<ConfigOption path="mikrotik.tls_insecure" />
 
 Skip TLS certificate verification. Only needed when the router uses a self-signed certificate.
 
@@ -72,13 +73,13 @@ Keep `tls_insecure: false` whenever possible: the recommended production setup i
 
 ### `mikrotik.connection_timeout` <Badge text="Optional" variant="note" />
 
-**Env:** `MIKROTIK_CONN_TIMEOUT` · **Default:** `10s`
+<ConfigOption path="mikrotik.connection_timeout" />
 
 Maximum time to wait for the initial API connection. Uses Go duration format.
 
 ### `mikrotik.command_timeout` <Badge text="Optional" variant="note" />
 
-**Env:** `MIKROTIK_CMD_TIMEOUT` · **Default:** `30s`
+<ConfigOption path="mikrotik.command_timeout" />
 
 Maximum time to wait for a single API command to complete. Increase if you have a slow router or large address lists.
 
@@ -90,7 +91,7 @@ If you see timeout errors during reconciliation with large IP lists (20,000+), i
 
 ### `mikrotik.pool_size` <Badge text="Optional" variant="note" />
 
-**Env:** `MIKROTIK_POOL_SIZE` · **Default:** `4`
+<ConfigOption path="mikrotik.pool_size" />
 
 How many RouterOS API sessions the bouncer can use for parallel work such as reconciliation removals. A higher value increases throughput when reconciliation has many stale address-list entries to delete; adds and live decisions always use the main connection, so they are not affected.
 

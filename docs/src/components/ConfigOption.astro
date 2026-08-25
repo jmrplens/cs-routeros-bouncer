@@ -1,0 +1,243 @@
+---
+/**
+ * Renders the mechanical metadata of a configuration key — environment
+ * variable, default, required-ness — from `src/data/config-schema.json`, which
+ * `scripts/extract-config-schema.mjs` extracts from `internal/config/config.go`.
+ *
+ * Every page used to hand-type these values, in two languages, plus a third
+ * copy in the quick-reference tables. They drifted: `mikrotik.address` and
+ * `mikrotik.username` were published with defaults the binary never had. What
+ * a key *means* is still authored prose and lives in the pages; only what the
+ * Go struct already states is rendered here.
+ *
+ * Three shapes, one per place the duplication lived:
+ *   <ConfigOption path="mikrotik.address" />              one key
+ *   <ConfigOption paths={["a.b", "c.d"]} />               one heading, several keys
+ *   <ConfigOption rows={[["a.b", "What it does"]]} />     quick-reference table
+ *
+ * The labels are localised from the URL, so the same call renders correctly on
+ * an English page and on its Spanish twin — the translated half of a page stays
+ * the prose.
+ */
+import schema from "../data/config-schema.json";
+
+interface SchemaOption {
+	path: string;
+	type: string;
+	section: boolean;
+	env: string | null;
+	envAliases: string[];
+	requirement: string;
+	requirementCondition: string | null;
+	default: unknown;
+	defaultSource: string;
+	inheritsFrom?: string;
+	doc: string;
+	needsProse: string | null;
+}
+
+interface Props {
+	/** Single key, e.g. `mikrotik.address`. */
+	path?: string;
+	/** Several keys documented under one heading. */
+	paths?: string[];
+	/** Quick-reference table rows: `[key, description]`. */
+	rows?: [string, string][];
+	/**
+	 * Hand-authored gloss appended to the default, for the cases the struct
+	 * cannot state — "all origins" for an empty filter list, "not implemented".
+	 * Translated per locale like any other prose.
+	 */
+	note?: string;
+}
+
+const { path, paths, rows, note } = Astro.props;
+
+const options: Record<string, SchemaOption> = schema.options;
+
+// Starlight serves the Spanish mirror under `/es/`; the English pages sit at the
+// root locale, so there is no positive marker to test for on that side.
+const isSpanish = Astro.url.pathname.split("/").includes("es");
+
+const labels = isSpanish
+	? {
+			env: "Env",
+			default: "Por defecto",
+			yamlOnly: "Solo YAML",
+			required: "obligatorio",
+			inherits: "hereda de",
+			columns: [
+				"Clave de configuración",
+				"Variable de entorno",
+				"Valor por defecto",
+				"Descripción",
+			],
+		}
+	: {
+			env: "Env",
+			default: "Default",
+			yamlOnly: "YAML only",
+			required: "required",
+			inherits: "inherits from",
+			columns: ["Config Key", "Env Variable", "Default", "Description"],
+		};
+
+const NO_VALUE = "—";
+
+/**
+ * Looks a key up, failing the build rather than rendering a blank cell. A
+ * renamed or deleted key must break loudly here: a silently empty metadata line
+ * is exactly the failure this component exists to remove.
+ */
+function lookup(key: string): SchemaOption {
+	const option = options[key];
+	if (!option) {
+		throw new Error(
+			`ConfigOption: "${key}" is not in src/data/config-schema.json. ` +
+				`Either the key was renamed in internal/config/config.go — regenerate ` +
+				`with \`pnpm run config:extract\` — or this page references a key that ` +
+				`does not exist.`,
+		);
+	}
+	return option;
+}
+
+/** The default, rendered the way the reference has always shown it. */
+function formatDefault(option: SchemaOption): string {
+	// A per-protocol override with no value of its own resolves to the global
+	// key, not to a constructor default. Saying "—" here would read as "nothing",
+	// which is the same falsehood as printing the constructor value.
+	if (option.inheritsFrom) {
+		return `${labels.inherits} ${option.inheritsFrom}`;
+	}
+	const value = option.default;
+	if (value === null || value === "") {
+		return option.requirement === "required"
+			? `${NO_VALUE} (${labels.required})`
+			: NO_VALUE;
+	}
+	if (Array.isArray(value)) {
+		return `[${value.map((item) => JSON.stringify(item)).join(", ")}]`;
+	}
+	return String(value);
+}
+
+/** True when the default should render as code rather than as an em dash. */
+function hasDefaultValue(option: SchemaOption): boolean {
+	if (option.inheritsFrom) return false; // rendered as prose, not as a value
+	return option.default !== null && option.default !== "";
+}
+
+const escapeHtml = (text: string): string =>
+	text
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;");
+
+/**
+ * The table descriptions are authored prose that uses inline code, and they
+ * arrive as plain strings rather than through the Markdown pipeline. Escaping
+ * first and only then promoting backtick spans keeps that the only markup a
+ * description can introduce.
+ */
+const inlineCode = (text: string): string =>
+	escapeHtml(text).replace(/`([^`]+)`/g, "<code>$1</code>");
+
+const singleKeys = path ? [path] : (paths ?? []);
+const singleOptions = singleKeys.map(lookup);
+
+// A key the extractor could not fully describe must not render as if it had
+// been: the page has to say the missing part in prose.
+for (const option of singleOptions) {
+	if (option.needsProse && !note) {
+		throw new Error(
+			`ConfigOption: "${option.path}" is marked as needing hand-authored prose ` +
+				`(${option.needsProse}) — pass a \`note\` describing it, or document the ` +
+				`key in the page body instead.`,
+		);
+	}
+}
+
+const envNames = singleOptions.map((option) => option.env ?? labels.yamlOnly);
+const defaultsAreUniform =
+	new Set(singleOptions.map((option) => formatDefault(option))).size === 1;
+const tableRows = (rows ?? []).map(([key, description]) => ({
+	option: lookup(key),
+	description,
+}));
+---
+
+{
+	singleOptions.length > 0 && (
+		<p class="config-option">
+			<strong>{labels.env}:</strong>{" "}
+			{envNames.map((name, index) => (
+				<>
+					{index > 0 && " / "}
+					{name === labels.yamlOnly ? name : <code>{name}</code>}
+				</>
+			))}
+			{(defaultsAreUniform || singleOptions.length === 1) && (
+				<>
+					{" · "}
+					<strong>{labels.default}:</strong>{" "}
+					{hasDefaultValue(singleOptions[0]) ? (
+						<code>{formatDefault(singleOptions[0])}</code>
+					) : (
+						formatDefault(singleOptions[0])
+					)}
+				</>
+			)}
+			{!defaultsAreUniform && singleOptions.length > 1 && (
+				<>
+					{" · "}
+					<strong>{labels.default}:</strong>{" "}
+					{singleOptions.map((option, index) => (
+						<>
+							{index > 0 && " / "}
+							{hasDefaultValue(option) ? (
+								<code>{formatDefault(option)}</code>
+							) : (
+								formatDefault(option)
+							)}
+						</>
+					))}
+				</>
+			)}
+			{note && ` (${note})`}
+		</p>
+	)
+}
+
+{
+	tableRows.length > 0 && (
+		<table class="config-option-table">
+			<thead>
+				<tr>
+					{labels.columns.map((column) => (
+						<th scope="col">{column}</th>
+					))}
+				</tr>
+			</thead>
+			<tbody>
+				{tableRows.map(({ option, description }) => (
+					<tr>
+						<td>
+							<code>{option.path}</code>
+						</td>
+						<td>{option.env ? <code>{option.env}</code> : labels.yamlOnly}</td>
+						<td>
+							{hasDefaultValue(option) ? (
+								<code>{formatDefault(option)}</code>
+							) : (
+								formatDefault(option)
+							)}
+						</td>
+						<td set:html={inlineCode(description)} />
+					</tr>
+				))}
+			</tbody>
+		</table>
+	)
+}

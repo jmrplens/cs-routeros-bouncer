@@ -11,17 +11,25 @@
  * This checks the three things that can be compared without reading prose:
  *   1. every English page has a Spanish twin, and vice versa;
  *   2. both twins declare the same frontmatter keys, and the same number of
- *      entries in each list (values are expected to differ — that is the
- *      translation);
- *   3. both twins have the same sequence of heading levels, so a missing or
- *      extra section shows up even though the heading text is translated.
+ *      entries in each list — mappings and bare scalars alike (values are
+ *      expected to differ — that is the translation);
+ *   3. both twins have the same sequence of heading levels, ATX (`## x`) and
+ *      setext (`x` over `---`) alike, so a missing or extra section shows up
+ *      even though the heading text is translated.
  *
  * Deliberately dependency-free: the frontmatter reader below is a small
  * indentation-based scanner, not a YAML parser, because it only ever has to
- * recover key paths — never values.
+ * recover key paths — never values. Flow style (`tags: [a, b]`) is the one
+ * thing that subset cannot see into, so it is reported as an error rather than
+ * silently mis-read; see frontmatterShape.
+ *
+ * Everything here is covered by the fixtures at the bottom, which run on every
+ * invocation — the blind spots this gate has had were all invisible in the
+ * corpus, so a regression reads as a pass unless something tests for it.
  *
  * Usage:
  *   node scripts/check-i18n-parity.mjs   # exit 0 when clean, 1 on any mismatch
+ *   node scripts/check-i18n-parity.mjs --self-test   # fixtures only, no corpus
  */
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -96,12 +104,24 @@ function splitFrontmatter(source) {
  * Sequence indices collapse to `[]` so entries of one list contribute one set
  * of key paths regardless of order; the separate entry counts are what catch a
  * list that lost a member (a hero action translated away, say) while every key
- * it used still appears in the surviving entries. Block scalar bodies
- * (`content: |`, used for the JSON-LD islands) are skipped wholesale — their
- * contents are payload, not YAML, and a naive scan would read the embedded
- * JSON as more keys.
+ * it used still appears in the surviving entries. Entries that are bare scalars
+ * (`- routeros`) carry no key at all, so their count is the *only* signal there
+ * is — an untranslated tag dropped from a `tags:` list changes nothing else.
+ * Block scalar bodies (`content: |`, used for the JSON-LD islands) are skipped
+ * wholesale — their contents are payload, not YAML, and a naive scan would read
+ * the embedded JSON as more keys.
+ *
+ * Flow style (`tags: [a, b]`, `sidebar: { order: 3 }`) is *reported*, never
+ * parsed. An indentation scanner is blind inside a flow collection: it reports
+ * `sidebar` and misses `sidebar.order`, and counts no entries for `tags`, so a
+ * two-item flow list against a three-item block list passes clean. Teaching it
+ * flow style means writing the YAML parser this file exists to avoid — quoting,
+ * escapes, nesting, multi-line flow — to serve zero pages, since nothing in the
+ * corpus uses it. Failing loudly costs one clear error the day someone writes
+ * their first flow collection, and in exchange the blind spot cannot be entered
+ * silently; guessing costs a gate that reports green while drifting.
  * @param {string} frontmatter
- * @returns {{ keys: Set<string>, counts: Map<string, number> }}
+ * @returns {{ keys: Set<string>, counts: Map<string, number>, flow: string[] }}
  */
 function frontmatterShape(frontmatter) {
 	/** @type {Set<string>} */
@@ -109,6 +129,9 @@ function frontmatterShape(frontmatter) {
 	/** Entries per sequence, by the path of the key holding it. */
 	/** @type {Map<string, number>} */
 	const counts = new Map();
+	/** Lines opening a flow collection, verbatim — reported, not parsed. */
+	/** @type {string[]} */
+	const flow = [];
 	// One frame per indentation level, outermost first. `prefix` is what every
 	// key at that level is qualified with; `lastKey` is the key a deeper level
 	// will nest under. The sentinel frame stands for the document itself.
@@ -137,7 +160,37 @@ function frontmatterShape(frontmatter) {
 		const keyIndent = isSequenceItem ? indent + item[1].length : indent;
 
 		const keyMatch = /^([^\s:#][^:]*):(?:[ \t]|$)/.exec(rest);
-		if (!keyMatch) continue;
+
+		// A `[` or `{` where a value begins opens a flow collection. Checked here,
+		// after the block scalar skip above, so the JSON-LD payloads — which are
+		// full of both — stay invisible to it.
+		if (keyMatch !== null || isSequenceItem) {
+			const value = (
+				keyMatch === null ? rest : rest.slice(keyMatch[0].length)
+			).trimStart();
+			if (value.startsWith("[") || value.startsWith("{"))
+				flow.push(line.trim());
+		}
+
+		if (!keyMatch) {
+			// A bare scalar entry (`- routeros`) has no key to record, but it still
+			// occupies one slot of the sequence holding it, and losing one is exactly
+			// what the counts exist to catch. Its owner is the key one level up —
+			// unless it sits at the same level as mapping entries of the same list,
+			// in which case that level's own `[]` prefix already names the sequence.
+			if (isSequenceItem) {
+				while (stack.length > 1 && stack[stack.length - 1].indent > keyIndent) {
+					stack.pop();
+				}
+				const frame = stack[stack.length - 1];
+				const sequence =
+					frame.indent === keyIndent && frame.prefix.endsWith("[].")
+						? frame.prefix.slice(0, -3)
+						: frame.lastKey || "(document root)";
+				counts.set(sequence, (counts.get(sequence) ?? 0) + 1);
+			}
+			continue;
+		}
 
 		while (stack.length > 1 && stack[stack.length - 1].indent > keyIndent) {
 			stack.pop();
@@ -156,7 +209,7 @@ function frontmatterShape(frontmatter) {
 		frame.lastKey = keyPath;
 
 		// Each `- ` line opens one entry of the sequence this level belongs to.
-		// (Sequences of bare scalars carry no keys and so are not counted.)
+		// (Bare scalar entries are counted above, where the key match fails.)
 		if (isSequenceItem && frame.prefix.endsWith("[].")) {
 			const sequence = frame.prefix.slice(0, -3);
 			counts.set(sequence, (counts.get(sequence) ?? 0) + 1);
@@ -164,13 +217,44 @@ function frontmatterShape(frontmatter) {
 
 		if (/:[ \t]*[|>][+-]?\d*[ \t]*$/.test(rest)) blockScalarIndent = keyIndent;
 	}
-	return { keys, counts };
+	return { keys, counts, flow };
+}
+
+/**
+ * Whether a line is plain paragraph text — the only thing a setext underline is
+ * allowed to underline. Everything a run of `-` could *also* be closing off is
+ * excluded here, which is what keeps `---` after a list item, a JSX island, a
+ * table row or a blank line from being read as a heading. Lines inside code
+ * fences and HTML comments never reach this: the caller consumes them first.
+ *
+ * Deliberately conservative. Missing a setext heading costs a heading this gate
+ * does not compare; inventing one costs a false failure on a page that is fine,
+ * and `---` as a thematic break is common in this corpus (34 of them, every one
+ * preceded by a blank line) while setext headings are currently unused.
+ * @param {string} line
+ * @returns {boolean}
+ */
+function isParagraphText(line) {
+	const trimmed = line.trim();
+	if (trimmed === "") return false; // Blank: nothing to underline.
+	if (/^ {4,}/.test(line)) return false; // Indented code block.
+	if (/^(=+|-+|\*{3,}|_{3,})$/.test(trimmed)) return false; // Rule/underline.
+	if (/^([-*+]|\d{1,9}[.)])([ \t]|$)/.test(trimmed)) return false; // List item.
+	if (/^#{1,6}([ \t]|$)/.test(trimmed)) return false; // ATX heading.
+	if (/^[<:|>]/.test(trimmed)) return false; // JSX, ::: directive, table, quote.
+	if (/^(import|export)[ \t]/.test(trimmed)) return false; // MDX statement.
+	return true;
 }
 
 /**
  * Collect the sequence of markdown heading levels in a page body, e.g.
  * `[2, 3, 3, 2]`. Heading text is ignored — it is translated by definition;
  * the shape of the outline is what has to match.
+ *
+ * Both heading forms count: ATX (`## Section`) and setext (a line of text over
+ * a rule of `=` for level 1 or `-` for level 2). Setext is rare, but a section
+ * added in one language only is the whole point of this check, and "we only
+ * looked at the `#` ones" is not a property anyone would guess from a pass.
  * @param {string} body
  * @returns {{ levels: number[], unterminated: string | null }}
  */
@@ -182,10 +266,13 @@ function headingLevels(body) {
 	// Headings inside an HTML comment are not headings. Tracked separately from
 	// fences because a comment can open and close on the same line.
 	let inComment = false;
+	// Whether the line just read was paragraph text a setext rule could underline.
+	let underlinable = false;
 
 	for (const line of body.split(/\r?\n/)) {
 		if (inComment) {
 			if (COMMENT_END.test(line)) inComment = false;
+			underlinable = false;
 			continue;
 		}
 		// Up to three leading spaces still count, per CommonMark; four or more
@@ -194,6 +281,7 @@ function headingLevels(body) {
 		if (fence === null) {
 			if (fenceMatch) {
 				fence = { char: fenceMatch[1][0], length: fenceMatch[1].length };
+				underlinable = false;
 				continue;
 			}
 		} else {
@@ -205,6 +293,7 @@ function headingLevels(body) {
 				fenceMatch[1].length >= fence.length &&
 				fenceMatch[2].trim() === "";
 			if (closes) fence = null;
+			underlinable = false;
 			continue; // Never read headings out of a code block.
 		}
 
@@ -215,11 +304,22 @@ function headingLevels(body) {
 			!COMMENT_END.test(line.slice(commentStart + 4))
 		) {
 			inComment = true;
+			underlinable = false;
+			continue;
+		}
+
+		// A setext underline: only a heading when it follows paragraph text —
+		// otherwise the very same line is a thematic break or a list bullet.
+		const underline = /^ {0,3}(=+|-+)[ \t]*$/.exec(line);
+		if (underline !== null && underlinable) {
+			levels.push(underline[1][0] === "=" ? 1 : 2);
+			underlinable = false;
 			continue;
 		}
 
 		const heading = /^ {0,3}(#{1,6})(?:[ \t]|$)/.exec(line);
 		if (heading) levels.push(heading[1].length);
+		underlinable = heading === null && isParagraphText(line);
 	}
 	// A fence — or a comment — left open at EOF silently swallows every heading
 	// after it, so the outline this returns is not trustworthy. The caller fails
@@ -232,23 +332,468 @@ function headingLevels(body) {
 }
 
 /**
+ * Remove HTML comments, MDX expression comments and inline code spans, in one
+ * left-to-right pass. Unterminated spans consume the rest of the input, which
+ * is the safe direction: the alternative is emitting text the author had
+ * commented out.
+ * @param {string} text
+ * @returns {string}
+ */
+function stripEnclosedSpans(text) {
+	/** Opening marker to its terminator. Order matters only for shared prefixes. */
+	const spans = [
+		["<!--", "-->"],
+		["{/*", "*/}"],
+	];
+	let out = "";
+	let i = 0;
+	outer: while (i < text.length) {
+		// A code span is delimited by a RUN of backticks and closes only on a run
+		// of the same length, which is what lets ``a ` b`` hold a backtick.
+		// Treating every backtick as a one-character delimiter closed the span at
+		// the first tick of a `` pair and left the rest — component examples
+		// included — visible to the scan.
+		if (text[i] === "`") {
+			let run = 0;
+			while (text[i + run] === "`") run += 1;
+			const fence = "`".repeat(run);
+			// Only a run of EXACTLY this length closes it; a longer run is content.
+			let j = i + run;
+			let end = -1;
+			while (j < text.length) {
+				if (text[j] !== "`") {
+					if (text[j] === "\n") break; // a code span never spans a line
+					j += 1;
+					continue;
+				}
+				let closing = 0;
+				while (text[j + closing] === "`") closing += 1;
+				if (closing === run) {
+					end = j;
+					break;
+				}
+				j += closing;
+			}
+			// Unterminated, or the line ended first: treat the delimiter as text so
+			// a stray backtick in prose cannot swallow the rest of the document.
+			i = end === -1 ? i + run : end + fence.length;
+			continue outer;
+		}
+
+		for (const [open, close] of spans) {
+			if (!text.startsWith(open, i)) continue;
+			const end = text.indexOf(close, i + open.length);
+			i = end === -1 ? text.length : end + close.length;
+			continue outer;
+		}
+		out += text[i];
+		i += 1;
+	}
+	return out;
+}
+
+/**
+ * Collect the MDX component invocations in a page body, as a multiset keyed by
+ * component name plus its identifying attribute.
+ *
+ * Heading outlines cannot see these. A page can keep its `## Frequently asked
+ * questions` heading in both locales while one of them loses the
+ * `<Home section="faq" />` underneath it — the outline still matches, every
+ * gate stays green, and a whole section (here, a live rich-results surface)
+ * silently disappears from that locale. The same holds for a dropped
+ * `<ConfigOption path="…" />` or `<RuleSet scope="…" />`.
+ *
+ * Only the identifying attribute is compared, never free text: `title` and
+ * friends are translated by definition. Components inside fenced code blocks
+ * are skipped — they are examples, not invocations.
+ *
+ * @param {string} body
+ * @returns {Map<string, number>}
+ */
+function componentCalls(body) {
+	/** @type {Map<string, number>} */
+	const calls = new Map();
+	// Attributes that identify WHICH instance of a component this is. Anything
+	// else is presentation or prose and may legitimately differ per locale.
+	const identifying = ["section", "path", "paths", "scope", "name", "id"];
+
+	// Strip fenced code blocks first, then scan the remaining text as a whole:
+	// Prettier wraps a long invocation across several lines, so a line-by-line
+	// scan sees `<ConfigOption` with no attributes and reports a phantom
+	// mismatch against the locale whose copy happened to fit on one line.
+	let stripped = "";
+	let fence = null;
+	for (const line of body.split(/\r?\n/)) {
+		const fenceMatch = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+		if (fence === null) {
+			if (fenceMatch) {
+				fence = { char: fenceMatch[1][0], length: fenceMatch[1].length };
+				continue;
+			}
+			stripped += line + "\n";
+		} else if (
+			fenceMatch !== null &&
+			fenceMatch[1][0] === fence.char &&
+			fenceMatch[1].length >= fence.length &&
+			fenceMatch[2].trim() === ""
+		) {
+			fence = null;
+		}
+	}
+
+	// A component named inside inline code or a comment is prose about the
+	// component, not an invocation of it. `\`<ConfigOption path="x" />\`` in one
+	// locale's explanation would otherwise fail a gate about what the two pages
+	// RENDER, which is the opposite of useful.
+	//
+	// Scanned in one left-to-right pass rather than by chained .replace(): a
+	// single regex pass can leave an opening marker behind — `<!--<!-- x -->`
+	// removes the inner comment and leaves a bare `<!--` for the component scan
+	// to walk straight past. (CodeQL flags exactly this as incomplete
+	// multi-character sanitization.) Consuming each span as it is entered
+	// cannot leave a partial marker.
+	stripped = stripEnclosedSpans(stripped);
+
+	// Capitalised tag name is what distinguishes a component from raw HTML.
+	for (const match of stripped.matchAll(/<([A-Z][A-Za-z0-9]*)([^>]*?)\/?>/g)) {
+		const [, name, attrs] = match;
+		let key = name;
+		for (const attribute of identifying) {
+			const found = new RegExp(`\\b${attribute}=["']([^"']*)["']`).exec(attrs);
+			if (found) {
+				key = `${name}[${attribute}=${found[1]}]`;
+				break;
+			}
+		}
+		calls.set(key, (calls.get(key) ?? 0) + 1);
+	}
+	return calls;
+}
+
+/**
  * @param {string} relativePath page path relative to DOCS_DIR
- * @returns {{ keys: Set<string>, counts: Map<string, number>, levels: number[] }}
+ * @returns {{ keys: Set<string>, counts: Map<string, number>, flow: string[], levels: number[], unterminated: string | null }}
  */
 function readPage(relativePath) {
 	const source = readFileSync(path.join(DOCS_DIR, relativePath), "utf8");
 	const { frontmatter, body } = splitFrontmatter(source);
 	const shape =
 		frontmatter === null
-			? { keys: new Set(), counts: new Map() }
+			? { keys: new Set(), counts: new Map(), flow: [] }
 			: frontmatterShape(frontmatter);
-	return { ...shape, ...headingLevels(body) };
+	return { ...shape, ...headingLevels(body), components: componentCalls(body) };
 }
 
 /** @param {Set<string>} a @param {Set<string>} b @returns {string[]} */
 function missingFrom(a, b) {
 	return [...a].filter((key) => !b.has(key)).sort();
 }
+
+// ---------------------------------------------------------------------------
+// Fixtures.
+//
+// Every blind spot this checker has had was invisible in the corpus: no page
+// uses flow style, a setext heading or a sequence of bare scalars, so a scanner
+// that stops seeing one of them reports a pass rather than a failure, and the
+// corpus run proves nothing about it. These fixtures are the only thing that
+// does, so they run on every invocation instead of behind a flag no CI job
+// calls — they cost a few microseconds and no I/O.
+//
+// They are inline strings rather than files on disk because several are
+// deliberately malformed (an unclosed fence, flow-style YAML) and `prettier
+// --check .`, which runs over this package, would reformat or reject them the
+// moment they had a .md extension.
+// ---------------------------------------------------------------------------
+
+/** @param {boolean} ok @param {string} what */
+function expect(ok, what) {
+	if (!ok) throw new Error(what);
+}
+
+/** @param {string} source @returns {ReturnType<typeof frontmatterShape>} */
+function shapeOf(source) {
+	const { frontmatter } = splitFrontmatter(source);
+	expect(frontmatter !== null, "fixture frontmatter did not parse");
+	return frontmatterShape(frontmatter ?? "");
+}
+
+/** @param {string} source @returns {ReturnType<typeof headingLevels>} */
+function outlineOf(source) {
+	return headingLevels(splitFrontmatter(source).body);
+}
+
+/** @type {[string, () => void][]} */
+const SELF_TESTS = [
+	[
+		"bare scalar sequence entries are counted",
+		() => {
+			const en = shapeOf(`---
+title: T
+tags:
+  - one
+  - two
+  - three
+---
+`);
+			const es = shapeOf(`---
+title: T
+tags:
+  - uno
+  - dos
+---
+`);
+			expect(en.counts.get("tags") === 3, `en tags = ${en.counts.get("tags")}`);
+			expect(es.counts.get("tags") === 2, `es tags = ${es.counts.get("tags")}`);
+			expect(
+				en.keys.has("tags") && es.keys.has("tags"),
+				"tags key not recorded",
+			);
+		},
+	],
+	[
+		"mapping sequence entries are still counted",
+		() => {
+			const shape = shapeOf(`---
+title: T
+hero:
+  actions:
+    - text: One
+      link: /one/
+    - text: Two
+      link: /two/
+---
+`);
+			expect(
+				shape.counts.get("hero.actions") === 2,
+				`hero.actions = ${shape.counts.get("hero.actions")}`,
+			);
+			expect(shape.keys.has("hero.actions[].link"), "nested key path lost");
+		},
+	],
+	[
+		"scalar entries nested in a mapping entry count against their own key",
+		() => {
+			const shape = shapeOf(`---
+title: T
+head:
+  - tag: script
+    keywords:
+      - a
+      - b
+  - tag: meta
+---
+`);
+			expect(
+				shape.counts.get("head") === 2,
+				`head = ${shape.counts.get("head")}`,
+			);
+			expect(
+				shape.counts.get("head[].keywords") === 2,
+				`head[].keywords = ${shape.counts.get("head[].keywords")}`,
+			);
+		},
+	],
+	[
+		"block scalar payload stays opaque",
+		() => {
+			const shape = shapeOf(`---
+title: T
+head:
+  - tag: script
+    attrs:
+      type: application/ld+json
+    content: |
+      {
+        "@type": "FAQPage",
+        "mainEntity": [{ "name": "x" }]
+      }
+---
+`);
+			expect(shape.flow.length === 0, `flow: ${shape.flow.join(" | ")}`);
+			expect(shape.keys.has("head[].attrs.type"), "attrs.type lost");
+			expect(!shape.keys.has("@type"), "JSON-LD payload read as YAML keys");
+			expect(
+				shape.counts.get("head") === 1,
+				`head = ${shape.counts.get("head")}`,
+			);
+		},
+	],
+	[
+		"flow-style values are reported",
+		() => {
+			const shape = shapeOf(`---
+title: T
+tags: [a, b, c]
+sidebar: { order: 3 }
+list:
+  - [nested, flow]
+---
+`);
+			expect(shape.flow.length === 3, `flow entries: ${shape.flow.length}`);
+			expect(
+				shape.flow[0] === "tags: [a, b, c]",
+				`first flow line: ${shape.flow[0]}`,
+			);
+		},
+	],
+	[
+		"block style with brackets in values is not reported as flow",
+		() => {
+			const shape = shapeOf(`---
+title: "[WIP] Something"
+description: "Fixes: (see [1])"
+tags:
+  - a
+---
+`);
+			expect(shape.flow.length === 0, `flow: ${shape.flow.join(" | ")}`);
+			expect(
+				shape.counts.get("tags") === 1,
+				`tags = ${shape.counts.get("tags")}`,
+			);
+		},
+	],
+	[
+		"setext headings are recognised",
+		() => {
+			const outline = outlineOf(`---
+title: T
+---
+
+Level one
+=========
+
+Body text.
+
+Level two
+---
+
+## ATX two
+`);
+			expect(
+				outline.levels.join(",") === "1,2,2",
+				`levels: [${outline.levels.join(" ")}]`,
+			);
+		},
+	],
+	[
+		"rules that are not setext underlines stay invisible",
+		() => {
+			const outline = outlineOf(`---
+title: T
+---
+
+A paragraph followed by a thematic break.
+
+---
+
+- a list item
+---
+
+<Badge text="x" />
+---
+
+| a | b |
+| - | - |
+
+***
+
+# ATX one
+`);
+			expect(
+				outline.levels.join(",") === "1",
+				`levels: [${outline.levels.join(" ")}]`,
+			);
+		},
+	],
+	[
+		"code fences hide headings and an unclosed one is reported",
+		() => {
+			const closed = outlineOf(`---
+title: T
+---
+
+## Real
+
+\`\`\`yaml
+# not a heading
+Underlined
+---
+\`\`\`
+
+### After
+`);
+			expect(
+				closed.levels.join(",") === "2,3",
+				`levels: [${closed.levels.join(" ")}]`,
+			);
+			expect(
+				closed.unterminated === null,
+				`unterminated: ${closed.unterminated}`,
+			);
+
+			const open = outlineOf(`---
+title: T
+---
+
+## Real
+
+\`\`\`text
+never closed
+`);
+			expect(
+				open.unterminated === "code fence",
+				`unterminated: ${open.unterminated}`,
+			);
+		},
+	],
+	[
+		"an HTML comment closed with --!> is closed",
+		() => {
+			const outline = outlineOf(`---
+title: T
+---
+
+<!-- a note
+## hidden
+--!>
+
+## Visible
+`);
+			expect(
+				outline.levels.join(",") === "2",
+				`levels: [${outline.levels.join(" ")}]`,
+			);
+			expect(
+				outline.unterminated === null,
+				`unterminated: ${outline.unterminated}`,
+			);
+		},
+	],
+];
+
+/** @type {string[]} */
+const selfTestFailures = [];
+for (const [name, test] of SELF_TESTS) {
+	try {
+		test();
+	} catch (error) {
+		selfTestFailures.push(`${name} — ${error.message}`);
+	}
+}
+if (selfTestFailures.length > 0) {
+	console.error(
+		`\n✗ i18n parity self-test (${selfTestFailures.length} failed)`,
+	);
+	console.error("  The checker is broken; the corpus was NOT compared.");
+	for (const failure of selfTestFailures) console.error(`    • ${failure}`);
+	process.exit(1);
+}
+if (process.argv.includes("--self-test")) {
+	console.log(`✓ i18n parity self-test: ${SELF_TESTS.length} checks passed.`);
+	process.exit(0);
+}
+
 const englishPages = listPages(DOCS_DIR).filter(
 	(page) => !LOCALES.some((locale) => page.startsWith(`${locale}/`)),
 );
@@ -271,7 +816,9 @@ if (englishPages.length === 0) {
 /** @type {string[]} */ const orphanTranslations = [];
 /** @type {string[]} */ const frontmatterMismatches = [];
 /** @type {string[]} */ const headingMismatches = [];
+/** @type {string[]} */ const componentMismatches = [];
 /** @type {string[]} */ const unreadableOutlines = [];
+/** @type {string[]} */ const unreadableFrontmatter = [];
 
 const englishSet = new Set(englishPages);
 /** @type {Map<string, ReturnType<typeof readPage>>} */
@@ -315,6 +862,19 @@ for (const locale of LOCALES) {
 			);
 		}
 
+		// Flow style is outside the subset frontmatterShape reads, so the key paths
+		// and entry counts compared below would be wrong rather than merely
+		// incomplete. Same reasoning as the unterminated fence above: report the
+		// page, never compare a shape already known to be false.
+		if (english.flow.length > 0) {
+			unreadableFrontmatter.push(`${page} — ${english.flow.join(" / ")}`);
+		}
+		if (translated.flow.length > 0) {
+			unreadableFrontmatter.push(
+				`${locale}/${page} — ${translated.flow.join(" / ")}`,
+			);
+		}
+
 		const onlyEnglish = missingFrom(english.keys, translated.keys);
 		const onlyTranslated = missingFrom(translated.keys, english.keys);
 		const details = [];
@@ -337,6 +897,28 @@ for (const locale of LOCALES) {
 		}
 		if (details.length > 0) {
 			frontmatterMismatches.push(`${locale}/${page} — ${details.join("; ")}`);
+		}
+
+		// A component invocation present in one locale and not the other drops a
+		// whole rendered section while the heading above it survives.
+		const componentKeys = [
+			...new Set([
+				...english.components.keys(),
+				...translated.components.keys(),
+			]),
+		].sort();
+		const componentDiff = [];
+		for (const key of componentKeys) {
+			const inEnglish = english.components.get(key) ?? 0;
+			const inTranslated = translated.components.get(key) ?? 0;
+			if (inEnglish !== inTranslated) {
+				componentDiff.push(
+					`${key}: ${inEnglish} in en, ${inTranslated} in ${locale}`,
+				);
+			}
+		}
+		if (componentDiff.length > 0) {
+			componentMismatches.push(`${page} — ${componentDiff.join("; ")}`);
 		}
 
 		if (english.levels.join(",") !== translated.levels.join(",")) {
@@ -381,9 +963,19 @@ report(
 	"The sequence of heading levels must match — a difference means a section was dropped, added or re-nested.",
 );
 report(
+	"Component invocation mismatches",
+	componentMismatches,
+	"A component rendered in one locale and not the other drops a whole section while its heading survives.",
+);
+report(
 	"Outlines that could not be read",
 	unreadableOutlines,
 	"A code fence or HTML comment is never closed, so every heading after it is invisible to this check.",
+);
+report(
+	"Frontmatter that could not be read",
+	unreadableFrontmatter,
+	"Flow-style YAML is not supported in frontmatter; use block style (one key or `- ` entry per line).",
 );
 
 const failures =
@@ -391,7 +983,9 @@ const failures =
 	orphanTranslations.length +
 	frontmatterMismatches.length +
 	headingMismatches.length +
-	unreadableOutlines.length;
+	componentMismatches.length +
+	unreadableOutlines.length +
+	unreadableFrontmatter.length;
 
 if (failures > 0) {
 	console.error(
@@ -406,5 +1000,5 @@ if (failures > 0) {
 // meant to: catching that needs per-string provenance, not a structural diff.
 console.log(
 	`✓ i18n parity: ${englishPages.length} English pages, ${twinCount} twin(s) across ${LOCALES.join(", ")} — ` +
-		"page set, frontmatter keys and heading outline match (structure only; body text is not compared).",
+		"page set, frontmatter keys, heading outline and component invocations match (structure only; body prose is not compared).",
 );

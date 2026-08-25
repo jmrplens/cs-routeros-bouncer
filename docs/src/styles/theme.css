@@ -1,0 +1,247 @@
+/* ============================================================
+   theme.css — the palette, and nothing else.
+   ============================================================
+
+   LOAD ORDER (fixed in astro.config.mjs):
+
+   * UNLAYERED. Starlight declares its own tokens inside
+     `@layer starlight.base`. An unlayered rule beats every layered
+     rule whatever its specificity, so a plain `:root` here wins
+     without a single `!important`. Never wrap this file in a layer.
+   * FIRST. Every other sheet reads the tokens declared here.
+
+   TWO THEME BLOCKS, BOTH COMPLETE:
+
+   * `:root` carries DARK. That is Starlight's own convention — the
+     framework's default palette is the dark one, and its theme
+     script only ever *adds* `data-theme` to move away from it. A
+     block gated on `[data-theme="dark"]` therefore does not apply
+     until that inline script has run, which is why none exist here
+     any more.
+   * `:root[data-theme="light"]` carries LIGHT.
+
+   Every colour token is restated in both blocks. A token written in
+   one and left out of the other silently keeps the other theme's
+   value — that is how a near-black hairline ships on a white page.
+   `scripts/check-contrast.mjs` fails the build on any asymmetry.
+
+   NAMESPACES:
+
+   * `--sl-*` belongs to Starlight. Those names only ever RECEIVE a
+     value here; nothing new is invented inside that namespace.
+   * `--rb-*` is ours. `--rb-radius` is the former
+     `--sl-border-radius`, which was never a Starlight token and had
+     no business squatting in the framework's namespace.
+
+   ------------------------------------------------------------
+   STATUS COLOUR IS A SEMANTIC AXIS: drop / allow / warn, each with
+   a soft fill. Two rules, written down here because they will not
+   survive the third contributor otherwise.
+
+   1. THE ACCENT IS NEVER A STATUS. `--rb-accent` means "you can act
+      on this": links, focus rings, `aria-current`. It never means
+      blocked, healthy, or degraded. A page that tints its chrome
+      with the status ramp has no colour left to say "click here".
+   2. STATUS COLOUR IS ALWAYS REDUNDANT. Every drop/allow/warn tint
+      sits behind a glyph or a word that already says the same
+      thing, so the page survives greyscale printing and every form
+      of colour vision deficiency. Colour is the second signal,
+      never the only one. This is why the three fake macOS traffic
+      lights that used to be painted above every code frame are
+      gone: three status-coloured dots that meant nothing at all.
+
+   The axis is not decoration looking for a home — Starlight's
+   danger / success / caution asides and badges are built from it
+   below, and those always carry their variant word.
+   ------------------------------------------------------------ */
+
+:root {
+	/* ---- Named stops (dark) --------------------------------------
+	   A re-skin edits these. Everything below is derived from them. */
+	--rb-page: #0e1316;
+	--rb-surface: #151c20;
+	--rb-surface-raised: #1b2429;
+	--rb-border: #2a333a;
+	--rb-border-strong: #3c474f;
+	--rb-heading: #f2f6f8;
+	--rb-body: #c3ccd2;
+	--rb-muted: #8b969d;
+
+	/* Accent ramp: soft fill → accent → high emphasis. `strong` is
+	   always the end furthest from the page, so it lightens here and
+	   darkens in the light block. */
+	--rb-accent: #2fb8bb;
+	--rb-accent-strong: #5fd0d2;
+	--rb-accent-soft: #143134;
+
+	/* Status axis — see the two rules in the header comment. */
+	--rb-status-drop: #e0605c;
+	--rb-status-drop-soft: #2b1618;
+	--rb-status-allow: #57b96a;
+	--rb-status-allow-soft: #14261a;
+	--rb-status-warn: #d9a441;
+	--rb-status-warn-soft: #2e2211;
+
+	/* Informational hues, deliberately outside the status axis: a
+	   note is not a state the bouncer can be in. */
+	--rb-info: #6cb6f2;
+	--rb-info-soft: #10222f;
+	--rb-note: #b79bea;
+	--rb-note-soft: #1e1732;
+
+	--rb-mark: #3b3413;
+	--rb-shadow: rgb(0 0 0 / 0.45);
+
+	/* ---- Code-frame surfaces (dark) ------------------------------
+	   Expressive Code generates its own `--ec-*` names from its style
+	   settings; these are ours, so they carry our prefix. */
+	--rb-code-bg: var(--rb-surface);
+	--rb-code-header-bg: var(--rb-surface-raised);
+	--rb-code-border: var(--rb-border);
+	--rb-code-copy-bg: var(--rb-surface-raised);
+	--rb-code-copy-fg: var(--rb-body);
+	--rb-code-copy-hover: var(--rb-border);
+	--rb-code-prompt: var(--rb-accent);
+
+	/* ---- Non-colour tokens (theme-independent) -------------------
+	   One shared radius. Spacing is deliberately NOT tokenised
+	   globally — components name their own constraints on their own
+	   root, see `.flow-steps` in home.css. */
+	--rb-radius: 0.5rem;
+	/* Above Starlight's --sl-z-index-navbar (10): the skip link is
+	   fixed and has to clear the sticky header it skips past. */
+	--rb-z-skip-link: 9999;
+
+	/* ---- Starlight tokens (dark) — receive only ------------------
+	   Starlight's greys run light → dark, so gray-1 is nearest the
+	   heading colour and gray-6 nearest the page. */
+	--sl-color-white: var(--rb-heading);
+	--sl-color-gray-1: color-mix(in srgb, var(--rb-heading) 65%, var(--rb-body));
+	--sl-color-gray-2: var(--rb-body);
+	--sl-color-gray-3: var(--rb-muted);
+	--sl-color-gray-4: color-mix(in srgb, var(--rb-muted) 55%, var(--rb-border));
+	--sl-color-gray-5: var(--rb-border);
+	--sl-color-gray-6: var(--rb-surface);
+	--sl-color-black: var(--rb-page);
+
+	--sl-color-accent-low: var(--rb-accent-soft);
+	--sl-color-accent: var(--rb-accent);
+	--sl-color-accent-high: var(--rb-accent-strong);
+	--sl-color-text-accent: var(--rb-accent);
+
+	--sl-color-red-low: var(--rb-status-drop-soft);
+	--sl-color-red: var(--rb-status-drop);
+	--sl-color-red-high: var(--rb-status-drop);
+	--sl-color-green-low: var(--rb-status-allow-soft);
+	--sl-color-green: var(--rb-status-allow);
+	--sl-color-green-high: var(--rb-status-allow);
+	--sl-color-orange-low: var(--rb-status-warn-soft);
+	--sl-color-orange: var(--rb-status-warn);
+	--sl-color-orange-high: var(--rb-status-warn);
+	--sl-color-blue-low: var(--rb-info-soft);
+	--sl-color-blue: var(--rb-info);
+	--sl-color-blue-high: var(--rb-info);
+	--sl-color-purple-low: var(--rb-note-soft);
+	--sl-color-purple: var(--rb-note);
+	--sl-color-purple-high: var(--rb-note);
+}
+
+:root[data-theme="light"] {
+	/* ---- Named stops (light) ------------------------------------- */
+	--rb-page: #ffffff;
+	--rb-surface: #f5f8f9;
+	--rb-surface-raised: #ffffff;
+	--rb-border: #dce4e7;
+	--rb-border-strong: #c3cdd2;
+	--rb-heading: #14191d;
+	--rb-body: #333d45;
+	--rb-muted: #556069;
+
+	--rb-accent: #0a6a6c;
+	--rb-accent-strong: #084f51;
+	--rb-accent-soft: #e2edee;
+
+	--rb-status-drop: #b3352f;
+	--rb-status-drop-soft: #fbe7e6;
+	--rb-status-allow: #257a38;
+	--rb-status-allow-soft: #eef9f0;
+	--rb-status-warn: #8a5c00;
+	--rb-status-warn-soft: #fdf0d9;
+
+	--rb-info: #17558f;
+	--rb-info-soft: #e4f0fb;
+	--rb-note: #4a2f9c;
+	--rb-note-soft: #ece6fa;
+
+	--rb-mark: #fff3c9;
+	--rb-shadow: rgb(14 19 22 / 0.14);
+
+	/* ---- Code-frame surfaces (light) ----------------------------- */
+	--rb-code-bg: var(--rb-surface);
+	--rb-code-header-bg: var(--rb-surface-raised);
+	--rb-code-border: var(--rb-border);
+	--rb-code-copy-bg: var(--rb-surface-raised);
+	--rb-code-copy-fg: var(--rb-body);
+	--rb-code-copy-hover: var(--rb-border);
+	--rb-code-prompt: var(--rb-accent);
+
+	/* ---- Starlight tokens (light) — receive only ------------------
+	   The grey ramp inverts: gray-1 is now the darkest. gray-7 is
+	   light-only upstream too, so it has no dark counterpart. */
+	--sl-color-white: var(--rb-heading);
+	--sl-color-gray-1: color-mix(in srgb, var(--rb-heading) 65%, var(--rb-body));
+	--sl-color-gray-2: var(--rb-body);
+	--sl-color-gray-3: var(--rb-muted);
+	--sl-color-gray-4: color-mix(in srgb, var(--rb-muted) 55%, var(--rb-border));
+	--sl-color-gray-5: var(--rb-border);
+	--sl-color-gray-6: var(--rb-surface);
+	--sl-color-gray-7: color-mix(in srgb, var(--rb-surface) 55%, var(--rb-page));
+	--sl-color-black: var(--rb-page);
+
+	--sl-color-accent-low: var(--rb-accent-soft);
+	--sl-color-accent: var(--rb-accent);
+	--sl-color-accent-high: var(--rb-accent-strong);
+	--sl-color-text-accent: var(--rb-accent);
+
+	--sl-color-red-low: var(--rb-status-drop-soft);
+	--sl-color-red: var(--rb-status-drop);
+	--sl-color-red-high: var(--rb-status-drop);
+	--sl-color-green-low: var(--rb-status-allow-soft);
+	--sl-color-green: var(--rb-status-allow);
+	--sl-color-green-high: var(--rb-status-allow);
+	--sl-color-orange-low: var(--rb-status-warn-soft);
+	--sl-color-orange: var(--rb-status-warn);
+	--sl-color-orange-high: var(--rb-status-warn);
+	--sl-color-blue-low: var(--rb-info-soft);
+	--sl-color-blue: var(--rb-info);
+	--sl-color-blue-high: var(--rb-info);
+	--sl-color-purple-low: var(--rb-note-soft);
+	--sl-color-purple: var(--rb-note);
+	--sl-color-purple-high: var(--rb-note);
+}
+
+/* ------------------------------------------------------------------
+   HIGH CONTRAST  (prefers-contrast: more)
+   Only the named stops are re-pointed; every `--sl-*` mapping above
+   is indirection through them, so the whole sheet follows.
+
+   Scoped per theme on purpose. This block used to write its light
+   values onto bare `:root`, which is the DARK theme — the override
+   leaked into both, and the dark theme got a near-black accent.
+   ------------------------------------------------------------------ */
+@media (prefers-contrast: more) {
+	:root {
+		--rb-accent: #6fe3e6;
+		--rb-accent-strong: #a8f0f2;
+		--rb-muted: #b6c0c6;
+		--rb-border: #55636c;
+		--rb-border-strong: #7d8b93;
+	}
+	:root[data-theme="light"] {
+		--rb-accent: #04494b;
+		--rb-accent-strong: #033335;
+		--rb-muted: #3b444c;
+		--rb-border: #a9b6bc;
+		--rb-border-strong: #7d8b93;
+	}
+}

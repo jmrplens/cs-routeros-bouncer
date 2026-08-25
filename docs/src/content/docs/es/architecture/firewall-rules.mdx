@@ -1,23 +1,32 @@
 ---
 title: Reglas de firewall
-description: Cómo cs-routeros-bouncer crea, ordena y limpia las reglas filter y raw del firewall de MikroTik, y cómo identifica sus bloques de reglas gestionados.
+description: Las reglas de firewall que cs-routeros-bouncer escribe en MikroTik, generadas a partir de las definiciones del propio daemon, además de cómo las ordena, identifica y limpia.
 ---
 
 import { Steps, LinkCard } from "@astrojs/starlight/components";
+import RuleSet from "../../../../components/RuleSet.astro";
 
 Cómo crea y gestiona el bouncer las reglas del [firewall de RouterOS](https://help.mikrotik.com/docs/spaces/ROS/pages/250708066/Firewall).
 
-## Tipos de reglas
+## Reglas que escribe el daemon
 
-El bouncer puede crear reglas en tres ubicaciones:
+El bouncer no escribe una regla por tabla. Escribe un **bloque** ordenado por chain, y escribe ese bloque una vez por cada familia de protocolo habilitada: `firewall.ipv4.enabled` y `firewall.ipv6.enabled` valen `true` por defecto, así que la configuración de partida construye dos veces cada regla de aquí abajo, contra `crowdsec-banned` para IPv4 y contra `crowdsec6-banned` para IPv6. También se construye un bloque por cada entrada de `firewall.filter.chains` y `firewall.raw.chains`; añade una chain ahí y el bloque completo se repite en ella.
 
-| Tipo           | Ruta de RouterOS                     | Propósito                                                                |
-| -------------- | ------------------------------------ | ------------------------------------------------------------------------ |
-| Filter input   | `/ip/firewall/filter`                | Bloquear el tráfico entrante (después del connection tracking)           |
-| Raw prerouting | `/ip/firewall/raw`                   | Bloquear el tráfico entrante (antes del connection tracking — menos CPU) |
-| Filter output  | `/ip/firewall/filter` (chain output) | Bloquear el tráfico saliente hacia IPs baneadas                          |
+Dentro de un bloque el orden es fijo —whitelist, contador, denegación— y el bloque solo se mueve a su posición cuando ya existen todas sus reglas, de modo que RouterOS nunca evalúa un bloque a medio construir.
 
-Cada tipo tiene su equivalente IPv6 (por ejemplo, `/ipv6/firewall/filter`).
+### Se crean por defecto
+
+<RuleSet scope="default" count />
+
+Las dos reglas `passthrough` de contador son las que ninguna versión anterior de esta página listaba, y son la razón de que un router con la configuración de partida muestre ocho reglas del bouncer donde la documentación describía cuatro. Las crea `metrics.track_processed`, cuyo valor predeterminado es `true`.
+
+Una regla de contador no coincide con ninguna address-list, no lleva `src-address-list` y no toma ninguna decisión: `passthrough` en RouterOS se limita a incrementar los contadores de bytes y paquetes de la regla y seguir adelante. Es intencionado: el bouncer lee esos contadores para informar de cuánto tráfico han _evaluado_ sus chains, que es el denominador de cuánto se ha descartado. Y también es la razón de que, revisando el router a simple vista, la regla parezca exactamente una regla suelta que alguien olvidó. No lo es.
+
+`metrics.track_processed` se consulta por su cuenta, no por detrás de `metrics.enabled`, cuyo valor predeterminado es `false`. Un router cuyo bouncer no expone ningún endpoint de métricas sigue llevando las dos reglas de contador, contando en silencio para nadie. Establecer `metrics.track_processed: false` las elimina y, con ellas, las métricas `crowdsec_bouncer_processed_*`; los contadores de descartes, que salen de las propias reglas de denegación, no se ven afectados.
+
+### Solo se crean si una opción las pide
+
+<RuleSet scope="conditional" />
 
 ## Flujo de creación de reglas
 
@@ -29,39 +38,15 @@ Al arrancar, el bouncer sigue esta secuencia:
 
    Busca reglas gestionadas por el bouncer comparando el patrón del comentario.
 
-2. **Limpiar el estado**
+2. **Reutilizar o crear**
 
-   Elimina cualquier regla existente para garantizar un inicio limpio.
+   Una regla cuyo comentario exacto ya está en el router se adopta, no se duplica; lo que falte se crea.
 
-3. **Crear las reglas nuevas**
-
-   Crea las reglas según la configuración actual.
-
-4. **Colocarlas en la posición configurada**
+3. **Colocar el bloque en la posición configurada**
 
    Coloca el bloque gestionado según el `rule_placement` efectivo para ese protocolo y tabla: arriba, abajo, una posición numérica de RouterOS o un comentario ancla.
 
 </Steps>
-
-## Estructura de las reglas
-
-Cada regla tiene:
-
-- **Chain**: `input`, `forward`, `prerouting` u `output`
-- **Acción**: `drop` o `reject` (con `reject-with` opcional)
-- **Interfaz**: restricción opcional de interfaz de entrada/salida
-- **Estado de conexión**: matcher opcional de connection-state (solo filter)
-- **Ajustes de log**: registro opcional con prefijo configurable
-- **Comentario**: identificador estructurado para la gestión
-
-Ejemplo de regla tal y como se ve en RouterOS:
-
-```routeros
-/ip/firewall/filter print where comment~"crowdsec-bouncer"
-# chain=input action=drop src-address-list=crowdsec-banned
-#   in-interface=ether1 log=no
-#   comment="crowdsec-bouncer:filter-input-input-v4 @cs-routeros-bouncer"
-```
 
 ## Colocación de reglas
 
@@ -81,14 +66,6 @@ El bouncer puede colocar su bloque gestionado (las reglas relacionadas que crea 
 
 La colocación por comentario usa `fallback` (`top` por defecto, o `bottom`) cuando el ancla no existe o no puede usarse. La `position` numérica ignora `fallback` porque una posición fuera de rango implica de forma natural añadir al final.
 
-```routeros
-# Las reglas aparecen cerca de la ubicación configurada; el reintento o el fallback pueden elegir un destino válido posterior.
-/ip/firewall/filter print
-# 0  chain=input action=drop src-address-list=crowdsec-banned ...
-# 1  chain=forward action=drop src-address-list=crowdsec-banned ...
-# 2  ... (tus otras reglas)
-```
-
 ## Identificación de reglas
 
 Las reglas se identifican mediante un comentario estructurado:
@@ -105,31 +82,41 @@ Las reglas se identifican mediante un comentario estructurado:
 | `direction` | `input`, `output`, `whitelist` o `counting`                              |
 | `protocol`  | `v4` o `v6`                                                              |
 
+RouterOS imprime el comentario encima de la regla a la que pertenece, así que el bloque gestionado completo se ve con una sola consulta:
+
+```routeros
+/ip/firewall/filter print where comment~"crowdsec"
+# 0  ;;; crowdsec-bouncer:filter-input-counting-v4 @cs-routeros-bouncer
+#       chain=input action=passthrough
+# 1  ;;; crowdsec-bouncer:filter-input-input-v4 @cs-routeros-bouncer
+#       chain=input action=drop src-address-list=crowdsec-banned
+```
+
 :::note
-El sufijo `@cs-routeros-bouncer` se añade siempre y sirve para distinguir las reglas creadas por este bouncer de otras reglas que casualmente puedan tener comentarios similares.
+El sufijo `@cs-routeros-bouncer` se añade siempre y sirve para distinguir las reglas creadas por este bouncer de otras reglas que casualmente puedan tener comentarios similares. No es configurable, y eso es lo que permite recuperarse de una caída incluso después de haber cambiado `comment_prefix`.
 :::
 
-## Limpieza al apagar
+## Limpieza y lo que queda atrás
 
-Cuando el bouncer recibe una señal SIGTERM:
+Cuando el bouncer recibe SIGTERM o SIGINT:
 
 <Steps>
 
 1. **Eliminar las reglas**
 
-   Se eliminan todas las reglas de firewall con comentarios coincidentes.
+   Se elimina toda regla de firewall creada por el bouncer, incluidas las de contador.
 
-2. **Conservar las address-lists**
+2. **No tocar las address-lists**
 
-   Las entradas de las address-lists **no** se eliminan: expiran de forma natural mediante su timeout.
+   Las entradas de las address-lists **no** se eliminan. Expiran mediante el timeout de MikroTik con el que se escribieron, que es la duración de la decisión de CrowdSec que las creó.
 
 </Steps>
 
-Este diseño implica que:
+Este diseño implica que la protección continúa después de detener el bouncer, durante lo que le quede de timeout a cada entrada, y que un reinicio rápido nunca deja el router desprotegido en ese intervalo. También implica que no hay que ejecutar ningún borrado masivo al apagar.
 
-- La protección continúa brevemente después de detener el bouncer (hasta que las entradas expiran)
-- No se necesitan operaciones de borrado masivo al apagar
-- Un reinicio rápido no deja el router desprotegido durante el intervalo
+:::caution
+Una decisión que no lleva duración se escribe **sin timeout alguno**. Esa entrada no expira: permanece en la address-list hasta que la siguiente reconciliación la retire, o hasta que la elimines a mano. Las reglas desaparecen con el daemon; esas entradas no.
+:::
 
 <LinkCard
   title="Configuración del firewall"

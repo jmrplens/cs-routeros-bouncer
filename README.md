@@ -265,7 +265,7 @@ Fine-tuning options for decision filtering, TLS, performance, firewall customiza
 | `crowdsec.lapi_metrics_interval`     | `CROWDSEC_LAPI_METRICS_INTERVAL`    | `15m`            | LAPI usage metrics interval: active decisions, dropped traffic (`0` = disabled)                                                         |
 | `crowdsec.origins`                   | `CROWDSEC_ORIGINS`                  | `[]` (all)       | Filter by origin (`["crowdsec","cscli"]` = local only)                                                                                  |
 | `crowdsec.scopes`                    | `CROWDSEC_SCOPES`                   | `["ip","range"]` | Decision scopes to process                                                                                                              |
-| `crowdsec.supported_decisions_types` | `CROWDSEC_DECISIONS_TYPES`          | `["ban"]`        | Decision types to process (only `ban` is implemented — see [CrowdSec configuration](https://jmrplens.github.io/cs-routeros-bouncer/configuration/crowdsec/#crowdsecsupported_decisions_types)) |
+| `crowdsec.supported_decisions_types` | `CROWDSEC_DECISIONS_TYPES`          | `["ban"]`        | Decision types to process (only `ban` is implemented — see [CrowdSec configuration](https://jmrp.io/docs/cs-routeros-bouncer/configuration/crowdsec/#crowdsecsupported_decisions_types)) |
 | `crowdsec.scenarios_containing`      | `CROWDSEC_SCENARIOS_CONTAINING`     | `[]`             | Only process decisions matching these scenarios                                                                                         |
 | `crowdsec.scenarios_not_containing`  | `CROWDSEC_SCENARIOS_NOT_CONTAINING` | `[]`             | Exclude decisions matching these scenarios                                                                                              |
 | `crowdsec.retry_initial_connect`     | `CROWDSEC_RETRY_INITIAL_CONNECT`    | `true`           | Retry LAPI connection on startup failure                                                                                                |
@@ -351,7 +351,7 @@ Fine-tuning options for decision filtering, TLS, performance, firewall customiza
 | Config Key                       | Env Variable                     | Default   | Description                                                          |
 | -------------------------------- | -------------------------------- | --------- | -------------------------------------------------------------------- |
 | `logging.format`                 | `LOG_FORMAT`                     | `text`    | Log format: `text` or `json`                                         |
-| `logging.file`                   | `LOG_FILE`                       |           | Accepted but **not implemented** — all output goes to stderr          |
+| `logging.file`                   | `LOG_FILE`                       |           | Also write logs to this file (absolute path; stderr always kept)      |
 | `metrics.enabled`                | `METRICS_ENABLED`                | `false`   | Enable Prometheus `/metrics` endpoint                                |
 | `metrics.listen_addr`            | `METRICS_ADDR`                   | `0.0.0.0` | Metrics server listen address                                        |
 | `metrics.listen_port`            | `METRICS_PORT`                   | `2112`    | Metrics server listen port                                           |

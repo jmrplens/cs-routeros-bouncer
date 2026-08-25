@@ -185,7 +185,14 @@ logging:
   # ────────────────────────────────────────────────────────────────────────────
   # Log format: text (human-readable) or json (structured)
   format: "text"
-  # Log to file (optional, empty = stdout only)
+  # Optional log file. Empty (the default) logs to stderr only.
+  # When set, every line is written to BOTH stderr and this file, so
+  # `journalctl -u cs-routeros-bouncer` and `docker logs` keep working.
+  # The file is appended to (never truncated) and created with mode 0640 if
+  # missing, because log lines contain the IP addresses of banned clients.
+  # The parent directory must already exist and be writable: the bouncer
+  # refuses to start with an error instead of silently logging nowhere.
+  # The bundled systemd unit only grants ReadWritePaths=/var/log.
   # file: "/var/log/cs-routeros-bouncer.log"
 
 metrics:
