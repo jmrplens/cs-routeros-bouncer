@@ -2,7 +2,7 @@
   "name": "docs",
   "type": "module",
   "version": "0.0.1",
-  "packageManager": "pnpm@11.21.0+sha512.521705bce689924eac72f5a3587122f362689ef6571e55ba80076fd637c11132ecffada26fad4ea79c485bfddbfd3d5a2a5b05805a77e893de71ec8a6cca3bb1",
+  "packageManager": "pnpm@11.23.0+sha512.f00082e5b283a199b74e079da28d155c008fe232f44c8a06ea7ddfa014ecf719fc362f790ecc67b28106ddac2afb24c49a9a079159da560b2ce7d1e98efd11af",
   "engines": {
     "node": ">=24.0.0"
   },
@@ -23,23 +23,23 @@
   },
   "dependencies": {
     "@astrojs/sitemap": "^3.7.3",
-    "@astrojs/starlight": "^0.41.7",
-    "astro": "^7.2.1",
+    "@astrojs/starlight": "^0.41.8",
+    "astro": "^7.2.6",
     "rehype-mermaid": "^3.0.0",
     "sharp": "^0.35.3"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
     "@eslint/js": "^10.0.1",
-    "eslint": "^10.8.1",
+    "eslint": "^10.9.1",
     "eslint-plugin-astro": "^3.1.0",
     "globals": "^17.11.0",
-    "html-validate": "^11.6.2",
+    "html-validate": "^11.10.0",
     "markdownlint-cli2": "0.23.2",
     "playwright": "^1.62.1",
     "prettier": "^3.9.6",
     "prettier-plugin-astro": "^0.14.1",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.67.0"
+    "typescript-eslint": "^8.68.0"
   }
 }
