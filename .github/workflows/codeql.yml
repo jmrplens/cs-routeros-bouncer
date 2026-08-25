@@ -1,0 +1,72 @@
+# CodeQL code scanning (advanced setup).
+#
+# Replaces GitHub's default setup so the Go job can install the toolchain the
+# module requires: the default-setup environment pins GOTOOLCHAIN=local to the
+# runner's Go, which breaks every time go.mod moves to a Go version the CodeQL
+# runtime has not shipped yet (first hit here: Go 1.27.0, 2026-08 — autobuild
+# reported "go.mod requires go >= 1.27.0 (running go 1.26.6; GOTOOLCHAIN=local)").
+# Coverage mirrors what default setup analyzed: actions and go, with the
+# default query suite and a weekly scheduled scan.
+
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "42 6 * * 1"
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.27.0"
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      packages: read
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            build-mode: none
+          - language: go
+            build-mode: manual
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@v7
+        if: matrix.language == 'go'
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      # Manual build keeps the Go extractor on the setup-go toolchain instead
+      # of autobuild's environment probing. Compiling every package is enough
+      # for extraction.
+      - name: Build Go
+        if: matrix.language == 'go'
+        run: |
+          go mod download
+          go build ./...
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"
