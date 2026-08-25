@@ -69,6 +69,8 @@ Todas las demás políticas se deniegan explícitamente para seguir el principio
 
 `!ftp`, `!local`, `!ssh`, `!reboot`, `!policy`, `!test`, `!password`, `!sniff`, `!romon`, `!rest-api`
 
+Denegar `!policy` es seguro aunque el bouncer cree y ejecute un `/system/script` temporal por cada lote. RouterOS solo exige el permiso `policy` para ejecutar un script cuyo conjunto de políticas supere al de quien lo llama, y un script creado por la API hereda las políticas del usuario que lo crea: con `read,write,api` basta. Verificado en RouterOS 7.24.1 con un grupo que lleva exactamente estas políticas: `bulk script executed` funciona y las adiciones masivas no se degradan a escrituras dirección a dirección.
+
 ## Acceso a través del firewall
 
 Si tienes reglas de firewall que restringen el acceso a la API, permite las conexiones desde el host del bouncer:

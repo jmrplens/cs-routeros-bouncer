@@ -37,9 +37,9 @@ crowdsec_bouncer_active_decisions{proto="ipv6"}
 
 Decisiones activas desglosadas por su fuente. Se incrementa/decrementa en tiempo real durante el streaming y se reinicia durante la reconciliación completa.
 
-| Etiqueta | Valores                                     | Descripción                                                                                                                                                                  |
-| -------- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `origin` | `crowdsec`, `cscli`, `CAPI`, `lists:<name>` | Fuente de la decisión (`lists:<name>` es la etiqueta literal de una blocklist con nombre; el comodín `lists:*` solo existe en el filtro de configuración `crowdsec.origins`) |
+| Etiqueta | Valores                                           | Descripción                                                                                                                                                                                                                                                          |
+| -------- | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `origin` | `crowdsec`, `cscli`, `CAPI`, `lists`, `reconcile` | Fuente de la decisión, tal cual la entrega CrowdSec. Todas las suscripciones a blocklists reportan el literal `lists`, se llame como se llame la lista. `reconcile` es la etiqueta propia del bouncer para las entradas reaplicadas por una pasada de reconciliación |
 
 ```text
 # Decisiones activas por origen
