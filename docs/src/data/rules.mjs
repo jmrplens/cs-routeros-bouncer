@@ -161,87 +161,132 @@ const REJECT_WITH_ATTR = {
 	setting: "firewall.reject_with",
 };
 
+/* ------------------------------------------------------------------
+   The input-side block
+
+   `createFilterChainRules()` and `createRawChainRules()` in
+   internal/manager build the SAME ordered block — whitelist, counting,
+   deny — differing only in which table they write to, which setting
+   names the chains, which setting enables them, and the handful of
+   attributes only the filter table can carry. Building both blocks from
+   one function keeps that symmetry visible here as well; writing them
+   out twice invited the two copies to drift, and made the real
+   differences hard to spot among twenty identical lines.
+   ------------------------------------------------------------------ */
+
+/** @type {(spec: {
+ *   table: string, chain: string, chainSetting: string,
+ *   denyEnabledBy: string, connectionState: boolean, rejectWith: boolean,
+ *   gloss: Record<string, { en: RuleGloss, es: RuleGloss }>,
+ * }) => ManagedRule[]} */
+function inputSideBlock({
+	table,
+	chain,
+	chainSetting,
+	denyEnabledBy,
+	connectionState,
+	rejectWith,
+	gloss,
+}) {
+	const where = { table, chain, chainSetting };
+	// Only the filter table sees conntrack, and only it can reject: rawDenyAction()
+	// coerces reject to drop because the raw table has no conntrack to reject from.
+	const stateAttr = connectionState ? [CONNECTION_STATE_ATTR] : [];
+	const rejectAttr = rejectWith ? [REJECT_WITH_ATTR] : [];
+
+	return [
+		{
+			...where,
+			id: `${table}-whitelist`,
+			direction: "whitelist",
+			action: "accept",
+			actionSetting: null,
+			match: { attribute: "src-address-list", kind: "whitelist" },
+			createdByDefault: false,
+			enabledBy: "firewall.block_input.whitelist",
+			settingDefault: "unset",
+			optionalAttributes: [
+				...stateAttr,
+				...INPUT_INTERFACE_ATTRS,
+				...LOG_ATTRS,
+			],
+			i18n: GLOSS_WHITELIST,
+		},
+		{
+			...where,
+			id: `${table}-counting`,
+			direction: "counting",
+			action: "passthrough",
+			actionSetting: null,
+			match: null,
+			createdByDefault: true,
+			enabledBy: "metrics.track_processed",
+			settingDefault: "true",
+			optionalAttributes: [...INPUT_INTERFACE_ATTRS],
+			i18n: GLOSS_COUNTING,
+		},
+		{
+			...where,
+			id: `${table}-deny`,
+			direction: "input",
+			action: "drop",
+			actionSetting: "firewall.deny_action",
+			match: { attribute: "src-address-list", kind: "banned" },
+			createdByDefault: true,
+			enabledBy: denyEnabledBy,
+			settingDefault: "true",
+			optionalAttributes: [
+				...stateAttr,
+				...INPUT_INTERFACE_ATTRS,
+				...rejectAttr,
+				...LOG_ATTRS,
+			],
+			i18n: gloss,
+		},
+	];
+}
+
+/** Shared glosses — the whitelist and counting rules read the same whichever table they sit in. */
+const GLOSS_WHITELIST = {
+	en: {
+		name: "Filter whitelist",
+		purpose:
+			"Accepts traffic from an address list you control before any bouncer rule can drop it, so a source you have vouched for is never blocked by a CrowdSec decision.",
+		note: "It is first in the block on purpose: RouterOS evaluates a chain top to bottom, so an accept placed after the drop would never be reached.",
+	},
+	es: {
+		name: "Whitelist de filter",
+		purpose:
+			"Acepta el tráfico de una address-list que tú controlas antes de que ninguna regla del bouncer pueda descartarlo, de modo que un origen que has avalado nunca queda bloqueado por una decisión de CrowdSec.",
+		note: "Va primera en el bloque a propósito: RouterOS evalúa la chain de arriba abajo, así que un accept colocado después del drop no se alcanzaría nunca.",
+	},
+};
+
+const GLOSS_COUNTING = {
+	en: {
+		name: "Filter counting",
+		purpose:
+			"Counts every packet the filter chain hands to the bouncer's block, which is what the processed byte and packet metrics report.",
+		note: "It matches no address list and takes no decision — passthrough only increments counters — which is exactly why it looks like a stray rule on the router.",
+	},
+	es: {
+		name: "Contador de filter",
+		purpose:
+			"Cuenta cada paquete que la chain de filter entrega al bloque del bouncer, que es lo que informan las métricas de bytes y paquetes procesados.",
+		note: "No coincide con ninguna address-list ni toma ninguna decisión —passthrough solo incrementa contadores—, y por eso mismo parece una regla suelta en el router.",
+	},
+};
+
 /** @type {ManagedRule[]} */
 export const managedRules = [
-	{
-		id: "filter-whitelist",
+	...inputSideBlock({
 		table: "filter",
 		chain: "input",
 		chainSetting: "firewall.filter.chains",
-		direction: "whitelist",
-		action: "accept",
-		actionSetting: null,
-		match: { attribute: "src-address-list", kind: "whitelist" },
-		createdByDefault: false,
-		enabledBy: "firewall.block_input.whitelist",
-		settingDefault: "unset",
-		optionalAttributes: [
-			CONNECTION_STATE_ATTR,
-			...INPUT_INTERFACE_ATTRS,
-			...LOG_ATTRS,
-		],
-		i18n: {
-			en: {
-				name: "Filter whitelist",
-				purpose:
-					"Accepts traffic from an address list you control before any bouncer rule can drop it, so a source you have vouched for is never blocked by a CrowdSec decision.",
-				note: "It is first in the block on purpose: RouterOS evaluates a chain top to bottom, so an accept placed after the drop would never be reached.",
-			},
-			es: {
-				name: "Whitelist de filter",
-				purpose:
-					"Acepta el tráfico de una address-list que tú controlas antes de que ninguna regla del bouncer pueda descartarlo, de modo que un origen que has avalado nunca queda bloqueado por una decisión de CrowdSec.",
-				note: "Va primera en el bloque a propósito: RouterOS evalúa la chain de arriba abajo, así que un accept colocado después del drop no se alcanzaría nunca.",
-			},
-		},
-	},
-	{
-		id: "filter-counting",
-		table: "filter",
-		chain: "input",
-		chainSetting: "firewall.filter.chains",
-		direction: "counting",
-		action: "passthrough",
-		actionSetting: null,
-		match: null,
-		createdByDefault: true,
-		enabledBy: "metrics.track_processed",
-		settingDefault: "true",
-		optionalAttributes: [...INPUT_INTERFACE_ATTRS],
-		i18n: {
-			en: {
-				name: "Filter counting",
-				purpose:
-					"Counts every packet the filter chain hands to the bouncer's block, which is what the processed byte and packet metrics report.",
-				note: "It matches no address list and takes no decision — passthrough only increments counters — which is exactly why it looks like a stray rule on the router.",
-			},
-			es: {
-				name: "Contador de filter",
-				purpose:
-					"Cuenta cada paquete que la chain de filter entrega al bloque del bouncer, que es lo que informan las métricas de bytes y paquetes procesados.",
-				note: "No coincide con ninguna address-list ni toma ninguna decisión —passthrough solo incrementa contadores—, y por eso mismo parece una regla suelta en el router.",
-			},
-		},
-	},
-	{
-		id: "filter-deny",
-		table: "filter",
-		chain: "input",
-		chainSetting: "firewall.filter.chains",
-		direction: "input",
-		action: "drop",
-		actionSetting: "firewall.deny_action",
-		match: { attribute: "src-address-list", kind: "banned" },
-		createdByDefault: true,
-		enabledBy: "firewall.filter.enabled",
-		settingDefault: "true",
-		optionalAttributes: [
-			CONNECTION_STATE_ATTR,
-			...INPUT_INTERFACE_ATTRS,
-			REJECT_WITH_ATTR,
-			...LOG_ATTRS,
-		],
-		i18n: {
+		denyEnabledBy: "firewall.filter.enabled",
+		connectionState: true,
+		rejectWith: true,
+		gloss: {
 			en: {
 				name: "Filter deny",
 				purpose:
@@ -255,77 +300,15 @@ export const managedRules = [
 				note: "Si firewall.deny_action se establece en reject, esta regla rechaza en lugar de descartar, e incluye reject-with cuando hay uno configurado.",
 			},
 		},
-	},
-	{
-		id: "raw-whitelist",
+	}),
+	...inputSideBlock({
 		table: "raw",
 		chain: "prerouting",
 		chainSetting: "firewall.raw.chains",
-		direction: "whitelist",
-		action: "accept",
-		actionSetting: null,
-		match: { attribute: "src-address-list", kind: "whitelist" },
-		createdByDefault: false,
-		enabledBy: "firewall.block_input.whitelist",
-		settingDefault: "unset",
-		optionalAttributes: [...INPUT_INTERFACE_ATTRS, ...LOG_ATTRS],
-		i18n: {
-			en: {
-				name: "Raw whitelist",
-				purpose:
-					"The same exemption as the filter whitelist, one step earlier in the pipeline, so a vouched-for source is never dropped before connection tracking either.",
-				note: "The raw table has no connection tracking, so this rule never carries connection-state even when firewall.filter.connection_state is set.",
-			},
-			es: {
-				name: "Whitelist de raw",
-				purpose:
-					"La misma exención que la whitelist de filter, un paso antes en la cadena de procesado, para que un origen avalado tampoco se descarte antes del connection tracking.",
-				note: "La tabla raw no tiene connection tracking, así que esta regla nunca lleva connection-state aunque firewall.filter.connection_state esté configurado.",
-			},
-		},
-	},
-	{
-		id: "raw-counting",
-		table: "raw",
-		chain: "prerouting",
-		chainSetting: "firewall.raw.chains",
-		direction: "counting",
-		action: "passthrough",
-		actionSetting: null,
-		match: null,
-		createdByDefault: true,
-		enabledBy: "metrics.track_processed",
-		settingDefault: "true",
-		optionalAttributes: [...INPUT_INTERFACE_ATTRS],
-		i18n: {
-			en: {
-				name: "Raw counting",
-				purpose:
-					"Counts every packet the raw chain hands to the bouncer's block, feeding the same processed metrics as its filter twin.",
-				note: "Like the filter counting rule it matches no address list; its counters are what makes “evaluated” and “dropped” two separate numbers.",
-			},
-			es: {
-				name: "Contador de raw",
-				purpose:
-					"Cuenta cada paquete que la chain de raw entrega al bloque del bouncer y alimenta las mismas métricas de procesados que su gemela de filter.",
-				note: "Igual que el contador de filter, no coincide con ninguna address-list; sus contadores son los que hacen que «evaluados» y «descartados» sean dos cifras distintas.",
-			},
-		},
-	},
-	{
-		id: "raw-deny",
-		table: "raw",
-		chain: "prerouting",
-		chainSetting: "firewall.raw.chains",
-		direction: "input",
-		action: "drop",
-		actionSetting: "firewall.deny_action",
-		match: { attribute: "src-address-list", kind: "banned" },
-		createdByDefault: true,
-		enabledBy: "firewall.raw.enabled",
-		settingDefault: "true",
-		optionalAttributes: [...INPUT_INTERFACE_ATTRS, ...LOG_ATTRS],
-		i18n: {
+		denyEnabledBy: "firewall.raw.enabled",
+		connectionState: false,
+		rejectWith: false,
+		gloss: {
 			en: {
 				name: "Raw deny",
 				purpose:
@@ -339,7 +322,7 @@ export const managedRules = [
 				note: "Las reglas raw de RouterOS no pueden rechazar, así que firewall.deny_action: reject se escribe aquí como drop: es la única regla cuya acción no sigue esa opción.",
 			},
 		},
-	},
+	}),
 	{
 		id: "filter-output",
 		table: "filter",
@@ -354,20 +337,20 @@ export const managedRules = [
 		settingDefault: "false",
 		optionalAttributes: [
 			{
-				attribute: "out-interface",
-				setting: "firewall.block_output.interface",
-			},
-			{
-				attribute: "out-interface-list",
-				setting: "firewall.block_output.interface_list",
+				attribute: "src-address (negated)",
+				setting: "firewall.block_output.passthrough_v4",
 			},
 			{
 				attribute: "src-address-list (negated)",
 				setting: "firewall.block_output.passthrough_v4_list",
 			},
 			{
-				attribute: "src-address (negated)",
-				setting: "firewall.block_output.passthrough_v4",
+				attribute: "out-interface",
+				setting: "firewall.block_output.interface",
+			},
+			{
+				attribute: "out-interface-list",
+				setting: "firewall.block_output.interface_list",
 			},
 			REJECT_WITH_ATTR,
 			...LOG_ATTRS,
