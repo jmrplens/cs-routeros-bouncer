@@ -20,7 +20,9 @@ Runtime flags:
 | `-c`       | Path to the YAML configuration file |
 | `-version` | Print version, commit, build date   |
 
-The binary does not load a host config path implicitly when run directly. Pass `-c` unless all required settings are supplied via environment variables. The systemd installer and Docker image provide their own `-c` path.
+When `-c` is omitted, the binary checks `/etc/cs-routeros-bouncer/config.yaml` on every run and uses it when that file exists. The resolution order is: an explicit `-c` path wins, then the implicit `/etc/cs-routeros-bouncer/config.yaml`, and if that file is missing the bouncer starts in environment-only mode (environment variables plus built-in defaults). This fallback is built into the binary, so it applies whenever the binary starts without `-c` — including the Docker image, whose entrypoint passes none. The systemd unit written by `setup` always passes an explicit `-c`, so it never reaches the implicit path.
+
+Note that the implicit path is `config.yaml`, while `setup` writes its example config as `cs-routeros-bouncer.yaml` and passes it to the service with an explicit `-c`.
 
 ## `version`
 

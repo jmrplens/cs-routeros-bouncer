@@ -1,6 +1,6 @@
 ---
 title: Registro y métricas
-description: Configura el registro de cs-routeros-bouncer (nivel, formato, salida a archivo) y el endpoint de métricas de Prometheus, incluido el sondeo de RouterOS.
+description: Configura el registro de cs-routeros-bouncer (nivel y formato) y el endpoint de métricas de Prometheus, incluido el sondeo de RouterOS.
 ---
 
 import { Badge, LinkCard } from "@astrojs/starlight/components";
@@ -38,14 +38,13 @@ Formato de salida del log:
 
 ### `logging.file` <Badge text="Opcional" variant="note" />
 
-**Env:** `LOG_FILE` · **Predeterminado:** — (stdout)
+**Env:** `LOG_FILE` · **Predeterminado:** — (no implementado)
 
-Ruta a un archivo de log. Cuando está vacío, los logs se escriben solo en stdout. Cuando se configura, los logs se escriben tanto en stdout como en el archivo especificado.
+El analizador de configuración acepta esta clave, pero todavía no está implementada: el valor se carga en la configuración y luego nunca se usa. El bouncer no abre ningún archivo de log y todas las líneas van a stderr sea cual sea el valor de esta clave.
 
-```yaml
-logging:
-  file: "/var/log/cs-routeros-bouncer.log"
-```
+:::caution[No implementado]
+Configurar `logging.file` o `LOG_FILE` no tiene ningún efecto actualmente. Para conservar los logs en disco, captura la salida del proceso: `journalctl -u cs-routeros-bouncer`, el sistema de logs de Docker o una redirección de shell como `cs-routeros-bouncer -c config.yaml 2>> /var/log/cs-routeros-bouncer.log`.
+:::
 
 ## Métricas de Prometheus
 

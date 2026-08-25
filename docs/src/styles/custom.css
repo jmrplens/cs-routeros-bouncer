@@ -88,7 +88,7 @@
 	--sl-color-white: #1a237e;
 	--sl-color-gray-1: #283593;
 	--sl-color-gray-2: #3b3f5c;
-	--sl-color-gray-3: #7986cb;
+	--sl-color-gray-3: #5c6bc0;
 	--sl-color-gray-4: #9096b8;
 	--sl-color-gray-5: #e0e3f5;
 	--sl-color-gray-6: #f0f1f8;
@@ -100,7 +100,7 @@
 	--sl-color-green-low: #e8f5e9;
 	--sl-color-green-high: #2e7d32;
 	--sl-color-orange-low: #fff3e0;
-	--sl-color-orange-high: #e65100;
+	--sl-color-orange-high: #bf360c;
 	--sl-color-red-low: #ffebee;
 	--sl-color-red-high: #c62828;
 	--sl-color-blue-low: #e3f2fd;
@@ -189,6 +189,7 @@ th {
 	border: none;
 	border-radius: 999px;
 	background: rgb(var(--brand-primary));
+	color: #ffffff;
 	box-shadow: 0 0.75rem 1.5rem rgba(var(--brand-primary), 0.18);
 	font-weight: 700;
 	letter-spacing: 0;

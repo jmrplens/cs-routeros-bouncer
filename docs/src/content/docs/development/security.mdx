@@ -65,14 +65,14 @@ The `/metrics` and `/health` endpoints do not require authentication. Restrict a
 
 The `setup` command writes a systemd unit with hardening enabled:
 
-| Setting                   | Purpose                                                            |
-| ------------------------- | ------------------------------------------------------------------ |
-| `NoNewPrivileges=yes`     | Prevents privilege escalation through exec transitions             |
-| `ProtectSystem=strict`    | Mounts system paths read-only for the service                      |
-| `ProtectHome=yes`         | Blocks direct access to home directories                           |
-| `ReadWritePaths=/var/log` | Allows log file writes when `logging.file` points under `/var/log` |
-| `PrivateTmp=yes`          | Gives the service an isolated temporary directory                  |
-| `LimitNOFILE=65536`       | Leaves headroom for RouterOS API sessions and HTTP endpoints       |
+| Setting                   | Purpose                                                                         |
+| ------------------------- | ------------------------------------------------------------------------------- |
+| `NoNewPrivileges=yes`     | Prevents privilege escalation through exec transitions                          |
+| `ProtectSystem=strict`    | Mounts system paths read-only for the service                                   |
+| `ProtectHome=yes`         | Blocks direct access to home directories                                        |
+| `ReadWritePaths=/var/log` | Allows writing logs under `/var/log` when you redirect the process output there |
+| `PrivateTmp=yes`          | Gives the service an isolated temporary directory                               |
+| `LimitNOFILE=65536`       | Leaves headroom for RouterOS API sessions and HTTP endpoints                    |
 
 If you maintain a manual unit file, keep these settings unless your deployment has a specific reason to relax one.
 

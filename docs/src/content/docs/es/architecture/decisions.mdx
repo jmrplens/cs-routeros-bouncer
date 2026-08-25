@@ -15,40 +15,39 @@ Cómo procesa el bouncer las decisiones entrantes de CrowdSec.
 
    El bouncer obtiene las decisiones nuevas y expiradas de la Local API de CrowdSec.
 
-2. **Comprobar el ámbito**
+2. **Filtrado en la LAPI**
 
-   | Ámbito  | Acción                                  | Ejemplo       |
-   | ------- | --------------------------------------- | ------------- |
-   | `Ip`    | Se añade directamente a la address-list | `192.168.1.1` |
-   | `Range` | Se añade como CIDR a la address-list    | `10.0.0.0/24` |
-   | Otro    | Se registra como advertencia y se omite | —             |
+   `scopes`, `origins`, `scenarios_containing` y `scenarios_not_containing` no son comprobaciones locales: el bouncer los envía como parámetros de consulta en la petición a la LAPI, de modo que CrowdSec solo devuelve las decisiones que ya cumplen esos filtros. Las decisiones rechazadas por estos filtros nunca llegan al bouncer, así que ningún registro local las refleja.
 
-   `Ip` y `Range` son los valores de ámbito tal como CrowdSec los envía en las decisiones; el filtro de configuración `crowdsec.scopes` usa las formas en minúscula `ip` y `range`.
+   | Parámetro de consulta      | Clave de configuración              | Valor por defecto          |
+   | -------------------------- | ----------------------------------- | -------------------------- |
+   | `scopes`                   | `crowdsec.scopes`                   | `["ip", "range"]`          |
+   | `origins`                  | `crowdsec.origins`                  | vacío — todos los orígenes |
+   | `scenarios_containing`     | `crowdsec.scenarios_containing`     | vacío — sin restricción    |
+   | `scenarios_not_containing` | `crowdsec.scenarios_not_containing` | vacío — no se excluye nada |
 
-3. **Filtrar por origen**
+3. **Analizar la decisión**
 
-   Si `origins` está configurado, solo pasan las decisiones de los orígenes permitidos. Las decisiones que no coinciden se descartan.
+   El bouncer solo conserva las decisiones de tipo `ban`; cualquier otro tipo se descarta en silencio. Las decisiones nuevas que no traen duración también se descartan. Una duración que no se puede analizar se registra como advertencia (`failed to parse decision duration`) y se recurre a 4h. Cada decisión que supera el análisis **en el stream en vivo** se registra a nivel debug como `new decision` o `deleted decision`. La instantánea periódica de reconciliación analiza las decisiones igual, pero no registra nada por decisión.
 
-4. **Filtrar por escenario**
-
-   Si `scenarios_containing` o `scenarios_not_containing` están configurados, solo se procesan las decisiones cuyo nombre de escenario supera esos filtros de subcadena.
-
-5. **Aplicar la acción**
+4. **Aplicar la acción**
    - **Ban** → Añadir la IP/rango a la address-list de MikroTik
    - **Unban** → Eliminar la IP/rango de la address-list
+
+   Las decisiones de un protocolo desactivado (`firewall.ipv4.enabled` o `firewall.ipv6.enabled` a `false`) se omiten sin dejar registro. Un ban cuya dirección ya está en la caché en memoria se omite con un registro de nivel debug.
 
 </Steps>
 
 ## Filtrado por origen
 
-Cuando `origins` está configurado, el bouncer solo procesa las decisiones de los orígenes especificados:
+Cuando `origins` está configurado, la LAPI solo envía al bouncer las decisiones de los orígenes especificados:
 
 | Origen     | Fuente                                                |
 | ---------- | ----------------------------------------------------- |
 | `crowdsec` | Detecciones del motor local de CrowdSec               |
 | `cscli`    | Bans manuales mediante `cscli decisions add`          |
 | `CAPI`     | Blocklists comunitarias de la Central API de CrowdSec |
-| `lists:*`  | Suscripciones a blocklists de terceros                |
+| `lists`    | Suscripciones a blocklists de terceros                |
 
 ```yaml
 crowdsec:
@@ -70,7 +69,7 @@ crowdsec:
     - "test"
 ```
 
-Usa `scenarios_containing` para quedarte solo con los escenarios que coinciden. Usa `scenarios_not_containing` para excluir escenarios ruidosos o no deseados cuando el bouncer procesa las decisiones recibidas de la LAPI de CrowdSec.
+Usa `scenarios_containing` para quedarte solo con los escenarios que coinciden. Usa `scenarios_not_containing` para excluir escenarios ruidosos o no deseados. Ambos filtros viajan con la petición a la LAPI, así que CrowdSec los aplica antes de enviar nada al bouncer.
 
 ## Gestión de IPs duplicadas
 

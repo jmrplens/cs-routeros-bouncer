@@ -11,9 +11,9 @@ Ajustes de la conexión a la [API de MikroTik RouterOS](https://help.mikrotik.co
 
 ### `mikrotik.address` <Badge text="Obligatorio" variant="danger" />
 
-**Env:** `MIKROTIK_HOST` · **Por defecto:** `192.168.0.1:8728`
+**Env:** `MIKROTIK_HOST` · **Por defecto:** —
 
-Dirección de la API de RouterOS en formato `host:port`.
+Dirección de la API de RouterOS en formato `host:port`. No tiene valor por defecto: el bouncer termina con `mikrotik.address is required` si el valor está vacío. El `192.168.0.1:8728` que se usa más abajo es el valor de ejemplo incluido en [`config/cs-routeros-bouncer.yaml`](https://github.com/jmrplens/cs-routeros-bouncer/blob/main/config/cs-routeros-bouncer.yaml), no un valor por defecto.
 
 - Puerto `8728` — API en texto plano
 - Puerto `8729` — API cifrada con TLS
@@ -25,9 +25,9 @@ mikrotik:
 
 ### `mikrotik.username` <Badge text="Obligatorio" variant="danger" />
 
-**Env:** `MIKROTIK_USER` · **Por defecto:** `crowdsec`
+**Env:** `MIKROTIK_USER` · **Por defecto:** —
 
-El nombre de usuario de la API de RouterOS. Usa un usuario dedicado con permisos mínimos. Consulta [Configuración del router](/cs-routeros-bouncer/es/getting-started/router-setup/) para crear el usuario.
+El nombre de usuario de la API de RouterOS. No tiene valor por defecto: el bouncer termina con `mikrotik.username is required` si el valor está vacío. El nombre `crowdsec` es el valor de ejemplo incluido en [`config/cs-routeros-bouncer.yaml`](https://github.com/jmrplens/cs-routeros-bouncer/blob/main/config/cs-routeros-bouncer.yaml), no un valor por defecto. Usa un usuario dedicado con permisos mínimos. Consulta [Configuración del router](/cs-routeros-bouncer/es/getting-started/router-setup/) para crear el usuario.
 
 ### `mikrotik.password` <Badge text="Obligatorio" variant="danger" />
 
@@ -92,14 +92,14 @@ Si ves errores de tiempo de espera durante la reconciliación con listas de IPs 
 
 **Env:** `MIKROTIK_POOL_SIZE` · **Por defecto:** `4`
 
-Número de conexiones paralelas a la API de RouterOS usadas para las operaciones en bloque (añadir, eliminar y reconciliar entradas de address-list). Un valor más alto aumenta el rendimiento durante la reconciliación de arranque y los eventos masivos de ban/unban.
+Número de sesiones de la API de RouterOS que el bouncer puede usar para el trabajo en paralelo, como las eliminaciones de la reconciliación. Un valor más alto aumenta el rendimiento cuando la reconciliación tiene que borrar muchas entradas obsoletas del address-list; las adiciones y las decisiones en vivo siempre usan la conexión principal, así que no se ven afectadas.
 
 - **Rango válido:** 1–20
 - **Limitación automática:** al arrancar, el bouncer consulta el límite `max-sessions` del servicio API del router y reduce automáticamente el tamaño efectivo del pool para que nunca supere `max-sessions − 2` (reservando conexiones para el cliente principal y herramientas externas como WinBox).
 
 ```yaml
 mikrotik:
-  pool_size: 8 # Mayor paralelismo para acelerar las operaciones en bloque
+  pool_size: 8 # Mayor paralelismo para las eliminaciones de la reconciliación
 ```
 
 ### Comprobar el límite del router

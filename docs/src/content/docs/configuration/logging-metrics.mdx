@@ -1,6 +1,6 @@
 ---
 title: Logging & Metrics
-description: Configure cs-routeros-bouncer logging (level, format, file output) and the Prometheus metrics endpoint, including RouterOS system polling.
+description: Configure cs-routeros-bouncer logging (level and format) and the Prometheus metrics endpoint, including RouterOS system polling.
 ---
 
 import { Badge, LinkCard } from "@astrojs/starlight/components";
@@ -38,14 +38,13 @@ Log output format:
 
 ### `logging.file` <Badge text="Optional" variant="note" />
 
-**Env:** `LOG_FILE` · **Default:** — (stdout)
+**Env:** `LOG_FILE` · **Default:** — (not implemented)
 
-Path to a log file. When empty, logs are written to stdout only. When set, logs are written to both stdout and the specified file.
+Accepted by the configuration parser but not implemented yet: the value is read into the configuration and then never used. The bouncer opens no log file, and every log line goes to stderr whatever this key is set to.
 
-```yaml
-logging:
-  file: "/var/log/cs-routeros-bouncer.log"
-```
+:::caution[Not implemented]
+Setting `logging.file` or `LOG_FILE` has no effect today. To keep logs on disk, capture the process output instead — `journalctl -u cs-routeros-bouncer`, your container runtime's logging driver, or a shell redirection such as `cs-routeros-bouncer -c config.yaml 2>> /var/log/cs-routeros-bouncer.log`.
+:::
 
 ## Prometheus Metrics
 

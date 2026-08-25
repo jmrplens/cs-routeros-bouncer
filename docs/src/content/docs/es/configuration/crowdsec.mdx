@@ -96,7 +96,7 @@ Filtra las decisiones por su origen. Vacío significa que se procesan todas las 
 | `crowdsec` | Decisiones del motor de detección de CrowdSec         |
 | `cscli`    | Decisiones manuales mediante `cscli decisions add`    |
 | `CAPI`     | Blocklists comunitarias de la Central API de CrowdSec |
-| `lists:*`  | Orígenes de listas con nombre, como `lists:<name>`    |
+| `lists`    | Suscripciones a blocklists de terceros                |
 
 ```yaml
 # Solo decisiones locales (sin blocklists comunitarias)
@@ -114,7 +114,7 @@ Cuando se define como variable de entorno, `CROWDSEC_ORIGINS` se separa con espa
 CROWDSEC_ORIGINS="crowdsec cscli"
 ```
 
-Dejar `origins` vacío acepta todos los orígenes, incluidos `CAPI` y los orígenes de listas con nombre. Usa `lists:*` como patrón comodín para las entradas `lists:<name>` al definir `origins` o `CROWDSEC_ORIGINS`. Consulta [Blocklists de CAPI](/cs-routeros-bouncer/es/configuration/capi-blocklists/) para las recomendaciones de escala y dimensionamiento del router.
+Dejar `origins` vacío acepta todos los orígenes, incluidos `CAPI` y `lists`. La LAPI compara estos valores de forma **exacta**: no expande comodines, así que un patrón como `lists:*` no coincide con nada y no devuelve ninguna decisión, sin avisar. Usa el literal `lists`, que es el origen que CrowdSec asigna a toda suscripción de blocklist, se llame como se llame la lista. Consulta [Blocklists de CAPI](/cs-routeros-bouncer/es/configuration/capi-blocklists/) para las recomendaciones de escala y dimensionamiento del router.
 
 ### `crowdsec.scopes` <Badge text="Opcional" variant="note" />
 
