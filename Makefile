@@ -21,13 +21,13 @@ export GOTOOLCHAIN := $(GO_TOOLCHAIN)
 # These pins are the single source of truth — CI installs from here too.
 # Bump deliberately, in their own commit.
 TOOLS_BIN             := $(CURDIR)/bin/tools
-GOLANGCI_LINT_VERSION := v2.12.2
+GOLANGCI_LINT_VERSION := v2.13.1
 GOSEC_VERSION         := v2.28.0
 ACTIONLINT_VERSION    := v1.7.12
-STATICCHECK_VERSION   := v0.7.0
-GOVULNCHECK_VERSION   := v1.6.0
+STATICCHECK_VERSION   := v0.8.1
+GOVULNCHECK_VERSION   := v1.7.0
 # goimports and modernize both ship from golang.org/x/tools.
-GOTOOLS_VERSION       := v0.48.0
+GOTOOLS_VERSION       := v0.49.0
 
 GOLANGCI_LINT := $(TOOLS_BIN)/golangci-lint
 GOSEC         := $(TOOLS_BIN)/gosec

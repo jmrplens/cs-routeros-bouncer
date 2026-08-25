@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: "1.26.5"
-  GOTOOLCHAIN: go1.26.5
+  GO_VERSION: "1.27.0"
+  GOTOOLCHAIN: go1.27.0
   NODE_VERSION: "24"
 
 jobs:
