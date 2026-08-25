@@ -121,6 +121,46 @@ export const FAMILIES = ["v4", "v6"];
  * @property {{ en: RuleGloss, es: RuleGloss }} i18n
  */
 
+/* ------------------------------------------------------------------
+   Shared attribute sets
+
+   Every managed rule draws its optional attributes from the same few
+   sets. Naming them once is not merely shorter: it makes the difference
+   between two rules visible as a difference in composition, instead of
+   leaving a reader to diff two twenty-line literals to find the one
+   entry that changed.
+   ------------------------------------------------------------------ */
+
+/** Interface narrowing, available to every input-side rule. */
+const INPUT_INTERFACE_ATTRS = [
+	{ attribute: "in-interface", setting: "firewall.block_input.interface" },
+	{
+		attribute: "in-interface-list",
+		setting: "firewall.block_input.interface_list",
+	},
+];
+
+/**
+ * Rule logging. `firewall.log` gates emission; the prefix value comes from
+ * `firewall.log_prefix`, resolved per table by `resolveLogPrefix`.
+ */
+const LOG_ATTRS = [
+	{ attribute: "log", setting: "firewall.log" },
+	{ attribute: "log-prefix", setting: "firewall.log_prefix" },
+];
+
+/** Only the filter table sees conntrack, so only filter rules take this. */
+const CONNECTION_STATE_ATTR = {
+	attribute: "connection-state",
+	setting: "firewall.filter.connection_state",
+};
+
+/** Present only when `firewall.deny_action` is `reject`. */
+const REJECT_WITH_ATTR = {
+	attribute: "reject-with",
+	setting: "firewall.reject_with",
+};
+
 /** @type {ManagedRule[]} */
 export const managedRules = [
 	{
@@ -136,16 +176,9 @@ export const managedRules = [
 		enabledBy: "firewall.block_input.whitelist",
 		settingDefault: "unset",
 		optionalAttributes: [
-			{
-				attribute: "connection-state",
-				setting: "firewall.filter.connection_state",
-			},
-			{ attribute: "in-interface", setting: "firewall.block_input.interface" },
-			{
-				attribute: "in-interface-list",
-				setting: "firewall.block_input.interface_list",
-			},
-			{ attribute: "log, log-prefix", setting: "firewall.log" },
+			CONNECTION_STATE_ATTR,
+			...INPUT_INTERFACE_ATTRS,
+			...LOG_ATTRS,
 		],
 		i18n: {
 			en: {
@@ -174,13 +207,7 @@ export const managedRules = [
 		createdByDefault: true,
 		enabledBy: "metrics.track_processed",
 		settingDefault: "true",
-		optionalAttributes: [
-			{ attribute: "in-interface", setting: "firewall.block_input.interface" },
-			{
-				attribute: "in-interface-list",
-				setting: "firewall.block_input.interface_list",
-			},
-		],
+		optionalAttributes: [...INPUT_INTERFACE_ATTRS],
 		i18n: {
 			en: {
 				name: "Filter counting",
@@ -209,17 +236,10 @@ export const managedRules = [
 		enabledBy: "firewall.filter.enabled",
 		settingDefault: "true",
 		optionalAttributes: [
-			{ attribute: "reject-with", setting: "firewall.reject_with" },
-			{
-				attribute: "connection-state",
-				setting: "firewall.filter.connection_state",
-			},
-			{ attribute: "in-interface", setting: "firewall.block_input.interface" },
-			{
-				attribute: "in-interface-list",
-				setting: "firewall.block_input.interface_list",
-			},
-			{ attribute: "log, log-prefix", setting: "firewall.log" },
+			CONNECTION_STATE_ATTR,
+			...INPUT_INTERFACE_ATTRS,
+			REJECT_WITH_ATTR,
+			...LOG_ATTRS,
 		],
 		i18n: {
 			en: {
@@ -248,14 +268,7 @@ export const managedRules = [
 		createdByDefault: false,
 		enabledBy: "firewall.block_input.whitelist",
 		settingDefault: "unset",
-		optionalAttributes: [
-			{ attribute: "in-interface", setting: "firewall.block_input.interface" },
-			{
-				attribute: "in-interface-list",
-				setting: "firewall.block_input.interface_list",
-			},
-			{ attribute: "log, log-prefix", setting: "firewall.log" },
-		],
+		optionalAttributes: [...INPUT_INTERFACE_ATTRS, ...LOG_ATTRS],
 		i18n: {
 			en: {
 				name: "Raw whitelist",
@@ -283,13 +296,7 @@ export const managedRules = [
 		createdByDefault: true,
 		enabledBy: "metrics.track_processed",
 		settingDefault: "true",
-		optionalAttributes: [
-			{ attribute: "in-interface", setting: "firewall.block_input.interface" },
-			{
-				attribute: "in-interface-list",
-				setting: "firewall.block_input.interface_list",
-			},
-		],
+		optionalAttributes: [...INPUT_INTERFACE_ATTRS],
 		i18n: {
 			en: {
 				name: "Raw counting",
@@ -317,14 +324,7 @@ export const managedRules = [
 		createdByDefault: true,
 		enabledBy: "firewall.raw.enabled",
 		settingDefault: "true",
-		optionalAttributes: [
-			{ attribute: "in-interface", setting: "firewall.block_input.interface" },
-			{
-				attribute: "in-interface-list",
-				setting: "firewall.block_input.interface_list",
-			},
-			{ attribute: "log, log-prefix", setting: "firewall.log" },
-		],
+		optionalAttributes: [...INPUT_INTERFACE_ATTRS, ...LOG_ATTRS],
 		i18n: {
 			en: {
 				name: "Raw deny",
@@ -353,7 +353,6 @@ export const managedRules = [
 		enabledBy: "firewall.block_output.enabled",
 		settingDefault: "false",
 		optionalAttributes: [
-			{ attribute: "reject-with", setting: "firewall.reject_with" },
 			{
 				attribute: "out-interface",
 				setting: "firewall.block_output.interface",
@@ -370,7 +369,8 @@ export const managedRules = [
 				attribute: "src-address (negated)",
 				setting: "firewall.block_output.passthrough_v4",
 			},
-			{ attribute: "log, log-prefix", setting: "firewall.log" },
+			REJECT_WITH_ATTR,
+			...LOG_ATTRS,
 		],
 		i18n: {
 			en: {
