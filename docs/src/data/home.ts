@@ -421,10 +421,10 @@ export const en: HomeContent = {
 					detail: [
 						"Not only at startup, and not only when there is drift to repair: the pass runs on every ",
 						{ code: "crowdsec.reconciliation_interval" },
-						" tick and re-reads the whole address list each time, because RouterOS evaluates address-list queries with an unindexed linear scan. Measured on an RB5009 holding 21,600 entries: a CPU transient peaking at 29–34% against a 7% baseline, lasting about six seconds, in 11 of 11 consecutive cycles. At the default 15-minute interval that is four transients an hour.",
+						" tick and re-reads the whole address list each time, because RouterOS evaluates address-list queries with an unindexed linear scan. Measured on an RB5009 holding 22,000 entries, sampled at 100 ms on the router itself: a ~2-second plateau averaging 31% against a 5% baseline, with single-core slices reaching 50–100%, in every cycle. At the default 15-minute interval that is four transients an hour.",
 						" Your own monitoring may well not show it — the standard SNMP ",
 						{ code: "hrProcessorLoad" },
-						" OID reports a one-minute average, which flattens a six-second spike to roughly 9%.",
+						" OID reports a one-minute average, which flattens a two-second spike to roughly 6%.",
 					],
 					link: {
 						text: "Performance tuning",
@@ -640,10 +640,10 @@ export const es: HomeContent = {
 					detail: [
 						"No solo al arrancar, ni solo cuando hay desviación que reparar: la pasada corre en cada tick de ",
 						{ code: "crowdsec.reconciliation_interval" },
-						" y vuelve a leer la lista de direcciones entera, porque RouterOS resuelve las consultas de address-list con un escaneo lineal sin índice. Medido en un RB5009 con 21.600 entradas: un transitorio con pico del 29-34% sobre una base del 7%, de unos seis segundos, en 11 de 11 ciclos consecutivos. Con el intervalo por defecto de 15 minutos son cuatro transitorios por hora.",
+						" y vuelve a leer la lista de direcciones entera, porque RouterOS resuelve las consultas de address-list con un escaneo lineal sin indexar. Medido en un RB5009 con 22.000 entradas, muestreado a 100 ms en el propio router: una meseta de ~2 segundos con una media del 31% frente a una base del 5%, con rebanadas de un solo core llegando al 50–100%, en cada ciclo. Con el intervalo por defecto de 15 minutos son cuatro transitorios por hora.",
 						" Es probable que tu monitorización no lo vea: el OID SNMP estándar ",
 						{ code: "hrProcessorLoad" },
-						" reporta una media de un minuto, que aplana un pico de seis segundos hasta un 9% aproximado.",
+						" reporta una media de un minuto, que aplana un pico de dos segundos hasta un 6% aproximado.",
 					],
 					link: {
 						text: "Ajuste de rendimiento",

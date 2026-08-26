@@ -56,16 +56,66 @@ Para el rendimiento real de arranque del bouncer, prefiere las pruebas funcional
 
 Estas cifras provienen de la suite de pruebas funcionales de CAPI (`tests/functional/`) ejecutada contra un MikroTik RB5009, no de la herramienta de operaciones individuales `cmd/benchmark` anterior. Consulta [Arquitectura: Pool de conexiones](/cs-routeros-bouncer/es/architecture/#pool-de-conexiones) y [Adición masiva basada en scripts](/cs-routeros-bouncer/es/architecture/#adición-masiva-basada-en-scripts) para conocer los mecanismos detrás de estos números.
 
-| Escenario                                                                   | Resultado                          |
-| --------------------------------------------------------------------------- | ---------------------------------- |
-| Adición optimista cache-first (la dirección aún no está en el router)       | ~1–3 ms por operación              |
-| Adición check-first (listar entradas antes de añadir, evitado por la caché) | ~400 ms por IP                     |
-| Adición masiva basada en scripts frente a llamadas secuenciales a la API    | ~97× más rápida para lotes grandes |
-| Adición masiva completa en RB5009, ~28.700 entradas de origen CAPI          | ~35–36 s en total                  |
+| Escenario                                                                   | Resultado                              |
+| --------------------------------------------------------------------------- | -------------------------------------- |
+| Adición optimista cache-first (la dirección aún no está en el router)       | ~1–3 ms por operación                  |
+| Adición check-first (listar entradas antes de añadir, evitado por la caché) | ~400 ms por IP                         |
+| Adición masiva basada en scripts frente a llamadas secuenciales a la API    | ~97× más rápida para lotes grandes     |
+| Bulk-add completo en RB5009, ~22.000 entradas de origen CAPI                | ~29 s de bulk, ~34 s desde el arranque |
 
 La diferencia entre cache-first (~1-3 ms) y check-first (~400 ms) es la razón por la que existe la caché de direcciones en memoria descrita en [Arquitectura](/cs-routeros-bouncer/es/architecture/#caché-de-direcciones-en-memoria): permite al bouncer saltarse el viaje de ida y vuelta listar-y-añadir de RouterOS para las direcciones que ya conoce.
 
 Para despliegues a escala de CAPI (decenas de miles de entradas), consulta también [Blocklists de CAPI](/cs-routeros-bouncer/es/configuration/capi-blocklists/) y [Ajuste de rendimiento](/cs-routeros-bouncer/es/configuration/performance-tuning/) para orientación sobre el dimensionado de `pool_size`.
+
+## El ciclo de vida completo, muestreado cada 100 ms
+
+La gráfica siguiente es una única captura continua de 51 segundos del RB5009 de
+producción, tomada con un muestreador a 10 Hz que lee `/proc/stat` en el propio
+router (ver la nota sobre el método al final de esta página). Cubre los tres
+estados con los que un operador se encuentra de verdad: el router ocioso con el
+bouncer parado y la lista de direcciones vacía, la **primera reconciliación**
+importando ~22.000 entradas, y el estado tranquilo posterior con la lista
+completa cargada. Cada punto es la media de cinco muestras de 100 ms; los picos
+sub-segundo alcanzan el 57% en rebanadas sueltas de 100 ms durante el import.
+
+```mermaid
+xychart-beta
+    title "CPU del router durante la primera reconciliación (22.000 entradas)"
+    x-axis "segundos desde el arranque del bouncer" -5 --> 46
+    y-axis "CPU total %" 0 --> 60
+    line [0.7, 4.4, 1.8, 2.8, 0.4, 2.8, 13.6, 30.6, 15.4, 5.8, 3.8, 6.2, 5.4, 7.6, 13.8, 8.6, 12.8, 5.8, 1.4, 5.8, 1.4, 4.8, 17.2, 29.8, 32.2, 31.2, 29.2, 32.8, 33.8, 32.2, 27.4, 30.4, 31.8, 31.2, 36.2, 31.2, 30.4, 26.4, 27.6, 27.2, 31.4, 31.6, 31.2, 30.8, 28.4, 31.2, 34.2, 31.6, 36.2, 35.2, 28.8, 29.2, 29.8, 35.8, 30.8, 35.2, 31.2, 27.8, 31.6, 34, 36.2, 30.2, 27.4, 27.4, 27.2, 25.6, 39.2, 36, 31.8, 29.6, 30.8, 30.8, 30.2, 27.8, 38.2, 30.2, 31.6, 37.2, 29, 28.2, 6.6, 3.8, 2.4, 3.4, 0.4, 4.8, 7, 5.2, 1.2, 5.6, 1.6, 16.6, 6.2, 5, 4, 1.8, 5.6, 3.2, 6.2, 1.8, 7.8, 0]
+```
+
+El import es la meseta: aproximadamente un 31% sostenido durante ~26 segundos,
+repartido entre los cuatro cores con el pool de conexiones rotando picos de un
+solo core del 50–100%. Antes, la línea base ociosa; después, de vuelta al ~5%
+con 22.000 entradas cargadas — mantener la lista no cuesta nada, solo leerla y
+escribirla.
+
+```mermaid
+xychart-beta
+    title "RAM usada del router en la misma ventana"
+    x-axis "segundos desde el arranque del bouncer" -5 --> 46
+    y-axis "RAM usada, MiB (de 1024)" 320 --> 360
+    line [330.2, 330.3, 330.3, 330.0, 330.0, 329.9, 329.9, 331.6, 331.6, 331.2, 331.2, 338.5, 338.5, 349.6, 349.6, 348.9, 348.9, 349.1, 349.1, 349.4, 349.4, 349.1, 349.1, 349.3, 349.3, 348.6, 348.6, 349.0, 349.0, 348.4, 348.4, 349.8, 349.8, 349.1, 349.1, 349.2, 349.2, 349.1, 349.1, 348.4, 348.4, 349.5, 349.5, 348.5, 348.5, 347.6, 347.6, 347.4, 347.4, 347.9, 347.9, 347.7, 347.7, 346.6, 346.6, 348.4, 348.4, 346.9, 346.9, 346.8, 346.8, 346.8, 346.8, 347.5, 347.5, 346.8, 346.8, 347.6, 347.6, 348.1, 348.1, 349.1, 349.1, 347.2, 347.2, 347.8, 347.8, 348.1, 348.1, 348.0, 348.0, 347.1, 347.1, 346.8, 346.8, 347.6, 347.6, 348.8, 348.8, 347.8, 347.8, 348.4, 348.4, 349.2, 349.2, 347.9, 347.9, 349.9, 349.9, 347.7, 347.7, 347.7]
+```
+
+La RAM es la parte tranquila de la historia, con una sorpresa en el cuándo: el
+escalón de ~19 MiB cae al conectar, antes de importar una sola entrada — y
+22.000 entradas después no se ha movido más. Mantener la lista le cuesta al
+router casi nada; la memoria no es donde muerde esta carga, la CPU durante las
+lecturas de la lista, sí. El tramo ocioso también enseña los propios blips de
+fondo del router — un dispositivo real nunca es una línea plana.
+
+### Nota sobre el método
+
+La serie de 100 ms procede de un contenedor muestreador que corre en el propio
+router, leyendo `/proc/stat` y `/proc/meminfo` del kernel compartido a 10 Hz y
+empujando lotes directamente a Loki — el `cpu-load` propio de RouterOS se
+actualiza solo una vez por segundo, así que los scripts no pueden ver por
+debajo de eso. El protocolo de captura: parar el bouncer, borrar ambas listas
+de direcciones, dejar asentar el router, y arrancar el bouncer grabando a
+través de la primera reconciliación hasta el régimen estable.
 
 ## Lista de comprobación de seguridad
 

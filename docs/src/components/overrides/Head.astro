@@ -331,12 +331,12 @@ const DATASET_TEXT: Record<string, { name: string; description: string }> = {
 	en: {
 		name: "cs-routeros-bouncer RouterOS operation benchmarks",
 		description:
-			"Operation latency and bulk-import timings for cs-routeros-bouncer measured on a MikroTik RB5009UG+S+ (RouterOS 7.22.1): ~1–3 ms per cache-first add, ~400 ms per check-first add, and ~28,700 CAPI-origin entries imported in ~35–36 s with pool_size 10.",
+			"Operation latency, bulk-import timings and router-side CPU/RAM for cs-routeros-bouncer measured on a MikroTik RB5009UG+S+ (RouterOS 7.24.1) at 100 ms sampling resolution: ~1–3 ms per cache-first add, ~400 ms per check-first add, ~22,000 CAPI-origin entries imported in ~29 s at a sustained ~31% router CPU, and a ~1.9–2.1 s steady reconcile.",
 	},
 	es: {
 		name: "Benchmarks de operaciones RouterOS de cs-routeros-bouncer",
 		description:
-			"Latencia de operaciones y tiempos de importación masiva de cs-routeros-bouncer medidos en un MikroTik RB5009UG+S+ (RouterOS 7.22.1): ~1–3 ms por adición cache-first, ~400 ms por adición check-first y ~28.700 entradas de origen CAPI importadas en ~35–36 s con pool_size 10.",
+			"Latencia de operaciones, tiempos de importación masiva y CPU/RAM del router de cs-routeros-bouncer medidos en un MikroTik RB5009UG+S+ (RouterOS 7.24.1) con muestreo a 100 ms: ~1–3 ms por adición cache-first, ~400 ms por adición check-first, ~22.000 entradas de origen CAPI importadas en ~29 s con una CPU sostenida del ~31% en el router, y una reconciliación estable de ~1,9–2,1 s.",
 	},
 };
 const datasetText = DATASET_TEXT[lang] ?? DATASET_TEXT.en;
@@ -355,7 +355,7 @@ const dataset =
 				isPartOf: { "@id": WEBSITE_ID },
 				inLanguage: lang,
 				measurementTechnique:
-					"Functional CAPI test suite (tests/functional/) and cmd/benchmark tool run against a MikroTik RB5009UG+S+ on RouterOS 7.22.1",
+					"Functional CAPI test suite (tests/functional/) and cmd/benchmark tool run against a MikroTik RB5009UG+S+ on RouterOS 7.24.1, with a 10 Hz /proc/stat sampler on the router for CPU/RAM",
 				variableMeasured: [
 					"add operation latency",
 					"remove operation latency",

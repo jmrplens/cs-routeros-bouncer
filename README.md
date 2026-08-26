@@ -15,7 +15,7 @@ A [CrowdSec](https://www.crowdsec.net/) remediation component (bouncer) for [Mik
 - **Zero manual router configuration** — auto-creates and auto-removes firewall filter/raw rules on start/stop
 - **Individual IP management** — adds on ban, removes on unban (no bulk re-upload, no duplicates)
 - **State reconciliation** — on start/restart and periodically, syncs CrowdSec decisions with MikroTik state (adds missing, removes stale)
-- **High-performance sync** — connection pool, script-based bulk add, in-memory cache (~28,700 IPs in ~58 s wall-clock on RB5009 with CAPI)
+- **High-performance sync** — connection pool, script-based bulk add, in-memory cache (~22,000 IPs imported in ~29 s on an RB5009, measured at 100 ms resolution)
 - **Graceful shutdown** — removes firewall rules on stop (address list entries expire via MikroTik timeout)
 - **IPv4 + IPv6** — independently toggleable
 - **Input + Output blocking** — output blocking optional with configurable interface/interface-list
@@ -524,7 +524,7 @@ firewall:
 
 ### Performance
 
-Tested on a **MikroTik RB5009UG+S+** (ARM64, 4 cores @ 1400 MHz, 1 GB RAM, RouterOS 7.22.1) with the bouncer running on a separate Linux host connected via the RouterOS API (plaintext, port 8728). The CAPI measurements below used `mikrotik.pool_size: 10` and `crowdsec.reconciliation_interval: 1m`.
+Tested on a **MikroTik RB5009UG+S+** (ARM64, 4 cores @ 1400 MHz, 1 GB RAM, RouterOS 7.24.1; earlier rows measured on 7.22.1) with the bouncer running on a separate Linux host connected via the RouterOS API (plaintext, port 8728). The CAPI measurements below used `mikrotik.pool_size: 10` and `crowdsec.reconciliation_interval: 1m`.
 
 Router CPU can spike during reconciliation, especially at startup or whenever real drift requires add/remove work. Sustained high RouterOS CPU after reconciliation is not expected from simply keeping entries in memory; it usually points to repeated RouterOS API writes/reconnects, duplicate-decision churn, or unrelated router workload.
 
@@ -540,8 +540,8 @@ The bouncer uses a configurable **connection pool** (default 4 parallel API conn
 
 | Scenario                          | Existing IPs | Time                               | Notes                                                                      |
 | --------------------------------- | ------------ | ---------------------------------- | -------------------------------------------------------------------------- |
-| Restart, all IPs already present  | **~28,700**  | **~75–77 s** functional wall-clock | Includes service restart, rule cleanup, list scan, and reconciliation wait |
-| Periodic reconciliation, no drift | **~28,700**  | **~3–4 s** internal reconciliation | Performs list/read/diff only, no add/remove writes                         |
+| Restart, all IPs already present  | **~22,000**  | **~7–8 s** from process start      | Includes LAPI stream fetch, rule check, full list read and a zero diff     |
+| Periodic reconciliation, no drift | **~22,000**  | **~1.9–2.1 s** internal reconciliation | List read dominates (98.5% of the cycle); diff and cache are the rest  |
 
 #### Mass removal (switching from CAPI to local-only)
 

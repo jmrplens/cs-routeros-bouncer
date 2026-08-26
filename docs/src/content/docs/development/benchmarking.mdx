@@ -61,11 +61,59 @@ These figures come from the functional CAPI test suite (`tests/functional/`) run
 | Cache-first optimistic add (address not yet on the router)     | ~1–3 ms per operation         |
 | Check-first add (list entries before adding, avoided by cache) | ~400 ms per IP                |
 | Script-based bulk add vs. sequential API calls                 | ~97× faster for large batches |
-| Full RB5009 bulk-add, ~28,700 CAPI-origin entries              | ~35–36 s total                |
+| Full RB5009 bulk-add, ~22,000 CAPI-origin entries              | ~29 s bulk, ~34 s from start  |
 
 The gap between cache-first (~1-3 ms) and check-first (~400 ms) is why the in-memory address cache described in [Architecture](/cs-routeros-bouncer/architecture/#in-memory-address-cache) exists: it lets the bouncer skip the RouterOS list-then-add round trip for addresses it already knows about.
 
 For CAPI-scale deployments (tens of thousands of entries), also see [CAPI Blocklists](/cs-routeros-bouncer/configuration/capi-blocklists/) and [Performance Tuning](/cs-routeros-bouncer/configuration/performance-tuning/) for `pool_size` sizing guidance.
+
+## The full lifecycle, sampled every 100 ms
+
+The chart below is a single continuous 51-second capture from the production
+RB5009, taken with a 10 Hz sampler reading `/proc/stat` on the router itself
+(see the note on method at the end of this page). It covers the three states an
+operator actually meets: the router idle with the bouncer stopped and the
+address list empty, the **first reconciliation** importing ~22,000 entries, and
+the quiet state that follows with the full list in place. Each point is the
+mean of five 100 ms samples; the sub-second peaks reach 57% for single 100 ms
+slices during the import.
+
+```mermaid
+xychart-beta
+    title "Router CPU during the first reconciliation (22,000 entries)"
+    x-axis "seconds since the bouncer started" -5 --> 46
+    y-axis "total CPU %" 0 --> 60
+    line [0.7, 4.4, 1.8, 2.8, 0.4, 2.8, 13.6, 30.6, 15.4, 5.8, 3.8, 6.2, 5.4, 7.6, 13.8, 8.6, 12.8, 5.8, 1.4, 5.8, 1.4, 4.8, 17.2, 29.8, 32.2, 31.2, 29.2, 32.8, 33.8, 32.2, 27.4, 30.4, 31.8, 31.2, 36.2, 31.2, 30.4, 26.4, 27.6, 27.2, 31.4, 31.6, 31.2, 30.8, 28.4, 31.2, 34.2, 31.6, 36.2, 35.2, 28.8, 29.2, 29.8, 35.8, 30.8, 35.2, 31.2, 27.8, 31.6, 34, 36.2, 30.2, 27.4, 27.4, 27.2, 25.6, 39.2, 36, 31.8, 29.6, 30.8, 30.8, 30.2, 27.8, 38.2, 30.2, 31.6, 37.2, 29, 28.2, 6.6, 3.8, 2.4, 3.4, 0.4, 4.8, 7, 5.2, 1.2, 5.6, 1.6, 16.6, 6.2, 5, 4, 1.8, 5.6, 3.2, 6.2, 1.8, 7.8, 0]
+```
+
+The import is the plateau: roughly 31% sustained for ~26 seconds, spread across
+all four cores with the connection pool rotating single-core peaks of 50–100%.
+Before it, the idle baseline; after it, back to ~5% with 22,000 entries loaded
+— holding the list costs nothing, only reading and writing it does.
+
+```mermaid
+xychart-beta
+    title "Router RAM used over the same window"
+    x-axis "seconds since the bouncer started" -5 --> 46
+    y-axis "RAM used, MiB (of 1024)" 320 --> 360
+    line [330.2, 330.3, 330.3, 330.0, 330.0, 329.9, 329.9, 331.6, 331.6, 331.2, 331.2, 338.5, 338.5, 349.6, 349.6, 348.9, 348.9, 349.1, 349.1, 349.4, 349.4, 349.1, 349.1, 349.3, 349.3, 348.6, 348.6, 349.0, 349.0, 348.4, 348.4, 349.8, 349.8, 349.1, 349.1, 349.2, 349.2, 349.1, 349.1, 348.4, 348.4, 349.5, 349.5, 348.5, 348.5, 347.6, 347.6, 347.4, 347.4, 347.9, 347.9, 347.7, 347.7, 346.6, 346.6, 348.4, 348.4, 346.9, 346.9, 346.8, 346.8, 346.8, 346.8, 347.5, 347.5, 346.8, 346.8, 347.6, 347.6, 348.1, 348.1, 349.1, 349.1, 347.2, 347.2, 347.8, 347.8, 348.1, 348.1, 348.0, 348.0, 347.1, 347.1, 346.8, 346.8, 347.6, 347.6, 348.8, 348.8, 347.8, 347.8, 348.4, 348.4, 349.2, 349.2, 347.9, 347.9, 349.9, 349.9, 347.7, 347.7, 347.7]
+```
+
+RAM is the quiet part of the story, with one surprise in the timing: the
+~19 MiB step lands at connection time, before a single entry is imported —
+and 22,000 entries later it has not moved again. Holding the list costs the
+router almost nothing; memory is not where this workload bites, CPU during
+list reads is. The idle stretch also shows the router's own background blips
+— a real device is never a flat line.
+
+### Method note
+
+The 100 ms series comes from a sampler container running on the router itself,
+reading the shared kernel's `/proc/stat` and `/proc/meminfo` at 10 Hz and
+pushing batches straight to Loki — RouterOS's own `cpu-load` updates only once
+per second, so scripts cannot see below that. The capture protocol: stop the
+bouncer, delete both address lists, let the router settle, then start the
+bouncer and record through the first reconciliation into steady state.
 
 ## Safety checklist
 
