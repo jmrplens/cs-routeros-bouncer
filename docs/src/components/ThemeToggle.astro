@@ -1,0 +1,180 @@
+---
+import { Icon } from "@astrojs/starlight/components";
+
+// Strings for the toggle, keyed by page language, in the same shape the
+// custom Footer uses (`Astro.locals.starlightRoute.lang`; the root locale is
+// English). Starlight's own `themeSelect.*` strings cannot serve here: they
+// are the *options* of a three-way select ("Dark", "Oscuro"), and this
+// control needs the name of a thing that is either on or off.
+const TOGGLE_STRINGS: Record<string, { darkTheme: string }> = {
+	en: { darkTheme: "Dark theme" },
+	es: { darkTheme: "Tema oscuro" },
+};
+
+const lang = Astro.locals.starlightRoute?.lang ?? "en";
+const t = TOGGLE_STRINGS[lang] ?? TOGGLE_STRINGS.en;
+---
+
+{
+	/* A light/dark switch for the mobile header bar, where Starlight's
+three-option theme select is not shown.
+
+IT OWNS NO STATE. On click it sets `value` on the select inside
+`starlight-theme-select` and dispatches a bubbling `change`; Starlight's
+own handler is what writes `data-theme` and `localStorage`, and what
+calls `StarlightThemeProvider.updatePickers()` to bring every other
+picker on the page along with it. Writing the theme here as well would
+give the page two authorities for one value, and the loser of that race
+is the before-paint script in ThemeProvider.astro — which is how a page
+ends up painting the wrong theme for a frame.
+
+The `Auto` option is deliberately not in this control's cycle: a
+two-state button that silently has a third state is a worse control
+than a two-state one. Auto stays one tap away, in the full select that
+Starlight renders in the mobile menu drawer (MobileMenuFooter.astro).
+
+The icon is swapped in CSS off `:root[data-theme]`, not in script, so
+it is already correct in the first painted frame. It shows the CURRENT
+theme, matching what the select's own label icon shows, rather than the
+one a tap would move to.
+
+WHY AN `aria-pressed` TOGGLE AND NOT AN ACTION-NAMED BUTTON
+
+A button's accessible name is read as what activating it will do, so
+the two shapes that expose this control honestly are (a) a name that
+states the action and is rewritten on every change ("Switch to dark
+theme"), or (b) a constant name for the thing being toggled plus
+`aria-pressed` for its state. This is (b), for three reasons:
+
+  1. The state is then a real ARIA state, so it is exposed the same way
+     to every consumer — announced on activation without the name
+     changing under the user, and readable by anything querying the
+     accessibility tree.
+  2. The name stays constant, which is what speech-input users need:
+     "click Dark theme" keeps working in both themes, whereas a name
+     that flips between "Switch to dark theme" and "Switch to light
+     theme" names a target that is gone the moment it is spoken.
+  3. It agrees with the icon, which by the decision above shows the
+     CURRENT theme rather than the destination. Under (a) the name
+     would announce the destination while the icon showed the origin;
+     under (b) both describe the same present state.
+
+The rendered `aria-pressed="false"` is a placeholder: the theme is not
+known at build time (this is a static build, and the theme comes from
+`localStorage`/`prefers-color-scheme` in the before-paint script). The
+script below corrects it when the element upgrades, from the document
+itself, and the same MutationObserver keeps it correct afterwards. */
+}
+<rb-theme-toggle>
+	<button type="button" class="toggle" aria-pressed="false">
+		<span class="sr-only">{t.darkTheme}</span>
+		<Icon name="sun" class="icon light-only" />
+		<Icon name="moon" class="icon dark-only" />
+	</button>
+</rb-theme-toggle>
+
+<style>
+	rb-theme-toggle {
+		display: contents;
+	}
+
+	.toggle {
+		/* 44 x 44 px, the size chrome.css already gives sidebar and
+		   pagination links under a coarse pointer. That figure is WCAG 2.2
+		   SC 2.5.5 (Level AAA); the Level AA minimum, SC 2.5.8, is 24 x 24.
+		   Matching the rest of the chrome matters more than the floor. */
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 44px;
+		height: 44px;
+		padding: 0;
+		border: 0;
+		border-radius: var(--rb-radius);
+		background: none;
+		/* The same two colours Starlight's own Select label uses, so the
+		   toggle and the select it drives are the same control visually. */
+		color: var(--sl-color-gray-2);
+		cursor: pointer;
+	}
+
+	.toggle:hover {
+		color: var(--sl-color-white);
+	}
+
+	.icon {
+		font-size: 1.25rem;
+	}
+
+	/* Starlight's breakpoint, copied as a number because it is not exposed
+	   as a custom property. Above it the full theme select is in the header
+	   bar and this control would be a second, redundant one. */
+	@media (min-width: 50rem) {
+		.toggle {
+			display: none;
+		}
+	}
+
+	/* `:root` carries the dark theme in this project (see theme.css), so
+	   "not light" is the dark case and the moon is what a page shows before
+	   any explicit choice has been made. */
+	:global(:root:not([data-theme="light"])) .light-only {
+		display: none;
+	}
+	:global(:root[data-theme="light"]) .dark-only {
+		display: none;
+	}
+</style>
+
+<script>
+	class ThemeToggle extends HTMLElement {
+		connectedCallback() {
+			const button = this.querySelector("button");
+			if (!button) return;
+
+			/** Whichever theme the document is currently painting. */
+			const current = (): "dark" | "light" =>
+				document.documentElement.dataset.theme === "light" ? "light" : "dark";
+
+			/** Reads the state back off the document, never off a local copy. */
+			const sync = () => {
+				button.setAttribute("aria-pressed", String(current() === "dark"));
+			};
+
+			sync();
+			// `data-theme` is written by Starlight — by the before-paint script
+			// in ThemeProvider.astro and by ThemeSelect's change handler. This
+			// observer is the only way this control learns the theme, so it
+			// cannot disagree with either of them, or with the desktop select.
+			// It is also what keeps `aria-pressed` honest when the theme is
+			// changed from somewhere else, e.g. the select in the mobile drawer.
+			new MutationObserver(sync).observe(document.documentElement, {
+				attributes: true,
+				attributeFilter: ["data-theme"],
+			});
+
+			button.addEventListener("click", () => {
+				void (async () => {
+					const next = current() === "light" ? "dark" : "light";
+					// A tap can land before the ThemeSelect module has run, and
+					// its `change` listener is attached in the element's
+					// constructor. Waiting for the definition means the click is
+					// never dropped silently.
+					await customElements.whenDefined("starlight-theme-select");
+					const select = document.querySelector<HTMLSelectElement>(
+						"starlight-theme-select select",
+					);
+					if (!select) return;
+					select.value = next;
+					select.dispatchEvent(new Event("change", { bubbles: true }));
+					// `aria-pressed` is not set here: the observer above sets it
+					// from `data-theme` once Starlight has actually applied the
+					// change, so a rejected or redirected change cannot leave the
+					// button claiming a state the document is not in.
+				})();
+			});
+		}
+	}
+
+	customElements.define("rb-theme-toggle", ThemeToggle);
+</script>

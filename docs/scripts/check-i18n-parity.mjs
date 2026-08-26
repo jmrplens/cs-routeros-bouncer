@@ -8,20 +8,112 @@
  * (`sidebar`, `head`, `template`, …) is set in one language and forgotten in
  * the other. None of that breaks the build, so nothing catches it in review.
  *
- * This checks the three things that can be compared without reading prose:
+ * This checks the four things that can be compared without reading prose:
  *   1. every English page has a Spanish twin, and vice versa;
- *   2. both twins declare the same frontmatter keys, and the same number of
- *      entries in each list — mappings and bare scalars alike (values are
- *      expected to differ — that is the translation);
- *   3. both twins have the same sequence of heading levels, ATX (`## x`) and
- *      setext (`x` over `---`) alike, so a missing or extra section shows up
- *      even though the heading text is translated.
+ *   2. both twins declare the same frontmatter key paths, and the same number
+ *      of entries in each sequence (values are expected to differ — that is
+ *      the translation);
+ *   3. both twins have the same sequence of heading levels, so a missing or
+ *      extra section shows up even though the heading text is translated;
+ *   4. both twins invoke the same components with the same identifying
+ *      attributes — a heading can survive in both locales while the component
+ *      that renders the section under it vanishes from one.
  *
- * Deliberately dependency-free: the frontmatter reader below is a small
- * indentation-based scanner, not a YAML parser, because it only ever has to
- * recover key paths — never values. Flow style (`tags: [a, b]`) is the one
- * thing that subset cannot see into, so it is reported as an error rather than
- * silently mis-read; see frontmatterShape.
+ * Plus one thing that is not a comparison at all: a component tag written in a
+ * `.md` page is a hard error (5). `.md` is markdown, not MDX, so Astro emits
+ * the tag as raw HTML and it renders nothing. It therefore cannot be counted as
+ * an invocation, and the gate used to ignore it — which meant a `.md` page
+ * could lose a whole section on both sides and stay green. Every page in this
+ * corpus is `.mdx` today, so that was latent, and latent is exactly how the
+ * three defects listed below got in.
+ *
+ * ## Why this parses instead of scanning
+ *
+ * This file used to hand-parse markdown line by line. That approach produced
+ * three defects in the same area, all of the same kind — a hand-written
+ * recogniser disagreeing with the real grammar:
+ *
+ *   1. the HTML-comment terminator matched `-->` but not `--!>`;
+ *   2. comment stripping was a chained `.replace()`, so `<!--<!-- x -->` left
+ *      a bare `<!--` behind;
+ *   3. code spans treated every backtick as a one-character delimiter, so a
+ *      ``double-backtick`` span closed at the first tick and leaked.
+ *
+ * Three findings in one area say the approach was wrong, not that the patches
+ * were bad. Everything structural now comes off the mdast tree produced by
+ * `mdast-util-from-markdown` with the MDX extensions — the same parser stack
+ * that renders this site.
+ *
+ * Nothing new was installed to do it. All four packages were already resolved
+ * in this project's lockfile, so declaring them as direct devDependencies added
+ * zero downloads (`pnpm install` reported `downloaded 0, added 0`); they are
+ * pinned to exactly the versions already present so pnpm keeps linking those
+ * same instances instead of resolving a second copy. Their provenance, per
+ * `pnpm why`: `mdast-util-mdx` and `micromark-extension-mdxjs` via
+ * `@astrojs/starlight` → `@astrojs/mdx` → `@mdx-js/mdx` → `remark-mdx`;
+ * `mdast-util-from-markdown` via `@astrojs/markdown-remark` and Starlight's
+ * remark plugins; `yaml` as a peer dependency of `astro` itself and via
+ * `@astrojs/check`.
+ *
+ * The classes of bug above are gone by construction rather than by patch:
+ *
+ *   • a heading inside a fence, an HTML comment or an MDX `{/* … *\/}` comment
+ *     is simply not a `heading` node, so it cannot be counted;
+ *   • a component named inside an inline code span is text inside an
+ *     `inlineCode` node, never an `mdxJsxFlowElement`, at any backtick-run
+ *     length — the parser owns the delimiter rule, so #3 cannot recur;
+ *   • nesting, quoting and escaping inside comments are the parser's problem,
+ *     so #2 cannot recur;
+ *   • setext headings, thematic breaks, indented code and MDX `import`
+ *     statements are distinguished by the grammar, retiring the pile of
+ *     conservative regexes that used to guess between them.
+ *
+ * Frontmatter is read with the `yaml` package's document AST rather than an
+ * indentation scanner. Block scalars (`content: |`) are opaque for free — a
+ * scalar is a leaf, so an embedded JSON-LD payload can never be mistaken for
+ * more YAML keys — and malformed YAML is now reported instead of silently
+ * mis-shaped.
+ *
+ * MDX expressions are not mdast, and are not read as text either. An attribute
+ * value (`paths={[…]}`) and a body expression (`{list.map(…)}`) each carry the
+ * ESTree acorn produced for them, so a component nested inside one is found by
+ * walking that tree, and the identity of an expression-valued attribute is
+ * derived from it. Both used to be text: the key was the expression's source
+ * with whitespace runs collapsed, which claimed to be layout-independent and
+ * was not — Prettier adds a trailing comma when it breaks a literal, so one
+ * invocation could key two ways; and collapsing ate whitespace *inside* string
+ * literals, so two different instances could key the same. A tree has neither
+ * problem, because a line break and a trailing comma are not nodes and the
+ * contents of a string literal are.
+ *
+ * ## What still reads raw text, and why
+ *
+ * Three things, all deliberate:
+ *
+ *   • Splitting frontmatter from the body. The frontmatter mdast extensions
+ *     are NOT in this project's dependency tree (unlike the four parser
+ *     packages, they would be a genuinely new install), and the split is an
+ *     anchored delimiter match, not a parse — it locates `---` fences and
+ *     hands the text between them to the YAML parser, which does the parsing.
+ *   • Deciding whether a fenced block or an HTML comment was ever closed. An
+ *     unclosed construct is not an error in markdown: it runs to end of file
+ *     and swallows every heading after it. The tree is correct, but the
+ *     outline it yields is a truncation the author did not intend, so the
+ *     node's own source range is re-read to see whether a closing delimiter is
+ *     actually there. Positions come from the parser; only the delimiter test
+ *     is textual.
+ *   • Blanking HTML comments inside an `html` node when scanning a `.md` page
+ *     for stray component tags. Markdown has no comment node, so a comment
+ *     inside a larger html block is part of that block's text. It is a single
+ *     non-greedy pass over one node's own value — not the chained `.replace()`
+ *     of defect #2 — and it errs towards silence: an unclosed `<!--` blanks to
+ *     the end of the node, and is separately a hard error anyway.
+ *
+ * ## Scope
+ *
+ * Structure only. Body prose, table rows and code block contents are never
+ * compared — a stale translation of a paragraph whose English changed passes
+ * here, and is meant to: catching that needs per-string provenance.
  *
  * Everything here is covered by the fixtures at the bottom, which run on every
  * invocation — the blind spots this gate has had were all invisible in the
@@ -36,21 +128,30 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
+import { fromMarkdown } from "mdast-util-from-markdown";
+import { mdxFromMarkdown } from "mdast-util-mdx";
+import { mdxjs } from "micromark-extension-mdxjs";
+import { isMap, isSeq, parseDocument } from "yaml";
+
 const DOCS_DIR = fileURLToPath(new URL("../src/content/docs", import.meta.url));
-/** Locale directory holding the mirror, relative to DOCS_DIR. */
 // Every mirror locale directly under DOCS_DIR. Anything NOT under one of these
 // is treated as an English source page that must have a twin in each locale.
 // Adding a locale here is the only change needed when astro.config.mjs grows one;
 // leaving it out would classify the new locale's pages as untranslated English.
 const LOCALES = ["es"];
 
-// HTML accepts BOTH `-->` and `--!>` as a comment terminator. Matching only the
-// first leaves a comment closed with the second looking unterminated, which
-// would swallow every heading after it — the same silent-truncation failure the
-// unclosed-fence check exists to prevent. (CodeQL js/bad-tag-filter flags the
-// one-form regex for exactly this reason.)
-const COMMENT_END = /--!?>/;
 const PAGE_EXTENSIONS = new Set([".md", ".mdx"]);
+
+// Attributes that identify WHICH instance of a component this is. Anything else
+// is presentation or prose and may legitimately differ per locale.
+const IDENTIFYING_ATTRIBUTES = [
+	"section",
+	"path",
+	"paths",
+	"scope",
+	"name",
+	"id",
+];
 
 /**
  * List every content page under `dir`, as paths relative to `dir` using
@@ -85,6 +186,9 @@ function listPages(dir) {
 /**
  * Split a page into its raw frontmatter block and the body after it.
  * The frontmatter must open on the very first line, as Astro requires.
+ *
+ * Anchored delimiter match, not a parse: it finds the `---` fences and hands
+ * everything between them to the YAML parser untouched.
  * @param {string} source
  * @returns {{ frontmatter: string | null, body: string }}
  */
@@ -97,9 +201,10 @@ function splitFrontmatter(source) {
 }
 
 /**
- * Read the *shape* of a frontmatter block: the key paths it declares, e.g.
- * `hero`, `hero.image.light`, `head[].attrs.type`, plus how many entries each
- * sequence holds. Values are never looked at — they are the translation.
+ * Read the *shape* of a frontmatter block from the YAML document AST: the key
+ * paths it declares, e.g. `hero`, `hero.image.light`, `head[].attrs.type`, plus
+ * how many entries each sequence holds. Values are never looked at — they are
+ * the translation.
  *
  * Sequence indices collapse to `[]` so entries of one list contribute one set
  * of key paths regardless of order; the separate entry counts are what catch a
@@ -107,21 +212,23 @@ function splitFrontmatter(source) {
  * it used still appears in the surviving entries. Entries that are bare scalars
  * (`- routeros`) carry no key at all, so their count is the *only* signal there
  * is — an untranslated tag dropped from a `tags:` list changes nothing else.
- * Block scalar bodies (`content: |`, used for the JSON-LD islands) are skipped
- * wholesale — their contents are payload, not YAML, and a naive scan would read
- * the embedded JSON as more keys.
  *
- * Flow style (`tags: [a, b]`, `sidebar: { order: 3 }`) is *reported*, never
- * parsed. An indentation scanner is blind inside a flow collection: it reports
- * `sidebar` and misses `sidebar.order`, and counts no entries for `tags`, so a
- * two-item flow list against a three-item block list passes clean. Teaching it
- * flow style means writing the YAML parser this file exists to avoid — quoting,
- * escapes, nesting, multi-line flow — to serve zero pages, since nothing in the
- * corpus uses it. Failing loudly costs one clear error the day someone writes
- * their first flow collection, and in exchange the blind spot cannot be entered
- * silently; guessing costs a gate that reports green while drifting.
+ * Scalars are leaves and are never descended into, so a block scalar body
+ * (`content: |`, used for JSON-LD islands) is opaque for free: its embedded
+ * JSON cannot be misread as further YAML keys.
+ *
+ * Flow style (`tags: [a, b]`, `sidebar: { order: 3 }`) is still reported as an
+ * error, but the reason has changed and is worth stating honestly. The
+ * indentation scanner this replaced was blind inside a flow collection, so
+ * accepting one meant comparing a shape already known to be wrong. The YAML
+ * parser reads flow style perfectly well — `node.flow` is an exact flag, and
+ * the shape extracted from a flow collection is correct — so that hazard is
+ * gone. What remains is a house convention: frontmatter in this corpus is
+ * uniformly block style, and keeping it that way keeps per-key diffs
+ * line-oriented for review. The check is retained deliberately, not because
+ * the parser needs it; delete it and the gate stays correct.
  * @param {string} frontmatter
- * @returns {{ keys: Set<string>, counts: Map<string, number>, flow: string[] }}
+ * @returns {{ keys: Set<string>, counts: Map<string, number>, flow: string[], yamlErrors: string[] }}
  */
 function frontmatterShape(frontmatter) {
 	/** @type {Set<string>} */
@@ -129,271 +236,295 @@ function frontmatterShape(frontmatter) {
 	/** Entries per sequence, by the path of the key holding it. */
 	/** @type {Map<string, number>} */
 	const counts = new Map();
-	/** Lines opening a flow collection, verbatim — reported, not parsed. */
+	/** Paths at which a flow collection was found — reported, not rejected by the parser. */
 	/** @type {string[]} */
 	const flow = [];
-	// One frame per indentation level, outermost first. `prefix` is what every
-	// key at that level is qualified with; `lastKey` is the key a deeper level
-	// will nest under. The sentinel frame stands for the document itself.
-	/** @type {{ indent: number, prefix: string, lastKey: string }[]} */
-	const stack = [{ indent: -1, prefix: "", lastKey: "" }];
-	/** Indent of the key introducing the block scalar we're inside, if any. */
-	let blockScalarIndent = null;
 
-	for (const line of frontmatter.split(/\r?\n/)) {
-		if (line.trim() === "") continue;
-		const indent = line.length - line.trimStart().length;
+	const doc = parseDocument(frontmatter, { keepSourceTokens: false });
+	const yamlErrors = doc.errors.map((error) => error.message.split("\n")[0]);
+	if (yamlErrors.length > 0) return { keys, counts, flow, yamlErrors };
 
-		// Everything more indented than the `key: |` line is opaque payload.
-		if (blockScalarIndent !== null) {
-			if (indent > blockScalarIndent) continue;
-			blockScalarIndent = null;
-		}
-		if (line.trimStart().startsWith("#")) continue;
-
-		// `- ` may prefix the first key of a sequence entry (`- tag: script`).
-		const item = /^[ \t]*(-[ \t]+)?(.*)$/.exec(line);
-		const isSequenceItem = Boolean(item[1]);
-		const rest = item[2];
-		// The key's own column is what nesting is measured against, so the keys
-		// of a `- ` entry sit at the same level as its later, unprefixed keys.
-		const keyIndent = isSequenceItem ? indent + item[1].length : indent;
-
-		const keyMatch = /^([^\s:#][^:]*):(?:[ \t]|$)/.exec(rest);
-
-		// A `[` or `{` where a value begins opens a flow collection. Checked here,
-		// after the block scalar skip above, so the JSON-LD payloads — which are
-		// full of both — stay invisible to it.
-		if (keyMatch !== null || isSequenceItem) {
-			const value = (
-				keyMatch === null ? rest : rest.slice(keyMatch[0].length)
-			).trimStart();
-			if (value.startsWith("[") || value.startsWith("{"))
-				flow.push(line.trim());
-		}
-
-		if (!keyMatch) {
-			// A bare scalar entry (`- routeros`) has no key to record, but it still
-			// occupies one slot of the sequence holding it, and losing one is exactly
-			// what the counts exist to catch. Its owner is the key one level up —
-			// unless it sits at the same level as mapping entries of the same list,
-			// in which case that level's own `[]` prefix already names the sequence.
-			if (isSequenceItem) {
-				while (stack.length > 1 && stack[stack.length - 1].indent > keyIndent) {
-					stack.pop();
-				}
-				const frame = stack[stack.length - 1];
-				const sequence =
-					frame.indent === keyIndent && frame.prefix.endsWith("[].")
-						? frame.prefix.slice(0, -3)
-						: frame.lastKey || "(document root)";
-				counts.set(sequence, (counts.get(sequence) ?? 0) + 1);
+	/** @param {unknown} node @param {string} prefix */
+	function walk(node, prefix) {
+		if (isMap(node)) {
+			if (node.flow) flow.push(prefix || "(document root)");
+			for (const pair of node.items) {
+				const name = String(pair.key?.value ?? "");
+				const keyPath = prefix ? `${prefix}.${name}` : name;
+				keys.add(keyPath);
+				walk(pair.value, keyPath);
 			}
-			continue;
+		} else if (isSeq(node)) {
+			const sequence = prefix || "(document root)";
+			if (node.flow) flow.push(sequence);
+			counts.set(sequence, node.items.length);
+			// Every entry contributes its keys under the same `[]` prefix, so entry
+			// order never matters; the count above is what notices a lost entry.
+			for (const item of node.items) walk(item, `${prefix}[]`);
 		}
-
-		while (stack.length > 1 && stack[stack.length - 1].indent > keyIndent) {
-			stack.pop();
-		}
-		let frame = stack[stack.length - 1];
-		if (frame.indent < keyIndent) {
-			// First key of a deeper level: it nests under the last key seen at the
-			// enclosing level, and `[]` records that that key held a list.
-			const parent = frame.lastKey;
-			const prefix = parent ? `${parent}${isSequenceItem ? "[]" : ""}.` : "";
-			frame = { indent: keyIndent, prefix, lastKey: "" };
-			stack.push(frame);
-		}
-		const keyPath = `${frame.prefix}${keyMatch[1].trim()}`;
-		keys.add(keyPath);
-		frame.lastKey = keyPath;
-
-		// Each `- ` line opens one entry of the sequence this level belongs to.
-		// (Bare scalar entries are counted above, where the key match fails.)
-		if (isSequenceItem && frame.prefix.endsWith("[].")) {
-			const sequence = frame.prefix.slice(0, -3);
-			counts.set(sequence, (counts.get(sequence) ?? 0) + 1);
-		}
-
-		if (/:[ \t]*[|>][+-]?\d*[ \t]*$/.test(rest)) blockScalarIndent = keyIndent;
+		// Scalars (including block scalars) are leaves: nothing to record.
 	}
-	return { keys, counts, flow };
+	walk(doc.contents, "");
+	return { keys, counts, flow, yamlErrors };
 }
 
 /**
- * Whether a line is plain paragraph text — the only thing a setext underline is
- * allowed to underline. Everything a run of `-` could *also* be closing off is
- * excluded here, which is what keeps `---` after a list item, a JSX island, a
- * table row or a blank line from being read as a heading. Lines inside code
- * fences and HTML comments never reach this: the caller consumes them first.
+ * Parse a page body into an mdast tree.
  *
- * Deliberately conservative. Missing a setext heading costs a heading this gate
- * does not compare; inventing one costs a false failure on a page that is fine,
- * and `---` as a thematic break is common in this corpus (34 of them, every one
- * preceded by a blank line) while setext headings are currently unused.
- * @param {string} line
- * @returns {boolean}
- */
-function isParagraphText(line) {
-	const trimmed = line.trim();
-	if (trimmed === "") return false; // Blank: nothing to underline.
-	if (/^ {4,}/.test(line)) return false; // Indented code block.
-	if (/^(=+|-+|\*{3,}|_{3,})$/.test(trimmed)) return false; // Rule/underline.
-	if (/^([-*+]|\d{1,9}[.)])([ \t]|$)/.test(trimmed)) return false; // List item.
-	if (/^#{1,6}([ \t]|$)/.test(trimmed)) return false; // ATX heading.
-	if (/^[<:|>]/.test(trimmed)) return false; // JSX, ::: directive, table, quote.
-	if (/^(import|export)[ \t]/.test(trimmed)) return false; // MDX statement.
-	return true;
-}
-
-/**
- * Collect the sequence of markdown heading levels in a page body, e.g.
- * `[2, 3, 3, 2]`. Heading text is ignored — it is translated by definition;
- * the shape of the outline is what has to match.
- *
- * Both heading forms count: ATX (`## Section`) and setext (a line of text over
- * a rule of `=` for level 1 or `-` for level 2). Setext is rare, but a section
- * added in one language only is the whole point of this check, and "we only
- * looked at the `#` ones" is not a property anyone would guess from a pass.
+ * `.mdx` gets the MDX extensions, `.md` does not — that mirrors how Astro
+ * treats the two, and it matters: a `<Component />` in a plain `.md` file is
+ * raw HTML, not an invocation. It renders as an unknown element (i.e. as
+ * nothing), so counting it as an invocation would compare a section that does
+ * not exist. `strayComponentTags` fails such a page outright instead; see there.
  * @param {string} body
- * @returns {{ levels: number[], unterminated: string | null }}
+ * @param {string} extension
+ * @returns {import("mdast").Root}
  */
-function headingLevels(body) {
-	/** @type {number[]} */
-	const levels = [];
-	/** Open fence as {char, length}, or null outside a code block. */
-	let fence = null;
-	// Headings inside an HTML comment are not headings. Tracked separately from
-	// fences because a comment can open and close on the same line.
-	let inComment = false;
-	// Whether the line just read was paragraph text a setext rule could underline.
-	let underlinable = false;
-
-	for (const line of body.split(/\r?\n/)) {
-		if (inComment) {
-			if (COMMENT_END.test(line)) inComment = false;
-			underlinable = false;
-			continue;
-		}
-		// Up to three leading spaces still count, per CommonMark; four or more
-		// make it an indented code block instead.
-		const fenceMatch = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
-		if (fence === null) {
-			if (fenceMatch) {
-				fence = { char: fenceMatch[1][0], length: fenceMatch[1].length };
-				underlinable = false;
-				continue;
-			}
-		} else {
-			// A closing fence is the same character, at least as long, and bare —
-			// a longer run with an info string is just content inside the block.
-			const closes =
-				fenceMatch !== null &&
-				fenceMatch[1][0] === fence.char &&
-				fenceMatch[1].length >= fence.length &&
-				fenceMatch[2].trim() === "";
-			if (closes) fence = null;
-			underlinable = false;
-			continue; // Never read headings out of a code block.
-		}
-
-		// An `<!--` not terminated on the same line opens a comment span.
-		const commentStart = line.indexOf("<!--");
-		if (
-			commentStart !== -1 &&
-			!COMMENT_END.test(line.slice(commentStart + 4))
-		) {
-			inComment = true;
-			underlinable = false;
-			continue;
-		}
-
-		// A setext underline: only a heading when it follows paragraph text —
-		// otherwise the very same line is a thematic break or a list bullet.
-		const underline = /^ {0,3}(=+|-+)[ \t]*$/.exec(line);
-		if (underline !== null && underlinable) {
-			levels.push(underline[1][0] === "=" ? 1 : 2);
-			underlinable = false;
-			continue;
-		}
-
-		const heading = /^ {0,3}(#{1,6})(?:[ \t]|$)/.exec(line);
-		if (heading) levels.push(heading[1].length);
-		underlinable = heading === null && isParagraphText(line);
-	}
-	// A fence — or a comment — left open at EOF silently swallows every heading
-	// after it, so the outline this returns is not trustworthy. The caller fails
-	// the page rather than comparing a truncated outline against another one.
-	return {
-		levels,
-		unterminated:
-			fence !== null ? "code fence" : inComment ? "HTML comment" : null,
-	};
+function parseBody(body, extension) {
+	return extension === ".mdx"
+		? fromMarkdown(body, {
+				extensions: [mdxjs()],
+				mdastExtensions: [mdxFromMarkdown()],
+			})
+		: fromMarkdown(body);
 }
 
 /**
- * Remove HTML comments, MDX expression comments and inline code spans, in one
- * left-to-right pass. Unterminated spans consume the rest of the input, which
- * is the safe direction: the alternative is emitting text the author had
- * commented out.
- * @param {string} text
+ * Walk every node of an mdast tree in document order.
+ *
+ * This walks mdast only. Everything an MDX expression holds — an attribute
+ * value, a `{…}` block in the body — is an ESTree, not mdast, and is reached
+ * through `walkEstree` from the one visitor that needs it (`componentCalls`).
+ * Heading outlines deliberately do not follow expressions: a heading cannot be
+ * written inside one.
+ * @param {object} tree
+ * @param {(node: any) => void} visit
+ */
+function walkTree(tree, visit) {
+	/** @param {any} node */
+	function step(node) {
+		visit(node);
+		if (Array.isArray(node.children))
+			for (const child of node.children) step(child);
+	}
+	step(tree);
+}
+
+// Properties of an ESTree node that carry source position or attached comments
+// rather than program structure. Skipped when walking and when canonicalising,
+// which is what makes both formatting-independent.
+const ESTREE_NOISE = new Set([
+	"start",
+	"end",
+	"loc",
+	"range",
+	"comments",
+	"leadingComments",
+	"trailingComments",
+]);
+
+/**
+ * Walk every node of an ESTree in document order, following arrays and nested
+ * objects generically so no node type has to be enumerated.
+ * @param {unknown} node
+ * @param {(node: any) => void} visit
+ */
+function walkEstree(node, visit) {
+	if (Array.isArray(node)) {
+		for (const item of node) walkEstree(item, visit);
+		return;
+	}
+	if (node === null || typeof node !== "object") return;
+	/** @type {any} */
+	const record = node;
+	if (typeof record.type === "string") visit(record);
+	for (const [key, value] of Object.entries(record)) {
+		if (ESTREE_NOISE.has(key)) continue;
+		walkEstree(value, visit);
+	}
+}
+
+/**
+ * Render an ESTree `Literal` back to a canonical form.
+ * String values are re-quoted from the parsed value, never from `raw`, so quote
+ * style and escape spelling cannot change the key; the characters inside the
+ * string are preserved exactly, because those are meaning, not formatting.
+ * @param {any} node
  * @returns {string}
  */
-function stripEnclosedSpans(text) {
-	/** Opening marker to its terminator. Order matters only for shared prefixes. */
-	const spans = [
-		["<!--", "-->"],
-		["{/*", "*/}"],
-	];
-	let out = "";
-	let i = 0;
-	outer: while (i < text.length) {
-		// A code span is delimited by a RUN of backticks and closes only on a run
-		// of the same length, which is what lets ``a ` b`` hold a backtick.
-		// Treating every backtick as a one-character delimiter closed the span at
-		// the first tick of a `` pair and left the rest — component examples
-		// included — visible to the scan.
-		if (text[i] === "`") {
-			let run = 0;
-			while (text[i + run] === "`") run += 1;
-			const fence = "`".repeat(run);
-			// Only a run of EXACTLY this length closes it; a longer run is content.
-			let j = i + run;
-			let end = -1;
-			while (j < text.length) {
-				if (text[j] !== "`") {
-					if (text[j] === "\n") break; // a code span never spans a line
-					j += 1;
-					continue;
-				}
-				let closing = 0;
-				while (text[j + closing] === "`") closing += 1;
-				if (closing === run) {
-					end = j;
-					break;
-				}
-				j += closing;
-			}
-			// Unterminated, or the line ended first: treat the delimiter as text so
-			// a stray backtick in prose cannot swallow the rest of the document.
-			i = end === -1 ? i + run : end + fence.length;
-			continue outer;
-		}
-
-		for (const [open, close] of spans) {
-			if (!text.startsWith(open, i)) continue;
-			const end = text.indexOf(close, i + open.length);
-			i = end === -1 ? text.length : end + close.length;
-			continue outer;
-		}
-		out += text[i];
-		i += 1;
+function canonicalLiteral(node) {
+	if (node.regex !== undefined && node.regex !== null) {
+		return `/${node.regex.pattern}/${node.regex.flags}`;
 	}
-	return out;
+	if (node.bigint !== undefined && node.bigint !== null)
+		return `${node.bigint}n`;
+	return typeof node.value === "string"
+		? JSON.stringify(node.value)
+		: String(node.value);
 }
 
 /**
- * Collect the MDX component invocations in a page body, as a multiset keyed by
+ * Canonical, formatting-independent rendering of an ESTree expression.
+ *
+ * This is the identity of an expression-valued attribute. It is taken from the
+ * *tree*, never from the source text, and that is the whole point: the tree is
+ * what Prettier is not allowed to change, whereas the source text is exactly
+ * what Prettier does change.
+ *
+ * The previous version collapsed whitespace runs in the source text and claimed
+ * that made the key wrap-independent. It did not, in either direction:
+ *
+ *   • it under-normalised. Prettier adds a trailing comma when it breaks a
+ *     literal across lines, so `paths={["a", "b"]}` and the same attribute
+ *     wrapped yield `{["a", "b"]}` and `{[ "a", "b", ]}` — two keys for one
+ *     invocation, and a parity failure with nothing behind it. Comments inside
+ *     the expression survived into the key for the same reason.
+ *   • it over-normalised. Whitespace inside a string literal is not formatting,
+ *     it is the value: `path={"a  b"}` and `path={"a b"}` are different
+ *     instances and collapsed to the same key, so a real divergence passed.
+ *
+ * Both are gone here because a trailing comma, a line break and a comment are
+ * not nodes, while the contents of a string literal are.
+ *
+ * Node types that carry an expression are spelled out so the key stays readable
+ * in a failure report (`ConfigOption[paths={["a.b","c.d"]}]`). Anything else falls
+ * through to a generic structural rendering rather than to a guess — unusual
+ * syntax gets an ugly key, never a wrong or a formatting-dependent one.
+ * @param {any} node
+ * @returns {string}
+ */
+function canonicalExpression(node) {
+	if (node === null || node === undefined) return "";
+	switch (node.type) {
+		case "Program": {
+			const statement = node.body.find(
+				(/** @type {any} */ entry) => entry.type === "ExpressionStatement",
+			);
+			return statement === undefined
+				? canonicalUnknown(node)
+				: canonicalExpression(statement.expression);
+		}
+		case "ExpressionStatement":
+			return canonicalExpression(node.expression);
+		// Parentheses and optional-chain wrappers are punctuation, not meaning.
+		case "ParenthesizedExpression":
+		case "ChainExpression":
+			return canonicalExpression(node.expression);
+		case "Identifier":
+		case "JSXIdentifier":
+			return node.name;
+		case "PrivateIdentifier":
+			return `#${node.name}`;
+		case "Literal":
+			return canonicalLiteral(node);
+		case "TemplateLiteral": {
+			let out = "`";
+			for (const [index, quasi] of node.quasis.entries()) {
+				// `value.raw` is the text between the delimiters: significant, kept.
+				out += quasi.value.raw;
+				if (index < node.expressions.length) {
+					out += `\${${canonicalExpression(node.expressions[index])}}`;
+				}
+			}
+			return `${out}\``;
+		}
+		case "TaggedTemplateExpression":
+			return `${canonicalExpression(node.tag)}${canonicalExpression(node.quasi)}`;
+		case "MemberExpression":
+			return node.computed
+				? `${canonicalExpression(node.object)}${node.optional ? "?." : ""}[${canonicalExpression(node.property)}]`
+				: `${canonicalExpression(node.object)}${node.optional ? "?." : "."}${canonicalExpression(node.property)}`;
+		case "ArrayExpression":
+			return `[${node.elements.map((/** @type {any} */ e) => canonicalExpression(e)).join(",")}]`;
+		case "ObjectExpression":
+			return `{${node.properties.map((/** @type {any} */ p) => canonicalExpression(p)).join(",")}}`;
+		case "Property":
+			return node.computed
+				? `[${canonicalExpression(node.key)}]:${canonicalExpression(node.value)}`
+				: `${canonicalExpression(node.key)}:${canonicalExpression(node.value)}`;
+		case "SpreadElement":
+		case "RestElement":
+			return `...${canonicalExpression(node.argument)}`;
+		case "CallExpression":
+			return `${canonicalExpression(node.callee)}${node.optional ? "?." : ""}(${node.arguments.map((/** @type {any} */ a) => canonicalExpression(a)).join(",")})`;
+		case "NewExpression":
+			return `new ${canonicalExpression(node.callee)}(${node.arguments.map((/** @type {any} */ a) => canonicalExpression(a)).join(",")})`;
+		case "UnaryExpression":
+			return `${node.operator}${canonicalExpression(node.argument)}`;
+		case "BinaryExpression":
+		case "LogicalExpression":
+			return `(${canonicalExpression(node.left)}${node.operator}${canonicalExpression(node.right)})`;
+		case "ConditionalExpression":
+			return `(${canonicalExpression(node.test)}?${canonicalExpression(node.consequent)}:${canonicalExpression(node.alternate)})`;
+		case "SequenceExpression":
+			return `(${node.expressions.map((/** @type {any} */ e) => canonicalExpression(e)).join(",")})`;
+		case "JSXExpressionContainer":
+			return `{${canonicalExpression(node.expression)}}`;
+		case "JSXEmptyExpression":
+			return "";
+		default:
+			return canonicalUnknown(node);
+	}
+}
+
+/**
+ * Structural rendering for an ESTree node this file does not spell out. Own
+ * properties are sorted so the result cannot depend on property order, and the
+ * position and comment fields are dropped so it cannot depend on layout.
+ * @param {any} node
+ * @returns {string}
+ */
+function canonicalUnknown(node) {
+	const parts = Object.keys(node)
+		.filter((key) => key !== "type" && !ESTREE_NOISE.has(key))
+		.sort()
+		.map((key) => `${key}=${canonicalValue(node[key])}`);
+	return `${node.type}(${parts.join(",")})`;
+}
+
+/** @param {unknown} value @returns {string} */
+function canonicalValue(value) {
+	if (Array.isArray(value)) {
+		return `[${value.map((item) => canonicalValue(item)).join(",")}]`;
+	}
+	if (typeof value === "bigint") return `${value}n`;
+	if (value !== null && typeof value === "object") {
+		/** @type {any} */
+		const record = value;
+		if (typeof record.type === "string") return canonicalExpression(record);
+		return `{${Object.keys(record)
+			.filter((key) => !ESTREE_NOISE.has(key))
+			.sort()
+			.map((key) => `${key}=${canonicalValue(record[key])}`)
+			.join(",")}}`;
+	}
+	return String(JSON.stringify(value));
+}
+
+/**
+ * Collect the sequence of heading levels in a page, e.g. `[2, 3, 3, 2]`.
+ * Heading text is ignored — it is translated by definition; the shape of the
+ * outline is what has to match.
+ *
+ * ATX (`## x`) and setext (`x` over `===`) are both `heading` nodes with a
+ * `depth`, so both count without either being special-cased, and a thematic
+ * break is a `thematicBreak` node rather than something that has to be told
+ * apart from a setext underline by hand. Headings written inside a code fence
+ * or a comment are not `heading` nodes at all, so they cannot leak in.
+ * @param {object} tree
+ * @returns {number[]}
+ */
+function headingLevels(tree) {
+	/** @type {number[]} */
+	const levels = [];
+	walkTree(tree, (node) => {
+		if (node.type === "heading") levels.push(node.depth);
+	});
+	return levels;
+}
+
+/**
+ * Collect the MDX component invocations in a page, as a multiset keyed by
  * component name plus its identifying attribute.
  *
  * Heading outlines cannot see these. A page can keep its `## Frequently asked
@@ -404,84 +535,313 @@ function stripEnclosedSpans(text) {
  * `<ConfigOption path="…" />` or `<RuleSet scope="…" />`.
  *
  * Only the identifying attribute is compared, never free text: `title` and
- * friends are translated by definition. Components inside fenced code blocks
- * are skipped — they are examples, not invocations.
+ * friends are translated by definition.
  *
- * @param {string} body
+ * The tree does the hard parts. A component named inside inline code or inside
+ * a comment is not a JSX node, so it is excluded without any stripping pass —
+ * which is what retires the two sanitisation defects this file used to carry.
+ * An invocation Prettier wrapped across several lines is one node, so line
+ * layout cannot change the key either.
+ *
+ * Invocations inside MDX expressions are counted too, and key identically to
+ * the same invocation written at the top level. Two places hold them:
+ * `<Card body={<Home section="x" />} />`, where the component lives in an
+ * attribute value, and `{list.map((x) => <Home section={x} />)}`, where it lives
+ * in a body expression. Neither is mdast — both are ESTrees hanging off
+ * `data.estree` — so both are reached with `walkEstree` rather than `walkTree`.
+ * An MDX `{/* … *\/}` comment is an expression whose ESTree has an empty body,
+ * so nothing inside one is reachable and nothing inside one is counted.
+ * @param {object} tree
  * @returns {Map<string, number>}
  */
-function componentCalls(body) {
+function componentCalls(tree) {
 	/** @type {Map<string, number>} */
 	const calls = new Map();
-	// Attributes that identify WHICH instance of a component this is. Anything
-	// else is presentation or prose and may legitimately differ per locale.
-	const identifying = ["section", "path", "paths", "scope", "name", "id"];
+	/** @param {string} key */
+	const record = (key) => calls.set(key, (calls.get(key) ?? 0) + 1);
 
-	// Strip fenced code blocks first, then scan the remaining text as a whole:
-	// Prettier wraps a long invocation across several lines, so a line-by-line
-	// scan sees `<ConfigOption` with no attributes and reports a phantom
-	// mismatch against the locale whose copy happened to fit on one line.
-	let stripped = "";
-	let fence = null;
-	for (const line of body.split(/\r?\n/)) {
-		const fenceMatch = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
-		if (fence === null) {
-			if (fenceMatch) {
-				fence = { char: fenceMatch[1][0], length: fenceMatch[1].length };
-				continue;
-			}
-			stripped += line + "\n";
-		} else if (
-			fenceMatch !== null &&
-			fenceMatch[1][0] === fence.char &&
-			fenceMatch[1].length >= fence.length &&
-			fenceMatch[2].trim() === ""
+	walkTree(tree, (node) => {
+		if (
+			node.type === "mdxFlowExpression" ||
+			node.type === "mdxTextExpression" ||
+			node.type === "mdxjsEsm"
 		) {
-			fence = null;
+			collectJsxCalls(node.data?.estree, record);
+			return;
 		}
-	}
+		if (node.type !== "mdxJsxFlowElement" && node.type !== "mdxJsxTextElement")
+			return;
 
-	// A component named inside inline code or a comment is prose about the
-	// component, not an invocation of it. `\`<ConfigOption path="x" />\`` in one
-	// locale's explanation would otherwise fail a gate about what the two pages
-	// RENDER, which is the opposite of useful.
-	//
-	// Scanned in one left-to-right pass rather than by chained .replace(): a
-	// single regex pass can leave an opening marker behind — `<!--<!-- x -->`
-	// removes the inner comment and leaves a bare `<!--` for the component scan
-	// to walk straight past. (CodeQL flags exactly this as incomplete
-	// multi-character sanitization.) Consuming each span as it is entered
-	// cannot leave a partial marker.
-	stripped = stripEnclosedSpans(stripped);
-
-	// Capitalised tag name is what distinguishes a component from raw HTML.
-	for (const match of stripped.matchAll(/<([A-Z][A-Za-z0-9]*)([^>]*?)\/?>/g)) {
-		const [, name, attrs] = match;
-		let key = name;
-		for (const attribute of identifying) {
-			const found = new RegExp(`\\b${attribute}=["']([^"']*)["']`).exec(attrs);
-			if (found) {
-				key = `${name}[${attribute}=${found[1]}]`;
-				break;
-			}
+		// Attribute values first: they are counted whatever the element itself is,
+		// because `<div style={<Home />}>` is still a lost section.
+		for (const attribute of node.attributes ?? []) {
+			// `mdxJsxAttribute` holds its expression under `value.data`;
+			// `mdxJsxExpressionAttribute` (`{...props}`) holds it under `data`.
+			collectJsxCalls(attribute.value?.data?.estree, record);
+			collectJsxCalls(attribute.data?.estree, record);
 		}
-		calls.set(key, (calls.get(key) ?? 0) + 1);
-	}
+
+		// A fragment (`<>`) has a null name and identifies nothing.
+		if (typeof node.name !== "string") return;
+		// MDX makes a node of every JSX element, raw HTML included, so the
+		// capitalised-name convention is what still separates a component from
+		// markup. `<details>` and `<summary>` are used as plain HTML in this
+		// corpus, and counting `<br />` and friends would make prose-level layout
+		// differences — which are allowed to differ per locale — fail this gate.
+		if (!/^[A-Z]/.test(node.name)) return;
+		record(
+			componentKey(node.name, (attribute) =>
+				mdastAttributeValue(node, attribute),
+			),
+		);
+	});
 	return calls;
 }
 
 /**
+ * Count every capitalised JSX element inside an ESTree, at any depth: nested in
+ * an attribute of another element, returned from a callback, inside a ternary.
+ * `walkEstree` is generic, so no expression shape has to be anticipated.
+ * @param {unknown} estree
+ * @param {(key: string) => void} record
+ */
+function collectJsxCalls(estree, record) {
+	if (estree === null || estree === undefined) return;
+	walkEstree(estree, (node) => {
+		if (node.type !== "JSXElement") return;
+		const name = jsxElementName(node);
+		if (name === null || !/^[A-Z]/.test(name)) return;
+		record(
+			componentKey(name, (attribute) => jsxAttributeValue(node, attribute)),
+		);
+	});
+}
+
+/**
+ * The name of an ESTree `JSXElement`, or null for a shape that names nothing.
+ * @param {any} node
+ * @returns {string | null}
+ */
+function jsxElementName(node) {
+	/** @param {any} name @returns {string | null} */
+	function nameOf(name) {
+		if (name === null || name === undefined) return null;
+		if (name.type === "JSXIdentifier") return name.name;
+		if (name.type === "JSXMemberExpression") {
+			const object = nameOf(name.object);
+			const property = nameOf(name.property);
+			return object === null || property === null
+				? null
+				: `${object}.${property}`;
+		}
+		if (name.type === "JSXNamespacedName") {
+			return `${name.namespace?.name}:${name.name?.name}`;
+		}
+		return null;
+	}
+	return nameOf(node.openingElement?.name);
+}
+
+/**
+ * Build the key for one invocation: the component name, plus the first
+ * identifying attribute it carries. Shared by the mdast and the ESTree side so
+ * the *same* invocation keys the same wherever it was written — an attribute
+ * expression counted differently from a top-level tag would be a mismatch this
+ * gate invented.
+ * @param {string} name
+ * @param {(attribute: string) => string | null} valueOf
+ * @returns {string}
+ */
+function componentKey(name, valueOf) {
+	for (const attribute of IDENTIFYING_ATTRIBUTES) {
+		const value = valueOf(attribute);
+		if (value === null) continue; // Absent, or valueless: identifies nothing.
+		return `${name}[${attribute}=${value}]`;
+	}
+	return name;
+}
+
+/**
+ * Read one identifying attribute off an mdast JSX element.
+ * A literal value is a plain string. An expression (`path={slug}`) arrives as a
+ * node carrying its own ESTree, canonicalised so the key is what the expression
+ * *is* rather than how it was laid out.
+ * @param {any} node
+ * @param {string} attribute
+ * @returns {string | null}
+ */
+function mdastAttributeValue(node, attribute) {
+	const found = (node.attributes ?? []).find(
+		(/** @type {any} */ candidate) =>
+			candidate.type === "mdxJsxAttribute" && candidate.name === attribute,
+	);
+	if (found === undefined) return null;
+	if (typeof found.value === "string") return found.value;
+	const estree = found.value?.data?.estree;
+	if (estree === null || estree === undefined) return null;
+	return `{${canonicalExpression(estree)}}`;
+}
+
+/**
+ * Read one identifying attribute off an ESTree `JSXElement`. A string literal
+ * yields its bare value, exactly as the mdast side does, so the two agree.
+ * @param {any} node
+ * @param {string} attribute
+ * @returns {string | null}
+ */
+function jsxAttributeValue(node, attribute) {
+	const found = (node.openingElement?.attributes ?? []).find(
+		(/** @type {any} */ candidate) =>
+			candidate.type === "JSXAttribute" && candidate.name?.name === attribute,
+	);
+	if (found === undefined) return null;
+	const value = found.value;
+	if (value === null || value === undefined) return null; // Valueless.
+	if (value.type === "Literal") {
+		return typeof value.value === "string"
+			? value.value
+			: canonicalLiteral(value);
+	}
+	if (value.type === "JSXExpressionContainer") {
+		if (value.expression?.type === "JSXEmptyExpression") return null;
+		return `{${canonicalExpression(value.expression)}}`;
+	}
+	return null;
+}
+
+/**
+ * Report component-looking tags written in a plain `.md` page.
+ *
+ * A `.md` page is markdown, not MDX: Astro passes `<Home section="faq" />`
+ * through as raw HTML, the browser makes an unknown element of it, and nothing
+ * renders. So it cannot be counted as an invocation — but it must not be
+ * ignored either, which is what this gate used to do. Every page in the corpus
+ * is `.mdx` today, so a `.md` page carrying a component tag would have been
+ * invisible on both sides: no component counted, no mismatch, green gate,
+ * missing section. It is a hard error instead — the page is broken in that
+ * locale whether or not its twin agrees.
+ *
+ * Only `html` nodes are looked at, so a tag inside a code fence, an indented
+ * block or an inline code span is a `code`/`inlineCode` node and cannot reach
+ * here — the parser owns those boundaries, as everywhere else in this file.
+ *
+ * What is textual is one thing: markdown has no comment node, so an HTML
+ * comment *inside* an html block (`<div>` … `<!-- <Home /> -->` … `</div>`) is
+ * part of that node's value. Comment spans are blanked with a single
+ * non-greedy pass — not the chained `.replace()` that once left a bare `<!--`
+ * behind — and an unclosed `<!--` blanks to end of node, which is conservative
+ * (a component after it is not reported) and already a hard error by way of
+ * `unterminatedConstruct`.
+ * @param {object} tree
+ * @returns {string[]}
+ */
+function strayComponentTags(tree) {
+	/** @type {Set<string>} */
+	const names = new Set();
+	walkTree(tree, (node) => {
+		if (node.type !== "html" || typeof node.value !== "string") return;
+		const visible = node.value.replace(/<!--[\s\S]*?(?:-->|$)/g, " ");
+		for (const match of visible.matchAll(/<\/?([A-Z][A-Za-z0-9_.]*)/g)) {
+			names.add(match[1]);
+		}
+	});
+	return [...names].sort();
+}
+
+/**
+ * Report a fenced code block or an HTML comment that is never closed.
+ *
+ * Markdown does not treat these as errors: an unclosed construct simply runs to
+ * end of file, swallowing every heading and component after it. The tree is
+ * therefore correct while the outline is a truncation the author did not mean,
+ * and two pages can agree on a truncated outline while differing after it. The
+ * caller fails such a page instead of comparing it.
+ *
+ * This is the one place that still reads source text, because "was a closing
+ * delimiter written" is not a question the tree answers — the node's range is
+ * the same either way. The range itself comes from the parser.
+ *
+ * Note on `--!>`: HTML accepts it as a comment terminator, CommonMark does not.
+ * An HTML block ends only at a line containing `-->`, so a comment closed with
+ * `--!>` really does swallow the rest of the document — verified against this
+ * same parser. The old code asserted the opposite (its fixture claimed such a
+ * comment was closed) and would have counted headings that do not render. It is
+ * reported as unterminated here, which is what the renderer actually does.
+ * @param {string} body
+ * @param {object} tree
+ * @returns {string | null}
+ */
+function unterminatedConstruct(body, tree) {
+	/** @type {string | null} */
+	let found = null;
+	walkTree(tree, (node) => {
+		if (found !== null || node.position === undefined) return;
+		const raw = body.slice(
+			node.position.start.offset,
+			node.position.end.offset,
+		);
+		if (node.type === "code") {
+			const lines = raw.split("\n");
+			const opening = /^[ \t]*(`{3,}|~{3,})/.exec(lines[0]);
+			if (opening === null) return; // Indented code block: nothing to close.
+			const marker = opening[1][0];
+			const closing = new RegExp(
+				`^[ \\t]*\\${marker}{${opening[1].length},}[ \\t]*$`,
+			);
+			if (lines.length < 2 || !closing.test(lines[lines.length - 1])) {
+				found = "code fence";
+			}
+		} else if (node.type === "html") {
+			const opened = raw.lastIndexOf("<!--");
+			if (opened !== -1 && !raw.slice(opened + 4).includes("-->")) {
+				found = "HTML comment";
+			}
+		}
+	});
+	return found;
+}
+
+/**
  * @param {string} relativePath page path relative to DOCS_DIR
- * @returns {{ keys: Set<string>, counts: Map<string, number>, flow: string[], levels: number[], unterminated: string | null }}
+ * @returns {{ keys: Set<string>, counts: Map<string, number>, flow: string[], yamlErrors: string[], levels: number[], components: Map<string, number>, strayComponents: string[], unterminated: string | null, parseError: string | null }}
  */
 function readPage(relativePath) {
 	const source = readFileSync(path.join(DOCS_DIR, relativePath), "utf8");
 	const { frontmatter, body } = splitFrontmatter(source);
+	const extension = path.extname(relativePath);
 	const shape =
 		frontmatter === null
-			? { keys: new Set(), counts: new Map(), flow: [] }
+			? { keys: new Set(), counts: new Map(), flow: [], yamlErrors: [] }
 			: frontmatterShape(frontmatter);
-	return { ...shape, ...headingLevels(body), components: componentCalls(body) };
+
+	let tree;
+	try {
+		tree = parseBody(body, extension);
+	} catch (error) {
+		// MDX is a real grammar and rejects invalid syntax — notably `<!-- -->`,
+		// which MDX has no notion of. A page that does not parse cannot be
+		// compared, and would not build either; report it rather than guess.
+		const place = error.line === undefined ? "" : ` (line ${error.line})`;
+		return {
+			...shape,
+			levels: [],
+			components: new Map(),
+			strayComponents: [],
+			unterminated: null,
+			parseError: `${error.reason ?? error.message}${place}`,
+		};
+	}
+
+	return {
+		...shape,
+		levels: headingLevels(tree),
+		components: componentCalls(tree),
+		// Only `.md` can carry one: in `.mdx` the same tag is a real invocation,
+		// counted above.
+		strayComponents: extension === ".md" ? strayComponentTags(tree) : [],
+		unterminated: unterminatedConstruct(body, tree),
+		parseError: null,
+	};
 }
 
 /** @param {Set<string>} a @param {Set<string>} b @returns {string[]} */
@@ -493,11 +853,11 @@ function missingFrom(a, b) {
 // Fixtures.
 //
 // Every blind spot this checker has had was invisible in the corpus: no page
-// uses flow style, a setext heading or a sequence of bare scalars, so a scanner
+// uses flow style, a setext heading or a sequence of bare scalars, so a checker
 // that stops seeing one of them reports a pass rather than a failure, and the
 // corpus run proves nothing about it. These fixtures are the only thing that
 // does, so they run on every invocation instead of behind a flag no CI job
-// calls — they cost a few microseconds and no I/O.
+// calls — they cost a few milliseconds and no I/O.
 //
 // They are inline strings rather than files on disk because several are
 // deliberately malformed (an unclosed fence, flow-style YAML) and `prettier
@@ -517,13 +877,34 @@ function shapeOf(source) {
 	return frontmatterShape(frontmatter ?? "");
 }
 
-/** @param {string} source @returns {ReturnType<typeof headingLevels>} */
-function outlineOf(source) {
-	return headingLevels(splitFrontmatter(source).body);
+/** @param {string} source @param {string} [extension] */
+function pageOf(source, extension = ".mdx") {
+	const { body } = splitFrontmatter(source);
+	const tree = parseBody(body, extension);
+	return {
+		levels: headingLevels(tree),
+		components: componentCalls(tree),
+		strayComponents: extension === ".md" ? strayComponentTags(tree) : [],
+		unterminated: unterminatedConstruct(body, tree),
+	};
+}
+
+/** @param {string} source @param {string} [extension] @returns {string} */
+function outlineOf(source, extension = ".mdx") {
+	return pageOf(source, extension).levels.join(",");
+}
+
+/** @param {Map<string, number>} calls @returns {string} */
+function callList(calls) {
+	return [...calls]
+		.map(([key, count]) => `${key}x${count}`)
+		.sort()
+		.join(" ");
 }
 
 /** @type {[string, () => void][]} */
 const SELF_TESTS = [
+	// -- frontmatter shape ---------------------------------------------------
 	[
 		"bare scalar sequence entries are counted",
 		() => {
@@ -619,7 +1000,7 @@ head:
 		},
 	],
 	[
-		"flow-style values are reported",
+		"flow-style collections are reported at their path",
 		() => {
 			const shape = shapeOf(`---
 title: T
@@ -629,10 +1010,16 @@ list:
   - [nested, flow]
 ---
 `);
-			expect(shape.flow.length === 3, `flow entries: ${shape.flow.length}`);
 			expect(
-				shape.flow[0] === "tags: [a, b, c]",
-				`first flow line: ${shape.flow[0]}`,
+				shape.flow.join(",") === "tags,sidebar,list[]",
+				`flow: ${shape.flow.join(",")}`,
+			);
+			// Reported, but read correctly all the same — the parser is not blind
+			// inside a flow collection the way the old scanner was.
+			expect(shape.keys.has("sidebar.order"), "flow mapping key not read");
+			expect(
+				shape.counts.get("tags") === 3,
+				`tags = ${shape.counts.get("tags")}`,
 			);
 		},
 	],
@@ -654,9 +1041,23 @@ tags:
 		},
 	],
 	[
-		"setext headings are recognised",
+		"malformed YAML is reported rather than mis-shaped",
 		() => {
-			const outline = outlineOf(`---
+			const shape = shapeOf(`---
+title: T
+hero:
+   tagline: x
+  actions: y
+---
+`);
+			expect(shape.yamlErrors.length > 0, "bad YAML parsed clean");
+		},
+	],
+	// -- heading outline -----------------------------------------------------
+	[
+		"setext and ATX headings are both counted",
+		() => {
+			const levels = outlineOf(`---
 title: T
 ---
 
@@ -670,16 +1071,13 @@ Level two
 
 ## ATX two
 `);
-			expect(
-				outline.levels.join(",") === "1,2,2",
-				`levels: [${outline.levels.join(" ")}]`,
-			);
+			expect(levels === "1,2,2", `levels: [${levels}]`);
 		},
 	],
 	[
 		"rules that are not setext underlines stay invisible",
 		() => {
-			const outline = outlineOf(`---
+			const levels = outlineOf(`---
 title: T
 ---
 
@@ -691,6 +1089,7 @@ A paragraph followed by a thematic break.
 ---
 
 <Badge text="x" />
+
 ---
 
 | a | b |
@@ -700,16 +1099,13 @@ A paragraph followed by a thematic break.
 
 # ATX one
 `);
-			expect(
-				outline.levels.join(",") === "1",
-				`levels: [${outline.levels.join(" ")}]`,
-			);
+			expect(levels === "1", `levels: [${levels}]`);
 		},
 	],
 	[
-		"code fences hide headings and an unclosed one is reported",
+		"headings inside a code fence are not counted",
 		() => {
-			const closed = outlineOf(`---
+			const page = pageOf(`---
 title: T
 ---
 
@@ -719,20 +1115,23 @@ title: T
 # not a heading
 Underlined
 ---
+<Home section="ghost" />
 \`\`\`
 
 ### After
 `);
+			expect(page.levels.join(",") === "2,3", `levels: [${page.levels}]`);
+			expect(page.unterminated === null, `unterminated: ${page.unterminated}`);
 			expect(
-				closed.levels.join(",") === "2,3",
-				`levels: [${closed.levels.join(" ")}]`,
+				callList(page.components) === "",
+				`components: ${callList(page.components)}`,
 			);
-			expect(
-				closed.unterminated === null,
-				`unterminated: ${closed.unterminated}`,
-			);
-
-			const open = outlineOf(`---
+		},
+	],
+	[
+		"an unclosed code fence is reported",
+		() => {
+			const page = pageOf(`---
 title: T
 ---
 
@@ -740,17 +1139,105 @@ title: T
 
 \`\`\`text
 never closed
+## swallowed
 `);
 			expect(
-				open.unterminated === "code fence",
-				`unterminated: ${open.unterminated}`,
+				page.unterminated === "code fence",
+				`unterminated: ${page.unterminated}`,
+			);
+			expect(page.levels.join(",") === "2", `levels: [${page.levels}]`);
+		},
+	],
+	[
+		"a longer fence inside a block does not close it",
+		() => {
+			const page = pageOf(`---
+title: T
+---
+
+\`\`\`\`md
+\`\`\`
+## inner
+\`\`\`
+\`\`\`\`
+
+## After
+`);
+			expect(page.levels.join(",") === "2", `levels: [${page.levels}]`);
+			expect(page.unterminated === null, `unterminated: ${page.unterminated}`);
+		},
+	],
+	[
+		"headings inside an MDX comment are not counted",
+		() => {
+			const page = pageOf(`---
+title: T
+---
+
+{/* a note
+## hidden
+<Home section="ghost" />
+*/}
+
+## Visible
+`);
+			expect(page.levels.join(",") === "2", `levels: [${page.levels}]`);
+			expect(
+				callList(page.components) === "",
+				`components: ${callList(page.components)}`,
 			);
 		},
 	],
 	[
-		"an HTML comment closed with --!> is closed",
+		"headings inside an HTML comment are not counted (.md)",
 		() => {
-			const outline = outlineOf(`---
+			const page = pageOf(
+				`---
+title: T
+---
+
+<!-- a note
+## hidden
+<Home section="ghost" />
+-->
+
+## Visible
+`,
+				".md",
+			);
+			expect(page.levels.join(",") === "2", `levels: [${page.levels}]`);
+			expect(page.unterminated === null, `unterminated: ${page.unterminated}`);
+		},
+	],
+	[
+		"a nested HTML comment cannot leak a component (.md)",
+		() => {
+			// The old chained-.replace() stripper left a bare `<!--` behind here and
+			// walked straight past the component. The parser has no such seam.
+			const page = pageOf(
+				`---
+title: T
+---
+
+<!--<!-- x -->
+
+## Visible
+`,
+				".md",
+			);
+			expect(
+				callList(page.components) === "",
+				`components: ${callList(page.components)}`,
+			);
+		},
+	],
+	[
+		"an HTML comment closed only with --!> is reported, not trusted (.md)",
+		() => {
+			// CommonMark ends an HTML block at `-->` alone, so this really does
+			// swallow the rest of the file; the old fixture claimed otherwise.
+			const page = pageOf(
+				`---
 title: T
 ---
 
@@ -759,14 +1246,491 @@ title: T
 --!>
 
 ## Visible
-`);
-			expect(
-				outline.levels.join(",") === "2",
-				`levels: [${outline.levels.join(" ")}]`,
+`,
+				".md",
 			);
 			expect(
-				outline.unterminated === null,
-				`unterminated: ${outline.unterminated}`,
+				page.unterminated === "HTML comment",
+				`unterminated: ${page.unterminated}`,
+			);
+			expect(page.levels.join(",") === "", `levels: [${page.levels}]`);
+		},
+	],
+	[
+		"an HTML comment in MDX is a parse error, not a comment",
+		() => {
+			let threw = false;
+			try {
+				pageOf(`---
+title: T
+---
+
+<!-- MDX has no HTML comments -->
+`);
+			} catch {
+				threw = true;
+			}
+			expect(threw, "MDX accepted an HTML comment");
+		},
+	],
+	// -- component invocations ----------------------------------------------
+	[
+		"components are keyed by their identifying attribute",
+		() => {
+			const page = pageOf(`---
+title: T
+---
+
+<Home section="faq" />
+<Home section="faq" />
+<Home section="why" />
+<ConfigOption path="mikrotik.address" />
+<RuleSet scope="input" />
+<Badge text="translated" />
+`);
+			expect(
+				callList(page.components) ===
+					"Badgex1 ConfigOption[path=mikrotik.address]x1 Home[section=faq]x2 Home[section=why]x1 RuleSet[scope=input]x1",
+				`components: ${callList(page.components)}`,
+			);
+		},
+	],
+	[
+		"an invocation wrapped across lines keys the same as a one-liner",
+		() => {
+			const wrapped = pageOf(`---
+title: T
+---
+
+<ConfigOption
+  path="mikrotik.address"
+  title="A long translated title that made Prettier wrap this"
+/>
+`);
+			const oneLine = pageOf(`---
+title: T
+---
+
+<ConfigOption path="mikrotik.address" title="Corto" />
+`);
+			expect(
+				callList(wrapped.components) === callList(oneLine.components),
+				`${callList(wrapped.components)} vs ${callList(oneLine.components)}`,
+			);
+		},
+	],
+	[
+		"a component named in inline code is not an invocation, at any tick count",
+		() => {
+			// Defect #3: a one-character delimiter closed a ``double-backtick`` span
+			// at its first tick and leaked the rest of the line to the scan.
+			const page = pageOf(`---
+title: T
+---
+
+Use \`<Home section="ghost" />\` to render it.
+
+Or \`\`<ConfigOption path="ghost" /> and a \` tick\`\` inline.
+
+<Home section="real" />
+`);
+			expect(
+				callList(page.components) === "Home[section=real]x1",
+				`components: ${callList(page.components)}`,
+			);
+		},
+	],
+	[
+		"nested and text-level components are both counted",
+		() => {
+			const page = pageOf(`---
+title: T
+---
+
+<Tabs>
+  <TabItem label="One">
+    <ConfigOption path="a.b" />
+  </TabItem>
+</Tabs>
+
+Heading with a badge <VersionBadge /> inline.
+`);
+			expect(
+				callList(page.components) ===
+					"ConfigOption[path=a.b]x1 TabItemx1 Tabsx1 VersionBadgex1",
+				`components: ${callList(page.components)}`,
+			);
+		},
+	],
+	[
+		"an expression-valued identifying attribute still keys the instance",
+		() => {
+			const page = pageOf(`---
+title: T
+---
+
+<ConfigOption path={"a.b"} />
+`);
+			expect(
+				callList(page.components) === `ConfigOption[path={"a.b"}]x1`,
+				`components: ${callList(page.components)}`,
+			);
+		},
+	],
+	[
+		"an expression key does not depend on how Prettier wrapped it",
+		() => {
+			// Prettier adds a trailing comma when it breaks a literal across lines.
+			// Collapsing whitespace in the source text — what this used to do — left
+			// that comma in the key, so one invocation keyed two ways and parity
+			// failed with nothing behind it.
+			const inline = pageOf(`---
+title: T
+---
+
+<ConfigOption paths={["a.b", "c.d"]} title="Short" />
+`);
+			const broken = pageOf(`---
+title: T
+---
+
+<ConfigOption
+  paths={[
+    "a.b",
+    "c.d",
+  ]}
+  title="Un titulo traducido lo bastante largo como para partir la etiqueta"
+/>
+`);
+			expect(
+				callList(inline.components) === `ConfigOption[paths={["a.b","c.d"]}]x1`,
+				`inline: ${callList(inline.components)}`,
+			);
+			expect(
+				callList(inline.components) === callList(broken.components),
+				`${callList(inline.components)} vs ${callList(broken.components)}`,
+			);
+		},
+	],
+	[
+		"whitespace inside a string literal is meaning, not layout",
+		() => {
+			// The mirror of the case above: collapsing the source text merged two
+			// genuinely different instances into one key, so a real divergence
+			// between the locales passed silently.
+			const wide = pageOf(`---
+title: T
+---
+
+<ConfigOption path={"a  b"} />
+`);
+			const narrow = pageOf(`---
+title: T
+---
+
+<ConfigOption path={"a b"} />
+`);
+			expect(
+				callList(wide.components) !== callList(narrow.components),
+				`both keyed as ${callList(wide.components)}`,
+			);
+		},
+	],
+	[
+		"a comment inside an expression does not change the key",
+		() => {
+			const commented = pageOf(`---
+title: T
+---
+
+<ConfigOption path={/* which one */ slug} />
+`);
+			const plain = pageOf(`---
+title: T
+---
+
+<ConfigOption path={slug} />
+`);
+			expect(
+				callList(commented.components) === "ConfigOption[path={slug}]x1",
+				`components: ${callList(commented.components)}`,
+			);
+			expect(
+				callList(commented.components) === callList(plain.components),
+				`${callList(commented.components)} vs ${callList(plain.components)}`,
+			);
+		},
+	],
+	[
+		"a component nested in an attribute expression is counted",
+		() => {
+			// The AST rewrite lost this: walkTree stopped at the mdast element and
+			// never entered the attribute, so the page yielded `Card` alone and a
+			// locale that dropped the nested invocation compared equal.
+			const page = pageOf(`---
+title: T
+---
+
+<Card body={<Home section="x" />} />
+`);
+			expect(
+				callList(page.components) === "Cardx1 Home[section=x]x1",
+				`components: ${callList(page.components)}`,
+			);
+		},
+	],
+	[
+		"a nested invocation keys the same as the same tag written at top level",
+		() => {
+			const nested = pageOf(`---
+title: T
+---
+
+<Card body={<Home section="faq" />} />
+`);
+			const top = pageOf(`---
+title: T
+---
+
+<Home section="faq" />
+`);
+			expect(
+				nested.components.get("Home[section=faq]") === 1,
+				`nested: ${callList(nested.components)}`,
+			);
+			expect(
+				top.components.get("Home[section=faq]") === 1,
+				`top: ${callList(top.components)}`,
+			);
+		},
+	],
+	[
+		"components nested several expressions deep are all counted",
+		() => {
+			const page = pageOf(`---
+title: T
+---
+
+<Card body={<Wrapper slot={<Home section={"deep"} />} />} />
+`);
+			expect(
+				callList(page.components) ===
+					`Cardx1 Home[section={"deep"}]x1 Wrapperx1`,
+				`components: ${callList(page.components)}`,
+			);
+		},
+	],
+	[
+		"components inside a body expression are counted",
+		() => {
+			const page = pageOf(`---
+title: T
+---
+
+{sections.map((section) => (
+  <Home section={section} />
+))}
+
+Inline {<VersionBadge />} too.
+`);
+			expect(
+				callList(page.components) ===
+					"Home[section={section}]x1 VersionBadgex1",
+				`components: ${callList(page.components)}`,
+			);
+		},
+	],
+	[
+		"lowercase tags nested in an expression stay excluded",
+		() => {
+			const page = pageOf(`---
+title: T
+---
+
+<Card body={<span>x</span>} />
+`);
+			expect(
+				callList(page.components) === "Cardx1",
+				`components: ${callList(page.components)}`,
+			);
+		},
+	],
+	// -- component tags in a .md page ----------------------------------------
+	[
+		"components in a plain .md page are markup, and a hard error",
+		() => {
+			const page = pageOf(
+				`---
+title: T
+---
+
+<Home section="faq" />
+
+## Visible
+`,
+				".md",
+			);
+			// Not counted: a .md page really does render nothing here, so comparing
+			// it as an invocation would compare a section that does not exist.
+			expect(
+				callList(page.components) === "",
+				`components: ${callList(page.components)}`,
+			);
+			expect(
+				page.strayComponents.join(",") === "Home",
+				`stray: [${page.strayComponents}]`,
+			);
+			expect(page.levels.join(",") === "2", `levels: [${page.levels}]`);
+		},
+	],
+	[
+		"an inline component tag in a .md paragraph is caught too",
+		() => {
+			const page = pageOf(
+				`---
+title: T
+---
+
+Text with <VersionBadge /> in the middle of a sentence.
+`,
+				".md",
+			);
+			expect(
+				page.strayComponents.join(",") === "VersionBadge",
+				`stray: [${page.strayComponents}]`,
+			);
+		},
+	],
+	[
+		"a closing tag alone still reports the component in a .md page",
+		() => {
+			const page = pageOf(
+				`---
+title: T
+---
+
+<Tabs>
+
+text
+
+</Tabs>
+`,
+				".md",
+			);
+			expect(
+				page.strayComponents.join(",") === "Tabs",
+				`stray: [${page.strayComponents}]`,
+			);
+		},
+	],
+	[
+		"plain HTML in a .md page is not a stray component",
+		() => {
+			const page = pageOf(
+				`---
+title: T
+---
+
+<details>
+<summary>x</summary>
+</details>
+
+Text with a <br /> in it.
+`,
+				".md",
+			);
+			expect(
+				page.strayComponents.length === 0,
+				`stray: [${page.strayComponents}]`,
+			);
+		},
+	],
+	[
+		"a commented-out component in a .md page is not reported",
+		() => {
+			const page = pageOf(
+				`---
+title: T
+---
+
+<!-- <Home section="faq" /> -->
+
+<div>
+  <!-- <ConfigOption path="a.b" /> -->
+</div>
+
+## Visible
+`,
+				".md",
+			);
+			expect(
+				page.strayComponents.length === 0,
+				`stray: [${page.strayComponents}]`,
+			);
+			expect(page.unterminated === null, `unterminated: ${page.unterminated}`);
+		},
+	],
+	[
+		"a component beside a comment in the same .md html block is still caught",
+		() => {
+			const page = pageOf(
+				`---
+title: T
+---
+
+<div>
+  <!-- a note -->
+  <Home section="faq" />
+</div>
+`,
+				".md",
+			);
+			expect(
+				page.strayComponents.join(",") === "Home",
+				`stray: [${page.strayComponents}]`,
+			);
+		},
+	],
+	[
+		"a component in a .md code block or code span is not a stray tag",
+		() => {
+			const page = pageOf(
+				`---
+title: T
+---
+
+Use \`<Home section="ghost" />\` to render it.
+
+\`\`\`mdx
+<ConfigOption path="ghost" />
+\`\`\`
+
+    <RuleSet scope="ghost" />
+`,
+				".md",
+			);
+			expect(
+				page.strayComponents.length === 0,
+				`stray: [${page.strayComponents}]`,
+			);
+		},
+	],
+	[
+		"a .mdx page never reports stray tags — they are real invocations there",
+		() => {
+			const page = pageOf(`---
+title: T
+---
+
+<Home section="faq" />
+`);
+			expect(
+				page.strayComponents.length === 0,
+				`stray: [${page.strayComponents}]`,
+			);
+			expect(
+				callList(page.components) === "Home[section=faq]x1",
+				`components: ${callList(page.components)}`,
 			);
 		},
 	],
@@ -819,17 +1783,19 @@ if (englishPages.length === 0) {
 /** @type {string[]} */ const componentMismatches = [];
 /** @type {string[]} */ const unreadableOutlines = [];
 /** @type {string[]} */ const unreadableFrontmatter = [];
+/** @type {string[]} */ const unparseablePages = [];
+/** @type {string[]} */ const strayComponentPages = [];
 
 const englishSet = new Set(englishPages);
 /** @type {Map<string, ReturnType<typeof readPage>>} */
-const englishCache = new Map();
+const pageCache = new Map();
 
 /** @param {string} relativePath @returns {ReturnType<typeof readPage>} */
-function readEnglish(relativePath) {
-	let page = englishCache.get(relativePath);
+function read(relativePath) {
+	let page = pageCache.get(relativePath);
 	if (page === undefined) {
 		page = readPage(relativePath);
-		englishCache.set(relativePath, page);
+		pageCache.set(relativePath, page);
 	}
 	return page;
 }
@@ -847,12 +1813,24 @@ for (const locale of LOCALES) {
 			continue;
 		}
 
-		const english = readEnglish(page);
-		const translated = readPage(`${locale}/${page}`);
+		const english = read(page);
+		const translated = read(`${locale}/${page}`);
 
-		// An unclosed fence hides every heading after it, so the outline compared
-		// below would be meaningless — and two pages can agree on a truncated
-		// outline while differing after the fence. Fail the page instead.
+		// A page that does not parse has no outline and no components to compare.
+		// Reported once, here; the structural comparisons below are then skipped so
+		// a parse failure does not also masquerade as "every heading disappeared".
+		if (english.parseError !== null) {
+			unparseablePages.push(`${page} — ${english.parseError}`);
+		}
+		if (translated.parseError !== null) {
+			unparseablePages.push(`${locale}/${page} — ${translated.parseError}`);
+		}
+		const bodiesComparable =
+			english.parseError === null && translated.parseError === null;
+
+		// An unclosed fence or comment hides every heading after it, so the outline
+		// compared below would be a truncation — and two pages can agree on a
+		// truncated outline while differing after it. Fail the page instead.
 		if (english.unterminated !== null) {
 			unreadableOutlines.push(`${page} — unterminated ${english.unterminated}`);
 		}
@@ -862,21 +1840,38 @@ for (const locale of LOCALES) {
 			);
 		}
 
-		// Flow style is outside the subset frontmatterShape reads, so the key paths
-		// and entry counts compared below would be wrong rather than merely
-		// incomplete. Same reasoning as the unterminated fence above: report the
-		// page, never compare a shape already known to be false.
-		if (english.flow.length > 0) {
-			unreadableFrontmatter.push(`${page} — ${english.flow.join(" / ")}`);
-		}
-		if (translated.flow.length > 0) {
-			unreadableFrontmatter.push(
-				`${locale}/${page} — ${translated.flow.join(" / ")}`,
-			);
+		// Malformed YAML yields no shape at all; flow style yields a correct shape
+		// that this project has decided not to accept. Both are reported here; the
+		// first also suppresses the diff below, for the reason given there.
+		for (const [label, shape] of [
+			[page, english],
+			[`${locale}/${page}`, translated],
+		]) {
+			if (shape.yamlErrors.length > 0) {
+				unreadableFrontmatter.push(`${label} — ${shape.yamlErrors.join("; ")}`);
+			}
+			if (shape.flow.length > 0) {
+				unreadableFrontmatter.push(
+					`${label} — flow style at: ${shape.flow.join(", ")}`,
+				);
+			}
 		}
 
-		const onlyEnglish = missingFrom(english.keys, translated.keys);
-		const onlyTranslated = missingFrom(translated.keys, english.keys);
+		// Only the YAML errors suppress the diff. `frontmatterShape` returns empty
+		// keys and counts for malformed YAML, so comparing anyway reports every
+		// key as missing on one side and extra on the other — a wall of noise
+		// stacked on top of the parse error that actually explains it. Flow style
+		// is different: it yields a correct shape this project simply declines to
+		// accept, so those pages are still worth diffing.
+		const frontmatterComparable =
+			english.yamlErrors.length === 0 && translated.yamlErrors.length === 0;
+
+		const onlyEnglish = frontmatterComparable
+			? missingFrom(english.keys, translated.keys)
+			: [];
+		const onlyTranslated = frontmatterComparable
+			? missingFrom(translated.keys, english.keys)
+			: [];
 		const details = [];
 		if (onlyEnglish.length > 0) {
 			details.push(`missing in ${locale}: ${onlyEnglish.join(", ")}`);
@@ -884,9 +1879,12 @@ for (const locale of LOCALES) {
 		if (onlyTranslated.length > 0) {
 			details.push(`extra in ${locale}: ${onlyTranslated.join(", ")}`);
 		}
-		for (const sequence of [
-			...new Set([...english.counts.keys(), ...translated.counts.keys()]),
-		].sort()) {
+		const sequences = frontmatterComparable
+			? [
+					...new Set([...english.counts.keys(), ...translated.counts.keys()]),
+				].sort()
+			: [];
+		for (const sequence of sequences) {
 			const inEnglish = english.counts.get(sequence) ?? 0;
 			const inTranslated = translated.counts.get(sequence) ?? 0;
 			if (inEnglish !== inTranslated) {
@@ -898,6 +1896,8 @@ for (const locale of LOCALES) {
 		if (details.length > 0) {
 			frontmatterMismatches.push(`${locale}/${page} — ${details.join("; ")}`);
 		}
+
+		if (!bodiesComparable) continue;
 
 		// A component invocation present in one locale and not the other drops a
 		// whole rendered section while the heading above it survives.
@@ -921,7 +1921,19 @@ for (const locale of LOCALES) {
 			componentMismatches.push(`${page} — ${componentDiff.join("; ")}`);
 		}
 
-		if (english.levels.join(",") !== translated.levels.join(",")) {
+		// Only compare outlines that are trustworthy. An unterminated fence or
+		// comment hides every heading after it, so the levels array is a
+		// prefix of the real one — and two pages can agree on a truncated
+		// prefix while differing after it, or disagree only because one side
+		// truncated. Either way the comparison says nothing, and reporting it
+		// on top of the unterminated-construct failure sends the reader
+		// looking for a section that is not missing. The page already fails.
+		const outlineIsReadable =
+			english.unterminated === null && translated.unterminated === null;
+		if (
+			outlineIsReadable &&
+			english.levels.join(",") !== translated.levels.join(",")
+		) {
 			headingMismatches.push(
 				`${page} — en: [${english.levels.join(" ")}] (${english.levels.length} headings)\n` +
 					`${" ".repeat(4)}${locale}: [${translated.levels.join(" ")}] (${translated.levels.length} headings)`,
@@ -931,6 +1943,25 @@ for (const locale of LOCALES) {
 
 	for (const page of localePages) {
 		if (!englishSet.has(page)) orphanTranslations.push(`${locale}/${page}`);
+	}
+}
+
+// A component tag in a `.md` page renders as nothing, so it is a defect in that
+// one page rather than a disagreement between twins — nothing a comparison
+// could ever surface. Checked over every page, twinned or not, so an
+// untranslated page or an orphaned translation is still covered. `read` is
+// cached, so the twins compared above are not parsed twice.
+for (const page of [
+	...englishPages,
+	...LOCALES.flatMap((locale) =>
+		listPages(path.join(DOCS_DIR, locale)).map((entry) => `${locale}/${entry}`),
+	),
+]) {
+	const stray = read(page).strayComponents;
+	if (stray.length > 0) {
+		strayComponentPages.push(
+			`${page} — ${stray.map((name) => `<${name}>`).join(", ")}`,
+		);
 	}
 }
 
@@ -968,6 +1999,16 @@ report(
 	"A component rendered in one locale and not the other drops a whole section while its heading survives.",
 );
 report(
+	"Component tags in a .md page",
+	strayComponentPages,
+	"A .md page is markdown, not MDX: the tag is emitted as raw HTML and renders nothing. Rename the page to .mdx (and import the component), or remove the tag.",
+);
+report(
+	"Pages that could not be parsed",
+	unparseablePages,
+	"The page is not valid MDX, so it has no structure to compare (and would not build).",
+);
+report(
 	"Outlines that could not be read",
 	unreadableOutlines,
 	"A code fence or HTML comment is never closed, so every heading after it is invisible to this check.",
@@ -975,7 +2016,7 @@ report(
 report(
 	"Frontmatter that could not be read",
 	unreadableFrontmatter,
-	"Flow-style YAML is not supported in frontmatter; use block style (one key or `- ` entry per line).",
+	"Frontmatter must be valid YAML in block style (one key or `- ` entry per line).",
 );
 
 const failures =
@@ -984,6 +2025,8 @@ const failures =
 	frontmatterMismatches.length +
 	headingMismatches.length +
 	componentMismatches.length +
+	strayComponentPages.length +
+	unparseablePages.length +
 	unreadableOutlines.length +
 	unreadableFrontmatter.length;
 
@@ -995,10 +2038,13 @@ if (failures > 0) {
 }
 
 // Deliberately states the scope. This gate compares page set, frontmatter key
-// shape and heading outline — NOT body prose, table rows or code blocks. A
-// stale translation of a paragraph whose English changed passes here, and it is
-// meant to: catching that needs per-string provenance, not a structural diff.
+// shape, heading outline and component invocations — NOT body prose, table rows
+// or code block contents. A stale translation of a paragraph whose English
+// changed passes here, and it is meant to: catching that needs per-string
+// provenance, not a structural diff.
 console.log(
 	`✓ i18n parity: ${englishPages.length} English pages, ${twinCount} twin(s) across ${LOCALES.join(", ")} — ` +
-		"page set, frontmatter keys, heading outline and component invocations match (structure only; body prose is not compared).",
+		"page set, frontmatter keys, heading outline and component invocations match " +
+		"(invocations counted inside MDX attribute and body expressions too; a component tag in a .md page is a hard error). " +
+		"Structure only; body prose is not compared.",
 );

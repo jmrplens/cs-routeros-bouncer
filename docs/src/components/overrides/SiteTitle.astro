@@ -1,0 +1,43 @@
+---
+/**
+ * The header lockup: the mark, inlined, beside the wordmark as live type.
+ *
+ * This replaces Starlight's SiteTitle, and with it the `logo:` option in
+ * astro.config.mjs. That option could only ever emit an `<img>` pair — one
+ * file per theme, each hidden by CSS in the other — which meant the mark
+ * could not read a single token off the page it sat on, and meant the
+ * accessible name of this link was announced twice: once from the visible
+ * image's `alt`, and again from the `<span>` beside it.
+ *
+ * Inlined, the mark is styled by `src/styles/brand.css` like anything else on
+ * the page, so it follows the theme switch rather than a second copy of the
+ * palette; and it is `aria-hidden`, because the wordmark next to it is real
+ * text and already names the link.
+ */
+import { brandSvg, WORDMARK, WORDMARK_TEXT } from "../../lib/brand";
+
+const { siteTitle, siteTitleHref } = Astro.locals.starlightRoute;
+
+// The wordmark is the site title, set. If the two ever disagree the header is
+// lying about what site the reader is on, and because the wordmark is drawn
+// from its own constants nothing else would notice.
+if (siteTitle !== WORDMARK_TEXT) {
+	throw new Error(
+		`SiteTitle: Starlight's title is "${siteTitle}" but the wordmark spells ` +
+			`"${WORDMARK_TEXT}". Update WORDMARK in src/lib/brand.ts to match the ` +
+			"`title` in astro.config.mjs, splitting it into affixes and stem.",
+	);
+}
+
+const mark = brandSvg("site-title");
+---
+
+<a href={siteTitleHref} class="site-title sl-flex">
+	<Fragment set:html={mark} />
+	{/* prettier-ignore */}
+	<span class="rb-wordmark" translate="no"
+		><span class="rb-wordmark__affix">{WORDMARK.prefix}</span><span
+			class="rb-wordmark__stem">{WORDMARK.stem}</span
+		><span class="rb-wordmark__affix">{WORDMARK.suffix}</span></span
+	>
+</a>

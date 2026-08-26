@@ -518,13 +518,13 @@ export const addressListLifecycle = {
 			title: "What the daemon leaves behind",
 			body: "Shutdown removes every rule above and no address-list entry. Entries expire on their own MikroTik timeout, which is the CrowdSec decision duration; protection therefore outlives the daemon by whatever is left of it.",
 			caveat:
-				"A decision that carries no duration is written with no timeout at all, so that entry stays on the router until something removes it — the next reconciliation, or you.",
+				"A decision whose duration resolves to zero or less — CrowdSec does emit negative remaining durations — is written with no timeout at all, so that entry stays on the router until something removes it: the next reconciliation, or you. A decision carrying no duration field is discarded earlier and never reaches the router.",
 		},
 		es: {
 			title: "Lo que el daemon deja atrás",
 			body: "Al apagarse elimina todas las reglas anteriores y ninguna entrada de las address-lists. Las entradas expiran por su propio timeout de MikroTik, que es la duración de la decisión de CrowdSec; la protección, por tanto, sobrevive al daemon lo que quede de ella.",
 			caveat:
-				"Una decisión sin duración se escribe sin timeout alguno, así que esa entrada permanece en el router hasta que algo la elimine: la siguiente reconciliación, o tú.",
+				"Una decisión cuya duración resuelve a cero o menos —CrowdSec sí emite duraciones restantes negativas— se escribe sin timeout alguno, así que esa entrada permanece en el router hasta que algo la elimine: la siguiente reconciliación, o tú. Una decisión que no trae campo de duración se descarta antes y nunca llega al router.",
 		},
 	},
 };

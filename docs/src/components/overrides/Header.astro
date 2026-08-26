@@ -1,31 +1,181 @@
 ---
-import Default from "@astrojs/starlight/components/Header.astro";
+import config from "virtual:starlight/user-config";
 
-type Props = Record<string, unknown>;
+/*
+ * These five are imported from `virtual:starlight/components/*`, exactly as
+ * upstream's Header does, because that is what resolves to a project override
+ * when one is registered in the `components:` map — `SiteTitle` is overridden
+ * in this project, and importing
+ * `@astrojs/starlight/components/SiteTitle.astro` by path would quietly render
+ * Starlight's default instead.
+ *
+ * The `@ts-expect-error` lines are the price. Those module names are declared
+ * in Starlight's `virtual-internal.d.ts`, which is not part of a consumer's
+ * type graph, so `astro check` reports ts(2307) for every one of them even
+ * though Vite resolves them at build time. If a future Starlight release ships
+ * those declarations publicly, these comments become "unused" and the check
+ * fails — which is the right way round: it asks for a deletion, not a debug.
+ */
+// @ts-expect-error - virtual module, declared only in Starlight's internal types
+import LanguageSelect from "virtual:starlight/components/LanguageSelect";
+// @ts-expect-error - virtual module, declared only in Starlight's internal types
+import Search from "virtual:starlight/components/Search";
+// @ts-expect-error - virtual module, declared only in Starlight's internal types
+import SiteTitle from "virtual:starlight/components/SiteTitle";
+// @ts-expect-error - virtual module, declared only in Starlight's internal types
+import SocialIcons from "virtual:starlight/components/SocialIcons";
+// @ts-expect-error - virtual module, declared only in Starlight's internal types
+import ThemeSelect from "virtual:starlight/components/ThemeSelect";
 
-const props = Astro.props as Props;
+import ThemeToggle from "../ThemeToggle.astro";
+
+/**
+ * Render the `Search` component if Pagefind is enabled or the default search
+ * component has been overridden. (Upstream's condition, kept as-is.)
+ */
+const shouldRenderSearch =
+	config.pagefind ||
+	config.components.Search !== "@astrojs/starlight/components/Search.astro";
 ---
 
-<Default {...props}><slot /></Default>
-
 {
-	/* Starlight hides the whole right-group (social icons, theme select,
-language select) below the 50rem breakpoint, leaving language switching
-buried at the bottom of the mobile menu drawer. Surface just the language
-select in the mobile header bar: re-enable the group's flex layout and hide
-its other children. These styles are unlayered, so they win over Starlight's
-`@layer`-scoped `sl-hidden` utility without needing `!important`. The header
-shell already reserves right-hand space for the fixed hamburger button
-(see PageFrame's `[data-has-sidebar] .header` padding), so nothing overlaps. */
+	/* ============================================================
+WHY THIS IS A COPY OF STARLIGHT'S Header.astro (0.41.8) AND NOT A
+WRAPPER.
+
+The previous version of this file rendered `<Default />` and then
+patched it with an unlayered `is:global` block. That can hide things
+inside the default header, but it cannot put anything into it, and the
+mobile theme control has to go INTO the bar. A wrapper had no way to do
+that.
+
+This is the most upgrade-fragile file in the docs, so the diff against
+upstream is kept to the four lines listed below and the `<style>` block
+is carried over unchanged — including the grid math for viewports at or
+above 50rem, which computes the site-title column from
+`--sl-content-inline-start`, `--sl-sidebar-width` and `--sl-content-width`.
+That math is not reusable from outside the component and not derivable
+from anything public, so it has to be copied; if the header's columns
+ever look wrong after a Starlight upgrade, diff this block against
+`node_modules/@astrojs/starlight/components/Header.astro` first.
+
+WHAT DIFFERS FROM UPSTREAM, exhaustively:
+
+  1. `.right-group` is `sl-flex`, not `sl-hidden md:sl-flex`. Upstream
+     hides the whole group below 50rem, which is what buried both the
+     language and the theme controls in the menu drawer.
+  2. The social icons and the theme select each moved inside their own
+     `sl-hidden md:sl-flex` wrapper, so hiding the group's contents
+     below 50rem is now structural instead of an `is:global` patch
+     written against Starlight's internal class names.
+  3. `<ThemeToggle />` is added. It hides itself at 50rem and up, where
+     the full select is in the bar.
+  4. `.right-group` gets a narrower gap below 50rem, because the bar now
+     holds one control more than upstream's does at 360px.
+
+Everything else — element order, class names, the layer the styles sit
+in — is upstream's.
+============================================================ */
 }
-<style is:global>
-	@media (max-width: 49.999rem) {
-		.header .right-group {
+<div class="header">
+	<div class="title-wrapper sl-flex">
+		<SiteTitle />
+	</div>
+	<div class="sl-flex print:hidden">
+		{shouldRenderSearch && <Search />}
+	</div>
+	<div class="sl-flex print:hidden right-group">
+		<div class="sl-hidden md:sl-flex social-icons">
+			<SocialIcons />
+		</div>
+		<ThemeToggle />
+		<div class="sl-hidden md:sl-flex">
+			<ThemeSelect />
+		</div>
+		<LanguageSelect />
+	</div>
+</div>
+
+<style>
+	@layer starlight.core {
+		.header {
 			display: flex;
+			gap: var(--sl-nav-gap);
+			justify-content: space-between;
+			align-items: center;
+			height: 100%;
 		}
-		.header .right-group .social-icons,
-		.header .right-group starlight-theme-select {
-			display: none;
+
+		.title-wrapper {
+			/* Prevent long titles overflowing and covering the search and menu buttons on narrow viewports. */
+			overflow: clip;
+			/* Avoid clipping focus ring around link inside title wrapper. */
+			padding: 0.25rem;
+			margin: -0.25rem;
+			min-width: 0;
+		}
+
+		.right-group,
+		.social-icons {
+			gap: 1rem;
+			align-items: center;
+		}
+		.social-icons::after {
+			content: "";
+			height: 2rem;
+			border-inline-end: 1px solid var(--sl-color-gray-5);
+		}
+
+		/* Added: below 50rem the bar carries the theme toggle as well as the
+		   language select, the title, the search button and the space reserved
+		   for the fixed menu button. Measured at 360px, upstream's 1rem gaps
+		   leave the site title 64px; these leave it 88px. */
+		@media (max-width: 49.999rem) {
+			.header {
+				gap: 0.5rem;
+			}
+			.right-group {
+				gap: 0.25rem;
+			}
+		}
+
+		@media (min-width: 50rem) {
+			:global(:root[data-has-sidebar]) {
+				--__sidebar-pad: calc(2 * var(--sl-nav-pad-x));
+			}
+			:global(:root:not([data-has-toc])) {
+				--__toc-width: 0rem;
+			}
+			.header {
+				--__sidebar-width: max(
+					0rem,
+					var(--sl-content-inline-start, 0rem) - var(--sl-nav-pad-x)
+				);
+				--__main-column-fr: calc(
+					(
+							100% + var(--__sidebar-pad, 0rem) -
+								var(--__toc-width, var(--sl-sidebar-width)) -
+								(2 * var(--__toc-width, var(--sl-nav-pad-x))) -
+								var(--sl-content-inline-start, 0rem) - var(--sl-content-width)
+						) /
+						2
+				);
+				display: grid;
+				grid-template-columns:
+        /* 1 (site title): runs up until the main content column’s left edge or the width of the title, whichever is the largest  */
+					minmax(
+						calc(
+							var(--__sidebar-width) +
+								max(0rem, var(--__main-column-fr) - var(--sl-nav-gap))
+						),
+						auto
+					)
+					/* 2 (search box): all free space that is available. */
+					1fr
+					/* 3 (right items): use the space that these need. */
+					auto;
+				align-content: center;
+			}
 		}
 	}
 </style>

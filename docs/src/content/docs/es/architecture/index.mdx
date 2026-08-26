@@ -5,6 +5,7 @@ slug: es/architecture
 ---
 
 import { LinkCard, CardGrid } from "@astrojs/starlight/components";
+import ThemeImage from "../../../../components/ThemeImage.astro";
 
 cs-routeros-bouncer actúa como puente entre la inteligencia de amenazas de CrowdSec y el firewall de MikroTik.
 
@@ -14,16 +15,39 @@ cs-routeros-bouncer actúa como puente entre la inteligencia de amenazas de Crow
 flowchart LR
     accTitle: Visión general de la arquitectura de cs-routeros-bouncer
     accDescr: La LAPI de CrowdSec envía decisiones de ban y unban a cs-routeros-bouncer, que las aplica al router MikroTik a través de la API de RouterOS, expone métricas de Prometheus y sirve comprobaciones de salud. El router aplica los cambios a sus reglas de firewall y listas de direcciones.
-    CS[CrowdSec LAPI] -->|decisiones| B[cs-routeros-bouncer]
-    B -->|API de RouterOS| R[Router MikroTik]
-    B -->|/metrics| P[Prometheus]
-    B -->|/health| H[Comprobaciones de salud]
+    CS[LAPI de CrowdSec] -. "decisiones (lectura)" .-> B[cs-routeros-bouncer]
+    B -->|"API de RouterOS (escritura)"| R[Router MikroTik]
+    P[Prometheus] -. "/metrics (lectura)" .-> B
+    H[Health Checks] -. "/health (lectura)" .-> B
 
     subgraph Router
         R --> FW[Reglas de firewall]
-        R --> AL[Listas de direcciones]
+        R --> AL[Address lists]
+    end
+    H ~~~ LEG
+    subgraph LEG["Leyenda"]
+        direction TB
+        LA["continua"] --> LB["escritura: cambia el estado"]
+        LC["discontinua"] -.-> LD["lectura: no cambia nada"]
     end
 ```
+
+Las dos ramas de la derecha de ese diagrama no son adorno. `/metrics` es el endpoint de Prometheus que lee el dashboard incluido, y `/health` es el endpoint que consulta la comprobación de salud de un contenedor; ambos los sirve el mismo servidor HTTP, que arranca incluso con las métricas desactivadas.
+
+<ThemeImage
+  src="grafana-dashboard-light.png"
+  alt="El dashboard de Grafana incluido con cs-routeros-bouncer, con paneles de decisiones activas, ritmo de decisiones por origen, contadores de tráfico del firewall y salud del sistema RouterOS."
+  caption="La rama /metrics, ya renderizada: grafana/dashboard.json en el repositorio."
+/>
+
+## Cómo leer los diagramas
+
+Todos los diagramas de este sitio trazan la misma distinción, porque es la que importa cuando intentas averiguar qué le hace el bouncer a tu router:
+
+- Una línea **continua** es una **escritura**. Cambia el estado del router: aparece o desaparece una entrada de address-list, se crea, se mueve o se elimina una regla de firewall.
+- Una línea **discontinua** es una **lectura**, una comprobación o un descarte. Nada cambia en el router: llegan decisiones por el stream de la LAPI, se lista una address-list, se mide la deriva, se descarta una decisión.
+
+Tres canales llevan esa distinción, para que el diagrama siga leyéndose en escala de grises, con cualquier tipo de deficiencia en la visión del color y sobre papel: el patrón de la línea, después el color y, por último, una leyenda dibujada con esas mismas dos líneas dentro de cada diagrama de flujo. El diagrama de secuencia es la excepción: ahí una flecha continua es una petición y una discontinua la respuesta, que es la convención propia de Mermaid y no la distinción lectura/escritura, así que rotularlo con esta leyenda lo haría ilegible. La convención está escrita en `docs/src/styles/diagram.css`; los colores salen de `docs/src/styles/theme.css` en tiempo de compilación, así que los diagramas siguen la paleta en lugar de fijar la suya.
 
 ## Temas en profundidad
 
@@ -69,26 +93,26 @@ sequenceDiagram
     participant MT as Router MikroTik
 
     Note over B: Arranque
-    B->>CS: Conectar y autenticar
+    B-->>CS: Conectar y autenticar
     B->>MT: Conectar vía API
     B->>MT: Crear reglas de firewall
-    B->>CS: Obtener todas las decisiones activas
+    B-->>CS: Obtener todas las decisiones activas
     B->>MT: Reconciliar listas de direcciones
 
     Note over B: Bucle de ejecución
     loop Cada update_frequency
-        CS->>B: Decisiones nuevas/eliminadas
+        CS-->>B: Decisiones nuevas/eliminadas
         alt Decisión de ban
-            B->>B: Consultar caché de direcciones
+            B-->>B: Consultar caché de direcciones
             B->>MT: Añadir IP si falta
         else Decisión de unban
-            B->>B: Consultar caché de direcciones
+            B-->>B: Consultar caché de direcciones
             B->>MT: Eliminar IP si está presente
         end
     end
 
     loop Cada reconciliation_interval
-        B->>CS: Obtener snapshot de decisiones activas
+        B-->>CS: Obtener snapshot de decisiones activas
         B->>MT: Reconciliar la deriva de las address-lists
     end
 
@@ -96,6 +120,37 @@ sequenceDiagram
     B->>MT: Eliminar reglas de firewall
     Note over MT: Las entradas de la lista de direcciones expiran por timeout
 ```
+
+## Apagado y limpieza
+
+Parar el bouncer elimina sus reglas de firewall y deja bloqueadas las direcciones. Esa asimetría es deliberada: las reglas son baratas de recrear y desconciertan si aparecen abandonadas en un router, mientras que son las entradas de la address-list las que sostienen la protección de verdad, y tirar decenas de miles en cada reinicio abriría un hueco y habría que pagarlo otra vez al volver.
+
+```mermaid
+flowchart TB
+    accTitle: Orden de apagado y qué se deja a propósito en el router
+    accDescr: Un SIGINT o un SIGTERM cancela el contexto raíz, lo que detiene el stream de decisiones y el ticker de reconciliación. El manager elimina entonces todas las reglas de firewall que creó esta ejecución, cierra el pool de conexiones y la conexión principal de la API y, por último, da cinco segundos al servidor de salud y métricas para detenerse. Una regla cuyo comentario no se puede analizar se queda en el router y se elimina en el siguiente arranque, que busca por la firma fija del bouncer. Las entradas de las address-lists no se tocan durante el apagado: una entrada escrita con timeout expira sola, mientras que una entrada creada a partir de una decisión cuya duración resolvió a cero o menos no tiene timeout alguno y permanece hasta que una reconciliación posterior o un operador la elimine. Una decisión que no trae campo de duración se descarta antes de este punto.
+    SIG["SIGINT o SIGTERM"] -.-> CTX["Se cancela el contexto raíz"]
+    CTX -.-> STOP["Se detienen el stream de decisiones y el ticker de reconciliación"]
+    STOP -.-> RULES["1 · Eliminar todas las reglas de firewall creadas en esta ejecución"]
+    RULES --> GONE["Reglas fuera de filter y raw"]
+    RULES -. "el comentario no se puede analizar" .-> LEFT["Esa regla se queda, y cae en el siguiente arranque por la firma"]
+    GONE -.-> CLOSE["2 · Cerrar el pool y después la conexión principal de la API"]
+    CLOSE -.-> HEALTH["3 · Servidor de salud y métricas, 5 s para parar"]
+    RULES -. "las address-lists no se tocan aquí" .-> KEEP["Las entradas se quedan en el router"]
+    KEEP -. "escrita con timeout" .-> EXP["Expira sola"]
+    KEEP -. "la duración resolvió a cero o menos" .-> NOEXP["Sin timeout alguno: se queda hasta que una reconciliación o una persona la elimine"]
+
+    HEALTH ~~~ LEG
+    subgraph LEG["Leyenda"]
+        direction TB
+        LA["continua"] --> LB["una escritura: cambia el estado del router"]
+        LC["discontinua"] -.-> LD["una lectura o una comprobación: el router no se toca"]
+    end
+```
+
+La eliminación se guía por los identificadores que esta ejecución anotó al crear o adoptar cada regla, y el comentario se analiza a la inversa para saber en qué menú vive la regla. Un comentario que el analizador no reconoce —por ejemplo, tras cambiar `comment_prefix` a mitad de ejecución— se registra y se omite, que es justo el caso para el que existe el barrido del arranque siguiente: busca por la firma fija `@cs-routeros-bouncer`, así que encuentra las reglas del bouncer las escribiera el prefijo que las escribiera. Ese mismo barrido es el que limpia tras una caída, donde `Shutdown` no llegó a ejecutarse.
+
+Al cerrar la conexión con RouterOS el bouncer también se marca como desconectado, de modo que `/health` informa del estado real durante lo que queda de la ventana de apagado.
 
 ## Principios de diseño
 

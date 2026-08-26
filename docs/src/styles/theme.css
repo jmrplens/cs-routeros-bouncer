@@ -70,17 +70,36 @@
 	/* Accent ramp: soft fill → accent → high emphasis. `strong` is
 	   always the end furthest from the page, so it lightens here and
 	   darkens in the light block. */
-	--rb-accent: #2fb8bb;
-	--rb-accent-strong: #5fd0d2;
-	--rb-accent-soft: #143134;
+	--rb-accent: #807dc0;
+	--rb-accent-strong: #bebcde;
+	--rb-accent-soft: #171630;
 
-	/* Status axis — see the two rules in the header comment. */
+	/* Status axis — see the two rules in the header comment.
+
+	   `warn` is CrowdSec's amber #f9ab14 exactly — the second colour of
+	   the identity `--rb-accent` already borrows the indigo from. It can
+	   be taken at full strength here because nothing paints it as text on
+	   the page: every gated pair it feeds sits on the soft tint below.
+	   Measured against it — aside title (warn on warn-soft) 7.99:1, aside
+	   body (heading on warn-soft) 14.20:1, caution badge (#fff on
+	   warn-soft) 15.44:1, all against a 4.5 floor.
+
+	   The soft fill is derived, not picked: the amber's own hue at the
+	   lightness the sibling fills sit at. Measured, those siblings are
+	   drop-soft #2b1618 at h354.3 s32.3 l12.7 and allow-soft #14261a at
+	   h140.0 s31.0 l11.4 — so the LIGHTNESS is what they share, near 12%,
+	   and not the saturation. This fill keeps the amber's own 45%, which
+	   is what makes it read as amber rather than as brown, and an earlier
+	   version of this comment claimed the siblings sat at 46% too. They
+	   do not. It moves #2e2211 to #2d2311, the old near-miss hue snapping
+	   onto the amber's.
+	*/
 	--rb-status-drop: #e0605c;
 	--rb-status-drop-soft: #2b1618;
 	--rb-status-allow: #57b96a;
 	--rb-status-allow-soft: #14261a;
-	--rb-status-warn: #d9a441;
-	--rb-status-warn-soft: #2e2211;
+	--rb-status-warn: #f9ab14;
+	--rb-status-warn-soft: #2d2311;
 
 	/* Informational hues, deliberately outside the status axis: a
 	   note is not a state the bouncer can be in. */
@@ -157,16 +176,34 @@
 	--rb-body: #333d45;
 	--rb-muted: #556069;
 
-	--rb-accent: #0a6a6c;
-	--rb-accent-strong: #084f51;
-	--rb-accent-soft: #e2edee;
+	--rb-accent: #4d4a98;
+	--rb-accent-strong: #413f80;
+	--rb-accent-soft: #eae9f5;
 
+	/* Amber does not survive a white page. CrowdSec's #f9ab14 measures
+	   1.93:1 on #ffffff, and the caution badge asks the reverse question
+	   — white text ON the warn fill — which is no kinder. So the light
+	   value holds the amber's hue and saturation (39.6°, 95%) and pays the
+	   whole contrast bill in lightness alone: l 53% → l 29%.
+
+	   WHAT THAT COST: at l 29% the amber reads as a brown, not as the
+	   identity's yellow — the hue is CrowdSec's, the brightness that
+	   carries it is not, and on a white page there is no way to keep
+	   both. The binding pair is the caution aside title — warn on
+	   warn-soft — at 4.83:1. l 30% is the true ceiling but lands at
+	   4.54:1, close enough to the 4.5 floor that any later nudge to the
+	   soft tint would break it; l 31% fails outright at 4.32:1. The
+	   badge's white label clears at 5.44:1, the aside body at 15.70:1.
+
+	   The soft tint is the same derivation in the other direction: the
+	   amber's hue at the s 90% / l 92% the fill already used, which moves
+	   it #fdf0d9 → #fdf0d8. */
 	--rb-status-drop: #b3352f;
 	--rb-status-drop-soft: #fbe7e6;
 	--rb-status-allow: #257a38;
 	--rb-status-allow-soft: #eef9f0;
-	--rb-status-warn: #8a5c00;
-	--rb-status-warn-soft: #fdf0d9;
+	--rb-status-warn: #906004;
+	--rb-status-warn-soft: #fdf0d8;
 
 	--rb-info: #17558f;
 	--rb-info-soft: #e4f0fb;
@@ -231,15 +268,15 @@
    ------------------------------------------------------------------ */
 @media (prefers-contrast: more) {
 	:root {
-		--rb-accent: #6fe3e6;
-		--rb-accent-strong: #a8f0f2;
+		--rb-accent: #d0cfe8;
+		--rb-accent-strong: #e3e2f1;
 		--rb-muted: #b6c0c6;
 		--rb-border: #55636c;
 		--rb-border-strong: #7d8b93;
 	}
 	:root[data-theme="light"] {
-		--rb-accent: #04494b;
-		--rb-accent-strong: #033335;
+		--rb-accent: #3c3a77;
+		--rb-accent-strong: #26244b;
 		--rb-muted: #3b444c;
 		--rb-border: #a9b6bc;
 		--rb-border-strong: #7d8b93;

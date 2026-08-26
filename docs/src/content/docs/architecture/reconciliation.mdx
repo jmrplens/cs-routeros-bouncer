@@ -30,15 +30,56 @@ By default, reconciliation runs at startup and then every `15m`. Configure `crow
 
    Compare the two sets to determine which IPs need to be added and which removed.
 
-3. **Apply**
+3. **Refresh the cache**
 
-   Execute additions (via bulk scripts, 100 IPs/batch) and deletions (via parallel API calls using the configured connection pool).
+   Replace this family's in-memory address cache with what the router just reported — before a single add or remove goes out, so the live ban and unban handlers stop trusting entries the router no longer has.
 
-4. **Populate cache and verify**
+4. **Apply**
 
-   Populate the in-memory address cache and log final counts to confirm address-list membership matches CrowdSec.
+   Execute additions (via bulk scripts, 100 IPs/batch) and deletions (parallel API calls through the connection pool when it opened, one by one on the main connection when it did not). Each of the two patches the cache with what it attempted to write.
+
+5. **Verify**
+
+   Record the reconciliation metrics and log final counts to confirm address-list membership matches CrowdSec.
 
 </Steps>
+
+The diff itself is per protocol family and per address list. Two sets go in — what CrowdSec says should be blocked, and what the router currently holds — and two lists come out.
+
+```mermaid
+flowchart TB
+    accTitle: The reconciliation diff: snapshot in, router state in, adds and removes out
+    accDescr: A snapshot of active decisions becomes the wanted set, one entry per decision for this protocol family, keyed by normalised address. The address list on the router becomes the present set, but only the entries whose comment starts with the configured comment prefix; entries with any other comment are fetched from the router and then dropped client-side, so they are never compared and never removed — but they do cost transfer on every pass. Comparing the two sets address by address yields the entries to add and the entries to remove. The in-memory address cache is replaced from that same listing before any write goes out. Additions then go through a bulk RouterOS script of up to a hundred entries, dropping to one API call per entry when a script fails; removals go through the connection pool when it opened, and one by one on the main connection otherwise. Each add and each remove patches the cache again with what it attempted, and the reconciliation metrics are recorded once both have run.
+    SNAP["Active decisions: the startup burst, or a fresh snapshot"] -.-> WANT["Wanted: one entry per decision for this family"]
+    LIST["The address list on the router"] -.-> HAVE["Present: entries whose comment starts with comment_prefix"]
+    LIST -. "any other comment" .-> FOREIGN["Fetched, then dropped: never compared, never removed"]
+    HAVE -. "before any write" .-> CACHE["Address cache replaced from this listing"]
+    WANT -.-> DIFF{"compare, address by address"}
+    HAVE -.-> DIFF
+    DIFF -. "wanted, not present" .-> TOADD["To add"]
+    DIFF -. "present, not wanted" .-> TOREM["To remove"]
+    TOADD -.-> BULK["Bulk add: one script per 100 entries"]
+    BULK -. "script fails" .-> ONEBY["One call per entry instead"]
+    TOREM -.-> DELE["Remove: through the pool, or one by one"]
+    BULK --> ADDED["Entries added"]
+    ONEBY --> ADDED
+    DELE --> REMOVED["Entries removed"]
+    ADDED -. "then patched, entry by entry" .-> CACHE
+    REMOVED -. "then patched, entry by entry" .-> CACHE
+    ADDED -.-> MET["Reconciliation metrics recorded"]
+    REMOVED -.-> MET
+
+    MET ~~~ LEG
+    subgraph LEG["Legend"]
+        direction TB
+        LA["solid"] --> LB["a write: router state changes"]
+        LC["dashed"] -.-> LD["a read or a test: router untouched"]
+    end
+```
+
+The prefix filter on the _present_ set is what makes reconciliation safe to point at a shared list. The bouncer asks RouterOS for the list by name and then keeps only the entries whose comment starts with the configured `comment_prefix`, so an address you added by hand — or one another tool maintains — is not in the comparison at all, and the "present, not wanted" branch can never reach it.
+
+The comparison is by normalised address, not by decision: several decisions for the same IP collapse to one wanted entry, and only the last one read supplies the timeout and comment written with it.
 
 ## Performance
 

@@ -5,6 +5,7 @@ slug: architecture
 ---
 
 import { LinkCard, CardGrid } from "@astrojs/starlight/components";
+import ThemeImage from "../../../components/ThemeImage.astro";
 
 cs-routeros-bouncer acts as a bridge between CrowdSec's threat intelligence and MikroTik's firewall.
 
@@ -14,16 +15,39 @@ cs-routeros-bouncer acts as a bridge between CrowdSec's threat intelligence and 
 flowchart LR
     accTitle: cs-routeros-bouncer architecture overview
     accDescr: CrowdSec LAPI sends ban and unban decisions to cs-routeros-bouncer, which applies them to the MikroTik router through the RouterOS API, exposes Prometheus metrics, and serves health checks. The router applies the changes to its firewall rules and address lists.
-    CS[CrowdSec LAPI] -->|decisions| B[cs-routeros-bouncer]
-    B -->|RouterOS API| R[MikroTik Router]
-    B -->|/metrics| P[Prometheus]
-    B -->|/health| H[Health Checks]
+    CS[CrowdSec LAPI] -. "decisions (read)" .-> B[cs-routeros-bouncer]
+    B -->|"RouterOS API (write)"| R[MikroTik Router]
+    P[Prometheus] -. "/metrics (read)" .-> B
+    H[Health Checks] -. "/health (read)" .-> B
 
     subgraph Router
         R --> FW[Firewall Rules]
         R --> AL[Address Lists]
     end
+    H ~~~ LEG
+    subgraph LEG["Legend"]
+        direction TB
+        LA["solid"] --> LB["a write: state changes"]
+        LC["dashed"] -.-> LD["a read: nothing is changed"]
+    end
 ```
+
+The two branches on the right of that diagram are not decoration. `/metrics` is the Prometheus endpoint the shipped dashboard reads, and `/health` is the endpoint a container health check calls; both are served by the same HTTP server, which starts even when metrics are disabled.
+
+<ThemeImage
+  src="grafana-dashboard-light.png"
+  alt="The Grafana dashboard shipped with cs-routeros-bouncer, showing panels for active decisions, decision rate by origin, firewall traffic counters and RouterOS system health."
+  caption="The /metrics branch, rendered: grafana/dashboard.json in the repository."
+/>
+
+## Reading the diagrams
+
+Every diagram on this site draws the same distinction between what the bouncer writes and what it reads, because it is the one that matters when you are working out what the bouncer does to your router:
+
+- A **solid** edge is a **write**. Router state changes: an address-list entry appears or disappears, a firewall rule is created, moved or removed.
+- A **dashed** edge is a **read**, a test, or a discard. Nothing on the router changes: decisions stream in from the LAPI, an address list is listed, drift is measured, a decision is dropped.
+
+Three channels carry that distinction, so a diagram still reads in greyscale, with any form of colour vision deficiency, and on paper: the line pattern, then colour, then a legend drawn from those same two edges inside every flowchart. The sequence diagram is the exception: there a solid arrow is a request and a dashed one the reply, which is Mermaid's own convention and not the read/write distinction, so labelling it with this legend would misread it. The convention is written down in `docs/src/styles/diagram.css`; the colours come from `docs/src/styles/theme.css` at build time, so diagrams follow the palette instead of pinning their own.
 
 ## Deep-dive topics
 
@@ -69,26 +93,26 @@ sequenceDiagram
     participant MT as MikroTik Router
 
     Note over B: Startup
-    B->>CS: Connect & authenticate
+    B-->>CS: Connect & authenticate
     B->>MT: Connect via API
     B->>MT: Create firewall rules
-    B->>CS: Fetch all active decisions
+    B-->>CS: Fetch all active decisions
     B->>MT: Reconcile address lists
 
     Note over B: Runtime loop
     loop Every update_frequency
-        CS->>B: New/deleted decisions
+        CS-->>B: New/deleted decisions
         alt Ban decision
-            B->>B: Check address cache
+            B-->>B: Check address cache
             B->>MT: Add IP if missing
         else Unban decision
-            B->>B: Check address cache
+            B-->>B: Check address cache
             B->>MT: Remove IP if present
         end
     end
 
     loop Every reconciliation_interval
-        B->>CS: Fetch active decisions snapshot
+        B-->>CS: Fetch active decisions snapshot
         B->>MT: Reconcile address-list drift
     end
 
@@ -96,6 +120,37 @@ sequenceDiagram
     B->>MT: Remove firewall rules
     Note over MT: Address list entries expire via timeout
 ```
+
+## Shutdown and cleanup
+
+Stopping the bouncer removes its firewall rules and leaves the blocked addresses where they are. That asymmetry is deliberate: rules are cheap to recreate and confusing to find abandoned on a router, while the address-list entries are what actually carries the protection, and dropping tens of thousands of them on every restart would open a gap and pay for it again on the way back up.
+
+```mermaid
+flowchart TB
+    accTitle: Shutdown order, and what is deliberately left on the router
+    accDescr: A SIGINT or SIGTERM cancels the root context, which stops the decision stream and the reconciliation ticker. The manager then removes every firewall rule this run created, closes the connection pool and the main API connection, and finally gives the health and metrics server five seconds to stop. A rule whose comment cannot be parsed is left on the router and removed at the next start, which searches by the fixed bouncer signature. Address-list entries are never touched during shutdown: an entry written with a timeout expires on its own, while an entry created from a decision whose duration resolved to zero or less has no timeout at all and stays until a later reconciliation or an operator removes it. A decision carrying no duration field is discarded before this point.
+    SIG["SIGINT or SIGTERM"] -.-> CTX["The root context is cancelled"]
+    CTX -.-> STOP["Decision stream and reconciliation ticker stop"]
+    STOP -.-> RULES["1 · Remove every firewall rule this run created"]
+    RULES --> GONE["Rules gone from filter and raw"]
+    RULES -. "comment will not parse" .-> LEFT["That rule stays, and goes at the next start, by signature"]
+    GONE -.-> CLOSE["2 · Close the pool, then the main API connection"]
+    CLOSE -.-> HEALTH["3 · Health and metrics server, 5 s to stop"]
+    RULES -. "address lists are never touched here" .-> KEEP["Entries stay on the router"]
+    KEEP -. "written with a timeout" .-> EXP["Expires by itself"]
+    KEEP -. "duration resolved to zero or less" .-> NOEXP["No timeout at all: stays until a reconciliation or an operator removes it"]
+
+    HEALTH ~~~ LEG
+    subgraph LEG["Legend"]
+        direction TB
+        LA["solid"] --> LB["a write: router state changes"]
+        LC["dashed"] -.-> LD["a read or a test: router untouched"]
+    end
+```
+
+Removal is driven by the ids this run recorded when it created or adopted each rule, and the comment is parsed back to find which menu the rule lives in. A comment the parser does not recognise — after a `comment_prefix` change mid-run, say — is logged and skipped, which is exactly the case the next startup sweep is for: it searches by the fixed `@cs-routeros-bouncer` signature, so it finds bouncer rules whatever prefix wrote them. The same sweep is what cleans up after a crash, where `Shutdown` never ran at all.
+
+Closing the RouterOS connection also marks the bouncer disconnected, so `/health` reports the true state for whatever is left of the shutdown window.
 
 ## Design principles
 

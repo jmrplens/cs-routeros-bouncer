@@ -110,7 +110,11 @@ func (s *Stream) APIClient() *apiclient.ApiClient {
 }
 
 // ActiveDecisions fetches a full snapshot of currently active CrowdSec
-// decisions using the same filters as the streaming bouncer.
+// decisions. It carries the streaming bouncer's scope, origin and scenario
+// filters, and adds one the stream does not: activeDecisionListPath sets
+// type=ban server-side when the enforced set is exactly the default, so the
+// snapshot asks for less than the stream receives. See onlyDefaultDecisionType
+// for why that split exists.
 func (s *Stream) ActiveDecisions(ctx context.Context) ([]*Decision, error) {
 	client := s.bouncer.Client()
 	if client == nil {

@@ -5,23 +5,26 @@
   "start_url": "/cs-routeros-bouncer/",
   "scope": "/cs-routeros-bouncer/",
   "display": "standalone",
-  "background_color": "#0d1117",
+  "background_color": "#0e1316",
   "theme_color": "#0e1316",
   "icons": [
     {
       "src": "/cs-routeros-bouncer/favicon.svg",
       "type": "image/svg+xml",
-      "sizes": "any"
+      "sizes": "any",
+      "purpose": "any"
     },
     {
       "src": "/cs-routeros-bouncer/icon-192.png",
       "type": "image/png",
-      "sizes": "192x192"
+      "sizes": "192x192",
+      "purpose": "any"
     },
     {
       "src": "/cs-routeros-bouncer/icon-512.png",
       "type": "image/png",
-      "sizes": "512x512"
+      "sizes": "512x512",
+      "purpose": "any"
     }
   ],
   "categories": ["security", "networking", "utilities"]
