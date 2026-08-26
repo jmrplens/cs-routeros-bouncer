@@ -446,6 +446,62 @@ func TestFirewallRuleAllFields(t *testing.T) {
 // --- buildBulkAddScript tests ---
 
 // TestBuildBulkAddScriptIPv4Single verifies script generation for a single IPv4 entry.
+// TestBuildBulkAddScriptEscapesDollar pins the escaping that keeps RouterOS
+// from expanding `$name` inside the generated script's double-quoted strings.
+// Unescaped, a `$` in the operator's comment prefix is DELETED along with the
+// word after it (verified on RouterOS 7.24.1: `cs$bouncer|crowdsec|sshd-bf`
+// arrives as `cs|crowdsec|sshd-bf`), which makes every entry fail the
+// HasPrefix filter in ListAddresses and be re-added on every cycle.
+func TestBuildBulkAddScriptEscapesDollar(t *testing.T) {
+	cases := []struct {
+		name    string
+		entry   BulkEntry
+		list    string
+		wantIn  string
+		wantOut string
+	}{
+		{
+			name:    "dollar in comment prefix",
+			entry:   BulkEntry{Address: "1.2.3.4", Timeout: "4h", Comment: "cs$bouncer|crowdsec|ssh-bf"},
+			list:    "crowdsec-banned",
+			wantIn:  `comment="cs\$bouncer|crowdsec|ssh-bf"`,
+			wantOut: `comment="cs$bouncer`,
+		},
+		{
+			name:    "dollar in list name",
+			entry:   BulkEntry{Address: "1.2.3.4", Comment: "c"},
+			list:    "list$name",
+			wantIn:  `list="list\$name"`,
+			wantOut: `list="list$name"`,
+		},
+		{
+			name:    "backslash escaped before dollar, not doubled by it",
+			entry:   BulkEntry{Address: "1.2.3.4", Comment: `back\slash$var`},
+			list:    "crowdsec-banned",
+			wantIn:  `comment="back\\slash\$var"`,
+			wantOut: "",
+		},
+		{
+			name:    "quote still escaped",
+			entry:   BulkEntry{Address: "1.2.3.4", Comment: `say "hi"`},
+			list:    "crowdsec-banned",
+			wantIn:  `comment="say \"hi\""`,
+			wantOut: "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			script := buildBulkAddScript("ip", tc.list, []BulkEntry{tc.entry})
+			if !strings.Contains(script, tc.wantIn) {
+				t.Errorf("script lacks %s\ngot: %s", tc.wantIn, script)
+			}
+			if tc.wantOut != "" && strings.Contains(script, tc.wantOut) {
+				t.Errorf("script still carries the unescaped form %s", tc.wantOut)
+			}
+		})
+	}
+}
+
 func TestBuildBulkAddScriptIPv4Single(t *testing.T) {
 	entries := []BulkEntry{
 		{Address: "1.2.3.4", Timeout: "4h", Comment: "cs|crowdsec|ssh-bf"},
