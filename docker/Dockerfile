@@ -45,6 +45,9 @@ LABEL org.opencontainers.image.title="cs-routeros-bouncer" \
 
 EXPOSE 2112
 
+# Shell form is required here: `|| exit 1` needs a shell, and exec-form JSON
+# would pass the pipe characters to wget as literal arguments.
+# hadolint ignore=DL3025
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD wget -qO- http://localhost:2112/health || exit 1
 

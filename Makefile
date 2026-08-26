@@ -45,7 +45,7 @@ LDFLAGS := -s -w -X $(MODULE)/internal/config.Version=$(VERSION) \
            -X $(MODULE)/internal/config.BuildDate=$(BUILD_DATE) \
            -X github.com/crowdsecurity/go-cs-lib/version.Version=$(VERSION)
 
-.PHONY: help all build build-all build-linux-amd64 build-linux-arm64 build-darwin-amd64 build-darwin-arm64 build-windows-amd64 \
+.PHONY: analyze-fix sonar sonar-status hadolint release-check version help all build build-all build-linux-amd64 build-linux-arm64 build-darwin-amd64 build-darwin-arm64 build-windows-amd64 \
 	run test test-short test-race test-integration test-docker coverage \
 	fmt fmt-check goimports goimports-check gofmt-check vet modernize modernize-fix golangci-lint gosec staticcheck govulncheck actionlint mdlint mdlint-fix \
 	lint analyze install-tools go-mod-download tools tools-versions \
@@ -221,7 +221,80 @@ mdlint-fix:
 lint: vet staticcheck golangci-lint
 
 ## analyze: run full static analysis suite
-analyze: gofmt-check goimports-check vet modernize golangci-lint gosec staticcheck govulncheck actionlint mdlint docs-analyze
+## analyze: run the full static-analysis suite. Unlike a prerequisite chain,
+## every step runs even when an earlier one fails, and the summary names each
+## failure — one pass tells you everything instead of one thing per pass.
+analyze: $(TOOLS_BIN)/.golangci-lint-$(GOLANGCI_LINT_VERSION)
+	@analysis_status=0; \
+	run_check() { \
+		step="$$1"; \
+		shift; \
+		echo "$$step"; \
+		output="$$( "$$@" 2>&1 )"; \
+		status="$$?"; \
+		if [ "$$status" -ne 0 ]; then \
+			if [ -n "$$output" ]; then \
+				echo "$$output"; \
+			fi; \
+			echo "FAIL (exit $$status)"; \
+			analysis_status=1; \
+		else \
+			echo "OK"; \
+		fi; \
+		echo ""; \
+	}; \
+	echo "============================================================"; \
+	echo " Static Analysis Suite - cs-routeros-bouncer"; \
+	echo "============================================================"; \
+	run_check "[ 1/12] golangci-lint config verify" $(GOLANGCI_LINT) config verify; \
+	run_check "[ 2/12] gofmt" $(MAKE) --no-print-directory gofmt-check; \
+	run_check "[ 3/12] goimports" $(MAKE) --no-print-directory goimports-check; \
+	run_check "[ 4/12] go vet" $(MAKE) --no-print-directory vet; \
+	run_check "[ 5/12] modernize" $(MAKE) --no-print-directory modernize; \
+	run_check "[ 6/12] golangci-lint run" $(MAKE) --no-print-directory golangci-lint; \
+	run_check "[ 7/12] gosec" $(MAKE) --no-print-directory gosec; \
+	run_check "[ 8/12] staticcheck" $(MAKE) --no-print-directory staticcheck; \
+	run_check "[ 9/12] govulncheck" $(MAKE) --no-print-directory govulncheck; \
+	run_check "[10/12] actionlint" $(MAKE) --no-print-directory actionlint; \
+	run_check "[11/12] markdownlint" $(MAKE) --no-print-directory mdlint; \
+	run_check "[12/12] docs pipeline" $(MAKE) --no-print-directory docs-analyze; \
+	echo "============================================================"; \
+	if [ "$$analysis_status" -ne 0 ]; then \
+		echo "Analysis failed. Review findings above."; \
+		exit "$$analysis_status"; \
+	fi; \
+	echo "Analysis complete. All tools passed."
+
+## analyze-fix: apply every automatic fix the tools offer, then re-verify with
+## 'make analyze'. Formatters first so the linters judge formatted code.
+analyze-fix:
+	$(MAKE) --no-print-directory fmt
+	$(MAKE) --no-print-directory goimports
+	golangci-lint run --fix ./... || true
+	$(MAKE) --no-print-directory mdlint-fix
+	cd docs && corepack pnpm exec prettier --write . >/dev/null
+
+## sonar: run tests with coverage, upload to SonarCloud and wait for the gate.
+## sonar-status: fetch the latest gate result without scanning.
+## Both read SONARQUBE_TOKEN from .env; see scripts/sonar-scan.sh.
+sonar:
+	@./scripts/sonar-scan.sh
+
+sonar-status:
+	@./scripts/sonar-scan.sh --no-scan
+
+## hadolint: lint the Dockerfiles (mirrors the CI job).
+hadolint:
+	@command -v hadolint >/dev/null 2>&1 || { echo "hadolint not installed: https://github.com/hadolint/hadolint"; exit 1; }
+	hadolint docker/Dockerfile docker/Dockerfile.goreleaser
+
+## release-check: validate .goreleaser.yaml without releasing.
+release-check:
+	goreleaser check
+
+## version: build and print the version the binary reports.
+version: build
+	$(BIN_DIR)/$(BINARY_NAME) --version
 
 ## install-tools: download Go modules and install pinned analysis binaries
 install-tools: go-mod-download tools
