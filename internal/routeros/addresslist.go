@@ -150,7 +150,7 @@ func (c *Client) ListAddresses(proto, list, commentPrefix string) ([]AddressEntr
 	// off a 2.17 s reconciliation. The saving is not only transfer — a
 	// count-only print of the same list still costs 1.18 s, which is the floor
 	// for traversing the records, and the rest scales with what each row has to
-	// serialise.
+	// serialize.
 	proplist := []string{".id", "address", "comment"}
 
 	results, err := c.Print(path, query, proplist)
