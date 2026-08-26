@@ -18,7 +18,7 @@
  *   node scripts/render-brand-rasters.mjs --check   # exit 1 if any is stale
  */
 import { assertNoSpansSurvive, stripSpans } from "../src/lib/svg-spans.mjs";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -61,6 +61,44 @@ function assertRailMatchesToken(accent) {
 		);
 	}
 }
+/**
+ * Fail if the web manifest has drifted from the palette or from the rasters.
+ *
+ * The manifest is hand-written content — name, description, categories — so it
+ * is asserted rather than generated. What it must not do is carry a colour or
+ * an icon path of its own: `theme_color` paints the browser chrome and stayed
+ * `#0e1316` through a full change of accent, and an icon entry naming a file
+ * nobody renders is how `favicon.ico` sat at the retired mark for a month.
+ * @param {string} dark the dark theme's `--rb-page`
+ */
+function assertManifestMatchesPalette(dark) {
+	const file = path.join(DOCS, "public/manifest.json");
+	const manifest = JSON.parse(readFileSync(file, "utf8"));
+	for (const key of ["theme_color", "background_color"]) {
+		if (manifest[key]?.toLowerCase() !== dark.toLowerCase()) {
+			throw new Error(
+				`manifest.json declares ${key}: ${manifest[key]} but theme.css ` +
+					`declares --rb-page: ${dark} for the dark theme. The browser ` +
+					"chrome and the page it frames would not match.",
+			);
+		}
+	}
+	for (const icon of manifest.icons ?? []) {
+		const name = icon.src.split("/").pop();
+		if (!existsSync(path.join(DOCS, "public", name))) {
+			throw new Error(
+				`manifest.json points at public/${name}, which does not exist`,
+			);
+		}
+	}
+	if (!(manifest.icons ?? []).some((icon) => icon.purpose === "maskable")) {
+		throw new Error(
+			"manifest.json declares no maskable icon, so Android will shrink the " +
+				"mark onto a plain tile instead of cropping it to the launcher shape",
+		);
+	}
+}
+
 const palette = {
 	// The rasters are cut from the LIGHT theme: a favicon sits on browser
 	// chrome, and an app icon on a launcher, neither of which follows the
@@ -75,6 +113,7 @@ const palette = {
 const MONO = "DejaVu Sans Mono";
 
 assertRailMatchesToken(palette.accent);
+assertManifestMatchesPalette(token(css, ":root {", "rb-page"));
 
 /** Append concrete colours so the standalone file renders outside a browser. */
 function standaloneMark() {
@@ -149,6 +188,50 @@ function socialCard() {
 </svg>`);
 }
 
+/**
+ * Pack PNGs into an `.ico`.
+ *
+ * The file exists for the consumers that never learned SVG favicons — Google's
+ * SERP fetcher, older Safari, some feed readers — which is exactly why it was
+ * the one asset nothing regenerated. It sat at the July shield for a full mark
+ * change, so the search result showed a logo the site had retired, and the
+ * usual defence (someone would notice) does not apply to a surface the author
+ * never looks at.
+ *
+ * Written by hand because sharp cannot encode ICO and an ImageMagick dependency
+ * would not survive CI. The container is trivial: a 6-byte header, one 16-byte
+ * directory entry per image, then the images. They are stored as PNG rather
+ * than BMP, which every browser has accepted since Vista and which Google's
+ * fetcher reads — and it keeps each frame identical to the PNG rendered from
+ * the same mark, rather than a second encoding that could drift from it.
+ * @param {{ size: number, png: Buffer }[]} images
+ * @returns {Buffer}
+ */
+function packIco(images) {
+	const header = Buffer.alloc(6);
+	header.writeUInt16LE(0, 0); // reserved
+	header.writeUInt16LE(1, 2); // 1 = icon
+	header.writeUInt16LE(images.length, 4);
+
+	const directory = Buffer.alloc(16 * images.length);
+	let offset = header.length + directory.length;
+	for (const [index, { size, png }] of images.entries()) {
+		const at = 16 * index;
+		// 0 means 256 in this field; no frame here is that large, but the
+		// encoding is the format's, not ours.
+		directory.writeUInt8(size >= 256 ? 0 : size, at);
+		directory.writeUInt8(size >= 256 ? 0 : size, at + 1);
+		directory.writeUInt8(0, at + 2); // palette size: not a palette image
+		directory.writeUInt8(0, at + 3); // reserved
+		directory.writeUInt16LE(1, at + 4); // colour planes
+		directory.writeUInt16LE(32, at + 6); // bits per pixel
+		directory.writeUInt32LE(png.length, at + 8);
+		directory.writeUInt32LE(offset, at + 12);
+		offset += png.length;
+	}
+	return Buffer.concat([header, directory, ...images.map((i) => i.png)]);
+}
+
 /** name, pixel size, and whether the ground is painted behind the mark. */
 const TARGETS = [
 	["public/favicon-32x32.png", 32, false],
@@ -161,6 +244,25 @@ const TARGETS = [
 
 /** The card is a different composition, not a resize of the mark. */
 const CARD = "public/og-image.png";
+
+/**
+ * The Android adaptive icon.
+ *
+ * A launcher crops a maskable icon to whatever shape it likes — circle,
+ * squircle, teardrop — and only guarantees a circle of 80% of the width. A
+ * mark drawn edge to edge, which every other target here is, loses its outer
+ * lanes to that crop. The square that fits inside a 409.6px circle has a side
+ * of 289.6px, so the drawing goes in at 288 on a 512 ground and the launcher
+ * can take any bite it wants. Without an entry of this purpose Android does
+ * not crop at all: it shrinks the icon and puts it on a plain white tile.
+ */
+const MASKABLE = "public/icon-maskable-512.png";
+const MASKABLE_SIZE = 512;
+const MASKABLE_MARK = 288;
+
+/** The legacy container. Sizes are the three Windows and browser conventions. */
+const ICO = "public/favicon.ico";
+const ICO_SIZES = [16, 32, 48];
 
 async function render(size, opaque) {
 	const mark = sharp(standaloneMark(), { density: 384 }).resize(size, size);
@@ -180,17 +282,53 @@ async function render(size, opaque) {
 
 const check = process.argv.includes("--check");
 let stale = 0;
-for (const [relative, size, opaque] of [...TARGETS, [CARD, 0, false]]) {
+for (const [relative, size, opaque] of [
+	...TARGETS,
+	[CARD, 0, false],
+	[ICO, 0, false],
+	[MASKABLE, MASKABLE_SIZE, true],
+]) {
 	const target = path.join(DOCS, relative);
-	const rendered =
-		relative === CARD
-			? await sharp(socialCard(), { density: 96 })
-					// librsvg scales by density; pin the output so the card is
-					// exactly the 1200x630 every social scraper expects.
-					.resize(1200, 630)
-					.png({ compressionLevel: 9 })
-					.toBuffer()
-			: await render(size, opaque);
+	let rendered;
+	if (relative === MASKABLE) {
+		rendered = await sharp({
+			create: {
+				width: MASKABLE_SIZE,
+				height: MASKABLE_SIZE,
+				channels: 4,
+				background: palette.ground,
+			},
+		})
+			.composite([
+				{
+					input: await sharp(standaloneMark(), { density: 384 })
+						.resize(MASKABLE_MARK, MASKABLE_MARK)
+						.png()
+						.toBuffer(),
+					gravity: "centre",
+				},
+			])
+			.png({ compressionLevel: 9 })
+			.toBuffer();
+	} else if (relative === ICO) {
+		rendered = packIco(
+			await Promise.all(
+				ICO_SIZES.map(async (each) => ({
+					size: each,
+					png: await render(each, false),
+				})),
+			),
+		);
+	} else
+		rendered =
+			relative === CARD
+				? await sharp(socialCard(), { density: 96 })
+						// librsvg scales by density; pin the output so the card is
+						// exactly the 1200x630 every social scraper expects.
+						.resize(1200, 630)
+						.png({ compressionLevel: 9 })
+						.toBuffer()
+				: await render(size, opaque);
 	if (check) {
 		const current = readFileSync(target);
 		if (!current.equals(rendered)) {
@@ -201,13 +339,13 @@ for (const [relative, size, opaque] of [...TARGETS, [CARD, 0, false]]) {
 	}
 	writeFileSync(target, rendered);
 	console.log(
-		`  ${relative} (${size || "1200x630"}, ${rendered.length} bytes)`,
+		`  ${relative} (${relative === ICO ? ICO_SIZES.join("/") : size || "1200x630"}, ${rendered.length} bytes)`,
 	);
 }
 
 if (check) {
 	if (stale > 0) process.exit(1);
 	console.log(
-		`✓ ${TARGETS.length + 1} brand rasters match the mark and the palette.`,
+		`✓ ${TARGETS.length + 3} brand rasters match the mark and the palette.`,
 	);
 }
