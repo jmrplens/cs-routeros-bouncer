@@ -28,6 +28,8 @@ type Client struct {
 	rwc     io.ReadWriteCloser
 	closing bool
 	mu      sync.Mutex
+	// cmdMu serialises one whole command (write + reply); see RunArgsContext.
+	cmdMu sync.Mutex
 
 	r proto.Reader
 	w proto.Writer

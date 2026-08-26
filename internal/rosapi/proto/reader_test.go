@@ -30,11 +30,22 @@ func TestReadLength(t *testing.T) {
 }
 
 func TestReadRandom(t *testing.T) {
-	randomBytes := make([]byte, 4)
+	// Upstream fed 4 random bytes and required no error — but a first byte in
+	// 0xF0..0xF7 makes readLength ask for FOUR more bytes, and only three
+	// remain: an ~3% random failure. Five bytes cover the longest encoding.
+	randomBytes := make([]byte, 5)
 	_, err := rand.Read(randomBytes)
 	require.NoError(t, err, "read random bytes error")
 
 	r := NewReader(bytes.NewBuffer(randomBytes)).(*reader)
 	_, err = r.readLength()
 	require.NoError(t, err, "read length error")
+}
+
+func TestReadWordRejectsOversizedLength(t *testing.T) {
+	// 0xF0 prefix + 0xFFFFFFFF: a declared 4 GiB word. Must fail BEFORE the
+	// allocation, with the bounded protocol error, not with an OOM attempt.
+	r := NewReader(bytes.NewBuffer([]byte{0xF0, 0xFF, 0xFF, 0xFF, 0xFF})).(*reader)
+	_, err := r.readWord()
+	require.ErrorIs(t, err, errWordTooLong)
 }

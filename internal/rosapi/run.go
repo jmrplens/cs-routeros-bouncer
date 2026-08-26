@@ -3,7 +3,27 @@ package routeros
 import (
 	"context"
 	"log/slog"
+	"strings"
 )
+
+// redactSecrets masks the value of any word that carries a credential, so a
+// debug-level logger never writes the RouterOS password to its output. The
+// default handler sits at Info and emits nothing; this guards the day someone
+// turns Debug on to chase a protocol problem.
+func redactSecrets(sentences []string) []string {
+	out := make([]string, len(sentences))
+	for i, sentence := range sentences {
+		switch {
+		case strings.HasPrefix(sentence, "=password="):
+			out[i] = "=password=***"
+		case strings.HasPrefix(sentence, "=response="):
+			out[i] = "=response=***"
+		default:
+			out[i] = sentence
+		}
+	}
+	return out
+}
 
 // Run simply calls RunArgs().
 func (c *Client) Run(sentences ...string) (*Reply, error) {
@@ -22,7 +42,17 @@ func (c *Client) RunArgs(sentences []string) (*Reply, error) {
 
 // RunArgsContext sends a sentence to the RouterOS device and waits for the reply.
 func (c *Client) RunArgsContext(_ context.Context, sentences []string) (*Reply, error) {
-	c.logger().Debug("RunArgsContext", slog.Any("sentences", sentences))
+	c.logger().Debug("RunArgsContext", slog.Any("sentences", redactSecrets(sentences)))
+
+	// One command at a time, held across the reply. Without tags — pruned with
+	// the async mode — replies carry nothing to match them to requests, so two
+	// concurrent RunArgs on one client could each read the other's reply. The
+	// bouncer serialises at its own layer today; this makes the vendored
+	// client safe on its own terms rather than by its caller's discipline.
+	// Deliberately not c.mu: Close() takes that one, and it must stay able to
+	// unblock a pending read by closing the connection under it.
+	c.cmdMu.Lock()
+	defer c.cmdMu.Unlock()
 
 	c.w.BeginSentence()
 	for _, sentence := range sentences {

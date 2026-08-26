@@ -184,8 +184,18 @@ func TestTrapHandling(tt *testing.T) {
 
 	cmd := []string{"/ip/dns/static/add", "=type=A", "=name=example.com", "=ttl=30", "=address=1.0.0.0"}
 
-	_, _ = t.c.RunArgs(cmd)
-	_, err := t.c.RunArgs(cmd)
+	// The first add must succeed — `_, _ =` hid a failure here, which let the
+	// duplicate assertion pass without ever testing the duplicate path — and
+	// the entry must not outlive the test on a live router.
+	first, err := t.c.RunArgs(cmd)
+	require.NoError(tt, err, "first add failed; a leftover from a previous run?")
+	tt.Cleanup(func() {
+		if id, ok := first.Done.Map["ret"]; ok {
+			_, _ = t.c.RunArgs([]string{"/ip/dns/static/remove", "=.id=" + id})
+		}
+	})
+
+	_, err = t.c.RunArgs(cmd)
 	require.Error(tt, err, "should've returned an error due to a duplicate")
 
 	var devErr *DeviceError

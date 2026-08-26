@@ -30,11 +30,11 @@ type ctxReader struct {
 }
 
 func (c *ctxReader) Close() {
-	if c.close.Load() {
-		return
+	// CompareAndSwap, not Load-then-Store: two concurrent Closers could both
+	// observe false and both reach close(c.done), and the second one panics.
+	if c.close.CompareAndSwap(false, true) {
+		close(c.done)
 	}
-	c.close.Store(true)
-	close(c.done)
 }
 
 func (c *ctxReader) Read(p []byte) (int, error) {
@@ -56,11 +56,9 @@ type ctxWriter struct {
 }
 
 func (c *ctxWriter) Close() {
-	if c.close.Load() {
-		return
+	if c.close.CompareAndSwap(false, true) {
+		close(c.done)
 	}
-	c.close.Store(true)
-	close(c.done)
 }
 
 func (c *ctxWriter) Write(p []byte) (int, error) {

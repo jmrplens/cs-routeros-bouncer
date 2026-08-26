@@ -3,6 +3,7 @@ package proto
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 )
@@ -101,10 +102,24 @@ func (r *reader) readLength() (int64, error) {
 	return l, nil
 }
 
+// maxWordLength bounds a single API word. The wire format encodes lengths up
+// to 2^32-1, so a corrupt or malicious peer can declare a multi-GiB word and
+// the old code allocated it before reading a single payload byte. Nothing
+// legitimate approaches this bound: the longest words this bouncer ever sees
+// are address-list comments (hundreds of bytes) and bulk script sources
+// (tens of KiB).
+const maxWordLength = 16 << 20 // 16 MiB
+
+// errWordTooLong is returned before allocating for an oversized declared word.
+var errWordTooLong = errors.New("proto: declared word length exceeds the 16 MiB bound")
+
 func (r *reader) readWord() ([]byte, error) {
 	l, err := r.readLength()
 	if err != nil {
 		return nil, err
+	}
+	if l > maxWordLength {
+		return nil, fmt.Errorf("%w: %d bytes", errWordTooLong, l)
 	}
 	b := make([]byte, l)
 	_, err = io.ReadFull(r, b)
