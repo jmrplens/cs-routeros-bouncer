@@ -14,8 +14,10 @@ name: CodeQL
 on:
   push:
     branches: [main]
+  # No base-branch filter: a stacked PR targets the branch below it, and
+  # filtering on [main] left those PRs with no checks at all — they sat
+  # "expected" forever and could only be merged by overriding the gate.
   pull_request:
-    branches: [main]
   schedule:
     - cron: "42 6 * * 1"
 
