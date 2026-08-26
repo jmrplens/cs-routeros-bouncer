@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -102,6 +103,60 @@ func TestActiveDecisionsRequiresInitializedClient(t *testing.T) {
 // TestActiveDecisionsUsesDecisionListEndpoint verifies that periodic
 // reconciliation snapshots use the active-decision listing endpoint instead of
 // the delta stream's startup mode.
+// TestActiveDecisionsSurvivesServerSideLimitCap pins the failure this paging
+// loop is shaped to avoid. A Local API that caps `limit` below what was asked
+// returns a short page every time. The obvious loop — advance by the requested
+// size, stop when a page comes back short — would end after the first one and
+// hand back a snapshot missing most of the decisions, with no error anywhere.
+// Reconciliation would then read that as drift and remove live bans.
+func TestActiveDecisionsSurvivesServerSideLimitCap(t *testing.T) {
+	const (
+		serverCap = 250 // whatever the client asks for, this server returns 250
+		total     = 900
+	)
+	var served int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		offset, err := strconv.Atoi(r.URL.Query().Get("offset"))
+		if err != nil {
+			t.Errorf("bad offset: %v", err)
+		}
+		response := models.GetDecisionsResponse{}
+		for i := offset; i < offset+serverCap && i < total; i++ {
+			value := fmt.Sprintf("10.%d.%d.%d", i/65536, (i/256)%256, i%256)
+			response = append(response, &models.Decision{
+				Value: new(value), Type: new("ban"), Duration: new("1h"),
+				Origin: new("crowdsec"), Scenario: new("ssh-bf"),
+			})
+		}
+		served += len(response)
+		w.Header().Set("Content-Type", "application/json")
+		if encErr := json.NewEncoder(w).Encode(response); encErr != nil {
+			t.Errorf("encode response: %v", encErr)
+		}
+	}))
+	defer server.Close()
+
+	apiURL, err := url.Parse(server.URL + "/")
+	if err != nil {
+		t.Fatalf("parse server URL: %v", err)
+	}
+	client, err := apiclient.NewDefaultClient(apiURL, "v1", "test", server.Client())
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	mb := NewMockBouncer()
+	mb.APIClientVal = client
+	s := newTestStream(mb)
+
+	decisions, err := s.ActiveDecisions(context.Background())
+	if err != nil {
+		t.Fatalf("ActiveDecisions returned error: %v", err)
+	}
+	if len(decisions) != total {
+		t.Fatalf("capped pages lost decisions: got %d of %d", len(decisions), total)
+	}
+}
+
 func TestActiveDecisionsUsesDecisionListEndpoint(t *testing.T) { // NOSONAR: HTTP fixture and endpoint assertions share one scenario.
 	var requestOffsets []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -148,6 +203,12 @@ func TestActiveDecisionsUsesDecisionListEndpoint(t *testing.T) { // NOSONAR: HTT
 				&models.Decision{Value: new("192.0.2.55"), Type: new("ban"), Duration: new("1h"), Origin: new("crowdsec"), Scenario: new("ssh-bf")},
 				&models.Decision{Value: new("5.6.7.8"), Type: new("captcha"), Duration: new("1h")},
 			)
+		case fmt.Sprintf("%d", activeDecisionPageSize+2):
+			// The loop advances by what it received, not by what it asked for,
+			// and stops only on an empty page — so a short page is followed by
+			// one more request rather than ending the snapshot. This fixture
+			// exercises exactly the shape that a limit-capping Local API would
+			// produce on every page.
 		default:
 			t.Errorf("unexpected offset %q", offset)
 		}
@@ -179,8 +240,18 @@ func TestActiveDecisionsUsesDecisionListEndpoint(t *testing.T) { // NOSONAR: HTT
 	if err != nil {
 		t.Fatalf("ActiveDecisions returned error: %v", err)
 	}
-	if len(requestOffsets) != 2 || requestOffsets[0] != "0" || requestOffsets[1] != fmt.Sprintf("%d", activeDecisionPageSize) {
-		t.Fatalf("expected two paginated requests, got offsets %v", requestOffsets)
+	wantOffsets := []string{
+		"0",
+		fmt.Sprintf("%d", activeDecisionPageSize),
+		fmt.Sprintf("%d", activeDecisionPageSize+2),
+	}
+	if len(requestOffsets) != len(wantOffsets) {
+		t.Fatalf("expected offsets %v, got %v", wantOffsets, requestOffsets)
+	}
+	for i, want := range wantOffsets {
+		if requestOffsets[i] != want {
+			t.Fatalf("request %d: expected offset %s, got %s", i, want, requestOffsets[i])
+		}
 	}
 	if len(decisions) != activeDecisionPageSize+1 {
 		t.Fatalf("expected %d parsed ban decisions, got %d", activeDecisionPageSize+1, len(decisions))
