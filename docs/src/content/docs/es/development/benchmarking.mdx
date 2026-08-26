@@ -3,6 +3,8 @@ title: Benchmarking
 description: Ejecuta la herramienta de benchmark de cs-routeros-bouncer contra un router MikroTik e interpreta los resultados, con cifras reales de un RB5009 (RouterOS 7.22.1).
 ---
 
+import ThemeImage from "components/ThemeImage.astro";
+
 El comando de benchmark mide operaciones de la API de RouterOS contra un router real. Está pensado para desarrollo y planificación de capacidad, no para despliegues normales.
 
 ## Comando
@@ -56,16 +58,70 @@ Para el rendimiento real de arranque del bouncer, prefiere las pruebas funcional
 
 Estas cifras provienen de la suite de pruebas funcionales de CAPI (`tests/functional/`) ejecutada contra un MikroTik RB5009, no de la herramienta de operaciones individuales `cmd/benchmark` anterior. Consulta [Arquitectura: Pool de conexiones](/cs-routeros-bouncer/es/architecture/#pool-de-conexiones) y [Adición masiva basada en scripts](/cs-routeros-bouncer/es/architecture/#adición-masiva-basada-en-scripts) para conocer los mecanismos detrás de estos números.
 
-| Escenario                                                                   | Resultado                          |
-| --------------------------------------------------------------------------- | ---------------------------------- |
-| Adición optimista cache-first (la dirección aún no está en el router)       | ~1–3 ms por operación              |
-| Adición check-first (listar entradas antes de añadir, evitado por la caché) | ~400 ms por IP                     |
-| Adición masiva basada en scripts frente a llamadas secuenciales a la API    | ~97× más rápida para lotes grandes |
-| Adición masiva completa en RB5009, ~28.700 entradas de origen CAPI          | ~35–36 s en total                  |
+| Escenario                                                                   | Resultado                              |
+| --------------------------------------------------------------------------- | -------------------------------------- |
+| Adición optimista cache-first (la dirección aún no está en el router)       | ~1–3 ms por operación                  |
+| Adición check-first (listar entradas antes de añadir, evitado por la caché) | ~400 ms por IP                         |
+| Adición masiva basada en scripts frente a llamadas secuenciales a la API    | ~97× más rápida para lotes grandes     |
+| Bulk-add completo en RB5009, ~22.000 entradas de origen CAPI                | ~29 s de bulk, ~34 s desde el arranque |
 
 La diferencia entre cache-first (~1-3 ms) y check-first (~400 ms) es la razón por la que existe la caché de direcciones en memoria descrita en [Arquitectura](/cs-routeros-bouncer/es/architecture/#caché-de-direcciones-en-memoria): permite al bouncer saltarse el viaje de ida y vuelta listar-y-añadir de RouterOS para las direcciones que ya conoce.
 
 Para despliegues a escala de CAPI (decenas de miles de entradas), consulta también [Blocklists de CAPI](/cs-routeros-bouncer/es/configuration/capi-blocklists/) y [Ajuste de rendimiento](/cs-routeros-bouncer/es/configuration/performance-tuning/) para orientación sobre el dimensionado de `pool_size`.
+
+## El ciclo de vida completo, muestreado cada 100 ms
+
+La gráfica siguiente es una única captura continua de 70 segundos del RB5009 de
+producción, tomada con un muestreador a 10 Hz que lee `/proc/stat` en el propio
+router (ver la nota sobre el método al final de esta página). Cubre los tres
+estados con los que un operador se encuentra de verdad: el router ocioso con el
+bouncer parado y la lista de direcciones vacía, la **primera reconciliación**
+importando ~22.000 entradas, y el estado tranquilo posterior con la lista
+completa cargada. La CPU se lee en el eje izquierdo, la RAM en el derecho, y
+los marcadores discontinuos salen de los propios timestamps del log del
+bouncer. Cada punto es la media de cinco muestras de 100 ms; los picos
+sub-segundo alcanzan el 57% en rebanadas sueltas de 100 ms durante el import.
+
+<ThemeImage
+  src="perf-lifecycle-light.svg"
+  alt="Gráfica de líneas de CPU en porcentaje y RAM en megabytes del router durante 70 segundos: CPU casi ociosa antes de arrancar el bouncer, una meseta sostenida en torno al 31% entre los marcadores de inicio de escrituras y reconciliación completa, y vuelta al estado ocioso; la RAM sube unos 19 MiB al conectar el bouncer y se mantiene plana durante todo el import."
+  caption="Primera reconciliación en un RB5009 con 22.000 entradas. Se regenera con go run ./cmd/perfmon plot desde el dataset versionado."
+/>
+
+El import es la meseta: aproximadamente un 31% sostenido durante ~26 segundos,
+repartido entre los cuatro cores con el pool de conexiones rotando picos de un
+solo core del 50–100%. La RAM es la parte tranquila de la historia, con una
+sorpresa en el cuándo: el escalón de ~19 MiB cae al conectar, antes de importar
+una sola entrada — y 22.000 entradas después no se ha movido más. Mantener la
+lista le cuesta al router casi nada; la memoria no es donde muerde esta carga,
+la CPU durante las lecturas de la lista, sí. El tramo ocioso también enseña los
+propios blips de fondo del router — un dispositivo real nunca es una línea
+plana.
+
+### Nota sobre el método
+
+La serie de 100 ms procede de un contenedor muestreador que corre en el propio
+router, leyendo `/proc/stat` y `/proc/meminfo` del kernel compartido a 10 Hz y
+empujando lotes directamente a Loki — el `cpu-load` propio de RouterOS se
+actualiza solo una vez por segundo, así que los scripts no pueden ver por
+debajo de eso. El protocolo de captura: parar el bouncer, borrar ambas listas
+de direcciones, dejar asentar el router, y arrancar el bouncer grabando a
+través de la primera reconciliación hasta el régimen estable.
+
+Toda la instrumentación se despliega con un comando contra cualquier RouterOS
+con el paquete de contenedores habilitado:
+
+```sh
+go run ./cmd/perfmon install -router admin@192.168.88.1 -port 22 \
+  -loki http://tu-loki:3100
+```
+
+Compila el muestreador en cruzado, empaqueta la imagen del contenedor sin
+necesitar Docker, crea el veth, el NAT y las pertenencias a listas del firewall
+de forma idempotente, arranca el contenedor y verifica que las muestras llegan
+a Loki. `uninstall` elimina exactamente lo que creó; `capture` extrae cualquier
+ventana como CSV; `plot` redibuja la gráfica de arriba desde el dataset
+versionado. Cualquier verbo con `-h` muestra la lista completa de flags.
 
 ## Lista de comprobación de seguridad
 

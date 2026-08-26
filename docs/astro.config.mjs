@@ -343,6 +343,23 @@ function mermaidTheme(scheme) {
 			labelTextColor: stop("heading"),
 			loopTextColor: stop("body"),
 			noteBkgColor: stop("accent-soft"),
+			// xychart derives NOTHING from the stops above: without an explicit
+			// block its first plot colour ships as a cream (#FFF4DD) that is
+			// invisible on the light page — which is exactly how the first
+			// benchmark chart rendered as axes with no line on them.
+			xyChart: {
+				backgroundColor: stop("page"),
+				titleColor: stop("heading"),
+				xAxisTitleColor: stop("body"),
+				xAxisLabelColor: stop("body"),
+				xAxisTickColor: stop("muted"),
+				xAxisLineColor: stop("border-strong"),
+				yAxisTitleColor: stop("body"),
+				yAxisLabelColor: stop("body"),
+				yAxisTickColor: stop("muted"),
+				yAxisLineColor: stop("border-strong"),
+				plotColorPalette: stop("accent"),
+			},
 			noteBorderColor: stop("accent"),
 			noteTextColor: stop("heading"),
 			activationBkgColor: stop("surface-raised"),
