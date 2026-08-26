@@ -1,6 +1,6 @@
 ---
 title: Estructura del proyecto
-description: "Estructura del repositorio de cs-routeros-bouncer: árbol de directorios y responsabilidades de cada paquete Go (config, crowdsec, manager, metrics, routeros)."
+description: "Estructura del repositorio de cs-routeros-bouncer: árbol de directorios y responsabilidades de cada paquete Go (config, crowdsec, manager, metrics, rosapi, routeros)."
 ---
 
 import { FileTree } from "@astrojs/starlight/components";
@@ -14,6 +14,8 @@ import { FileTree } from "@astrojs/starlight/components";
     - ...
   - cs-routeros-bouncer/
     - main.go Punto de entrada de la CLI
+  - perfmon/ Instrumentación del router y gráficas
+    - ...
 - internal/
   - config/
     - config.go Struct de configuración y carga
@@ -43,6 +45,14 @@ import { FileTree } from "@astrojs/starlight/components";
     - metrics.go Definiciones de métricas de Prometheus
     - metrics_test.go
     - server.go Servidor HTTP para /metrics y /health
+  - rosapi/ Cliente de la API de RouterOS vendorizado
+    - client.go Conexión, login y despacho de comandos
+    - error.go Errores `!trap` de RouterOS
+    - logger.go Enganche de logging
+    - proto/ Protocolo de cable
+      - ...
+    - reply.go Ensamblado de respuestas
+    - run.go Ejecución de sentencias
   - routeros/
     - addresslist.go Operaciones de address list
     - bulk.go Operaciones masivas con scripts
@@ -55,8 +65,6 @@ import { FileTree } from "@astrojs/starlight/components";
     - pool.go Pool de conexiones
     - routeros_test.go
 - docs/ Documentación (Starlight)
-- local/
-  - docs-legacy/ Documentación original de MkDocs (archivo)
 - grafana/
   - dashboard.json Dashboard de Grafana
 - config/ Archivos de configuración de ejemplo
@@ -77,6 +85,18 @@ Punto de entrada de la CLI. Se encarga de:
 - Enrutado de subcomandos (`setup`, `uninstall`, `version`, `help`) y flags de ejecución (`-c`, `-version`)
 - Gestión de señales (SIGTERM, SIGINT)
 - Coordinación del apagado ordenado
+
+### `cmd/benchmark`
+
+Benchmark de operaciones sueltas de RouterOS, descrito en [Benchmarking](/cs-routeros-bouncer/es/development/benchmarking/). Solo para desarrollo y planificación de capacidad.
+
+### `cmd/perfmon`
+
+Instrumentación en el propio router, también cubierta en [Benchmarking](/cs-routeros-bouncer/es/development/benchmarking/):
+
+- Compila de forma cruzada un muestreador de `/proc/stat` a 10 Hz y lo empaqueta como imagen de contenedor sin necesitar Docker
+- Lo instala en un dispositivo RouterOS de forma idempotente (veth, NAT, pertenencia a listas de firewall) y desinstala exactamente lo que creó
+- Descarga ventanas de captura desde Loki en CSV y dibuja la gráfica del ciclo de vida
 
 ### `internal/config`
 
@@ -114,9 +134,21 @@ Observabilidad:
 - Recolector de métricas del sistema RouterOS (CPU, memoria, temperatura)
 - Servidor HTTP para los endpoints `/metrics` y `/health`
 
+### `internal/rosapi`
+
+El protocolo de la API de RouterOS en sí, vendorizado para que el proyecto sea
+dueño del formato de cable en lugar de depender de un tercero sin mantenimiento.
+Es un fork podado: los modos asíncrono y de escucha ya no están, ni el login por
+desafío MD5, porque este bouncer no usa ninguno y cada uno era superficie que
+mantener.
+
+- `proto/`: codificación de sentencias, tramado de palabras con prefijo de longitud, lector y escritor
+- Despacho síncrono de comandos bajo un mutex, con plazo por comando
+- Traducción de `!trap`/`!fatal` a errores de Go, con redacción de contraseñas en los logs
+
 ### `internal/routeros`
 
-Cliente de la API de MikroTik RouterOS:
+Cliente de la API de MikroTik RouterOS, construido sobre `internal/rosapi`:
 
 - Pool de conexiones con tamaño configurable
 - Operaciones de address list (añadir, eliminar, listar)

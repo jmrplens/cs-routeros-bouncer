@@ -33,7 +33,15 @@ Comprueba o aumenta el límite de RouterOS:
 
 ## Comportamiento de adición masiva
 
-Durante la reconciliación, las adiciones usan scripts temporales de RouterOS en lugar de una llamada a la API por cada IP. Cada script contiene hasta 100 direcciones, manteniendo el mensaje de la API con margen por debajo de los límites de tamaño de RouterOS.
+Durante la reconciliación, las adiciones usan scripts temporales de RouterOS en lugar de una llamada a la API por cada IP. Cada script lleva hasta 100 direcciones.
+
+Ese tamaño de bloque no tiene que ver con el tamaño del mensaje — la API de RouterOS admite palabras mucho mayores que estos scripts, y un bloque de 1.000 entradas se transfiere sin protestar. Es el compromiso entre amortizar los cuatro viajes de ida y vuelta que cuesta cada bloque (buscar, añadir, ejecutar, eliminar) y cuánto tiempo retiene al router una única ejecución de script no interrumpible. Barriéndolo contra un RB5009 sale:
+
+```text
+tiempo = entradas × 1,30 ms  +  bloques × 1,0 ms
+```
+
+El término por entrada domina tanto que el mando apenas existe: importar 22.000 entradas gasta 28,6 s insertando filas frente a 0,23 s de andamiaje de bloques con 100, o 0,02 s con 1.000. No hay motivo para cambiarlo.
 
 Si un script masivo falla, el bouncer registra un aviso y recurre a adiciones individuales para ese bloque. Las entradas duplicadas se omiten o se refrescan sin reconectar la sesión de la API.
 
@@ -64,7 +72,9 @@ crowdsec:
 
 Usa `0` para desactivar la reconciliación periódica, o un valor de `1m` o superior para activarla. Los valores entre `0` y `1m` se rechazan en el arranque.
 
-Los intervalos cortos reparan la deriva más rápido, pero listan las entradas de direcciones de RouterOS con más frecuencia. Los intervalos largos reducen el trabajo de API en segundo plano.
+Los intervalos cortos reparan la deriva más rápido, pero leen la address-list entera de RouterOS más a menudo. Lo que eso cuesta es medible: en un RB5009 con 22.332 entradas, una pasada sin deriva tarda **1,86 s**, de los cuales las dos lecturas de lista son el 98,5%. Con el valor por defecto de `15m` eso es un ciclo de trabajo del 0,2%; con `1m`, del 3,1%.
+
+El coste escala con cuántas entradas guarda el router, no con cuánta deriva haya que reparar — una pasada que no encuentra nada cuesta prácticamente lo mismo que una que arregla algo. Así que merece la pena alargar el intervalo con una lista grande y un router modesto, y poco se gana acortándolo por debajo de lo que realmente exija tu tolerancia a deriva sin detectar.
 
 ## Métricas de tráfico procesado
 

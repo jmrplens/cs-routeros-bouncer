@@ -120,6 +120,26 @@ what it created; `capture` pulls any window as CSV; `plot` redraws the chart
 above from the committed dataset. Run any verb with `-h` for the full flag
 list.
 
+## Measuring against a live router
+
+Two habits separate a number you can act on from one that misleads, and both were learned the expensive way while tuning this bouncer.
+
+**Interleave the arms.** A router is not a quiet machine: it routes traffic, runs its own background work, and drifts over minutes. Measuring variant A for a while and then variant B for a while attributes that drift to the change. Alternate them instead — A, B, A, B — inside the same connection and the same minute, and compare paired samples. The first in-situ comparison of the proplist reduction ran as two separate windows and reported −2%; the interleaved run reported −11.2%, with every one of 48 pairs favouring the same side. Same code, same router; only the schedule differed.
+
+**Distrust a curve that is not monotonic.** Sweeping the bulk chunk size once per value, in sequence, produced this:
+
+```text
+chunk 50    6.926s
+chunk 100   4.679s
+chunk 250   9.760s     <- twice its neighbours on both sides
+chunk 500   5.395s
+chunk 1000  6.194s
+```
+
+No cost model produces that shape. Re-run as three interleaved rounds reporting the best time per size, it flattens to 4.5–6.1 s across the whole 20× range — which is the real finding: the chunk size barely matters, because the per-entry insertion cost dominates the per-chunk scaffolding by more than a hundred to one.
+
+A useful reflex: before believing a result, ask what else changed between the two measurements. Usually it is time.
+
 ## Safety checklist
 
 - Confirm the target is a lab router.

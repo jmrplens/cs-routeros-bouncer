@@ -1638,3 +1638,43 @@ func TestLoadLoggingFileFromEnv(t *testing.T) {
 		})
 	}
 }
+
+// TestValidateMikroTikTimeoutsReject negative verifies that a negative RouterOS
+// timeout is refused at startup. Neither value fails loudly on its own: a
+// negative connection_timeout makes every dial fail with a bare "i/o timeout"
+// that implicates the network, and a negative command_timeout falls through the
+// `> 0` guard that arms the deadline and silently leaves the client unbounded.
+func TestValidateMikroTikTimeoutsRejectNegative(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		set  func(*Config)
+		want string
+	}{
+		{"connection", func(c *Config) { c.MikroTik.ConnectionTimeout = -time.Second }, "connection_timeout"},
+		{"command", func(c *Config) { c.MikroTik.CommandTimeout = -time.Second }, "command_timeout"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := validCfg()
+			tc.set(cfg)
+			err := cfg.Validate()
+			if err == nil {
+				t.Fatalf("expected an error for a negative %s", tc.want)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("error should name %s, got %v", tc.want, err)
+			}
+		})
+	}
+}
+
+// TestValidateMikroTikTimeoutsAllowZero pins the documented meaning of zero for
+// both keys: no bound. Zero command_timeout is the pre-existing unbounded
+// behavior the timeout work deliberately preserved.
+func TestValidateMikroTikTimeoutsAllowZero(t *testing.T) {
+	cfg := validCfg()
+	cfg.MikroTik.ConnectionTimeout = 0
+	cfg.MikroTik.CommandTimeout = 0
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("zero should be valid for both timeouts: %v", err)
+	}
+}

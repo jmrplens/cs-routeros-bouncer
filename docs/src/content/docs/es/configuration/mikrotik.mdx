@@ -84,7 +84,9 @@ Tiempo máximo de espera para la conexión inicial a la API. Usa el formato de d
 Tiempo máximo de espera para que se complete un único comando de la API. Auméntalo si tienes un router lento o address lists grandes.
 
 :::tip
-Si ves errores de tiempo de espera durante la reconciliación con listas de IPs grandes (más de 20.000), aumenta `command_timeout` a `60s` o más. Ten en cuenta que, con la adición masiva basada en scripts, los comandos individuales de la API son pequeños (100 IPs por script), por lo que el valor por defecto de `30s` es suficiente para la mayoría de las instalaciones.
+El límite es por comando, no por pasada de reconciliación, y el comando más lento no es un bloque masivo — esos tardan unos 130 ms cada uno. Es la lectura de la address-list al principio de cada pasada, que escala con cuántas entradas guarda el router. Medida en un RB5009 con 22.332 entradas, esa lectura tarda ~1,8 s, así que el valor por defecto de `30s` tiene unas 17× de margen y solo pasa a ser la restricción activa bastante por encima de las 350.000 entradas.
+
+Súbelo si ves errores de tiempo de espera en un dispositivo lento o con una lista muy grande. Ambos tiempos de espera deben ser `>= 0`; `0` significa sin límite, y un valor negativo se rechaza al arrancar.
 :::
 
 ## Pool de conexiones
