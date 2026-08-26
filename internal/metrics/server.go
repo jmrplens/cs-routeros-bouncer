@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/http/pprof"
 	"strconv"
 	"sync/atomic"
 	"time"
@@ -24,6 +25,7 @@ type Server struct {
 	httpServer *http.Server
 	version    string
 	connected  atomic.Bool
+	pprof      bool
 }
 
 // NewServer creates a new metrics HTTP server.
@@ -32,10 +34,22 @@ type Server struct {
 func NewServer(cfg config.MetricsConfig, version string) *Server {
 	s := &Server{
 		version: version,
+		pprof:   cfg.PprofEnabled,
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.handleHealth)
+
+	if cfg.PprofEnabled {
+		// Registered by hand rather than by importing net/http/pprof for its
+		// side effect, which would attach these to http.DefaultServeMux — a mux
+		// this process does not serve, but any other package could.
+		mux.HandleFunc("/debug/pprof/", pprof.Index)
+		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	}
 
 	if cfg.Enabled {
 		mux.Handle("/metrics", promhttp.Handler())
@@ -74,6 +88,14 @@ func (s *Server) Start() error {
 	}
 
 	logger.Info().Str("addr", ln.Addr().String()).Msg("starting health/metrics server")
+
+	if s.pprof {
+		// Warn every start, not once: an operator who turned this on to chase
+		// something and forgot is exactly who needs to see it in the log.
+		logger.Warn().
+			Str("addr", ln.Addr().String()).
+			Msg("pprof is exposed under /debug/pprof — heap profiles can carry credentials and the profile endpoint blocks; bind the listener to localhost while it is on")
+	}
 
 	go func() {
 		if serveErr := s.httpServer.Serve(ln); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {

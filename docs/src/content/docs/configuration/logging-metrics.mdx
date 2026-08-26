@@ -104,6 +104,34 @@ metrics:
   track_processed: true
 ```
 
+### `metrics.pprof_enabled` <Badge text="Advanced" variant="caution" />
+
+<ConfigOption path="metrics.pprof_enabled" />
+
+Serves Go's runtime profiler under `/debug/pprof` on the metrics listener, for
+investigating where the bouncer spends CPU or holds memory:
+
+```sh
+go tool pprof -seconds 30 http://127.0.0.1:2112/debug/pprof/profile
+go tool pprof http://127.0.0.1:2112/debug/pprof/heap
+```
+
+Leave it off unless you are actively profiling, and set
+`metrics.listen_addr: "127.0.0.1"` while it is on. Two reasons, both concrete:
+a heap profile contains fragments of whatever the process has held in memory —
+your CrowdSec API key and RouterOS password among them — and
+`/debug/pprof/profile` holds a request open for its whole sampling window,
+which makes it a denial-of-service lever on an exposed listener.
+
+The bouncer logs a warning on every start while this is enabled, so a setting
+left on by accident is visible rather than silent.
+
+```yaml
+metrics:
+  pprof_enabled: false
+  listen_addr: "127.0.0.1"
+```
+
 ### Available metrics
 
 <LinkCard
