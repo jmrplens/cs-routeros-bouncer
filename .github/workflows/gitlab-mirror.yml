@@ -227,7 +227,7 @@ jobs:
               link_name=$(jq -r '.name' <<<"$link")
               link_url=$(jq -r '.url' <<<"$link")
               link_type=$(jq -r '.link_type' <<<"$link")
-              [ -n "$link_name" ] && [ -n "$link_url" ] || continue
+              if [ -z "$link_name" ] || [ -z "$link_url" ]; then continue; fi
               sync_link "$tag_encoded" "$existing_links" "$link_name" "$link_url" "$link_type"
             done
             delete_stale_links "$tag_encoded" "$desired_links"
