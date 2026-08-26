@@ -21,6 +21,8 @@ const fixtureTheme = `:root {
 	--rb-muted: #8b969d;
 	--rb-accent: #807dc0;
 	--rb-status-warn: #f9ab14;
+	--rb-status-drop: #e0605c;
+	--rb-status-allow: #57b96a;
 }
 
 :root[data-theme="light"] {
@@ -30,6 +32,8 @@ const fixtureTheme = `:root {
 	--rb-muted: #556069;
 	--rb-accent: #4d4a98;
 	--rb-status-warn: #906004;
+	--rb-status-drop: #b3352f;
+	--rb-status-allow: #257a38;
 }
 `
 
@@ -47,7 +51,7 @@ func TestPlotDocsEndToEnd(t *testing.T) {
 	}
 	o := options{
 		dataCSV:    write("data.csv", "rel_s,cpu_pct,ram_used_mib\n-5,3,330\n0,5,349\n10,31,349\n35,30,348\n45,4,348\n"),
-		markersCSV: write("markers.csv", "rel_s,label\n0,bouncer starts\n35,reconciliation complete\n"),
+		markersCSV: write("markers.csv", "rel_s,label,kind\n0,bouncer starts,neutral\n35,reconciliation complete,done\n"),
 		themeCSS:   write("theme.css", fixtureTheme),
 		outDir:     dir,
 		title:      "fixture",
@@ -95,6 +99,7 @@ func TestPlotDocsRejectsBadInputs(t *testing.T) {
 		{"one data row", func(o options) options { o.dataCSV = write("d1.csv", "h\n0,1,2\n"); return o }},
 		{"malformed data", func(o options) options { o.dataCSV = write("d2.csv", "h\nnope\n"); return o }},
 		{"malformed marker", func(o options) options { o.markersCSV = write("m1.csv", "h\nnope\n"); return o }},
+		{"unknown marker kind", func(o options) options { o.markersCSV = write("m2.csv", "h\n0,x,fuchsia\n"); return o }},
 		{"missing token", func(o options) options { o.themeCSS = write("t1.css", ":root {\n--rb-page: #fff;\n}\n"); return o }},
 	}
 	for _, tc := range cases {
@@ -252,7 +257,7 @@ func TestDispatchContract(t *testing.T) {
 	}
 	o := options{
 		dataCSV:    write("d.csv", "h\n0,1,330\n1,2,331\n"),
-		markersCSV: write("m.csv", "h\n0,start\n"),
+		markersCSV: write("m.csv", "h\n0,start,neutral\n"),
 		themeCSS:   write("t.css", fixtureTheme),
 		outDir:     dir,
 	}

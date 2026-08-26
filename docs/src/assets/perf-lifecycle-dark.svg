@@ -3,43 +3,49 @@
 <text x="64" y="24" font-family="ui-sans-serif,system-ui,sans-serif" font-size="16" font-weight="600" fill="#f2f6f8">First reconciliation on an RB5009 — 22,000 entries, sampled at 100 ms</text>
 <line x1="64" y1="382.0" x2="888" y2="382.0" stroke="#2a333a" stroke-width="1"/>
 <text x="56" y="386.0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="end" fill="#807dc0">0</text>
-<line x1="64" y1="314.8" x2="888" y2="314.8" stroke="#2a333a" stroke-width="1"/>
-<text x="56" y="318.8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="end" fill="#807dc0">10</text>
-<line x1="64" y1="247.6" x2="888" y2="247.6" stroke="#2a333a" stroke-width="1"/>
-<text x="56" y="251.6" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="end" fill="#807dc0">20</text>
-<line x1="64" y1="180.4" x2="888" y2="180.4" stroke="#2a333a" stroke-width="1"/>
-<text x="56" y="184.4" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="end" fill="#807dc0">30</text>
-<line x1="64" y1="113.2" x2="888" y2="113.2" stroke="#2a333a" stroke-width="1"/>
-<text x="56" y="117.2" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="end" fill="#807dc0">40</text>
-<line x1="64" y1="46.0" x2="888" y2="46.0" stroke="#2a333a" stroke-width="1"/>
-<text x="56" y="50.0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="end" fill="#807dc0">50</text>
+<line x1="64" y1="320.4" x2="888" y2="320.4" stroke="#2a333a" stroke-width="1"/>
+<text x="56" y="324.4" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="end" fill="#807dc0">10</text>
+<line x1="64" y1="258.8" x2="888" y2="258.8" stroke="#2a333a" stroke-width="1"/>
+<text x="56" y="262.8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="end" fill="#807dc0">20</text>
+<line x1="64" y1="197.2" x2="888" y2="197.2" stroke="#2a333a" stroke-width="1"/>
+<text x="56" y="201.2" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="end" fill="#807dc0">30</text>
+<line x1="64" y1="135.6" x2="888" y2="135.6" stroke="#2a333a" stroke-width="1"/>
+<text x="56" y="139.6" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="end" fill="#807dc0">40</text>
+<line x1="64" y1="74.0" x2="888" y2="74.0" stroke="#2a333a" stroke-width="1"/>
+<text x="56" y="78.0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="end" fill="#807dc0">50</text>
 <text x="896" y="386.0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#f9ab14">325</text>
-<text x="896" y="330.0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#f9ab14">330</text>
-<text x="896" y="274.0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#f9ab14">335</text>
-<text x="896" y="218.0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#f9ab14">340</text>
-<text x="896" y="162.0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#f9ab14">345</text>
-<text x="896" y="106.0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#f9ab14">350</text>
-<text x="896" y="50.0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#f9ab14">355</text>
-<text x="64.0" y="400" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#8b969d">-5</text>
-<text x="145.6" y="400" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#8b969d">0</text>
-<text x="227.2" y="400" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#8b969d">5</text>
-<text x="308.8" y="400" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#8b969d">10</text>
-<text x="390.3" y="400" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#8b969d">15</text>
-<text x="471.9" y="400" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#8b969d">20</text>
-<text x="553.5" y="400" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#8b969d">25</text>
-<text x="635.1" y="400" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#8b969d">30</text>
-<text x="716.7" y="400" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#8b969d">35</text>
-<text x="798.3" y="400" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#8b969d">40</text>
-<text x="879.8" y="400" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#8b969d">45</text>
-<text x="16" y="214.0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12" fill="#807dc0" transform="rotate(-90 16 214.0)" text-anchor="middle">CPU %</text>
-<text x="942" y="214.0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12" fill="#f9ab14" transform="rotate(90 942 214.0)" text-anchor="middle">RAM used, MiB</text>
+<text x="896" y="334.7" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#f9ab14">330</text>
+<text x="896" y="283.3" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#f9ab14">335</text>
+<text x="896" y="232.0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#f9ab14">340</text>
+<text x="896" y="180.7" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#f9ab14">345</text>
+<text x="896" y="129.3" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#f9ab14">350</text>
+<text x="896" y="78.0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#f9ab14">355</text>
+<text x="64.0" y="400" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#8b969d">-15</text>
+<text x="123.3" y="400" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#8b969d">-10</text>
+<text x="182.6" y="400" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#8b969d">-5</text>
+<text x="241.8" y="400" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#8b969d">0</text>
+<text x="301.1" y="400" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#8b969d">5</text>
+<text x="360.4" y="400" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#8b969d">10</text>
+<text x="419.7" y="400" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#8b969d">15</text>
+<text x="479.0" y="400" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#8b969d">20</text>
+<text x="538.2" y="400" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#8b969d">25</text>
+<text x="597.5" y="400" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#8b969d">30</text>
+<text x="656.8" y="400" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#8b969d">35</text>
+<text x="716.1" y="400" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#8b969d">40</text>
+<text x="775.4" y="400" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#8b969d">45</text>
+<text x="834.6" y="400" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#8b969d">50</text>
+<text x="16" y="228.0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12" fill="#807dc0" transform="rotate(-90 16 228.0)" text-anchor="middle">CPU %</text>
+<text x="942" y="228.0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12" fill="#f9ab14" transform="rotate(90 942 228.0)" text-anchor="middle">RAM used, MiB</text>
 <text x="476.0" y="424" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12" text-anchor="middle" fill="#8b969d">seconds since the bouncer started</text>
-<line x1="145.6" y1="46" x2="145.6" y2="382" stroke="#8b969d" stroke-width="1.5" stroke-dasharray="5 4"/>
-<text x="145.6" y="40" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#f2f6f8">bouncer starts</text>
-<line x1="241.9" y1="46" x2="241.9" y2="382" stroke="#8b969d" stroke-width="1.5" stroke-dasharray="5 4"/>
-<text x="241.9" y="40" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#f2f6f8">writes begin</text>
-<line x1="713.4" y1="46" x2="713.4" y2="382" stroke="#8b969d" stroke-width="1.5" stroke-dasharray="5 4"/>
-<text x="713.4" y="40" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#f2f6f8">reconciliation complete</text>
-<path d="M64.0,323.8L72.2,322.6L80.3,322.6L88.5,326.0L96.6,326.0L104.8,327.1L113.0,327.1L121.1,308.1L129.3,308.1L137.4,312.6L145.6,312.6L153.7,230.8L161.9,230.8L170.1,106.5L178.2,106.5L186.4,114.3L194.5,114.3L202.7,112.1L210.9,112.1L219.0,108.7L227.2,108.7L235.3,112.1L243.5,112.1L251.6,109.8L259.8,109.8L268.0,117.7L276.1,117.7L284.3,113.2L292.4,113.2L300.6,119.9L308.8,119.9L316.9,104.2L325.1,104.2L333.2,112.1L341.4,112.1L349.5,111.0L357.7,111.0L365.9,112.1L374.0,112.1L382.2,119.9L390.3,119.9L398.5,107.6L406.7,107.6L414.8,118.8L423.0,118.8L431.1,128.9L439.3,128.9L447.4,131.1L455.6,131.1L463.8,125.5L471.9,125.5L480.1,127.8L488.2,127.8L496.4,140.1L504.6,140.1L512.7,119.9L520.9,119.9L529.0,136.7L537.2,136.7L545.3,137.8L553.5,137.8L561.7,137.8L569.8,137.8L578.0,130.0L586.1,130.0L594.3,137.8L602.5,137.8L610.6,128.9L618.8,128.9L626.9,123.3L635.1,123.3L643.2,112.1L651.4,112.1L659.6,133.4L667.7,133.4L675.9,126.6L684.0,126.6L692.2,123.3L700.4,123.3L708.5,124.4L716.7,124.4L724.8,134.5L733.0,134.5L741.1,137.8L749.3,137.8L757.5,128.9L765.6,128.9L773.8,115.4L781.9,115.4L790.1,126.6L798.3,126.6L806.4,119.9L814.6,119.9L822.7,111.0L830.9,111.0L839.0,125.5L847.2,125.5L855.4,103.1L863.5,103.1L871.7,127.8L879.8,127.8L888.0,127.8" fill="none" stroke="#f9ab14" stroke-width="2.0" stroke-linejoin="round"/>
-<path d="M64.0,377.3L72.2,352.4L80.3,369.9L88.5,363.2L96.6,379.3L104.8,363.2L113.0,290.6L121.1,176.4L129.3,278.5L137.4,343.0L145.6,356.5L153.7,340.3L161.9,345.7L170.1,330.9L178.2,289.3L186.4,324.2L194.5,296.0L202.7,343.0L210.9,372.6L219.0,343.0L227.2,372.6L235.3,349.7L243.5,266.4L251.6,181.7L259.8,165.6L268.0,172.3L276.1,185.8L284.3,161.6L292.4,154.9L300.6,165.6L308.8,197.9L316.9,177.7L325.1,168.3L333.2,172.3L341.4,138.7L349.5,172.3L357.7,177.7L365.9,204.6L374.0,196.5L382.2,199.2L390.3,171.0L398.5,169.6L406.7,172.3L414.8,175.0L423.0,191.2L431.1,172.3L439.3,152.2L447.4,169.6L455.6,138.7L463.8,145.5L471.9,188.5L480.1,185.8L488.2,181.7L496.4,141.4L504.6,175.0L512.7,145.5L520.9,172.3L529.0,195.2L537.2,169.6L545.3,153.5L553.5,138.7L561.7,179.1L569.8,197.9L578.0,197.9L586.1,199.2L594.3,210.0L602.5,118.6L610.6,140.1L618.8,168.3L626.9,183.1L635.1,175.0L643.2,175.0L651.4,179.1L659.6,195.2L667.7,125.3L675.9,179.1L684.0,169.6L692.2,132.0L700.4,187.1L708.5,192.5L716.7,337.6L724.8,356.5L733.0,365.9L741.1,359.2L749.3,379.3L757.5,349.7L765.6,335.0L773.8,347.1L781.9,373.9L790.1,344.4L798.3,371.2L806.4,270.4L814.6,340.3L822.7,348.4L830.9,355.1L839.0,369.9L847.2,344.4L855.4,360.5L863.5,340.3L871.7,369.9L879.8,329.6L888.0,382.0" fill="none" stroke="#807dc0" stroke-width="2.5" stroke-linejoin="round"/>
+<line x1="241.8" y1="74" x2="241.8" y2="382" stroke="#8b969d" stroke-width="1.5" stroke-dasharray="5 4"/>
+<rect x="192.4" y="54.0" width="98.8" height="16.0" rx="4" fill="#8b969d"/>
+<text x="241.8" y="66.0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#0e1316">bouncer starts</text>
+<line x1="311.8" y1="74" x2="311.8" y2="382" stroke="#e0605c" stroke-width="1.5" stroke-dasharray="5 4"/>
+<rect x="268.6" y="34.0" width="86.4" height="16.0" rx="4" fill="#e0605c"/>
+<text x="311.8" y="46.0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#0e1316">writes begin</text>
+<line x1="654.4" y1="74" x2="654.4" y2="382" stroke="#57b96a" stroke-width="1.5" stroke-dasharray="5 4"/>
+<rect x="577.1" y="54.0" width="154.6" height="16.0" rx="4" fill="#57b96a"/>
+<text x="654.4" y="66.0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#0e1316">reconciliation complete</text>
+<path d="M64.0,332.7L69.9,327.6L75.9,327.6L81.8,334.8L87.7,334.8L93.6,326.6L99.6,326.6L105.5,318.3L111.4,318.3L117.4,334.8L123.3,334.8L129.2,331.7L135.1,331.7L141.1,331.7L147.0,331.7L152.9,323.5L158.8,323.5L164.8,329.6L170.7,329.6L176.6,328.6L182.6,328.6L188.5,327.6L194.4,327.6L200.3,330.7L206.3,330.7L212.2,331.7L218.1,331.7L224.1,314.2L230.0,314.2L235.9,318.3L241.8,318.3L247.8,243.4L253.7,243.4L259.6,129.4L265.6,129.4L271.5,136.6L277.4,136.6L283.3,134.6L289.3,134.6L295.2,131.5L301.1,131.5L307.1,134.6L313.0,134.6L318.9,132.5L324.8,132.5L330.8,139.7L336.7,139.7L342.6,135.6L348.5,135.6L354.5,141.8L360.4,141.8L366.3,127.4L372.3,127.4L378.2,134.6L384.1,134.6L390.0,133.5L396.0,133.5L401.9,134.6L407.8,134.6L413.8,141.8L419.7,141.8L425.6,130.5L431.5,130.5L437.5,140.7L443.4,140.7L449.3,150.0L455.3,150.0L461.2,152.0L467.1,152.0L473.0,146.9L479.0,146.9L484.9,148.9L490.8,148.9L496.7,160.2L502.7,160.2L508.6,141.8L514.5,141.8L520.5,157.2L526.4,157.2L532.3,158.2L538.2,158.2L544.2,158.2L550.1,158.2L556.0,151.0L562.0,151.0L567.9,158.2L573.8,158.2L579.7,150.0L585.7,150.0L591.6,144.8L597.5,144.8L603.5,134.6L609.4,134.6L615.3,154.1L621.2,154.1L627.2,147.9L633.1,147.9L639.0,144.8L644.9,144.8L650.9,145.9L656.8,145.9L662.7,155.1L668.7,155.1L674.6,158.2L680.5,158.2L686.4,150.0L692.4,150.0L698.3,137.7L704.2,137.7L710.2,147.9L716.1,147.9L722.0,141.8L727.9,141.8L733.9,133.5L739.8,133.5L745.7,146.9L751.7,146.9L757.6,126.4L763.5,126.4L769.4,148.9L775.4,148.9L781.3,156.1L787.2,156.1L793.2,141.8L799.1,141.8L805.0,144.8L810.9,144.8L816.9,148.9L822.8,148.9L828.7,153.1L834.6,153.1L840.6,153.1L846.5,153.1L852.4,152.0L858.4,152.0L864.3,155.1L870.2,155.1L876.1,152.0L882.1,152.0L888.0,152.0" fill="none" stroke="#f9ab14" stroke-width="2.0" stroke-linejoin="round"/>
+<path d="M64.0,363.5L69.9,356.1L75.9,368.4L81.8,368.4L87.7,368.4L93.6,368.4L99.6,316.7L105.5,375.8L111.4,362.3L117.4,379.5L123.3,361.1L129.2,370.9L135.1,364.8L141.1,357.4L147.0,366.0L152.9,373.4L158.8,367.2L164.8,361.1L170.7,374.6L176.6,359.8L182.6,370.9L188.5,354.9L194.4,370.9L200.3,364.8L206.3,379.5L212.2,364.8L218.1,298.2L224.1,193.5L230.0,287.1L235.9,346.3L241.8,358.6L247.8,343.8L253.7,348.7L259.6,335.2L265.6,297.0L271.5,329.0L277.4,303.2L283.3,346.3L289.3,373.4L295.2,346.3L301.1,373.4L307.1,352.4L313.0,276.0L318.9,198.4L324.8,183.6L330.8,189.8L336.7,202.1L342.6,180.0L348.5,173.8L354.5,183.6L360.4,213.2L366.3,194.7L372.3,186.1L378.2,189.8L384.1,159.0L390.0,189.8L396.0,194.7L401.9,219.4L407.8,212.0L413.8,214.4L419.7,188.6L425.6,187.3L431.5,189.8L437.5,192.3L443.4,207.1L449.3,189.8L455.3,171.3L461.2,187.3L467.1,159.0L473.0,165.2L479.0,204.6L484.9,202.1L490.8,198.4L496.7,161.5L502.7,192.3L508.6,165.2L514.5,189.8L520.5,210.8L526.4,187.3L532.3,172.6L538.2,159.0L544.2,196.0L550.1,213.2L556.0,213.2L562.0,214.4L567.9,224.3L573.8,140.5L579.7,160.2L585.7,186.1L591.6,199.7L597.5,192.3L603.5,192.3L609.4,196.0L615.3,210.8L621.2,146.7L627.2,196.0L633.1,187.3L639.0,152.8L644.9,203.4L650.9,208.3L656.8,341.3L662.7,358.6L668.7,367.2L674.6,361.1L680.5,379.5L686.4,352.4L692.4,338.9L698.3,350.0L704.2,374.6L710.2,347.5L716.1,372.1L722.0,279.7L727.9,343.8L733.9,351.2L739.8,357.4L745.7,370.9L751.7,347.5L757.6,362.3L763.5,343.8L769.4,370.9L775.4,334.0L781.3,358.6L787.2,354.9L793.2,373.4L799.1,350.0L805.0,373.4L810.9,309.3L816.9,362.3L822.8,369.7L828.7,346.3L834.6,364.8L840.6,337.6L846.5,362.3L852.4,343.8L858.4,361.1L864.3,348.7L870.2,361.1L876.1,364.8L882.1,374.6L888.0,351.2" fill="none" stroke="#807dc0" stroke-width="2.5" stroke-linejoin="round"/>
 </svg>

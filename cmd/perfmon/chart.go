@@ -29,12 +29,17 @@ type point struct {
 type marker struct {
 	relS  float64
 	label string
+	// kind selects the colour: "neutral", "write" or "done".
+	kind string
 }
 
 // chartPalette carries the handful of theme tokens the chart paints with.
 type chartPalette struct {
 	page, grid, text, muted string
 	cpu, ram                string
+	// One colour per marker kind, so each event chip and its line match and
+	// no kind can be confused with either data series.
+	markNeutral, markWrite, markDone string
 }
 
 // tokensFromTheme reads the needed stops for one scheme out of theme.css,
@@ -71,6 +76,9 @@ func tokensFromTheme(css, scheme string) (chartPalette, error) {
 	read(&p.muted, "rb-muted")
 	read(&p.cpu, "rb-accent")
 	read(&p.ram, "rb-status-warn")
+	read(&p.markNeutral, "rb-muted")
+	read(&p.markWrite, "rb-status-drop")
+	read(&p.markDone, "rb-status-allow")
 	return p, err
 }
 
@@ -80,7 +88,7 @@ const (
 	chartH  = 440
 	padL    = 64
 	padR    = 72
-	padT    = 46
+	padT    = 74
 	padB    = 58
 	plotW   = chartW - padL - padR
 	plotH   = chartH - padT - padB
@@ -141,13 +149,39 @@ func renderChart(pts []point, marks []marker, p chartPalette, title string) stri
 	fmt.Fprintf(&sb, `<text x="%.1f" y="%d" %s font-size="12" text-anchor="middle" fill="%s">seconds since the bouncer started</text>`+"\n",
 		padL+plotW/2.0, chartH-16, fontCSS, p.muted)
 
-	// Event markers under the data so the series stay legible over them.
+	// Event markers under the data so the series stay legible over them. Each
+	// kind gets its own colour, shared by the dashed line and the label chip.
+	markColour := func(kind string) string {
+		switch kind {
+		case "write":
+			return p.markWrite
+		case "done":
+			return p.markDone
+		default:
+			return p.markNeutral
+		}
+	}
+	// Chips stagger onto a second row when neighbours would overlap — the
+	// first two events sit six seconds apart and their labels do not fit side
+	// by side at this scale.
+	const chipCharW, chipH, chipPad, rowGap = 6.2, 16.0, 6.0, 20.0
+	rowEnd := []float64{-1e9, -1e9}
 	for _, m := range marks {
 		x := xPos(m.relS, tMin, tMax)
+		colour := markColour(m.kind)
 		fmt.Fprintf(&sb, `<line x1="%.1f" y1="%d" x2="%.1f" y2="%d" stroke="%s" stroke-width="1.5" stroke-dasharray="5 4"/>`+"\n",
-			x, padT, x, chartH-padB, p.muted)
-		fmt.Fprintf(&sb, `<text x="%.1f" y="%d" %s font-size="11" text-anchor="middle" fill="%s">%s</text>`+"\n",
-			x, padT-6, fontCSS, p.text, xmlEscape(m.label))
+			x, padT, x, chartH-padB, colour)
+		w := chipCharW*float64(len(m.label)) + 2*chipPad
+		row := 0
+		if x-w/2 < rowEnd[0]+6 {
+			row = 1
+		}
+		rowEnd[row] = x + w/2
+		baseline := float64(padT) - 8 - float64(row)*rowGap
+		fmt.Fprintf(&sb, `<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="4" fill="%s"/>`+"\n",
+			x-w/2, baseline-chipH+4, w, chipH, colour)
+		fmt.Fprintf(&sb, `<text x="%.1f" y="%.1f" %s font-size="11" text-anchor="middle" fill="%s">%s</text>`+"\n",
+			x, baseline, fontCSS, p.page, xmlEscape(m.label))
 	}
 
 	line := func(y func(float64) float64, val func(point) float64, color string, width float64) {
@@ -207,7 +241,7 @@ func readDataset(path string) ([]point, error) {
 	return pts, nil
 }
 
-// readMarkers parses the committed marker list (rel_s,label).
+// readMarkers parses the committed marker list (rel_s,label,kind).
 func readMarkers(path string) ([]marker, error) {
 	data, err := os.ReadFile(path) // #nosec G304 -- the path is this CLI's own flag
 	if err != nil {
@@ -218,15 +252,21 @@ func readMarkers(path string) ([]marker, error) {
 		if i == 0 {
 			continue
 		}
-		relText, label, ok := strings.Cut(lineText, ",")
-		if !ok {
-			return nil, fmt.Errorf("%s:%d: want rel_s,label", path, i+1)
+		f := strings.Split(lineText, ",")
+		if len(f) != 3 {
+			return nil, fmt.Errorf("%s:%d: want rel_s,label,kind", path, i+1)
 		}
-		rel, parseErr := strconv.ParseFloat(relText, 64)
+		rel, parseErr := strconv.ParseFloat(f[0], 64)
 		if parseErr != nil {
 			return nil, fmt.Errorf("%s:%d: %w", path, i+1, parseErr)
 		}
-		out = append(out, marker{relS: rel, label: strings.TrimSpace(label)})
+		kind := strings.TrimSpace(f[2])
+		switch kind {
+		case "neutral", "write", "done":
+		default:
+			return nil, fmt.Errorf("%s:%d: unknown marker kind %q", path, i+1, kind)
+		}
+		out = append(out, marker{relS: rel, label: strings.TrimSpace(f[1]), kind: kind})
 	}
 	return out, nil
 }

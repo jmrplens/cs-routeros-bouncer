@@ -71,7 +71,7 @@ For CAPI-scale deployments (tens of thousands of entries), also see [CAPI Blockl
 
 ## The full lifecycle, sampled every 100 ms
 
-The chart below is a single continuous 51-second capture from the production
+The chart below is a single continuous 70-second capture from the production
 RB5009, taken with a 10 Hz sampler reading `/proc/stat` on the router itself
 (see the note on method at the end of this page). It covers the three states an
 operator actually meets: the router idle with the bouncer stopped and the
@@ -83,7 +83,7 @@ peaks reach 57% for single 100 ms slices during the import.
 
 <ThemeImage
   src="perf-lifecycle-light.svg"
-  alt="Line chart of router CPU percentage and RAM megabytes over 51 seconds: near-idle CPU before the bouncer starts, a sustained plateau around 31% between the writes-begin and reconciliation-complete markers, then back to idle; RAM steps up about 19 MiB when the bouncer connects and stays flat through the import."
+  alt="Line chart of router CPU percentage and RAM megabytes over 70 seconds: near-idle CPU before the bouncer starts, a sustained plateau around 31% between the writes-begin and reconciliation-complete markers, then back to idle; RAM steps up about 19 MiB when the bouncer connects and stays flat through the import."
   caption="First reconciliation on an RB5009 holding 22,000 entries. Regenerated with go run ./cmd/perfmon plot from the committed dataset."
 />
 

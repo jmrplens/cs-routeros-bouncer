@@ -125,8 +125,8 @@ func TestInstallIsIdempotent(t *testing.T) {
 // produce identical bytes, and that the essentials are present.
 func TestRenderChartDeterministic(t *testing.T) {
 	pts := []point{{-5, 3, 330}, {0, 5, 349}, {10, 31, 349}, {35, 30, 348}, {45, 4, 348}}
-	marks := []marker{{0, "bouncer starts"}, {35, "reconciliation complete"}}
-	p := chartPalette{page: "#fff", grid: "#ddd", text: "#111", muted: "#666", cpu: "#4d4a98", ram: "#906004"}
+	marks := []marker{{0, "bouncer starts", "neutral"}, {35, "reconciliation complete", "done"}}
+	p := chartPalette{page: "#fff", grid: "#ddd", text: "#111", muted: "#666", cpu: "#4d4a98", ram: "#906004", markNeutral: "#666", markWrite: "#b3352f", markDone: "#257a38"}
 	a := renderChart(pts, marks, p, "title & test")
 	b := renderChart(pts, marks, p, "title & test")
 	if a != b {

@@ -71,7 +71,7 @@ Para despliegues a escala de CAPI (decenas de miles de entradas), consulta tambi
 
 ## El ciclo de vida completo, muestreado cada 100 ms
 
-La gráfica siguiente es una única captura continua de 51 segundos del RB5009 de
+La gráfica siguiente es una única captura continua de 70 segundos del RB5009 de
 producción, tomada con un muestreador a 10 Hz que lee `/proc/stat` en el propio
 router (ver la nota sobre el método al final de esta página). Cubre los tres
 estados con los que un operador se encuentra de verdad: el router ocioso con el
@@ -84,7 +84,7 @@ sub-segundo alcanzan el 57% en rebanadas sueltas de 100 ms durante el import.
 
 <ThemeImage
   src="perf-lifecycle-light.svg"
-  alt="Gráfica de líneas de CPU en porcentaje y RAM en megabytes del router durante 51 segundos: CPU casi ociosa antes de arrancar el bouncer, una meseta sostenida en torno al 31% entre los marcadores de inicio de escrituras y reconciliación completa, y vuelta al estado ocioso; la RAM sube unos 19 MiB al conectar el bouncer y se mantiene plana durante todo el import."
+  alt="Gráfica de líneas de CPU en porcentaje y RAM en megabytes del router durante 70 segundos: CPU casi ociosa antes de arrancar el bouncer, una meseta sostenida en torno al 31% entre los marcadores de inicio de escrituras y reconciliación completa, y vuelta al estado ocioso; la RAM sube unos 19 MiB al conectar el bouncer y se mantiene plana durante todo el import."
   caption="Primera reconciliación en un RB5009 con 22.000 entradas. Se regenera con go run ./cmd/perfmon plot desde el dataset versionado."
 />
 
