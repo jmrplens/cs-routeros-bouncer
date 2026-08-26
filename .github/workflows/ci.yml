@@ -28,8 +28,10 @@ jobs:
       - name: Cache pinned analysis tools
         uses: actions/cache@v6
         with:
-          path: bin/tools
+          path: ~/go/bin
           key: tools-${{ runner.os }}-${{ hashFiles('Makefile') }}
+      - name: Install pinned analysis tools
+        run: make tools
       - name: Lint GitHub workflows
         run: make actionlint
 
@@ -67,8 +69,10 @@ jobs:
       - name: Cache pinned analysis tools
         uses: actions/cache@v6
         with:
-          path: bin/tools
+          path: ~/go/bin
           key: tools-${{ runner.os }}-${{ hashFiles('Makefile') }}
+      - name: Install pinned analysis tools
+        run: make tools
       - name: Check gofmt
         run: |
           issues=$(gofmt -l -s cmd internal tests)
@@ -94,8 +98,10 @@ jobs:
       - name: Cache pinned analysis tools
         uses: actions/cache@v6
         with:
-          path: bin/tools
+          path: ~/go/bin
           key: tools-${{ runner.os }}-${{ hashFiles('Makefile') }}
+      - name: Install pinned analysis tools
+        run: make tools
       - name: Run go vet
         run: go vet ./cmd/... ./internal/...
       - name: Run modernize
@@ -121,8 +127,10 @@ jobs:
       - name: Cache pinned analysis tools
         uses: actions/cache@v6
         with:
-          path: bin/tools
+          path: ~/go/bin
           key: tools-${{ runner.os }}-${{ hashFiles('Makefile') }}
+      - name: Install pinned analysis tools
+        run: make tools
       - name: Run govulncheck
         run: make govulncheck
 
