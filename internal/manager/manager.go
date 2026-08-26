@@ -446,7 +446,17 @@ func (m *Manager) reconcileActiveDecisions(ctx context.Context) {
 		return
 	}
 
-	m.logger.Info().Int("decisions", len(decisions)).Msg("periodic reconciliation snapshot fetched")
+	// The snapshot has its own timer because it is not part of the "reconcile"
+	// one: that observation starts inside reconcileAddresses, after this fetch
+	// has already finished. Every performance decomposition of this bouncer so
+	// far has therefore measured the address half and been blind to this one,
+	// which is a serial HTTP stage in front of it.
+	metrics.ObserveOperationDuration("snapshot", time.Since(start))
+
+	m.logger.Info().
+		Int("decisions", len(decisions)).
+		Dur("elapsed", time.Since(start)).
+		Msg("periodic reconciliation snapshot fetched")
 	m.reconcileAddresses(ctx, decisions)
 	m.logger.Info().Dur("elapsed", time.Since(start)).Msg("periodic reconciliation complete")
 }
