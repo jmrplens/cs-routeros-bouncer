@@ -1,0 +1,59 @@
+# OpenSSF Scorecard: an automated read of this repository's supply-chain
+# posture — branch protection, pinned dependencies, signed releases, whether
+# CI runs a SAST, and a dozen more checks.
+#
+# It is here because Go Report Card, whose badge this repository used to carry,
+# shut down on 2026-07-01 and now serves a badge reading "retired". Its own
+# maintainers point at golangci-lint (which this project already runs, with 53
+# linters) for code quality, and the gap that leaves is supply-chain posture.
+# Scorecard fills that and publishes a result the badge can read.
+#
+# `publish_results: true` is what makes the badge resolve; without it the
+# shields endpoint answers "invalid repo path". It publishes only an analysis
+# of public repository metadata.
+name: Scorecard
+
+on:
+  branch_protection_rule:
+  schedule:
+    - cron: "23 4 * * 1"
+  push:
+    branches: [main]
+
+permissions: read-all
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    permissions:
+      # Needed to upload the results to the code-scanning dashboard.
+      security-events: write
+      # Needed to publish the results and get a badge.
+      id-token: write
+      contents: read
+      actions: read
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Run analysis
+        uses: ossf/scorecard-action@v2.4.4
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: SARIF file
+          path: results.sarif
+          retention-days: 5
+
+      - name: Upload to code-scanning
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: results.sarif

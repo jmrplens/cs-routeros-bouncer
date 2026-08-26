@@ -1,14 +1,34 @@
 # cs-routeros-bouncer
 
 [![CI](https://github.com/jmrplens/cs-routeros-bouncer/actions/workflows/ci.yml/badge.svg)](https://github.com/jmrplens/cs-routeros-bouncer/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/jmrplens/cs-routeros-bouncer)](https://github.com/jmrplens/cs-routeros-bouncer/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/jmrplens/cs-routeros-bouncer/total)](https://github.com/jmrplens/cs-routeros-bouncer/releases)
 [![Go Reference](https://pkg.go.dev/badge/github.com/jmrplens/cs-routeros-bouncer.svg)](https://pkg.go.dev/github.com/jmrplens/cs-routeros-bouncer)
-[![Go Report Card](https://goreportcard.com/badge/github.com/jmrplens/cs-routeros-bouncer)](https://goreportcard.com/report/github.com/jmrplens/cs-routeros-bouncer)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=jmrplens_cs-routeros-bouncer&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=jmrplens_cs-routeros-bouncer)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=jmrplens_cs-routeros-bouncer&metric=coverage)](https://sonarcloud.io/summary/new_code?id=jmrplens_cs-routeros-bouncer)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/jmrplens/cs-routeros-bouncer/badge)](https://scorecard.dev/viewer/?uri=github.com/jmrplens/cs-routeros-bouncer)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/jmrplens/cs-routeros-bouncer)](https://go.dev/)
 
 A [CrowdSec](https://www.crowdsec.net/) remediation component (bouncer) for [MikroTik RouterOS](https://mikrotik.com/software) that automatically manages firewall rules and address lists via the RouterOS API.
+
+## Documentation
+
+**📖 [Full documentation](https://jmrp.io/docs/cs-routeros-bouncer/)** — available in English and Spanish.
+
+This README covers installation and the settings most deployments need. The documentation site carries the rest, and carries it more reliably: its [configuration reference](https://jmrp.io/docs/cs-routeros-bouncer/configuration/) is **generated from `internal/config/config.go`**, and its [firewall rule listing](https://jmrp.io/docs/cs-routeros-bouncer/architecture/firewall-rules/) is generated from `internal/manager`, both gated in CI so they cannot drift from the binary. A hand-written copy here could, and has.
+
+| If you want to | Go to |
+| --- | --- |
+| Every setting, its default and env var | [Configuration reference](https://jmrp.io/docs/cs-routeros-bouncer/configuration/) |
+| Worked config examples | [Examples](https://jmrp.io/docs/cs-routeros-bouncer/configuration/examples/) |
+| Exactly what gets written to the router | [Firewall rules](https://jmrp.io/docs/cs-routeros-bouncer/architecture/firewall-rules/) |
+| How reconciliation works and what it costs | [Reconciliation](https://jmrp.io/docs/cs-routeros-bouncer/architecture/reconciliation/) |
+| Metrics, health checks, Grafana | [Monitoring](https://jmrp.io/docs/cs-routeros-bouncer/monitoring/prometheus/) |
+| Tuning for large CAPI lists | [Performance tuning](https://jmrp.io/docs/cs-routeros-bouncer/configuration/performance-tuning/) |
+| Measured numbers on real hardware | [Benchmarking](https://jmrp.io/docs/cs-routeros-bouncer/development/benchmarking/) |
+
+For machine consumption: [llms.txt](https://jmrp.io/docs/cs-routeros-bouncer/llms.txt) and [llms-full.txt](https://jmrp.io/docs/cs-routeros-bouncer/llms-full.txt).
 
 ## Highlights
 
@@ -229,452 +249,83 @@ sudo install -m 755 bin/cs-routeros-bouncer /usr/local/bin/
 
 ## Configuration
 
-All options can be set via YAML config file or environment variables. Environment variables override config file values.
+Settings come from a YAML file, environment variables, or both — environment variables win. The annotated sample ships with every release as [`config/cs-routeros-bouncer.yaml`](config/cs-routeros-bouncer.yaml).
 
-See [`config/cs-routeros-bouncer.yaml`](config/cs-routeros-bouncer.yaml) for the full annotated reference.
+### A minimal working configuration
 
-### Basic parameters
-
-The essential settings to get the bouncer running. Most deployments only need these.
-
-| Config Key                | Env Variable               | Default                  | Description                                 |
-| ------------------------- | -------------------------- | ------------------------ | ------------------------------------------- |
-| `crowdsec.api_url`        | `CROWDSEC_URL`             | `http://localhost:8080/` | CrowdSec LAPI URL                           |
-| `crowdsec.api_key`        | `CROWDSEC_BOUNCER_API_KEY` | _(required)_             | Bouncer API key                             |
-| `mikrotik.address`        | `MIKROTIK_HOST`            | _(required)_             | RouterOS API address (`host:port`)          |
-| `mikrotik.username`       | `MIKROTIK_USER`            | _(required)_             | API username                                |
-| `mikrotik.password`       | `MIKROTIK_PASS`            | _(required)_             | API password                                |
-| `firewall.ipv4.enabled`   | `FIREWALL_IPV4_ENABLED`    | `true`                   | Enable IPv4 blocking                        |
-| `firewall.ipv6.enabled`   | `FIREWALL_IPV6_ENABLED`    | `true`                   | Enable IPv6 blocking                        |
-| `firewall.filter.enabled` | `FIREWALL_FILTER_ENABLED`  | `true`                   | Create filter firewall rules                |
-| `firewall.raw.enabled`    | `FIREWALL_RAW_ENABLED`     | `true`                   | Create raw/prerouting rules                 |
-| `firewall.deny_action`    | `FIREWALL_DENY_ACTION`     | `drop`                   | Action: `drop` or `reject`                  |
-| `logging.level`           | `LOG_LEVEL`                | `info`                   | Log level: `debug`, `info`, `warn`, `error` |
-
-### Advanced parameters
-
-Fine-tuning options for decision filtering, TLS, performance, firewall customization, and observability. The defaults work well for most setups.
-
-<details>
-<summary><b>CrowdSec — polling, filtering & TLS</b></summary>
-
-| Config Key                           | Env Variable                        | Default          | Description                                                                                                                             |
-| ------------------------------------ | ----------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `crowdsec.update_frequency`          | `CROWDSEC_UPDATE_FREQUENCY`         | `10s`            | Poll interval for decision updates                                                                                                      |
-| `crowdsec.reconciliation_interval`   | `CROWDSEC_RECONCILIATION_INTERVAL`  | `15m`            | Periodic address-list reconciliation interval (`0` to disable; minimum `1m` when enabled)                                               |
-| `crowdsec.lapi_metrics_interval`     | `CROWDSEC_LAPI_METRICS_INTERVAL`    | `15m`            | LAPI usage metrics interval: active decisions, dropped traffic (`0` = disabled)                                                         |
-| `crowdsec.origins`                   | `CROWDSEC_ORIGINS`                  | `[]` (all)       | Filter by origin (`["crowdsec","cscli"]` = local only)                                                                                  |
-| `crowdsec.scopes`                    | `CROWDSEC_SCOPES`                   | `["ip","range"]` | Decision scopes to process                                                                                                              |
-| `crowdsec.supported_decisions_types` | `CROWDSEC_DECISIONS_TYPES`          | `["ban"]`        | Decision types to process (only `ban` is implemented — see [CrowdSec configuration](https://jmrp.io/docs/cs-routeros-bouncer/configuration/crowdsec/#crowdsecsupported_decisions_types)) |
-| `crowdsec.scenarios_containing`      | `CROWDSEC_SCENARIOS_CONTAINING`     | `[]`             | Only process decisions matching these scenarios                                                                                         |
-| `crowdsec.scenarios_not_containing`  | `CROWDSEC_SCENARIOS_NOT_CONTAINING` | `[]`             | Exclude decisions matching these scenarios                                                                                              |
-| `crowdsec.retry_initial_connect`     | `CROWDSEC_RETRY_INITIAL_CONNECT`    | `true`           | Retry LAPI connection on startup failure                                                                                                |
-| `crowdsec.insecure_skip_verify`      | `CROWDSEC_INSECURE_SKIP_VERIFY`     | `false`          | Skip TLS certificate verification for LAPI                                                                                              |
-| `crowdsec.cert_path`                 | `CROWDSEC_CERT_PATH`                |                  | TLS client certificate path                                                                                                             |
-| `crowdsec.key_path`                  | `CROWDSEC_KEY_PATH`                 |                  | TLS client key path                                                                                                                     |
-| `crowdsec.ca_cert_path`              | `CROWDSEC_CA_CERT_PATH`             |                  | TLS CA certificate path                                                                                                                 |
-
-</details>
-
-<details>
-<summary><b>MikroTik — TLS & performance</b></summary>
-
-| Config Key                    | Env Variable            | Default | Description                                                   |
-| ----------------------------- | ----------------------- | ------- | ------------------------------------------------------------- |
-| `mikrotik.tls`                | `MIKROTIK_TLS`          | `false` | Use TLS (port 8729)                                           |
-| `mikrotik.tls_insecure`       | `MIKROTIK_TLS_INSECURE` | `false` | Skip TLS certificate verification for RouterOS                |
-| `mikrotik.connection_timeout` | `MIKROTIK_CONN_TIMEOUT` | `10s`   | Connection timeout                                            |
-| `mikrotik.command_timeout`    | `MIKROTIK_CMD_TIMEOUT`  | `30s`   | Command execution timeout                                     |
-| `mikrotik.pool_size`          | `MIKROTIK_POOL_SIZE`    | `4`     | RouterOS API sessions used for parallel work such as reconciliation removals (1–20) |
-
-> **Auto-capping:** On startup the bouncer queries the router's `max-sessions` for the API service and automatically reduces `pool_size` if it would exceed the router limit. To check or change the limit on your router:
->
-> ```routeros
-> # Check current max-sessions for the API service
-> /ip/service/print where name=api
->
-> # Increase the limit (default is 20, maximum 1000)
-> /ip/service/set api max-sessions=1000
-> ```
-
-</details>
-
-<details>
-<summary><b>Firewall — rules, interfaces & logging</b></summary>
-
-`firewall.rule_placement` accepts either a simple string such as `"top"` or `"bottom"`, or an object with `strategy` and related fields. Object form also supports table-specific `filter` and `raw` overrides. IPv4 and IPv6 can define YAML-only `rule_placement` overrides under `firewall.ipv4` and `firewall.ipv6`; those protocol overrides can also contain their own `filter` and `raw` entries. Unspecified fields inherit from the global placement.
-
-| Config Key                                  | Env Variable                                | Default            | Description                                                                                                                                                                                                                               |
-| ------------------------------------------- | ------------------------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `firewall.ipv4.address_list`                | `FIREWALL_IPV4_ADDRESS_LIST`                | `crowdsec-banned`  | IPv4 address list name in MikroTik                                                                                                                                                                                                        |
-| `firewall.ipv6.address_list`                | `FIREWALL_IPV6_ADDRESS_LIST`                | `crowdsec6-banned` | IPv6 address list name in MikroTik                                                                                                                                                                                                        |
-| `firewall.filter.chains`                    | `FIREWALL_FILTER_CHAINS`                    | `["input"]`        | Chains for filter rules                                                                                                                                                                                                                   |
-| `firewall.raw.chains`                       | `FIREWALL_RAW_CHAINS`                       | `["prerouting"]`   | Chains for raw rules                                                                                                                                                                                                                      |
-| `firewall.rule_placement`                   | `FIREWALL_RULE_PLACEMENT`                   | `top`              | Simple string shorthand for global placement                                                                                                                                                                                              |
-| `firewall.rule_placement.strategy`          | `FIREWALL_RULE_PLACEMENT_STRATEGY`          | `top`              | Object-form global strategy: `top`, `bottom`, `position`, `before_comment`, or `after_comment`                                                                                                                                            |
-| `firewall.rule_placement.comment`           | `FIREWALL_RULE_PLACEMENT_COMMENT`           |                    | Anchor comment for comment-based placement                                                                                                                                                                                                |
-| `firewall.rule_placement.comment_match`     | `FIREWALL_RULE_PLACEMENT_COMMENT_MATCH`     | `exact`            | Comment match mode: `exact` or `contains`                                                                                                                                                                                                 |
-| `firewall.rule_placement.position`          | `FIREWALL_RULE_PLACEMENT_POSITION`          |                    | Required zero-based RouterOS position when strategy is `position`                                                                                                                                                                         |
-| `firewall.rule_placement.fallback`          | `FIREWALL_RULE_PLACEMENT_FALLBACK`          | `top`              | Fallback for comment strategies: `top` or `bottom`                                                                                                                                                                                        |
-| `firewall.rule_placement.filter`            | YAML only                                   |                    | Filter-table override; inherits unspecified fields from global placement                                                                                                                                                                  |
-| `firewall.rule_placement.raw`               | YAML only                                   |                    | Raw-table override; inherits unspecified fields from global placement                                                                                                                                                                     |
-| `firewall.ipv4.rule_placement`              | YAML only                                   |                    | IPv4-only placement override; inherits unspecified fields from global placement                                                                                                                                                           |
-| `firewall.ipv4.rule_placement.filter`       | YAML only                                   |                    | IPv4 filter-table override; inherits from global and IPv4 placement                                                                                                                                                                       |
-| `firewall.ipv4.rule_placement.raw`          | YAML only                                   |                    | IPv4 raw-table override; inherits from global and IPv4 placement                                                                                                                                                                          |
-| `firewall.ipv6.rule_placement`              | YAML only                                   |                    | IPv6-only placement override; inherits unspecified fields from global placement                                                                                                                                                           |
-| `firewall.ipv6.rule_placement.filter`       | YAML only                                   |                    | IPv6 filter-table override; inherits from global and IPv6 placement                                                                                                                                                                       |
-| `firewall.ipv6.rule_placement.raw`          | YAML only                                   |                    | IPv6 raw-table override; inherits from global and IPv6 placement                                                                                                                                                                          |
-| `firewall.comment_prefix`                   | `FIREWALL_COMMENT_PREFIX`                   | `crowdsec-bouncer` | Comment prefix for managed resources                                                                                                                                                                                                      |
-| `firewall.log`                              | `FIREWALL_LOG`                              | `false`            | Enable RouterOS logging on firewall rules                                                                                                                                                                                                 |
-| `firewall.log_prefix`                       | `FIREWALL_LOG_PREFIX`                       | `crowdsec-bouncer` | Global prefix for RouterOS log entries                                                                                                                                                                                                    |
-| `firewall.reject_with`                      | `FIREWALL_REJECT_WITH`                      |                    | Reject type when `deny_action=reject`: `icmp-network-unreachable`, `icmp-host-unreachable`, `icmp-port-unreachable`, `icmp-protocol-unreachable`, `icmp-network-prohibited`, `icmp-host-prohibited`, `icmp-admin-prohibited`, `tcp-reset` |
-| `firewall.filter.log_prefix`                | `FIREWALL_FILTER_LOG_PREFIX`                |                    | Override global log prefix for filter rules                                                                                                                                                                                               |
-| `firewall.filter.connection_state`          | `FIREWALL_FILTER_CONNECTION_STATE`          |                    | Comma-separated states: `new`, `established`, `related`, `invalid`, `untracked`; lowercase only, no negation                                                                                                                              |
-| `firewall.raw.log_prefix`                   | `FIREWALL_RAW_LOG_PREFIX`                   |                    | Override global log prefix for raw rules                                                                                                                                                                                                  |
-| `firewall.block_input.interface`            | `FIREWALL_BLOCK_INPUT_INTERFACE`            |                    | Restrict input/raw rules to this interface (empty = all)                                                                                                                                                                                  |
-| `firewall.block_input.interface_list`       | `FIREWALL_BLOCK_INPUT_INTERFACE_LIST`       |                    | Restrict input/raw rules to this interface list (empty = all)                                                                                                                                                                             |
-| `firewall.block_input.whitelist`            | `FIREWALL_BLOCK_INPUT_WHITELIST`            |                    | Address-list name for input whitelist (accept rule before drop)                                                                                                                                                                           |
-| `firewall.block_output.enabled`             | `FIREWALL_BLOCK_OUTPUT`                     | `false`            | Block outbound traffic to banned IPs                                                                                                                                                                                                      |
-| `firewall.block_output.interface`           | `FIREWALL_BLOCK_OUTPUT_INTERFACE`           |                    | WAN interface for output rules                                                                                                                                                                                                            |
-| `firewall.block_output.interface_list`      | `FIREWALL_BLOCK_OUTPUT_INTERFACE_LIST`      |                    | WAN interface list for output rules                                                                                                                                                                                                       |
-| `firewall.block_output.log_prefix`          | `FIREWALL_BLOCK_OUTPUT_LOG_PREFIX`          |                    | Override global log prefix for output rules                                                                                                                                                                                               |
-| `firewall.block_output.passthrough_v4`      | `FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V4`      |                    | IPv4 client IP to bypass output blocking (`src-address=!IP`)                                                                                                                                                                              |
-| `firewall.block_output.passthrough_v4_list` | `FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V4_LIST` |                    | IPv4 address-list to bypass output blocking (precedence over IP)                                                                                                                                                                          |
-| `firewall.block_output.passthrough_v6`      | `FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V6`      |                    | IPv6 client IP to bypass output blocking                                                                                                                                                                                                  |
-| `firewall.block_output.passthrough_v6_list` | `FIREWALL_BLOCK_OUTPUT_PASSTHROUGH_V6_LIST` |                    | IPv6 address-list to bypass output blocking (precedence over IP)                                                                                                                                                                          |
-
-</details>
-
-<details>
-<summary><b>Logging & Metrics — format, file output & Prometheus</b></summary>
-
-| Config Key                       | Env Variable                     | Default   | Description                                                          |
-| -------------------------------- | -------------------------------- | --------- | -------------------------------------------------------------------- |
-| `logging.format`                 | `LOG_FORMAT`                     | `text`    | Log format: `text` or `json`                                         |
-| `logging.file`                   | `LOG_FILE`                       |           | Also write logs to this file (absolute path; stderr always kept)      |
-| `metrics.enabled`                | `METRICS_ENABLED`                | `false`   | Enable Prometheus `/metrics` endpoint                                |
-| `metrics.listen_addr`            | `METRICS_ADDR`                   | `0.0.0.0` | Metrics server listen address                                        |
-| `metrics.listen_port`            | `METRICS_PORT`                   | `2112`    | Metrics server listen port                                           |
-| `metrics.routeros_poll_interval` | `METRICS_ROUTEROS_POLL_INTERVAL` | `30s`     | RouterOS system metrics poll interval (0 to disable)                 |
-| `metrics.track_processed`        | `METRICS_TRACK_PROCESSED`        | `true`    | Track processed (non-blocked) traffic via passthrough counting rules |
-
-</details>
-
-### Configuration Examples
-
-<details>
-<summary><b>Minimal — IPv4 only, filter rules</b></summary>
+Everything below is either required or worth being explicit about. Nothing else has to be set.
 
 ```yaml
 crowdsec:
   api_url: "http://localhost:8080/"
-  api_key: "your-key"
+  api_key: "your-bouncer-api-key" # from `cscli bouncers add`
+
 mikrotik:
-  address: "192.168.0.1:8728"
+  address: "192.168.0.1:8728" # 8729 with tls: true
   username: "crowdsec"
   password: "your-password"
-firewall:
-  ipv6:
-    enabled: false
-  raw:
-    enabled: false
-```
 
-</details>
-
-<details>
-<summary><b>Full protection — IPv4 + IPv6, filter + raw, input + output</b></summary>
-
-```yaml
-crowdsec:
-  api_url: "http://localhost:8080/"
-  api_key: "your-key"
-mikrotik:
-  address: "192.168.0.1:8729"
-  username: "crowdsec"
-  password: "your-password"
-  tls: true
 firewall:
   ipv4:
     enabled: true
   ipv6:
     enabled: true
-  filter:
-    enabled: true
-    chains: ["input"]
-  raw:
-    enabled: true
-    chains: ["prerouting"]
-  deny_action: "drop"
-  rule_placement: "top"
-  block_input:
-    interface_list: "WAN"
-  block_output:
-    enabled: true
-    interface_list: "WAN"
-metrics:
-  enabled: true
-  listen_port: 2112
+
 logging:
   level: "info"
 ```
 
-</details>
+### The settings you are most likely to touch
 
-<details>
-<summary><b>Local decisions only — no community blocklists</b></summary>
+| Config key | Env variable | Default | Description |
+| --- | --- | --- | --- |
+| `crowdsec.api_url` | `CROWDSEC_URL` | `http://localhost:8080/` | CrowdSec LAPI URL |
+| `crowdsec.api_key` | `CROWDSEC_BOUNCER_API_KEY` | _(required)_ | Bouncer API key |
+| `crowdsec.origins` | `CROWDSEC_ORIGINS` | _(all)_ | Restrict to e.g. `["crowdsec","cscli"]` for local-only |
+| `crowdsec.reconciliation_interval` | `CROWDSEC_RECONCILIATION_INTERVAL` | `15m` | Periodic drift repair; `0` disables |
+| `mikrotik.address` | `MIKROTIK_HOST` | _(required)_ | RouterOS API address (`host:port`) |
+| `mikrotik.username` | `MIKROTIK_USER` | _(required)_ | API username |
+| `mikrotik.password` | `MIKROTIK_PASS` | _(required)_ | API password |
+| `mikrotik.tls` | `MIKROTIK_TLS` | `false` | Use TLS (port 8729) |
+| `mikrotik.pool_size` | `MIKROTIK_POOL_SIZE` | `4` | Parallel API sessions |
+| `firewall.ipv4.enabled` | `FIREWALL_IPV4_ENABLED` | `true` | Enable IPv4 blocking |
+| `firewall.ipv6.enabled` | `FIREWALL_IPV6_ENABLED` | `true` | Enable IPv6 blocking |
+| `firewall.deny_action` | `FIREWALL_DENY_ACTION` | `drop` | `drop` or `reject` |
+| `metrics.enabled` | `METRICS_ENABLED` | `false` | Serve `/metrics` and `/health` |
+| `logging.level` | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
 
-```yaml
-crowdsec:
-  api_url: "http://localhost:8080/"
-  api_key: "your-key"
-  origins: ["crowdsec", "cscli"]
-mikrotik:
-  address: "192.168.0.1:8728"
-  username: "crowdsec"
-  password: "your-password"
-```
-
-</details>
-
----
-
-## How It Works
-
-### Startup
-
-1. Connects to CrowdSec LAPI and MikroTik RouterOS API (connection pool with 4 connections)
-2. Creates firewall rules (filter and/or raw) that reference named address lists
-3. Collects all current CrowdSec decisions (bans and deletes are collected simultaneously to avoid stale data)
-4. **Reconciles** with MikroTik address lists — adds missing IPs using script-based bulk add (chunks of 100), removes stale ones in parallel
-5. Populates in-memory address cache for O(1) lookups during runtime
-
-### Runtime
-
-- **Ban**: Checks the in-memory cache first. New addresses are added to the MikroTik address list with the CrowdSec ban duration as timeout (~1–3 ms); cached duplicate ban events skip the RouterOS API entirely.
-- **Unban**: Checks in-memory cache first — if IP not present, skips API call entirely; otherwise finds and removes the IP immediately
-- **Periodic reconciliation**: Every `crowdsec.reconciliation_interval` (default `15m`), fetches active CrowdSec decisions and repairs address-list drift. Set it to `0` to disable; values below `1m` are rejected.
-- Uses an optimistic-add pattern for cache misses (~1–3 ms per IP vs ~400 ms with lookup-first)
-
-### Shutdown (SIGTERM / SIGINT)
-
-- Removes all bouncer-managed firewall rules from MikroTik
-- Address list entries remain and expire naturally via their MikroTik timeout
-
-### Firewall Rules
-
-The bouncer creates rules with descriptive comments for identification:
-
-```text
-;;; crowdsec-bouncer:filter-input-input-v4 @cs-routeros-bouncer
-chain=input action=drop src-address-list=crowdsec-banned
-
-;;; crowdsec-bouncer:raw-prerouting-input-v4 @cs-routeros-bouncer
-chain=prerouting action=drop src-address-list=crowdsec-banned
-```
-
-Rules are placed at the **top** of the RouterOS firewall menu by default (`rule_placement: top`) to ensure they are evaluated early. If dynamic/built-in rules occupy the top positions (e.g., RouterOS fasttrack counters), the bouncer iterates through subsequent positions until it finds one where the managed block can be placed.
-
-You can also place the managed rule block after or before an existing rule comment, or at a zero-based RouterOS position:
-
-| Strategy         | Behavior                                                                                                                                                       |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `top`            | Move before the first usable non-bouncer rule; if RouterOS refuses the position, the bouncer retries lower positions                                           |
-| `bottom`         | Append at the end of the RouterOS firewall menu                                                                                                                |
-| `position`       | Insert at the required zero-based RouterOS `print` position, before the rule currently shown at that index; out-of-range positions append at bottom and ignore `fallback` |
-| `before_comment` | Insert before the first matching non-bouncer rule comment                                                                                                      |
-| `after_comment`  | Insert after the first matching non-bouncer rule comment                                                                                                       |
-
-```yaml
-firewall:
-  rule_placement:
-    strategy: "after_comment"
-    comment: "drop invalid"
-    comment_match: "contains"
-    fallback: "top"
-    raw:
-      strategy: "top"
-```
-
-For numeric placement, `position` is required and follows RouterOS `print` numbering. Out-of-range positions, such as `position: 15` when only 10 existing non-bouncer rules are present, append directly at the bottom without fallback or retry. The bouncer retries lower positions only when RouterOS rejects the move before an existing dynamic/built-in rule.
-
-Comment placement uses `comment_match: "exact"` by default. Use `contains` for a case-sensitive literal substring match. Missing anchors use `fallback` (`top` by default, or `bottom`). Table-specific `filter` and `raw` overrides inherit unspecified fields from the global placement. Protocol-specific `firewall.ipv4.rule_placement` and `firewall.ipv6.rule_placement` overrides can refine the global settings for one address family, including protocol-local `filter` and `raw` overrides.
-
-Placement precedence is: global placement, global `filter`/`raw` override, protocol override, then protocol `filter`/`raw` override.
-
-```yaml
-firewall:
-  rule_placement:
-    strategy: "top"
-  ipv4:
-    rule_placement:
-      strategy: "before_comment"
-      comment: "IPv4 production anchor"
-      fallback: "bottom"
-  ipv6:
-    rule_placement:
-      strategy: "bottom"
-      filter:
-        strategy: "after_comment"
-        comment: "IPv6 filter anchor"
-      raw:
-        strategy: "position"
-        position: 4
-```
-
-### Performance
-
-Tested on a **MikroTik RB5009UG+S+** (ARM64, 4 cores @ 1400 MHz, 1 GB RAM, RouterOS 7.24.1; earlier rows measured on 7.22.1) with the bouncer running on a separate Linux host connected via the RouterOS API (plaintext, port 8728). The CAPI measurements below used `mikrotik.pool_size: 10` and `crowdsec.reconciliation_interval: 1m`.
-
-Router CPU can spike during reconciliation, especially at startup or whenever real drift requires add/remove work. Sustained high RouterOS CPU after reconciliation is not expected from simply keeping entries in memory; it usually points to repeated RouterOS API writes/reconnects, duplicate-decision churn, or unrelated router workload.
-
-The bouncer uses a configurable **connection pool** (default 4 parallel API connections), **script-based bulk add** (chunks of 100 entries), and an **in-memory address cache** for O(1) lookups during unban operations.
-
-#### Initial reconciliation (cold start, empty router)
-
-| Scenario               | IPs synced                          | Time                                                    | Throughput                                 | Router CPU peak |
-| ---------------------- | ----------------------------------- | ------------------------------------------------------- | ------------------------------------------ | --------------- |
-| Local + CAPI community | **28,686** (28,269 IPv4 + 417 IPv6) | **~58 s** test wall-clock; **~36 s** RouterOS bulk work | ~500 IPs/s wall-clock; ~790 IPs/s bulk add | 39% observed    |
-
-#### Restart with existing entries on router
-
-| Scenario                          | Existing IPs | Time                               | Notes                                                                      |
-| --------------------------------- | ------------ | ---------------------------------- | -------------------------------------------------------------------------- |
-| Restart, all IPs already present  | **~22,000**  | **~7–8 s** from process start      | Includes LAPI stream fetch, rule check, full list read and a zero diff     |
-| Periodic reconciliation, no drift | **~22,000**  | **~1.9–2.1 s** internal reconciliation | List read dominates (98.5% of the cycle); diff and cache are the rest  |
-
-#### Mass removal (switching from CAPI to local-only)
-
-| Removed                             | Remaining           | Time                            | Throughput     | Router CPU peak                     |
-| ----------------------------------- | ------------------- | ------------------------------- | -------------- | ----------------------------------- |
-| **26,810** (26,396 IPv4 + 414 IPv6) | 1,873 IPv4 + 3 IPv6 | **~77 s** RouterOS removal work | ~348 removes/s | ~30–39% observed during large churn |
-
-#### Live operation (individual ban/unban)
-
-| Operation                               | Typical latency     | Notes                                                                          |
-| --------------------------------------- | ------------------- | ------------------------------------------------------------------------------ |
-| Ban (add IP)                            | **~1–3 ms**         | Optimistic-add, no lookup needed                                               |
-| Ban (cached duplicate IP)               | **< 1 ms**          | Address already known in cache → skip RouterOS API call entirely               |
-| Ban (router duplicate after cache miss) | **~5–8 ms**         | Detects "already have" → finds and updates existing entry without reconnecting |
-| Unban (remove IP)                       | **~7 s** end-to-end | Includes LAPI polling interval (15 s max). API call itself ~2 ms               |
-| Unban cache fast-path                   | **< 1 ms**          | IP not in cache → skip API call entirely                                       |
-
-#### Resource usage
-
-| Metric                                          | Value                                                          |
-| ----------------------------------------------- | -------------------------------------------------------------- |
-| Firewall rules created                          | 4 rules in ~2 s                                                |
-| Bouncer memory (steady state)                   | ~30 MB                                                         |
-| Bouncer CPU (steady state)                      | < 1%                                                           |
-| Router CPU (steady state, after reconciliation) | typically 0–2% observed; traffic and firewall config dependent |
-
-> **Note:** All benchmarks measured on a real RB5009UG+S+ with production traffic. Router CPU includes
-> SNMP monitoring (10 s interval), normal network forwarding, and any active firewall workload. Individual
-> add/remove operations are typically **1–3 ms per IP** (median). Occasional latency spikes (p95 up to
-> ~50 ms) are caused by RouterOS internal scheduling on large address lists.
+That is 14 of 94 keys. The other 80 — decision filtering, TLS material, per-protocol rule placement, chain selection, logging to file, pprof — are in the **[generated configuration reference](https://jmrp.io/docs/cs-routeros-bouncer/configuration/)**, which is built from the Go struct and fails CI when it disagrees with it.
 
 ---
 
-### Duplicate IP handling
+## What it does to your router
 
-When CrowdSec sends a ban decision for an IP that is already known to be present on the router, the bouncer returns from the in-memory cache fast-path and does not write to RouterOS again. This avoids RouterOS management/API churn during repeated stream updates.
+**On startup** it connects to CrowdSec and RouterOS, creates its firewall rules, fetches every active decision and reconciles them against what the router already holds.
 
-If the local cache is cold or out of sync and RouterOS replies with `already have such entry`, the bouncer treats that as a RouterOS device error, not a connection failure. It keeps the API connection open, finds the existing address-list entry, and updates its timeout/comment without creating a duplicate.
+**At runtime** it streams new decisions: a ban adds an address-list entry, an unban removes one. Every `reconciliation_interval` it re-reads the list and repairs any drift.
 
-The address list only ever contains one entry per IP. Cached duplicate decisions do not refresh the RouterOS timeout during the same run; startup and periodic reconciliation restore membership by adding missing entries and removing stale ones.
+**On shutdown** (SIGTERM/SIGINT) it removes the firewall rules it created. Address-list entries are left to expire via their MikroTik timeout, so a restart does not leave your router unprotected.
+
+A stock configuration writes **eight** firewall rules — a deny rule and a passthrough counting rule, in both the `filter` and `raw` tables, for both IPv4 and IPv6. The counting rules come from `metrics.track_processed`, which defaults to `true`; set it to `false` and you get four. Each rule, its exact RouterOS command and its placement is listed on the [firewall rules page](https://jmrp.io/docs/cs-routeros-bouncer/architecture/firewall-rules/), which renders from the same module the daemon reads.
+
+For what reconciliation costs on real hardware, and how to size the interval for your list, see [reconciliation](https://jmrp.io/docs/cs-routeros-bouncer/architecture/reconciliation/) and [performance tuning](https://jmrp.io/docs/cs-routeros-bouncer/configuration/performance-tuning/).
 
 ---
 
 ## Monitoring
 
-### Health Endpoint
+Set `metrics.enabled: true` and the bouncer serves two endpoints on `metrics.listen_port` (default `2112`):
 
 ```bash
 curl http://localhost:2112/health
-# {"status":"ok","routeros_connected":true,"version":"vX.Y.Z"}
+# {"routeros_connected":true,"status":"ok","version":"1.5.0"}
+
+curl http://localhost:2112/metrics
 ```
 
-### Prometheus Metrics
+Metrics cover decisions processed, active decisions by origin, operation latencies, RouterOS connection state and router CPU/memory, plus CrowdSec LAPI usage metrics (including traffic dropped by the bouncer's own rules, which is what makes it show up in `cscli metrics`).
 
-Enable with `metrics.enabled: true`. Available at `http://localhost:2112/metrics`.
-
-| Metric                                              | Type      | Description                                                     |
-| --------------------------------------------------- | --------- | --------------------------------------------------------------- |
-| `crowdsec_bouncer_info`                             | Gauge     | Build info (version, RouterOS identity)                         |
-| `crowdsec_bouncer_start_time_seconds`               | Gauge     | Unix timestamp of bouncer startup                               |
-| `crowdsec_bouncer_active_decisions`                 | Gauge     | Active decisions by protocol (`ipv4`/`ipv6`)                    |
-| `crowdsec_bouncer_active_decisions_by_origin`       | Gauge     | Active decisions by CrowdSec origin (`crowdsec`/`cscli`/`CAPI`) |
-| `crowdsec_bouncer_decisions_total`                  | Counter   | Total decisions processed (action, protocol, origin)            |
-| `crowdsec_bouncer_errors_total`                     | Counter   | Total errors by operation (`add`/`find`/`remove`/`reconcile`/`firewall`)     |
-| `crowdsec_bouncer_operation_duration_seconds`       | Histogram | Operation latency (`add`/`remove`/`reconcile`/`bulk_add`/`bulk_remove`)      |
-| `crowdsec_bouncer_last_operation_duration_seconds`  | Gauge     | Duration of the most recent operation of each type              |
-| `crowdsec_bouncer_routeros_connected`               | Gauge     | RouterOS connection status (1/0)                                |
-| `crowdsec_bouncer_routeros_cpu_load`                | Gauge     | RouterOS CPU load percentage (0–100)                            |
-| `crowdsec_bouncer_routeros_memory_used_bytes`       | Gauge     | RouterOS used memory in bytes                                   |
-| `crowdsec_bouncer_routeros_memory_total_bytes`      | Gauge     | RouterOS total memory in bytes                                  |
-| `crowdsec_bouncer_routeros_cpu_temperature_celsius` | Gauge     | RouterOS CPU temperature (°C)                                   |
-| `crowdsec_bouncer_routeros_uptime_seconds`          | Gauge     | RouterOS uptime in seconds                                      |
-| `crowdsec_bouncer_routeros_info`                    | Gauge     | RouterOS info metric (`version`, `board_name`; value always 1)  |
-| `crowdsec_bouncer_config_info`                      | Gauge     | Bouncer configuration as info series (`group`/`param`/`value`)  |
-| `crowdsec_bouncer_reconciliation_total`             | Counter   | Total reconciliation actions (`added`/`removed`/`unchanged`)    |
-| `crowdsec_bouncer_dropped_bytes_total`              | Gauge     | Cumulative bytes dropped by firewall rules                      |
-| `crowdsec_bouncer_dropped_packets_total`            | Gauge     | Cumulative packets dropped by firewall rules                    |
-| `crowdsec_bouncer_dropped_bytes_by_proto`           | Gauge     | Dropped bytes by protocol (`ipv4`/`ipv6`)                       |
-| `crowdsec_bouncer_dropped_packets_by_proto`         | Gauge     | Dropped packets by protocol                                     |
-| `crowdsec_bouncer_processed_bytes_total`            | Gauge     | Cumulative bytes processed (evaluated) by firewall rules        |
-| `crowdsec_bouncer_processed_packets_total`          | Gauge     | Cumulative packets processed by firewall rules                  |
-| `crowdsec_bouncer_processed_bytes_by_proto`         | Gauge     | Processed bytes by protocol (`ipv4`/`ipv6`)                     |
-| `crowdsec_bouncer_processed_packets_by_proto`       | Gauge     | Processed packets by protocol                                   |
-
-> **Note:** `dropped_bytes_total` and `dropped_packets_total` use the `_total` suffix despite being Gauges. This is because they reflect cumulative counters read from RouterOS — the bouncer sets (not increments) the value each cycle, making Gauge the correct instrument type. The `_total` suffix is retained for semantic clarity.
-
-### CrowdSec LAPI Metrics
-
-The bouncer reports usage metrics directly to the CrowdSec LAPI (default: every 15 min). These metrics appear in the CrowdSec Console and include:
-
-- **Active decisions** — per-origin (`crowdsec`, `cscli`, `CAPI`) and per-IP-type (`ipv4`, `ipv6`)
-- **Dropped traffic** — bytes and packets blocked by MikroTik firewall rules (delta between pushes), per IP type
-- **Processed traffic** — bytes and packets evaluated by all bouncer chains (delta between pushes), per IP type
-- **Bouncer metadata** — type (`cs-routeros-bouncer`), version, OS info, startup timestamp
-
-Configure with `crowdsec.lapi_metrics_interval` (set to `0` to disable).
-
-### Grafana Dashboard
-
-A ready-to-use Grafana dashboard is included at [`grafana/dashboard.json`](grafana/dashboard.json).
-
-**Import steps:**
-
-1. In Grafana, go to **Dashboards → Import**
-2. Upload `grafana/dashboard.json` or paste its contents
-3. Select your Prometheus datasource
-4. Click **Import**
-
-The dashboard provides real-time visibility into the bouncer's operation:
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/src/assets/grafana-dashboard-dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="docs/src/assets/grafana-dashboard-light.png">
-    <img alt="Grafana Dashboard" src="docs/src/assets/grafana-dashboard-dark.png" width="100%">
-  </picture>
-</p>
-
-**Dashboard panels (41 panels in 9 rows):**
-
-| Row                          | Panels                                                                                                                                                                                                                       |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Overview**                 | RouterOS Connected, Active Decisions (IPv4/IPv6/Total), IPv4/IPv6 Ratio, Uptime, Bouncer Info                                                                                                                                  |
-| **RouterOS System**          | RouterOS System, CPU Load Over Time, Memory Usage Over Time, CPU Temperature Over Time, RouterOS Uptime, RouterOS Info                                                                                                         |
-| **Decisions**                | Active Decisions Over Time, Cumulative Decisions, Decisions Processed (Rate)                                                                                                                                                   |
-| **Decisions by Origin**      | Active Decisions by Origin, Decisions by Origin (Rate), Cumulative Decisions by Origin                                                                                                                                         |
-| **Firewall Traffic**         | Processed Bytes, Processed Packets, Dropped Bytes, Dropped Packets, Drop Rate, Processed/Dropped Traffic Rate, Processed/Dropped Traffic by Protocol (Rate), Processed Traffic (Cumulative), Drop Rate Over Time               |
-| **Errors & Reconciliation**  | Error Rate, RouterOS Connection, Reconciliation Duration, Last Reconciliation, Total Errors                                                                                                                                    |
-| **Performance & Operations** | Operation Latency (p50/p95/p99), Operation Rate                                                                                                                                                                                |
-| **Process Resources**        | Memory Usage, CPU Usage, Goroutines & File Descriptors                                                                                                                                                                         |
-| **Configuration**            | Bouncer Configuration                                                                                                                                                                                                          |
-
----
+The full metric list, a ready-made Grafana dashboard and alerting examples are in [Monitoring](https://jmrp.io/docs/cs-routeros-bouncer/monitoring/prometheus/).
 
 ## Troubleshooting
 
@@ -722,6 +373,8 @@ The dashboard provides real-time visibility into the bouncer's operation:
 
 </details>
 
+More failure modes, each with the check that identifies it, are on the [troubleshooting page](https://jmrp.io/docs/cs-routeros-bouncer/troubleshooting/).
+
 ---
 
 ## Development
@@ -732,44 +385,20 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 make build          # Build binary
 make test           # Run tests
 make lint           # Run linter
+make analyze        # Every check CI runs, reporting all failures rather than the first
 make docker-build   # Build Docker image
 ```
 
-### Functional Tests (Real Hardware)
-
-A comprehensive Bash test suite validates the compiled binary against a
-real MikroTik router. Tests use SSH, `cscli`, `systemctl`, and SNMP —
-no Go internals are imported.
+A Bash suite exercises the compiled binary against a real MikroTik router over SSH, `cscli`, `systemctl` and SNMP — no Go internals imported. Nine groups, from data integrity to a ~28k-IP CAPI stress test:
 
 ```bash
-# Setup: copy and fill in your environment
-cp tests/functional/.env.example tests/functional/.env
-# Edit .env with your MikroTik SSH credentials, CrowdSec API key, etc.
-
-# Run all groups (except CAPI stress test)
-tests/functional/run_tests.sh
-
-# Run specific groups
-tests/functional/run_tests.sh t1 t2
-
-# Include CAPI stress test (~28k IPs — takes several minutes)
-tests/functional/run_tests.sh --capi
-
-# List available groups
-tests/functional/run_tests.sh --list
+cp tests/functional/.env.example tests/functional/.env   # fill in router + LAPI credentials
+tests/functional/run_tests.sh --list                     # see the groups
+tests/functional/run_tests.sh                            # all but the CAPI stress test
+tests/functional/run_tests.sh --capi                     # include it
 ```
 
-| Group | Tests | Description                                                                                  |
-| ----- | ----- | -------------------------------------------------------------------------------------------- |
-| `t1`  | 7     | Data integrity — IP completeness, format, comments                                           |
-| `t2`  | 6     | Cache consistency — live ban/unban, expiry, fast-path                                        |
-| `t3`  | 6     | Bulk operations — reconciliation, partial sync, orphans                                      |
-| `t4`  | 3     | Connection pool — establishment, shutdown                                                    |
-| `t5`  | 6     | Edge cases — duplicates, rapid cycle, restart idempotency                                    |
-| `t6`  | 3     | CPU monitoring — steady-state, peak, recovery                                                |
-| `t7`  | 5     | Timing — reconciliation time, ban/unban latency                                              |
-| `t8`  | 8     | CAPI stress ~28k IPs (requires `--capi`)                                                     |
-| `t9`  | 12    | Advanced firewall config — reject-with, connection-state, log-prefix, whitelist, passthrough |
+There is also a developer benchmark (`go run ./cmd/benchmark`) and self-installing router instrumentation that samples CPU and RAM at 10 Hz (`go run ./cmd/perfmon install`). Both, and the method for measuring against a live router without fooling yourself, are covered in [Benchmarking](https://jmrp.io/docs/cs-routeros-bouncer/development/benchmarking/).
 
 ## Security
 
@@ -782,6 +411,6 @@ See [SECURITY.md](SECURITY.md) for the security policy and responsible disclosur
 ## Acknowledgments
 
 - [CrowdSec](https://www.crowdsec.net/) — open-source collaborative security engine
-- [go-routeros](https://github.com/go-routeros/routeros) — Go library for the RouterOS API
+- [go-routeros](https://github.com/go-routeros/routeros) — the RouterOS API client this project's `internal/rosapi` is vendored from (MIT), pruned to the synchronous subset this bouncer uses
 - [funkolab/cs-mikrotik-bouncer](https://github.com/funkolab/cs-mikrotik-bouncer) — original Go bouncer (archived)
 - [nvtkaszpir/cs-mikrotik-bouncer-alt](https://github.com/nvtkaszpir/cs-mikrotik-bouncer-alt) — alternative Go bouncer
