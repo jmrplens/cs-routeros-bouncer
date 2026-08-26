@@ -90,18 +90,24 @@ Measured on a MikroTik RB5009UG+S+ (ARM64, 4 cores @ 1400 MHz, 1 GB RAM, RouterO
 | Cold reconciliation wall-clock | ~58 s                                              |
 | RouterOS bulk add work         | ~35–36 s                                           |
 | Router CPU peak observed       | ~39% during large add/remove churn                 |
-| No-drift periodic check        | ~1.9 s, with no add/remove writes                  |
+| No-drift periodic check        | ~3–4 s, with no add/remove writes                  |
 | CAPI → local-only mass removal | ~26,800 removals in ~77 s of RouterOS removal work |
 
-The no-drift figure is the one that has moved: it was ~3–4 s when this table was
-first measured, and two changes since then account for the difference — the
-reconcile pass stopped fetching two address-list properties nothing reads
-(−11.2%), and an individual unban stopped traversing the list to rediscover an
-id it already had. The current value comes from the bouncer's own
-`operation_duration_seconds` histogram on a production RB5009 (RouterOS 7.24.1,
-22,332 IPv4 entries plus ~525 IPv6, 60 s interval): **1.86 s over 28 consecutive
-cycles**, a 3.1% duty cycle against wall-clock. Of that, the two address-list
-prints are 98.5%.
+### Steady-state cost on current code
+
+The no-drift row above belongs to the build and the list it was measured on. Two
+changes since then moved it: the reconcile pass stopped fetching two
+address-list properties nothing reads (−11.2%), and an individual unban stopped
+traversing the list to rediscover an id it already had. Re-measured on the same
+hardware running RouterOS 7.24.1, holding 22,857 entries (22,332 IPv4 plus ~525
+IPv6) on a 60 s interval, taken from the bouncer's own
+`operation_duration_seconds` histogram rather than from a stopwatch:
+
+| Metric                            | 22,857 entries, RouterOS 7.24.1   |
+| --------------------------------- | --------------------------------- |
+| No-drift periodic check           | 1.86 s over 28 consecutive cycles |
+| Duty cycle at a 60 s interval     | 3.1% of wall-clock                |
+| Share spent in the two list reads | 98.5%                             |
 
 What this means for tuning: the cost is dominated by reading the list, so it
 scales with how many entries the router holds, not with how much drift there is

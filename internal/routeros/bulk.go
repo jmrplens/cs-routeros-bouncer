@@ -28,21 +28,25 @@ const systemScriptPath = "/system/script"
 //
 // The real constraint is not message size either. It is the trade between
 // amortizing four round trips per chunk (find, add, run, remove) and the length
-// of one non-interruptible script run on the router — and that trade has now
-// been swept against the live device, three interleaved rounds of 4,000 entries
-// at 50 / 100 / 250 / 500 / 1000:
+// of one non-interruptible script run on the router — and that trade has been
+// swept against the live device: five interleaved rounds of 4,000 entries at
+// 50 / 100 / 250 / 500 / 1000, medians 4.36 s to 5.78 s across the whole 20×
+// range.
 //
-//	wall = entries × 1.30 ms  +  chunks × 1.0 ms
+// The sweep's real result is that it cannot resolve one. Within a single chunk
+// size the interquartile range reaches 2.55 s, while the spread between sizes
+// is 1.43 s — the noise on one arm is larger than the difference between arms.
+// Which size looks best even depends on the estimator: median and minimum pick
+// 1,000, the mean picks 100. A two-term fit is correspondingly ill-conditioned;
+// the per-entry coefficient lands near 1.2–1.3 ms and is stable because it
+// dominates, but the per-chunk term is anywhere from ~1 to ~10 ms depending on
+// the round, which for a 22,000-entry import is somewhere between 0.2 s and
+// 2.3 s of scaffolding against ~27 s of insertion.
 //
-// The per-entry term dominates completely. For the 22,000-entry import that is
-// 28.6 s of insertions against 0.23 s of scaffolding at this size — and 0.02 s
-// at a chunk of 1,000, so the whole 20× range of sizes is worth 0.2 s out of
-// 29. (The model predicts 28.9 s for the current setting, which is what the
-// import measures.)
-//
-// So 100 stays, now for a measured reason rather than a wrong one: it is deep
-// into the flat part of the curve, and a larger chunk buys nothing while making
-// a single script run longer and less interruptible.
+// Either way the conclusion is the same and does not depend on pinning the
+// coefficient down: inserting rows dominates, and no chunk size in this range
+// changes the import enough to measure reliably. So 100 stays — deep in the
+// flat region, and short enough to keep a single script run interruptible.
 const bulkChunkSize = 100
 
 // BulkAddAddresses adds many addresses at once using a RouterOS script.
