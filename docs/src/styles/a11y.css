@@ -65,7 +65,12 @@
 /* ------------------------------------------------------------------
    PRINT
    Paper is one background, so these greys are literals rather than
-   theme tokens on purpose — the palette does not reach the page.
+   theme tokens on purpose — the palette does not reach the page. They are
+   still measured: check-contrast.mjs reads them out of this block against
+   paper white, which is why the `pre` border is not the `#ccc` hairline it
+   wants to be. Browsers do not print background colours by default, so that
+   border is the only thing left telling a code block apart from prose — a
+   graphical object required to understand the content, and 3:1 applies to it.
    `!important` beats the layered layout rules being stripped.
    ------------------------------------------------------------------ */
 @media print {
@@ -86,7 +91,7 @@
 		font-size: 0.8em;
 	}
 	pre {
-		border: 1px solid #ccc;
+		border: 1px solid #8a8a8a;
 		white-space: pre-wrap;
 		word-break: break-all;
 	}

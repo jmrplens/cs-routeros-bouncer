@@ -643,19 +643,74 @@ function jsxElementName(node) {
 }
 
 /**
+ * A marker for an identifying attribute written with no value at all.
+ *
+ * Distinct from `null`, which means the attribute is absent. Without the
+ * distinction `<Aside note />` and `<Aside />` produce the same key, so a twin
+ * that dropped the flag compares equal — the gate's job is to notice exactly
+ * that kind of quiet divergence.
+ */
+const VALUELESS = Symbol("valueless");
+
+/**
+ * The bare string an expression denotes, when it denotes one and nothing else.
+ *
+ * `path="a.b"`, `path={"a.b"}` and ``path={`a.b`}`` are the same invocation
+ * written three ways. Keying them apart makes the gate report a mismatch it
+ * invented, which is worse than a miss: it trains the reader to distrust it.
+ * Anything with moving parts — an identifier, a call, a template with a
+ * substitution — is left to `canonicalExpression`, since those really can
+ * differ between twins.
+ * @param {any} node an ESTree node, or a Program wrapping one.
+ * @returns {string | null}
+ */
+function stringLiteralValue(node) {
+	if (node === null || node === undefined) return null;
+	switch (node.type) {
+		case "Program": {
+			const statement = node.body?.find(
+				(/** @type {any} */ entry) => entry.type === "ExpressionStatement",
+			);
+			return statement === undefined
+				? null
+				: stringLiteralValue(statement.expression);
+		}
+		case "ExpressionStatement":
+			return stringLiteralValue(node.expression);
+		case "ParenthesizedExpression":
+			return stringLiteralValue(node.expression);
+		case "Literal":
+			return typeof node.value === "string" ? node.value : null;
+		case "TemplateLiteral": {
+			// Only a template with no substitutions is a fixed string.
+			if (node.expressions?.length > 0) return null;
+			const quasi = node.quasis?.[0];
+			if (quasi === undefined) return null;
+			return quasi.value?.cooked ?? quasi.value?.raw ?? null;
+		}
+		default:
+			return null;
+	}
+}
+
+/**
  * Build the key for one invocation: the component name, plus the first
  * identifying attribute it carries. Shared by the mdast and the ESTree side so
  * the *same* invocation keys the same wherever it was written — an attribute
  * expression counted differently from a top-level tag would be a mismatch this
  * gate invented.
  * @param {string} name
- * @param {(attribute: string) => string | null} valueOf
+ * @param {(attribute: string) => string | symbol | null} valueOf
  * @returns {string}
  */
 function componentKey(name, valueOf) {
 	for (const attribute of IDENTIFYING_ATTRIBUTES) {
 		const value = valueOf(attribute);
-		if (value === null) continue; // Absent, or valueless: identifies nothing.
+		if (value === null) continue; // Absent: identifies nothing.
+		// A valueless attribute keys as `name[attr]`, which no valued attribute
+		// can collide with — `name[attr=true]` would collide with the literal
+		// string "true".
+		if (value === VALUELESS) return `${name}[${attribute}]`;
 		return `${name}[${attribute}=${value}]`;
 	}
 	return name;
@@ -668,7 +723,7 @@ function componentKey(name, valueOf) {
  * *is* rather than how it was laid out.
  * @param {any} node
  * @param {string} attribute
- * @returns {string | null}
+ * @returns {string | symbol | null}
  */
 function mdastAttributeValue(node, attribute) {
 	const found = (node.attributes ?? []).find(
@@ -676,9 +731,12 @@ function mdastAttributeValue(node, attribute) {
 			candidate.type === "mdxJsxAttribute" && candidate.name === attribute,
 	);
 	if (found === undefined) return null;
+	if (found.value === null || found.value === undefined) return VALUELESS;
 	if (typeof found.value === "string") return found.value;
 	const estree = found.value?.data?.estree;
 	if (estree === null || estree === undefined) return null;
+	const literal = stringLiteralValue(estree);
+	if (literal !== null) return literal;
 	return `{${canonicalExpression(estree)}}`;
 }
 
@@ -687,7 +745,7 @@ function mdastAttributeValue(node, attribute) {
  * yields its bare value, exactly as the mdast side does, so the two agree.
  * @param {any} node
  * @param {string} attribute
- * @returns {string | null}
+ * @returns {string | symbol | null}
  */
 function jsxAttributeValue(node, attribute) {
 	const found = (node.openingElement?.attributes ?? []).find(
@@ -696,7 +754,7 @@ function jsxAttributeValue(node, attribute) {
 	);
 	if (found === undefined) return null;
 	const value = found.value;
-	if (value === null || value === undefined) return null; // Valueless.
+	if (value === null || value === undefined) return VALUELESS;
 	if (value.type === "Literal") {
 		return typeof value.value === "string"
 			? value.value
@@ -704,6 +762,8 @@ function jsxAttributeValue(node, attribute) {
 	}
 	if (value.type === "JSXExpressionContainer") {
 		if (value.expression?.type === "JSXEmptyExpression") return null;
+		const literal = stringLiteralValue(value.expression);
+		if (literal !== null) return literal;
 		return `{${canonicalExpression(value.expression)}}`;
 	}
 	return null;
@@ -741,7 +801,10 @@ function strayComponentTags(tree) {
 	walkTree(tree, (node) => {
 		if (node.type !== "html" || typeof node.value !== "string") return;
 		const visible = node.value.replace(/<!--[\s\S]*?(?:-->|$)/g, " ");
-		for (const match of visible.matchAll(/<\/?([A-Z][A-Za-z0-9_.]*)/g)) {
+		// JSX identifiers admit `-` (`<Foo-Bar />`), so leaving it out did not
+		// miss the tag — it reported it as `Foo`, naming a component that does
+		// not exist and sending the reader looking for it.
+		for (const match of visible.matchAll(/<\/?([A-Z][A-Za-z0-9_.-]*)/g)) {
 			names.add(match[1]);
 		}
 	});
@@ -1363,16 +1426,58 @@ Heading with a badge <VersionBadge /> inline.
 		},
 	],
 	[
-		"an expression-valued identifying attribute still keys the instance",
+		"a fixed string keys the same however it was written",
 		() => {
+			// `"a.b"`, `{"a.b"}` and a substitution-free template are one
+			// invocation written three ways. Keying them apart made the gate
+			// report a mismatch of its own making between twins that agreed.
 			const page = pageOf(`---
 title: T
 ---
 
+<ConfigOption path="a.b" />
 <ConfigOption path={"a.b"} />
+<ConfigOption path={\`a.b\`} />
 `);
 			expect(
-				callList(page.components) === `ConfigOption[path={"a.b"}]x1`,
+				callList(page.components) === `ConfigOption[path=a.b]x3`,
+				`components: ${callList(page.components)}`,
+			);
+		},
+	],
+	[
+		"an expression with moving parts still keys as an expression",
+		() => {
+			// The converse of the test above: these really can differ between
+			// twins, so they must not collapse onto the identifier's name.
+			const page = pageOf(`---
+title: T
+---
+
+<ConfigOption path={slug} />
+<ConfigOption path={\`a.\${slug}\`} />
+`);
+			expect(
+				callList(page.components) ===
+					"ConfigOption[path={`a.${slug}`}]x1 ConfigOption[path={slug}]x1",
+				`components: ${callList(page.components)}`,
+			);
+		},
+	],
+	[
+		"a valueless identifying attribute is not the same as an absent one",
+		() => {
+			// `<Home section />` and `<Home />` used to key identically, so a twin
+			// that dropped the flag compared equal.
+			const page = pageOf(`---
+title: T
+---
+
+<Home section />
+<Home />
+`);
+			expect(
+				callList(page.components) === "Home[section]x1 Homex1",
 				`components: ${callList(page.components)}`,
 			);
 		},
@@ -1514,8 +1619,7 @@ title: T
 <Card body={<Wrapper slot={<Home section={"deep"} />} />} />
 `);
 			expect(
-				callList(page.components) ===
-					`Cardx1 Home[section={"deep"}]x1 Wrapperx1`,
+				callList(page.components) === "Cardx1 Home[section=deep]x1 Wrapperx1",
 				`components: ${callList(page.components)}`,
 			);
 		},
@@ -1581,6 +1685,27 @@ title: T
 				`stray: [${page.strayComponents}]`,
 			);
 			expect(page.levels.join(",") === "2", `levels: [${page.levels}]`);
+		},
+	],
+	[
+		"a hyphenated component keeps its whole name in the report",
+		() => {
+			// JSX identifiers admit `-`. Reported as `Foo` instead of `Foo-Bar`,
+			// the message names a component that does not exist and the reader
+			// greps for the wrong thing.
+			const page = pageOf(
+				`---
+title: T
+---
+
+<Rule-Set scope="input" />
+`,
+				".md",
+			);
+			expect(
+				page.strayComponents.join(",") === "Rule-Set",
+				`stray: [${page.strayComponents}]`,
+			);
 		},
 	],
 	[
