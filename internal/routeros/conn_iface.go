@@ -1,8 +1,6 @@
 package routeros
 
-import (
-	"github.com/go-routeros/routeros/v3"
-)
+import routeros "github.com/jmrplens/cs-routeros-bouncer/internal/rosapi"
 
 // RouterConn abstracts the low-level RouterOS API connection.
 //
