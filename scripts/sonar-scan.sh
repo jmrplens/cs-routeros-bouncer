@@ -26,6 +26,16 @@
 set -euo pipefail
 
 HOST="${SONAR_HOST_URL:-https://sonarcloud.io}"
+case "$HOST" in
+https://*) ;;
+*)
+	if [ "${SONAR_ALLOW_HTTP:-0}" != "1" ]; then
+		echo "ERROR: SONAR_HOST_URL must be https:// — the token travels in every request." >&2
+		echo "       Set SONAR_ALLOW_HTTP=1 only for a local SonarQube you trust." >&2
+		exit 1
+	fi
+	;;
+esac
 POLL_TIMEOUT="${SONAR_POLL_TIMEOUT:-240}"
 POLL_INTERVAL="${SONAR_POLL_INTERVAL:-5}"
 COVERAGE_MIN="${COVERAGE_MIN:-0}"

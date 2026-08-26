@@ -231,12 +231,13 @@ analyze:
 	fi; \
 	echo "Analysis complete. All tools passed."
 
-## analyze-fix: apply every automatic fix the tools offer, then re-verify with
-## 'make analyze'. Formatters first so the linters judge formatted code.
+## analyze-fix: apply every automatic fix the tools offer. Formatters run
+## first so the linters judge formatted code. Fixes are best-effort by design —
+## run 'make analyze' afterwards to see what remains.
 analyze-fix:
 	$(MAKE) --no-print-directory fmt
 	$(MAKE) --no-print-directory goimports
-	golangci-lint run --fix ./... || true
+	$(GOLANGCI_LINT) run --fix ./... || true
 	$(MAKE) --no-print-directory mdlint-fix
 	cd docs && corepack pnpm exec prettier --write . >/dev/null
 
@@ -249,10 +250,11 @@ sonar:
 sonar-status:
 	@./scripts/sonar-scan.sh --no-scan
 
-## hadolint: lint the Dockerfiles (mirrors the CI job).
+## hadolint: lint the Dockerfiles with the same policy the CI job applies.
 hadolint:
 	@command -v hadolint >/dev/null 2>&1 || { echo "hadolint not installed: https://github.com/hadolint/hadolint"; exit 1; }
-	hadolint docker/Dockerfile docker/Dockerfile.goreleaser
+	hadolint --failure-threshold warning --ignore DL3008 --ignore DL3018 \
+		docker/Dockerfile docker/Dockerfile.goreleaser
 
 ## release-check: validate .goreleaser.yaml without releasing.
 release-check:
