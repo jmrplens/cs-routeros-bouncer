@@ -85,14 +85,12 @@ func deferCloser(t *testing.T, c io.Closer) {
 }
 
 func TestRunSync(tt *testing.T) {
-	tt.Helper()
 	t := newLiveTest(tt)
 	defer deferCloser(tt, t.c)
 	t.getUptime()
 }
 
 func TestRunError(tt *testing.T) {
-	tt.Helper()
 	t := newLiveTest(tt)
 	defer deferCloser(tt, t.c)
 	for i, sentence := range [][]string{
@@ -108,7 +106,6 @@ func TestRunError(tt *testing.T) {
 }
 
 func TestDialInvalidPort(t *testing.T) {
-	t.Helper()
 	con, err := Dial("127.0.0.1:xxx", "x", "x")
 	if con != nil {
 		assert.NoError(t, con.Close())
@@ -125,7 +122,6 @@ func TestDialInvalidPort(t *testing.T) {
 }
 
 func TestDialTimeout(t *testing.T) {
-	t.Helper()
 	con, err := DialTimeout("255.255.255.0:8729", "x", "x", time.Millisecond)
 	if con != nil {
 		assert.NoError(t, con.Close())
@@ -139,7 +135,6 @@ func TestDialTimeout(t *testing.T) {
 }
 
 func TestDialTLSTimeout(t *testing.T) {
-	t.Helper()
 	con, err := DialTLSTimeout("255.255.255.0:8729", "x", "x", nil, time.Millisecond)
 	if con != nil {
 		assert.NoError(t, con.Close())
@@ -153,7 +148,6 @@ func TestDialTLSTimeout(t *testing.T) {
 }
 
 func TestDialTLSInvalidPort(t *testing.T) {
-	t.Helper()
 	con, err := DialTLS("127.0.0.1:xxx", "x", "x", nil)
 	if con != nil {
 		assert.NoError(t, con.Close())
@@ -170,7 +164,6 @@ func TestDialTLSInvalidPort(t *testing.T) {
 }
 
 func TestInvalidLogin(t *testing.T) {
-	t.Helper()
 	cfg := fetchConfig(t)
 
 	c, err := Dial(cfg.Address, "xxx", "APasswordThatWillNeverExistir")
@@ -186,7 +179,6 @@ func TestInvalidLogin(t *testing.T) {
 }
 
 func TestTrapHandling(tt *testing.T) {
-	tt.Helper()
 	t := newLiveTest(tt)
 	defer deferCloser(tt, t.c)
 

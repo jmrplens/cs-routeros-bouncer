@@ -34,7 +34,14 @@ the code buildable forever and lets this repo fix and prune what it uses.
    and upstream's own suite green under `go test -race`. The committed
    `proto/reader_shape_test.go` pins that behaviour.
 
-3. **`TestRunAsync` and the listen-mode tests are removed** with the mode; the
+3. **The pre-6.43 MD5 challenge login is removed.** The two-stage login only
+   exists before RouterOS 6.43 (2018), the bouncer documents 7.x as its floor,
+   and answering the challenge means hashing the password with MD5 — flagged,
+   rightly, by every scanner that reads it. A router that sends a `ret`
+   challenge now gets `ErrLegacyLoginUnsupported` instead of an MD5 answer.
+
+4. **`TestRunAsync` and the listen-mode tests are removed** with the mode; the
+   pre-6.43 login tests assert the rejection instead of the handshake. The
    rest of upstream's test suite is kept and passing.
 
 When comparing against upstream, diff against the `v3.0.1` tag, not master.

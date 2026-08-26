@@ -5,9 +5,7 @@ package routeros
 
 import (
 	"context"
-	"crypto/md5" // #nosec G501 -- pre-6.43 RouterOS login is an MD5 challenge; the protocol demands it
 	"crypto/tls"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -36,8 +34,10 @@ type Client struct {
 }
 
 var (
-	ErrNoChallengeReceived      = errors.New("no ret (challenge) received")
-	ErrInvalidChallengeReceived = errors.New("invalid ret (challenge) hex string received")
+	ErrNoChallengeReceived = errors.New("no ret (challenge) received")
+	// ErrLegacyLoginUnsupported reports a pre-6.43 RouterOS asking for its MD5
+	// challenge login, which this vendored client no longer speaks.
+	ErrLegacyLoginUnsupported = errors.New("RouterOS older than 6.43 wants an MD5 challenge login; this client requires 6.43+ (the bouncer documents 7.x)")
 )
 
 var defaultHandler = slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
@@ -154,33 +154,18 @@ func (c *Client) LoginContext(ctx context.Context, username, password string) er
 	if err != nil {
 		return err
 	}
-	ret, ok := r.Done.Map["ret"]
-	if !ok {
-		// Login method post-6.43 one stage, cleartext and no challenge
-		if r.Done != nil {
-			return nil
-		}
-		return fmt.Errorf("RouterOS: /login: %w", ErrNoChallengeReceived)
+	if _, ok := r.Done.Map["ret"]; ok {
+		// A `ret` value is the MD5 challenge of the pre-6.43 two-stage login.
+		// This vendored copy removes that path outright: the bouncer documents
+		// RouterOS 7.x as its floor, 6.43 is from 2018, and answering the
+		// challenge means hashing the password with MD5 — the one thing left
+		// in this package a security scanner rightly refuses to look away from.
+		return fmt.Errorf("RouterOS: /login: %w", ErrLegacyLoginUnsupported)
 	}
 
-	// Login method pre-6.43 two stages, challenge
-	var dec []byte
-	if dec, err = hex.DecodeString(ret); err != nil {
-		return fmt.Errorf("RouterOS: /login: %w: %w", ErrInvalidChallengeReceived, err)
+	if r.Done != nil {
+		return nil
 	}
 
-	_, err = c.RunContext(ctx, "/login", "=name="+username, "=response="+c.challengeResponse(dec, password))
-
-	return err
-}
-
-// challengeResponse - prepare MD5 hash for auth challenge response.
-// MD5 here is not a cryptographic choice: RouterOS versions before 6.43
-// authenticate with an MD5 challenge, and speaking to them requires it.
-func (c *Client) challengeResponse(cha []byte, password string) string {
-	h := md5.New() // #nosec G401 -- pre-6.43 login challenge, mandated by the protocol
-	h.Write([]byte{0})
-	h.Write([]byte(password))
-	h.Write(cha)
-	return fmt.Sprintf("00%x", h.Sum(nil))
+	return fmt.Errorf("RouterOS: /login: %w", ErrNoChallengeReceived)
 }

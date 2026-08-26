@@ -16,7 +16,6 @@ import (
 // mode, which this vendored copy removes outright — see PRUNED.md.
 
 func TestRandomData(t *testing.T) {
-	t.Helper()
 	c, s := newPair(t)
 	defer deferCloser(t, c)
 
@@ -36,7 +35,9 @@ func TestRandomData(t *testing.T) {
 }
 
 func TestLoginPre643(t *testing.T) {
-	t.Helper()
+	// Upstream answered the challenge with an MD5 hash here. This vendored
+	// copy refuses instead: the two-stage login only exists before RouterOS
+	// 6.43 and the bouncer documents 7.x as its floor.
 	c, s := newPair(t)
 	defer deferCloser(t, c)
 
@@ -44,16 +45,14 @@ func TestLoginPre643(t *testing.T) {
 		defer deferCloser(t, s)
 		s.readSentence(t, "/login @ [{`name` `userTest`} {`password` `passTest`}]")
 		s.writeSentence(t, "!done", "=ret=abc123")
-		s.readSentence(t, "/login @ [{`name` `userTest`} {`response` `0021277bff9ac7caf06aa608e46616d47f`}]")
-		s.writeSentence(t, "!done")
 	}()
 
 	err := c.Login("userTest", "passTest")
-	require.NoError(t, err)
+	require.Truef(t, errors.Is(err, ErrLegacyLoginUnsupported),
+		"want=ErrLegacyLoginUnsupported, have=%#v", err)
 }
 
 func TestLoginPost643(t *testing.T) {
-	t.Helper()
 	c, s := newPair(t)
 	defer deferCloser(t, c)
 
@@ -68,29 +67,23 @@ func TestLoginPost643(t *testing.T) {
 }
 
 func TestLoginIncorrectPre643(t *testing.T) {
-	t.Helper()
+	// Same as TestLoginPre643 with a bad password upstream; the reply shape
+	// (a `ret` challenge) is what matters now, and it is rejected outright.
 	c, s := newPair(t)
 	defer deferCloser(t, c)
 
 	go func() {
 		defer deferCloser(t, s)
-		s.readSentence(t, "/login @ [{`name` `userTest`} {`password` `passTest`}]")
+		s.readSentence(t, "/login @ [{`name` `userTest`} {`password` `badPass`}]")
 		s.writeSentence(t, "!done", "=ret=abc123")
-		s.readSentence(t, "/login @ [{`name` `userTest`} {`response` `0021277bff9ac7caf06aa608e46616d47f`}]")
-		s.writeSentence(t, "!trap", "=message=incorrect login")
-		s.writeSentence(t, "!done")
 	}()
 
-	err := c.Login("userTest", "passTest")
-	require.Error(t, err, "Login succeeded; want error")
-
-	var top *DeviceError
-	require.Truef(t, errors.As(err, &top), "want=DeviceError, have=%#v", err)
-	require.Contains(t, []string{"incorrect login"}, top.fetchMessage())
+	err := c.Login("userTest", "badPass")
+	require.Truef(t, errors.Is(err, ErrLegacyLoginUnsupported),
+		"want=ErrLegacyLoginUnsupported, have=%#v", err)
 }
 
 func TestLoginIncorrectPost643(t *testing.T) {
-	t.Helper()
 	c, s := newPair(t)
 	defer deferCloser(t, c)
 
@@ -110,7 +103,6 @@ func TestLoginIncorrectPost643(t *testing.T) {
 }
 
 func TestLoginNoChallenge(t *testing.T) {
-	t.Helper()
 	c, s := newPair(t)
 	defer deferCloser(t, c)
 
@@ -123,25 +115,23 @@ func TestLoginNoChallenge(t *testing.T) {
 	require.NoError(t, c.Login("userTest", "passTest"))
 }
 
-func TestLoginInvalidChallenge(t *testing.T) {
-	t.Helper()
+func TestLoginLegacyChallengeRejected(t *testing.T) {
 	c, s := newPair(t)
 	defer deferCloser(t, c)
 
 	go func() {
 		defer deferCloser(t, s)
 		s.readSentence(t, "/login @ [{`name` `userTest`} {`password` `passTest`}]")
-		s.writeSentence(t, "!done", "=ret=Invalid Hex String")
+		s.writeSentence(t, "!done", "=ret=abcdef0123456789")
 	}()
 
 	err := c.Login("userTest", "passTest")
 	require.Error(t, err, "Login succeeded; want error")
-	require.Truef(t, errors.Is(err, ErrInvalidChallengeReceived),
-		"want=ErrInvalidChallengeReceived, have=%#v", err)
+	require.Truef(t, errors.Is(err, ErrLegacyLoginUnsupported),
+		"want=ErrLegacyLoginUnsupported, have=%#v", err)
 }
 
 func TestLoginEOF(t *testing.T) {
-	t.Helper()
 	c, s := newPair(t)
 	defer deferCloser(t, c)
 	require.NoError(t, s.Close())
@@ -152,7 +142,6 @@ func TestLoginEOF(t *testing.T) {
 }
 
 func TestCloseTwice(t *testing.T) {
-	t.Helper()
 	c, s := newPair(t)
 	defer deferCloser(t, s)
 	require.NoError(t, c.Close())
@@ -160,7 +149,6 @@ func TestCloseTwice(t *testing.T) {
 }
 
 func TestProtoRun(t *testing.T) {
-	t.Helper()
 	c, s := newPair(t)
 	defer deferCloser(t, c)
 
@@ -179,7 +167,6 @@ func TestProtoRun(t *testing.T) {
 }
 
 func TestRunEmptySentence(t *testing.T) {
-	t.Helper()
 	c, s := newPair(t)
 	defer deferCloser(t, c)
 
@@ -199,7 +186,6 @@ func TestRunEmptySentence(t *testing.T) {
 }
 
 func TestRunEOF(t *testing.T) {
-	t.Helper()
 	c, s := newPair(t)
 	defer deferCloser(t, c)
 
@@ -214,7 +200,6 @@ func TestRunEOF(t *testing.T) {
 }
 
 func TestRunInvalidSentence(t *testing.T) {
-	t.Helper()
 	c, s := newPair(t)
 	defer deferCloser(t, c)
 
@@ -233,7 +218,6 @@ func TestRunInvalidSentence(t *testing.T) {
 }
 
 func TestRunTrap(t *testing.T) {
-	t.Helper()
 	c, s := newPair(t)
 	defer deferCloser(t, c)
 
@@ -253,7 +237,6 @@ func TestRunTrap(t *testing.T) {
 }
 
 func TestRunTrapWithoutMessage(t *testing.T) {
-	t.Helper()
 	c, s := newPair(t)
 	defer deferCloser(t, c)
 
@@ -273,7 +256,6 @@ func TestRunTrapWithoutMessage(t *testing.T) {
 }
 
 func TestRunFatal(t *testing.T) {
-	t.Helper()
 	c, s := newPair(t)
 	defer deferCloser(t, c)
 
@@ -292,7 +274,6 @@ func TestRunFatal(t *testing.T) {
 }
 
 func TestRunAfterClose(t *testing.T) {
-	t.Helper()
 	c, s := newPair(t)
 	require.NoError(t, c.Close())
 	require.NoError(t, s.Close())
