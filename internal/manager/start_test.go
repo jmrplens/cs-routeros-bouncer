@@ -114,7 +114,7 @@ func newTestManagerWithStream(mock *mockROS, stream *mockStream, cfg config.Conf
 		logger:       zerolog.Nop(),
 		version:      "test",
 		ruleIDs:      make(map[string]string),
-		addressCache: make(map[string]struct{}),
+		addressCache: make(map[string]string),
 	}
 }
 
@@ -699,7 +699,7 @@ func TestHandleBan_DuplicateInCache(t *testing.T) {
 
 	// Pre-populate cache to simulate a duplicate
 	mgr.cacheMu.Lock()
-	mgr.addressCache["1.2.3.4"] = struct{}{}
+	mgr.addressCache["1.2.3.4"] = ""
 	mgr.cacheMu.Unlock()
 
 	mgr.handleBan(&crowdsec.Decision{
@@ -1770,6 +1770,90 @@ func TestReconcileAddresses_ZeroDurationNoTimeout(t *testing.T) {
 // handleUnban additional coverage
 // ===========================================================================
 
+// TestHandleUnban_UsesCachedIDAndSkipsLookup pins the fast path this cache
+// exists for: when the cache carries an id, the unban deletes by it and never
+// calls FindAddress — the traversal that measured ~1.15 s against 22,000
+// entries on the production RB5009.
+func TestHandleUnban_UsesCachedIDAndSkipsLookup(t *testing.T) {
+	mock := &mockROS{}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	mgr := newTestManager(mock, cfg)
+
+	mgr.cacheMu.Lock()
+	mgr.addressCache["5.5.5.5"] = "*1A2B"
+	mgr.cacheMu.Unlock()
+
+	mgr.handleUnban(&crowdsec.Decision{Value: "5.5.5.5", Proto: "ip"})
+
+	if len(mock.findAddressCalls) != 0 {
+		t.Errorf("cached id must skip the lookup, got %d FindAddress calls", len(mock.findAddressCalls))
+	}
+	if len(mock.removeAddressCalls) != 1 || mock.removeAddressCalls[0].ID != "*1A2B" {
+		t.Fatalf("expected one removal of *1A2B, got %+v", mock.removeAddressCalls)
+	}
+	mgr.cacheMu.RLock()
+	_, inCache := mgr.addressCache["5.5.5.5"]
+	mgr.cacheMu.RUnlock()
+	if inCache {
+		t.Error("expected address removed from cache after unban")
+	}
+}
+
+// TestHandleUnban_StaleCachedIDSettlesQuietly pins the safety argument: an id
+// that no longer exists comes back as ErrNotFound, which means the entry is
+// already gone — the outcome the unban wanted. It must settle the decision and
+// evict the cache, not fall back to a lookup or report an error.
+func TestHandleUnban_StaleCachedIDSettlesQuietly(t *testing.T) {
+	mock := &mockROS{removeAddressErr: fmt.Errorf("remove: %w", ros.ErrNotFound)}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	mgr := newTestManager(mock, cfg)
+
+	mgr.cacheMu.Lock()
+	mgr.addressCache["5.5.5.5"] = "*DEAD"
+	mgr.cacheMu.Unlock()
+
+	mgr.handleUnban(&crowdsec.Decision{Value: "5.5.5.5", Proto: "ip"})
+
+	if len(mock.findAddressCalls) != 0 {
+		t.Errorf("a vanished id is an answer, not a reason to look up: %d calls", len(mock.findAddressCalls))
+	}
+	mgr.cacheMu.RLock()
+	_, inCache := mgr.addressCache["5.5.5.5"]
+	mgr.cacheMu.RUnlock()
+	if inCache {
+		t.Error("expected address removed from cache after a vanished id")
+	}
+}
+
+// TestHandleUnban_TransportErrorFallsBackToLookup pins the other half: an error
+// that says nothing about the id (transport, auth) must NOT settle the unban.
+// It falls through to the lookup path so the decision still gets enforced.
+func TestHandleUnban_TransportErrorFallsBackToLookup(t *testing.T) {
+	mock := &mockROS{
+		removeAddressErr: errors.New("connection reset"),
+		findAddressEntry: &ros.AddressEntry{ID: "*99", Address: "5.5.5.5"},
+	}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	mgr := newTestManager(mock, cfg)
+
+	mgr.cacheMu.Lock()
+	mgr.addressCache["5.5.5.5"] = "*1A2B"
+	mgr.cacheMu.Unlock()
+
+	mgr.handleUnban(&crowdsec.Decision{Value: "5.5.5.5", Proto: "ip"})
+
+	if len(mock.findAddressCalls) != 1 {
+		t.Fatalf("expected the lookup fallback, got %d FindAddress calls", len(mock.findAddressCalls))
+	}
+	// Two removals: the failed id attempt, then the one the lookup produced.
+	if len(mock.removeAddressCalls) != 2 {
+		t.Fatalf("expected 2 RemoveAddress calls, got %d", len(mock.removeAddressCalls))
+	}
+}
+
 // TestHandleUnban_SuccessfulRemove verifies the full happy-path unban:
 // found in cache, found on router, successfully removed.
 func TestHandleUnban_SuccessfulRemove(t *testing.T) {
@@ -1782,7 +1866,7 @@ func TestHandleUnban_SuccessfulRemove(t *testing.T) {
 
 	// Pre-populate cache.
 	mgr.cacheMu.Lock()
-	mgr.addressCache["5.5.5.5"] = struct{}{}
+	mgr.addressCache["5.5.5.5"] = ""
 	mgr.cacheMu.Unlock()
 
 	d := &crowdsec.Decision{Value: "5.5.5.5", Proto: "ip"}
@@ -1826,7 +1910,7 @@ func TestHandleUnban_NotFoundErrorClearsCache(t *testing.T) {
 	cfg.Firewall.IPv6.Enabled = false
 	mgr := newTestManager(mock, cfg)
 	mgr.cacheMu.Lock()
-	mgr.addressCache["10.0.0.10"] = struct{}{}
+	mgr.addressCache["10.0.0.10"] = ""
 	mgr.cacheMu.Unlock()
 
 	mgr.handleUnban(&crowdsec.Decision{Value: "10.0.0.10", Proto: "ip"})

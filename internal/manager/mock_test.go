@@ -361,7 +361,7 @@ func newTestManager(mock *mockROS, cfg config.Config) *Manager {
 		logger:       zerolog.Nop(),
 		version:      "test",
 		ruleIDs:      make(map[string]string),
-		addressCache: make(map[string]struct{}),
+		addressCache: make(map[string]string),
 	}
 }
 
@@ -498,7 +498,7 @@ func TestHandleBan_CacheHitSkipsRouterOS(t *testing.T) {
 	mock := &mockROS{addAddressID: "*1"}
 	mgr := newTestManager(mock, baseConfig())
 	mgr.cacheMu.Lock()
-	mgr.addressCache["10.0.0.1"] = struct{}{}
+	mgr.addressCache["10.0.0.1"] = ""
 	mgr.cacheMu.Unlock()
 
 	mgr.handleBan(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1", Duration: time.Hour})
@@ -552,7 +552,7 @@ func TestHandleBan_AlreadyExists_ZeroDuration(t *testing.T) {
 
 	// Pre-populate cache
 	mgr.cacheMu.Lock()
-	mgr.addressCache["10.0.0.1"] = struct{}{}
+	mgr.addressCache["10.0.0.1"] = ""
 	mgr.cacheMu.Unlock()
 
 	mgr.handleBan(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1", Duration: 0})
@@ -651,7 +651,7 @@ func TestHandleUnban_InCache_FoundAndRemoved(t *testing.T) {
 	}
 	mgr := newTestManager(mock, baseConfig())
 	mgr.cacheMu.Lock()
-	mgr.addressCache["10.0.0.1"] = struct{}{}
+	mgr.addressCache["10.0.0.1"] = ""
 	mgr.cacheMu.Unlock()
 
 	mgr.handleUnban(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1"})
@@ -678,7 +678,7 @@ func TestHandleUnban_InCache_NotFoundOnRouter(t *testing.T) {
 	mock := &mockROS{findAddressEntry: nil}
 	mgr := newTestManager(mock, baseConfig())
 	mgr.cacheMu.Lock()
-	mgr.addressCache["10.0.0.1"] = struct{}{}
+	mgr.addressCache["10.0.0.1"] = ""
 	mgr.cacheMu.Unlock()
 
 	mgr.handleUnban(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1"})
@@ -702,7 +702,7 @@ func TestHandleUnban_FindError(t *testing.T) {
 	mock := &mockROS{findAddressErr: errors.New("timeout")}
 	mgr := newTestManager(mock, baseConfig())
 	mgr.cacheMu.Lock()
-	mgr.addressCache["10.0.0.1"] = struct{}{}
+	mgr.addressCache["10.0.0.1"] = ""
 	mgr.cacheMu.Unlock()
 
 	mgr.handleUnban(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1"})
@@ -727,7 +727,7 @@ func TestHandleUnban_RemoveError(t *testing.T) {
 	}
 	mgr := newTestManager(mock, baseConfig())
 	mgr.cacheMu.Lock()
-	mgr.addressCache["10.0.0.1"] = struct{}{}
+	mgr.addressCache["10.0.0.1"] = ""
 	mgr.cacheMu.Unlock()
 
 	mgr.handleUnban(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1"})
@@ -1553,8 +1553,8 @@ func TestReconcileAddresses_PurgesStaleCacheEntries(t *testing.T) {
 	cfg.Firewall.IPv6.Enabled = false
 	mgr := newTestManager(mock, cfg)
 	mgr.cacheMu.Lock()
-	mgr.addressCache["10.0.0.1"] = struct{}{}
-	mgr.addressCache["10.0.0.99"] = struct{}{}
+	mgr.addressCache["10.0.0.1"] = ""
+	mgr.addressCache["10.0.0.99"] = ""
 	mgr.cacheMu.Unlock()
 
 	mgr.reconcileAddresses(context.Background(), []*crowdsec.Decision{
