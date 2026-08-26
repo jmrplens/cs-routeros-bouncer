@@ -90,8 +90,26 @@ Measured on a MikroTik RB5009UG+S+ (ARM64, 4 cores @ 1400 MHz, 1 GB RAM, RouterO
 | Cold reconciliation wall-clock | ~58 s                                              |
 | RouterOS bulk add work         | ~35–36 s                                           |
 | Router CPU peak observed       | ~39% during large add/remove churn                 |
-| No-drift periodic check        | ~3–4 s, with no add/remove writes                  |
+| No-drift periodic check        | ~1.9 s, with no add/remove writes                  |
 | CAPI → local-only mass removal | ~26,800 removals in ~77 s of RouterOS removal work |
+
+The no-drift figure is the one that has moved: it was ~3–4 s when this table was
+first measured, and two changes since then account for the difference — the
+reconcile pass stopped fetching two address-list properties nothing reads
+(−11.2%), and an individual unban stopped traversing the list to rediscover an
+id it already had. The current value comes from the bouncer's own
+`operation_duration_seconds` histogram on a production RB5009 (RouterOS 7.24.1,
+22,332 IPv4 entries plus ~525 IPv6, 60 s interval): **1.86 s over 28 consecutive
+cycles**, a 3.1% duty cycle against wall-clock. Of that, the two address-list
+prints are 98.5%.
+
+What this means for tuning: the cost is dominated by reading the list, so it
+scales with how many entries the router holds, not with how much drift there is
+to repair. A pass that finds nothing to fix costs very nearly what a pass that
+fixes something costs. There is also a floor that no property reduction reaches
+— a `count-only` print of the same list still costs 1.18 s — so asking the
+router "has anything changed?" is not meaningfully cheaper than asking it for
+everything.
 
 :::note[Router CPU]
 Router CPU spikes are expected during reconciliation because the bouncer is adding or removing many address-list entries. After reconciliation, RouterOS CPU should settle back near normal idle/traffic levels. Sustained high CPU usually indicates repeated API writes/reconnects or unrelated router workload, not the address-list entries simply existing in memory.

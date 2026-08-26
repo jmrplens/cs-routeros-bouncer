@@ -123,6 +123,26 @@ a Loki. `uninstall` elimina exactamente lo que creó; `capture` extrae cualquier
 ventana como CSV; `plot` redibuja la gráfica de arriba desde el dataset
 versionado. Cualquier verbo con `-h` muestra la lista completa de flags.
 
+## Medir contra un router en producción
+
+Dos costumbres separan un número accionable de uno que engaña, y ambas se aprendieron por las malas afinando este bouncer.
+
+**Intercala las variantes.** Un router no es una máquina en silencio: enruta tráfico, ejecuta su propio trabajo de fondo y deriva a lo largo de los minutos. Medir la variante A un rato y luego la B otro rato atribuye esa deriva al cambio. Altérnalas — A, B, A, B — dentro de la misma conexión y el mismo minuto, y compara muestras emparejadas. La primera comparación in situ de la reducción de proplist se hizo en dos ventanas separadas y dio −2%; la versión intercalada dio −11,2%, con las 48 parejas favoreciendo el mismo lado. El mismo código y el mismo router; solo cambió el calendario.
+
+**Desconfía de una curva que no es monótona.** Barrer el tamaño de bloque una vez por valor, en secuencia, produjo esto:
+
+```text
+bloque 50    6,926s
+bloque 100   4,679s
+bloque 250   9,760s     <- el doble que sus vecinos por ambos lados
+bloque 500   5,395s
+bloque 1000  6,194s
+```
+
+Ningún modelo de coste produce esa forma. Repetido como tres rondas intercaladas reportando el mejor tiempo por tamaño, se aplana a 4,5–6,1 s en todo el rango de 20× — que es el hallazgo real: el tamaño de bloque apenas importa, porque el coste de inserción por entrada domina al andamiaje por bloque en más de cien a uno.
+
+Un reflejo útil: antes de creerte un resultado, pregunta qué más cambió entre las dos mediciones. Casi siempre es el tiempo.
+
 ## Lista de comprobación de seguridad
 
 - Confirma que el destino es un router de laboratorio.

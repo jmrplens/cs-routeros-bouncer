@@ -1,6 +1,6 @@
 ---
 title: Project Structure
-description: "cs-routeros-bouncer repository layout: directory tree and the responsibilities of each Go package (config, crowdsec, manager, metrics, routeros)."
+description: "cs-routeros-bouncer repository layout: directory tree and the responsibilities of each Go package (config, crowdsec, manager, metrics, rosapi, routeros)."
 ---
 
 import { FileTree } from "@astrojs/starlight/components";
@@ -14,6 +14,8 @@ import { FileTree } from "@astrojs/starlight/components";
     - ...
   - cs-routeros-bouncer/
     - main.go CLI entrypoint
+  - perfmon/ Router instrumentation and charting
+    - ...
 - internal/
   - config/
     - config.go Configuration struct and loading
@@ -43,6 +45,14 @@ import { FileTree } from "@astrojs/starlight/components";
     - metrics.go Prometheus metric definitions
     - metrics_test.go
     - server.go HTTP server for /metrics and /health
+  - rosapi/ Vendored RouterOS API client
+    - client.go Dial, login, command dispatch
+    - error.go RouterOS `!trap` errors
+    - logger.go Logging hook
+    - proto/ Wire protocol
+      - ...
+    - reply.go Reply assembly
+    - run.go Sentence execution
   - routeros/
     - addresslist.go Address list operations
     - bulk.go Bulk script operations
@@ -55,8 +65,6 @@ import { FileTree } from "@astrojs/starlight/components";
     - pool.go Connection pool
     - routeros_test.go
 - docs/ Documentation (Starlight)
-- local/
-  - docs-legacy/ Original MkDocs docs (archive)
 - grafana/
   - dashboard.json Grafana dashboard
 - config/ Example configuration files
@@ -77,6 +85,18 @@ CLI entrypoint. Handles:
 - Subcommand routing (`setup`, `uninstall`, `version`, `help`) and runtime flags (`-c`, `-version`)
 - Signal handling (SIGTERM, SIGINT)
 - Graceful shutdown coordination
+
+### `cmd/benchmark`
+
+Single-operation RouterOS benchmark, described in [Benchmarking](/cs-routeros-bouncer/development/benchmarking/). Development and capacity planning only.
+
+### `cmd/perfmon`
+
+Router-side instrumentation, also covered in [Benchmarking](/cs-routeros-bouncer/development/benchmarking/):
+
+- Cross-builds a 10 Hz `/proc/stat` sampler and packs it as a container image without Docker
+- Installs it on a RouterOS device idempotently (veth, NAT, firewall list membership) and removes exactly what it created
+- Pulls capture windows from Loki as CSV and renders the lifecycle chart
 
 ### `internal/config`
 
@@ -114,9 +134,20 @@ Observability:
 - RouterOS system metrics collector (CPU, memory, temperature)
 - HTTP server for `/metrics` and `/health` endpoints
 
+### `internal/rosapi`
+
+The RouterOS API protocol itself, vendored so the project owns the wire format
+rather than depending on an unmaintained third party. It is a pruned fork: the
+asynchronous and listen modes are gone, as is MD5 challenge login, because this
+bouncer uses none of them and each was surface area to maintain.
+
+- `proto/`: sentence encoding, length-prefixed word framing, reader and writer
+- Synchronous command dispatch under a mutex, with a per-command deadline
+- `!trap`/`!fatal` mapping to Go errors, with password redaction in logs
+
 ### `internal/routeros`
 
-MikroTik RouterOS API client:
+MikroTik RouterOS API client, built on `internal/rosapi`:
 
 - Connection pool with configurable size
 - Address list operations (add, remove, list)

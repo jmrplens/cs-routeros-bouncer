@@ -1090,5 +1090,22 @@ func (c *Config) validateIntervals() error {
 		return errors.New("metrics.routeros_poll_interval must be >= 0 (0 disables)")
 	}
 
+	// Both RouterOS timeouts reach code that treats a negative value as
+	// something other than an error, and the two disagree about which
+	// something — so the same typo produces two unrelated symptoms and no
+	// message naming the key. A negative connection_timeout makes net.Dialer
+	// compute a deadline in the past, so every dial fails instantly with
+	// "i/o timeout", pointing the operator at the network. A negative
+	// command_timeout falls through the `> 0` guard that arms the deadline,
+	// leaving the client unbounded — the exact failure the timeout exists to
+	// prevent, restored silently. Zero is a real setting for both and keeps
+	// its meaning: no bound.
+	if c.MikroTik.ConnectionTimeout < 0 {
+		return errors.New("mikrotik.connection_timeout must be >= 0 (0 means no timeout)")
+	}
+	if c.MikroTik.CommandTimeout < 0 {
+		return errors.New("mikrotik.command_timeout must be >= 0 (0 means no timeout)")
+	}
+
 	return nil
 }
