@@ -45,10 +45,10 @@ LABEL org.opencontainers.image.title="cs-routeros-bouncer" \
 
 EXPOSE 2112
 
-# Shell form is required here: `|| exit 1` needs a shell, and exec-form JSON
-# would pass the pipe characters to wget as literal arguments.
-# hadolint ignore=DL3025
+# Exec form, no shell: busybox wget exits 0 on success and 1 on every failure
+# mode (refused, DNS, timeout, 404, 500 — verified empirically on alpine 3.24),
+# so the traditional `|| exit 1` normalisation has nothing to normalise here.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD wget -qO- http://localhost:2112/health || exit 1
+    CMD ["wget", "-qO-", "http://localhost:2112/health"]
 
 ENTRYPOINT ["cs-routeros-bouncer"]
