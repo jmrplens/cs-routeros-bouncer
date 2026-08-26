@@ -15,8 +15,21 @@ const bulkScriptName = "crowdsec-bulk-import"
 // systemScriptPath is the RouterOS menu used to create and execute temporary scripts.
 const systemScriptPath = "/system/script"
 
-// bulkChunkSize limits addresses per script to keep within RouterOS API message size limits.
-// 100 entries ≈ 12 KB script source, well within the ~32 KB safe limit.
+// bulkChunkSize limits addresses per script to keep the script source a
+// reasonable single API word.
+//
+// Measured, not estimated: 100 entries build a 21.6 KB script with this
+// project's real comment format (75 bytes) and 14.7 KB with a minimal one —
+// the previous "≈ 12 KB" was low by roughly half. The "~32 KB safe limit" it
+// cited does not exist either: the wire format encodes a word length in up to
+// five bytes, and this client's own guard is maxWordLength = 16 MiB
+// (proto/reader.go), whose comment already names bulk script sources as the
+// traffic it expects.
+//
+// So the real constraint on this constant is not message size. It is the
+// trade between amortizing four round trips per chunk (find, add, run, remove)
+// and the length of one non-interruptible script run on the router. 100 has
+// never been swept against that trade; see the benchmarking documentation.
 const bulkChunkSize = 100
 
 // BulkAddAddresses adds many addresses at once using a RouterOS script.
@@ -79,6 +92,30 @@ type BulkEntry struct {
 	Comment string
 }
 
+// quoteScript escapes a value for interpolation into a double-quoted RouterOS
+// script string.
+//
+// The `$` is the one that matters and the one that was missing. RouterOS
+// expands `$name` INSIDE double quotes at script-parse time, and a name the
+// generated script never declares expands to nothing — so the text is deleted
+// rather than mangled, silently. Verified on RouterOS 7.24.1: a comment sent as
+// `cs$bouncer|crowdsec|sshd-bf` arrives as `cs|crowdsec|sshd-bf`.
+//
+// That is not cosmetic where the destroyed text is the operator's
+// `firewall.comment_prefix`: entries then fail the HasPrefix filter in
+// ListAddresses, never appear in the reconcile diff's present set, and are
+// re-added on every single cycle — an address list that grows without bound,
+// with nothing in any log to say why.
+//
+// Order is load-bearing: backslashes first, so the escapes added below are not
+// doubled by it.
+func quoteScript(value string) string {
+	value = strings.ReplaceAll(value, "\\", "\\\\")
+	value = strings.ReplaceAll(value, "\"", "\\\"")
+	value = strings.ReplaceAll(value, "$", "\\$")
+	return value
+}
+
 // buildBulkAddScript generates a RouterOS script that adds addresses.
 func buildBulkAddScript(proto, list string, entries []BulkEntry) string {
 	prefix := "/ip"
@@ -91,15 +128,12 @@ func buildBulkAddScript(proto, list string, entries []BulkEntry) string {
 
 	for _, e := range entries {
 		addr := NormalizeAddress(e.Address, proto)
-		// Escape backslashes and quotes for RouterOS scripting
-		comment := strings.ReplaceAll(e.Comment, "\\", "\\\\")
-		comment = strings.ReplaceAll(comment, "\"", "\\\"")
 
 		sb.WriteString(":do {\n")
 		fmt.Fprintf(&sb, "  %s/firewall/address-list/add list=\"%s\" address=\"%s\" comment=\"%s\"",
-			prefix, list, addr, comment)
+			prefix, quoteScript(list), quoteScript(addr), quoteScript(e.Comment))
 		if e.Timeout != "" {
-			fmt.Fprintf(&sb, " timeout=\"%s\"", e.Timeout)
+			fmt.Fprintf(&sb, " timeout=\"%s\"", quoteScript(e.Timeout))
 		}
 		sb.WriteString("\n  :set count ($count + 1)\n")
 		sb.WriteString("} on-error={}\n") // silently skip duplicates
