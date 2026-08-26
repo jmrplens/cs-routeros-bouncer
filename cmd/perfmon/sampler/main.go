@@ -142,7 +142,7 @@ func push(client *http.Client, url, job, host, line string, ts time.Time) {
 }
 
 func main() {
-	lokiURL := env("LOKI_URL", "http://192.168.0.40:50104/loki/api/v1/push")
+	lokiURL := env("LOKI_URL", "http://192.168.0.40:50104/loki/api/v1/push") // NOSONAR S1313 -- default for this deployment; the installer overrides it via envlist
 	job := env("JOB_NAME", "cpuhr01")
 	host := env("HOST_NAME", "rb5009")
 
