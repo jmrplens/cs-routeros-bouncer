@@ -3,6 +3,8 @@ title: Benchmarking
 description: Run the cs-routeros-bouncer benchmark tool against a MikroTik router and interpret the results, with real RB5009 (RouterOS 7.22.1) reference numbers.
 ---
 
+import ThemeImage from "components/ThemeImage.astro";
+
 The benchmark command measures RouterOS API operations against a real router. It is intended for development and capacity planning, not for normal deployments.
 
 ## Command
@@ -61,11 +63,62 @@ These figures come from the functional CAPI test suite (`tests/functional/`) run
 | Cache-first optimistic add (address not yet on the router)     | ~1–3 ms per operation         |
 | Check-first add (list entries before adding, avoided by cache) | ~400 ms per IP                |
 | Script-based bulk add vs. sequential API calls                 | ~97× faster for large batches |
-| Full RB5009 bulk-add, ~28,700 CAPI-origin entries              | ~35–36 s total                |
+| Full RB5009 bulk-add, ~22,000 CAPI-origin entries              | ~29 s bulk, ~34 s from start  |
 
 The gap between cache-first (~1-3 ms) and check-first (~400 ms) is why the in-memory address cache described in [Architecture](/cs-routeros-bouncer/architecture/#in-memory-address-cache) exists: it lets the bouncer skip the RouterOS list-then-add round trip for addresses it already knows about.
 
 For CAPI-scale deployments (tens of thousands of entries), also see [CAPI Blocklists](/cs-routeros-bouncer/configuration/capi-blocklists/) and [Performance Tuning](/cs-routeros-bouncer/configuration/performance-tuning/) for `pool_size` sizing guidance.
+
+## The full lifecycle, sampled every 100 ms
+
+The chart below is a single continuous 70-second capture from the production
+RB5009, taken with a 10 Hz sampler reading `/proc/stat` on the router itself
+(see the note on method at the end of this page). It covers the three states an
+operator actually meets: the router idle with the bouncer stopped and the
+address list empty, the **first reconciliation** importing ~22,000 entries, and
+the quiet state that follows with the full list in place. CPU reads on the left
+axis, RAM on the right, and the dashed markers are taken from the bouncer's own
+log timestamps. Each point is the mean of five 100 ms samples; the sub-second
+peaks reach 57% for single 100 ms slices during the import.
+
+<ThemeImage
+  src="perf-lifecycle-light.svg"
+  alt="Line chart of router CPU percentage and RAM megabytes over 70 seconds: near-idle CPU before the bouncer starts, a sustained plateau around 31% between the writes-begin and reconciliation-complete markers, then back to idle; RAM steps up about 19 MiB when the bouncer connects and stays flat through the import."
+  caption="First reconciliation on an RB5009 holding 22,000 entries. Regenerated with go run ./cmd/perfmon plot from the committed dataset."
+/>
+
+The import is the plateau: roughly 31% sustained for ~26 seconds, spread across
+all four cores with the connection pool rotating single-core peaks of 50–100%.
+RAM is the quiet part of the story, with one surprise in the timing: the
+~19 MiB step lands at connection time, before a single entry is imported — and
+22,000 entries later it has not moved again. Holding the list costs the router
+almost nothing; memory is not where this workload bites, CPU during list reads
+is. The idle stretch also shows the router's own background blips — a real
+device is never a flat line.
+
+### Method note
+
+The 100 ms series comes from a sampler container running on the router itself,
+reading the shared kernel's `/proc/stat` and `/proc/meminfo` at 10 Hz and
+pushing batches straight to Loki — RouterOS's own `cpu-load` updates only once
+per second, so scripts cannot see below that. The capture protocol: stop the
+bouncer, delete both address lists, let the router settle, then start the
+bouncer and record through the first reconciliation into steady state.
+
+The whole instrumentation deploys with one command against any RouterOS device
+with the container package enabled:
+
+```sh
+go run ./cmd/perfmon install -router admin@192.168.88.1 -port 22 \
+  -loki http://your-loki:3100
+```
+
+It cross-builds the sampler, packs the container image without needing Docker,
+creates the veth, NAT and firewall-list memberships idempotently, starts the
+container and verifies that samples reach Loki. `uninstall` removes exactly
+what it created; `capture` pulls any window as CSV; `plot` redraws the chart
+above from the committed dataset. Run any verb with `-h` for the full flag
+list.
 
 ## Safety checklist
 
