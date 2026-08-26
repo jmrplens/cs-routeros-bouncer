@@ -55,9 +55,9 @@ func TestPlotDocsEndToEnd(t *testing.T) {
 	if err := plotDocs(o); err != nil {
 		t.Fatal(err)
 	}
-	light1, err := os.ReadFile(filepath.Join(dir, "perf-lifecycle-light.svg"))
-	if err != nil {
-		t.Fatal(err)
+	light1, readErr := os.ReadFile(filepath.Join(dir, "perf-lifecycle-light.svg"))
+	if readErr != nil {
+		t.Fatal(readErr)
 	}
 	dark1, _ := os.ReadFile(filepath.Join(dir, "perf-lifecycle-dark.svg"))
 	if !strings.Contains(string(light1), "#4d4a98") || !strings.Contains(string(dark1), "#807dc0") {
@@ -197,10 +197,7 @@ func TestBuildSamplerProducesStaticELF(t *testing.T) {
 	}
 	// The build resolves ./cmd/perfmon/sampler, so run from the module root.
 	wd, _ := os.Getwd()
-	t.Cleanup(func() { _ = os.Chdir(wd) })
-	if err := os.Chdir(filepath.Join(wd, "..", "..")); err != nil {
-		t.Fatal(err)
-	}
+	t.Chdir(filepath.Join(wd, "..", ".."))
 	binary, err := buildSampler("linux", "arm64")
 	if err != nil {
 		t.Fatal(err)
@@ -306,9 +303,9 @@ func TestSSHRunnerShapesItsCommands(t *testing.T) {
 	if err := r.upload([]byte("payload"), "file.tar"); err != nil {
 		t.Fatal(err)
 	}
-	log, err := os.ReadFile(filepath.Join(dir, "calls.log"))
-	if err != nil {
-		t.Fatal(err)
+	log, logErr := os.ReadFile(filepath.Join(dir, "calls.log"))
+	if logErr != nil {
+		t.Fatal(logErr)
 	}
 	got := string(log)
 	for _, want := range []string{"-p 2200", "-i /k", "u@h :put 1", "-P 2200", "u@h:file.tar"} {

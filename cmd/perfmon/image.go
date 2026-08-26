@@ -27,7 +27,7 @@ func buildSampler(goos, goarch string) ([]byte, error) {
 	out := filepath.Join(dir, "sampler")
 	// #nosec G204 -- the arguments are fixed except the temp output path this
 	// function just created; the developer's own go toolchain is the point.
-	cmd := exec.CommandContext(context.Background(), "go", "build", "-trimpath", "-ldflags=-s -w", "-o", out, "./cmd/perfmon/sampler") //NOSONAR
+	cmd := exec.CommandContext(context.Background(), "go", "build", "-trimpath", "-ldflags=-s -w", "-o", out, "./cmd/perfmon/sampler") // NOSONAR --
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS="+goos, "GOARCH="+goarch)
 	if outBytes, buildErr := cmd.CombinedOutput(); buildErr != nil {
 		return nil, fmt.Errorf("go build sampler: %w\n%s", buildErr, outBytes)
