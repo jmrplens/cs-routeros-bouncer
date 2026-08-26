@@ -18,11 +18,11 @@ import sharp from "sharp";
 // `import.meta.url` would point into `dist/.prerender/` at build time.
 import markSource from "../../assets/logo-light.svg?raw";
 import themeSource from "../../styles/theme.css?raw";
-import { markBodyFrom, paletteFrom } from "../../lib/brand-assets.mjs";
+import { cardPaletteFrom, markBodyFrom } from "../../lib/brand-assets.mjs";
 import { pageCard } from "../../lib/page-card.mjs";
 import { cardPath, ROOT_KICKER, SEGMENT_LABELS } from "../../lib/sections.mjs";
 
-const palette = paletteFrom(themeSource);
+const palette = cardPaletteFrom(themeSource);
 const mark = markBodyFrom(markSource, "logo-light.svg");
 
 /** Locales that prefix both the page id and the URL. */

@@ -33,11 +33,11 @@ export function token(css, selector, name) {
 }
 
 /**
- * The palette every rendered asset is cut from.
+ * The palette the ICONS are cut from.
  *
- * The LIGHT theme, always: a favicon sits on browser chrome, an app icon on a
- * launcher and a social card in someone else's feed, and none of the three
- * follows this site's theme switch.
+ * The light theme, always: a favicon sits on browser chrome and an app icon on
+ * a launcher, and neither follows this site's theme switch. A dark icon on a
+ * light chrome is the case that actually happens, so the icons commit to it.
  * @param {string} css contents of theme.css
  */
 export function paletteFrom(css) {
@@ -47,6 +47,27 @@ export function paletteFrom(css) {
 		grid: token(css, light, "rb-muted"),
 		ground: token(css, light, "rb-page"),
 		accent: token(css, light, "rb-accent"),
+	};
+}
+
+/**
+ * The palette the SOCIAL CARDS are cut from.
+ *
+ * The dark theme, and for the opposite reason to the icons: a card is a
+ * picture in someone else's feed, not a glyph on their chrome. It is shown at
+ * full size against timelines that are themselves overwhelmingly dark, and a
+ * 1200x630 sheet of white is the one thing guaranteed to read as a placeholder.
+ * @param {string} css contents of theme.css
+ */
+export function cardPaletteFrom(css) {
+	const dark = ":root {";
+	return {
+		ink: token(css, dark, "rb-heading"),
+		grid: token(css, dark, "rb-muted"),
+		ground: token(css, dark, "rb-page"),
+		surface: token(css, dark, "rb-surface"),
+		border: token(css, dark, "rb-border"),
+		accent: token(css, dark, "rb-accent"),
 	};
 }
 

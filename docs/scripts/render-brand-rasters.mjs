@@ -18,6 +18,7 @@
  *   node scripts/render-brand-rasters.mjs --check   # exit 1 if any is stale
  */
 import {
+	cardPaletteFrom,
 	markBodyFrom,
 	MONO,
 	paletteFrom,
@@ -29,6 +30,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
+import { ground } from "../src/lib/page-card.mjs";
 
 const DOCS = fileURLToPath(new URL("..", import.meta.url));
 const THEME = path.join(DOCS, "src/styles/theme.css");
@@ -106,6 +108,9 @@ assertManifestMatchesPalette(token(css, ":root {", "rb-page"));
  * Workstream W13 replaces this with per-page cards; until then a single card
  * that matches the site beats a hand-cut one that contradicts it.
  */
+/** The card palette: dark, for the reason given on `cardPaletteFrom`. */
+const card = cardPaletteFrom(css);
+
 function socialCard() {
 	// `markBodyFrom` lifts the shapes and strips the mark's own <style> on the
 	// way in — that block would land after the card's stylesheet below and beat
@@ -117,15 +122,15 @@ function socialCard() {
 	// the new mark at a twelfth of its intended size.
 	return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
 	<style>
-		.rb-mark__lane { fill: ${palette.ink}; }
-		.rb-mark__halt { fill: ${palette.grid}; }
-		.rb-mark__rail { fill: ${palette.accent}; }
-		.name { font-family: "${MONO}"; font-size: 60px; font-weight: 600; fill: ${palette.ink}; }
-		.affix { fill: ${palette.grid}; }
-		.tag { font-family: "${MONO}"; font-size: 24px; fill: ${palette.grid}; }
+		.rb-mark__lane { fill: ${card.ink}; }
+		.rb-mark__halt { fill: ${card.grid}; }
+		.rb-mark__rail { fill: ${card.accent}; }
+		.name { font-family: "${MONO}"; font-size: 60px; font-weight: 600; fill: ${card.ink}; }
+		.affix { fill: ${card.grid}; }
+		.tag { font-family: "${MONO}"; font-size: 24px; fill: ${card.grid}; }
 	</style>
-	<rect width="1200" height="630" fill="${palette.ground}"/>
-	<rect x="0" y="0" width="1200" height="8" fill="${palette.accent}"/>
+	${ground(card)}
+	<rect x="0" y="0" width="1200" height="8" fill="${card.accent}"/>
 	<g transform="translate(112 215) scale(3.125)">${inner}</g>
 	<text x="360" y="330" class="name"><tspan class="affix">cs-</tspan>routeros<tspan class="affix">-bouncer</tspan></text>
 	<text x="362" y="382" class="tag">CrowdSec decisions, enforced as MikroTik firewall rules</text>
