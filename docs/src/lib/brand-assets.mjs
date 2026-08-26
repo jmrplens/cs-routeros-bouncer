@@ -24,7 +24,7 @@ export function token(css, selector, name) {
 	const start = css.indexOf(selector);
 	if (start === -1) throw new Error(`theme.css: no \`${selector}\` block`);
 	const end = css.indexOf("\n}", start);
-	const found = new RegExp(`--${name}:\\s*([^;]+);`).exec(
+	const found = new RegExp(String.raw`--${name}:\s*([^;]+);`).exec(
 		css.slice(start, end),
 	);
 	if (!found)
