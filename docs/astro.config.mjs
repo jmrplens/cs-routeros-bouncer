@@ -484,27 +484,11 @@ export default defineConfig({
 			head: [
 				{
 					tag: "meta",
-					attrs: {
-						property: "og:image",
-						content:
-							"https://jmrplens.github.io/cs-routeros-bouncer/og-image.png",
-					},
-				},
-				{
-					tag: "meta",
 					attrs: { property: "og:image:width", content: "1200" },
 				},
 				{
 					tag: "meta",
 					attrs: { property: "og:image:height", content: "630" },
-				},
-				{
-					tag: "meta",
-					attrs: {
-						property: "og:image:alt",
-						content:
-							"cs-routeros-bouncer — CrowdSec bouncer for MikroTik RouterOS",
-					},
 				},
 				{
 					tag: "meta",
@@ -524,19 +508,25 @@ export default defineConfig({
 						content: "summary_large_image",
 					},
 				},
+				// Two, not one: `theme-color` paints the browser chrome, and a
+				// single dark value handed a light-theme reader a dark address
+				// bar above a white page. Both come from the palette rather than
+				// a literal, which is how the previous one stayed `#0e1316`
+				// through a full change of accent without anyone noticing.
 				{
 					tag: "meta",
 					attrs: {
-						name: "twitter:image",
-						content:
-							"https://jmrplens.github.io/cs-routeros-bouncer/og-image.png",
+						name: "theme-color",
+						media: "(prefers-color-scheme: light)",
+						content: PALETTES.light.page,
 					},
 				},
 				{
 					tag: "meta",
 					attrs: {
 						name: "theme-color",
-						content: "#0e1316",
+						media: "(prefers-color-scheme: dark)",
+						content: PALETTES.dark.page,
 					},
 				},
 				{

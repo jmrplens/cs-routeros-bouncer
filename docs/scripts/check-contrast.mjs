@@ -355,6 +355,12 @@ function contrastRatio(foreground, background) {
    4. THE PAIRS THIS SITE ACTUALLY RENDERS
    ------------------------------------------------------------------ */
 
+/** Properties whose value packs a colour in among other parts. */
+const SHORTHANDS = new Set(["border", "outline"]);
+
+/** Paper. Not a theme token: the palette does not reach a printed page. */
+const PAPER = "#ffffff";
+
 const NORMAL_TEXT = 4.5;
 const LARGE_TEXT = 3;
 const NON_TEXT = 3;
@@ -399,6 +405,23 @@ const BADGE_HUES = [
 ];
 
 const PAIRS = [
+	{
+		label: "printed link target after the link text",
+		where: 'a11y.css — @media print, a[href^="http"]::after',
+		fg: sourced('a[href^="http"]::after', "color", undefined, "@media print"),
+		bg: [PAPER],
+		minimum: NORMAL_TEXT,
+	},
+	{
+		label: "printed code-block border on paper",
+		// Not decorative. Browsers do not print background colours by default,
+		// so on paper this border is the only thing separating a code block
+		// from the prose around it.
+		where: "a11y.css — @media print, pre",
+		fg: sourced("pre", "border", undefined, "@media print"),
+		bg: [PAPER],
+		minimum: NON_TEXT,
+	},
 	{
 		label: "body copy on the page background",
 		where: "starlight/style/props.css — --sl-color-text on --sl-color-bg",
@@ -660,15 +683,16 @@ function isColorToken(value, tokens) {
  * @param {string} property e.g. "color" or "background"
  * @param {string} [fallback] value that applies when the declaration is absent
  */
-function sourced(selector, property, fallback) {
-	return { __sourced: true, selector, property, fallback };
+function sourced(selector, property, fallback, atRule) {
+	return { __sourced: true, selector, property, fallback, atRule };
 }
 
 /** Last declaration of `property` in the block(s) matching `selector`, or null. */
-function declarationOf(selector, property) {
+function declarationOf(selector, property, atRule) {
 	let found = null;
 	for (const block of blocks) {
 		if (block.selector !== selector) continue;
+		if (atRule !== undefined && block.atRule !== atRule) continue;
 		for (const declaration of splitTopLevel(block.body, ";")) {
 			const colon = declaration.indexOf(":");
 			if (colon === -1) continue;
@@ -680,9 +704,55 @@ function declarationOf(selector, property) {
 }
 
 /** Resolves a sourced() reference against the sheet; throws if it cannot. */
+/**
+ * The colour inside a `border` / `outline` shorthand.
+ *
+ * `border: 1px solid #8a8a8a` carries a width, a style and a colour in one
+ * declaration, and the pair that measures it needs the third. The parts are
+ * order-independent but unambiguous: a width is a length, a style is one of a
+ * fixed keyword set, and whatever is left is the colour. Anything that leaves
+ * more than one candidate returns null rather than a guess, so the pair fails
+ * as unresolved and someone looks — which is the point of the gate.
+ * @param {string} declared
+ * @returns {string | null}
+ */
+function shorthandColour(declared) {
+	const styles = new Set([
+		"none",
+		"hidden",
+		"dotted",
+		"dashed",
+		"solid",
+		"double",
+		"groove",
+		"ridge",
+		"inset",
+		"outset",
+	]);
+	const parts = declared
+		.trim()
+		.split(/\s+(?![^(]*\))/)
+		.filter(
+			(part) =>
+				part !== "" &&
+				!styles.has(part.toLowerCase()) &&
+				!/^[\d.]+(px|rem|em|pt|%)?$/.test(part) &&
+				!/^(thin|medium|thick)$/i.test(part),
+		);
+	return parts.length === 1 ? parts[0] : null;
+}
+
 function resolveSourced(value) {
-	const declared = declarationOf(value.selector, value.property);
-	if (declared !== null) return declared;
+	const declared = declarationOf(value.selector, value.property, value.atRule);
+	if (declared !== null) {
+		if (!SHORTHANDS.has(value.property)) return declared;
+		const colour = shorthandColour(declared);
+		if (colour !== null) return colour;
+		throw new Error(
+			`\`${value.property}: ${declared}\` on \`${value.selector}\` does not ` +
+				"resolve to a single colour",
+		);
+	}
 	if (value.fallback !== undefined) return value.fallback;
 	throw new Error(
 		`no \`${value.property}\` declaration on \`${value.selector}\` — ` +
