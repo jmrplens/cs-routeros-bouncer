@@ -176,7 +176,7 @@ func xmlEscape(s string) string {
 
 // readDataset parses the committed CSV (rel_s,cpu_pct,ram_used_mib).
 func readDataset(path string) ([]point, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- the path is this CLI's own flag
 	if err != nil {
 		return nil, err
 	}
@@ -209,7 +209,7 @@ func readDataset(path string) ([]point, error) {
 
 // readMarkers parses the committed marker list (rel_s,label).
 func readMarkers(path string) ([]marker, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- the path is this CLI's own flag
 	if err != nil {
 		return nil, err
 	}

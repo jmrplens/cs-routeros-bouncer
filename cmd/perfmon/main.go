@@ -69,11 +69,11 @@ func parseOptions(args []string) (options, *flag.FlagSet, error) {
 	fs.StringVar(&o.key, "key", "", "ssh identity file (default: ssh agent / config)")
 	fs.StringVar(&o.name, "name", "cpuhr01", "container name; tags every object created")
 	fs.StringVar(&o.veth, "veth", "veth-cpuhr", "veth interface name on the router")
-	fs.StringVar(&o.subnet, "subnet", "172.30.9.0/30", "point-to-point /30 for the container")
+	fs.StringVar(&o.subnet, "subnet", "172.30.9.0/30", "point-to-point /30 for the container") //NOSONAR S1313 -- a documented default the operator overrides
 	fs.StringVar(&o.ifaceList, "iface-list", "LAN", "interface list the veth must join (raw drop-the-rest trap)")
 	fs.StringVar(&o.addrList, "addr-list", "LANs", "address list the subnet must join (raw drop-local trap)")
 	fs.StringVar(&o.rootDir, "root-dir", "tmpfs", "router disk for the container root (tmpfs = wiped on reboot)")
-	fs.StringVar(&o.lokiBase, "loki", "http://192.168.0.40:50104", "Loki base URL, reachable from the router")
+	fs.StringVar(&o.lokiBase, "loki", "http://192.168.0.40:50104", "Loki base URL, reachable from the router") //NOSONAR S1313 -- ditto
 	fs.StringVar(&o.job, "job", "cpuhr01", "Loki job label the sampler pushes under")
 	fs.StringVar(&o.hostLabel, "host-label", "rb5009", "Loki host label")
 	fs.StringVar(&o.arch, "arch", "arm64", "router CPU architecture (GOARCH)")

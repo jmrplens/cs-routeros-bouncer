@@ -53,63 +53,81 @@ func capture(o options, from, to time.Time) ([]sample, error) {
 	cursor := from
 	client := &http.Client{Timeout: 30 * time.Second}
 	for cursor.Before(to) {
-		q := url.Values{
-			"query":     {`{job="` + o.job + `"}`},
-			"start":     {strconv.FormatInt(cursor.UnixNano(), 10)},
-			"end":       {strconv.FormatInt(to.UnixNano(), 10)},
-			"limit":     {"5000"},
-			"direction": {"forward"},
-		}
-		req, reqErr := http.NewRequestWithContext(context.Background(),
-			http.MethodGet, o.lokiBase+"/loki/api/v1/query_range?"+q.Encode(), http.NoBody)
-		if reqErr != nil {
-			return nil, reqErr
-		}
-		resp, err := client.Do(req)
+		page, last, err := fetchPage(client, o, cursor, to)
 		if err != nil {
 			return nil, err
 		}
-		body, readErr := io.ReadAll(resp.Body)
-		_ = resp.Body.Close()
-		if readErr != nil {
-			return nil, readErr
+		for _, v := range page {
+			out = append(out, expand(v.ts, v.line, seen)...)
 		}
-		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("loki: HTTP %d: %s", resp.StatusCode, firstBytes(body))
-		}
-		var payload struct {
-			Data struct {
-				Result []struct {
-					Values [][2]string `json:"values"`
-				} `json:"result"`
-			} `json:"data"`
-		}
-		if unmarshalErr := json.Unmarshal(body, &payload); unmarshalErr != nil {
-			return nil, unmarshalErr
-		}
-		batch := 0
-		var last time.Time
-		for _, res := range payload.Data.Result {
-			for _, v := range res.Values {
-				ns, _ := strconv.ParseInt(v[0], 10, 64)
-				ts := time.Unix(0, ns)
-				if ts.After(last) {
-					last = ts
-				}
-				batch++
-				out = append(out, expand(ts, v[1], seen)...)
-			}
-		}
-		if batch == 0 || !last.After(cursor) {
+		if len(page) == 0 || !last.After(cursor) {
 			break
 		}
 		cursor = last.Add(time.Millisecond)
-		if batch < 5000 {
+		if len(page) < lokiPageLimit {
 			break
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].t < out[j].t })
 	return out, nil
+}
+
+const lokiPageLimit = 5000
+
+type lokiLine struct {
+	ts   time.Time
+	line string
+}
+
+// fetchPage retrieves one page of raw lines and the newest timestamp in it.
+func fetchPage(client *http.Client, o options, from, to time.Time) ([]lokiLine, time.Time, error) {
+	q := url.Values{
+		"query":     {`{job="` + o.job + `"}`},
+		"start":     {strconv.FormatInt(from.UnixNano(), 10)},
+		"end":       {strconv.FormatInt(to.UnixNano(), 10)},
+		"limit":     {strconv.Itoa(lokiPageLimit)},
+		"direction": {"forward"},
+	}
+	req, reqErr := http.NewRequestWithContext(context.Background(),
+		http.MethodGet, o.lokiBase+"/loki/api/v1/query_range?"+q.Encode(), http.NoBody)
+	if reqErr != nil {
+		return nil, time.Time{}, reqErr
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	body, readErr := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if readErr != nil {
+		return nil, time.Time{}, readErr
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, time.Time{}, fmt.Errorf("loki: HTTP %d: %s", resp.StatusCode, firstBytes(body))
+	}
+	var payload struct {
+		Data struct {
+			Result []struct {
+				Values [][2]string `json:"values"`
+			} `json:"result"`
+		} `json:"data"`
+	}
+	if unmarshalErr := json.Unmarshal(body, &payload); unmarshalErr != nil {
+		return nil, time.Time{}, unmarshalErr
+	}
+	var page []lokiLine
+	var last time.Time
+	for _, res := range payload.Data.Result {
+		for _, v := range res.Values {
+			ns, _ := strconv.ParseInt(v[0], 10, 64)
+			ts := time.Unix(0, ns)
+			if ts.After(last) {
+				last = ts
+			}
+			page = append(page, lokiLine{ts: ts, line: v[1]})
+		}
+	}
+	return page, last, nil
 }
 
 // expand turns one batched line into its constituent samples. The line's

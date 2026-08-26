@@ -72,6 +72,7 @@ func TestImageTarShape(t *testing.T) {
 type fakeRunner struct {
 	present map[string]bool // step name fragment -> exists
 	ran     []string
+	uploads int
 }
 
 func (f *fakeRunner) run(command string) (string, error) {
@@ -87,7 +88,10 @@ func (f *fakeRunner) run(command string) (string, error) {
 	return "", nil
 }
 
-func (f *fakeRunner) upload([]byte, string) error { return nil }
+func (f *fakeRunner) upload([]byte, string) error {
+	f.uploads++
+	return nil
+}
 
 // TestInstallIsIdempotent pins the promise the docs make: a second install
 // creates nothing.

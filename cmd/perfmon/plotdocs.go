@@ -20,7 +20,7 @@ func plotDocs(o options) error {
 	if err != nil {
 		return err
 	}
-	cssBytes, err := os.ReadFile(o.themeCSS)
+	cssBytes, err := os.ReadFile(o.themeCSS) // #nosec G304 -- the path is this CLI's own flag
 	if err != nil {
 		return err
 	}

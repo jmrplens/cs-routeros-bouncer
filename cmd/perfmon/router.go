@@ -33,7 +33,11 @@ func (r sshRunner) base() []string {
 
 func (r sshRunner) run(command string) (string, error) {
 	args := append(r.base(), r.target, command)
-	out, err := exec.CommandContext(context.Background(), "ssh", args...).CombinedOutput()
+	// #nosec G204 -- invoking the system ssh with operator-supplied flags is
+	// this tool's whole transport; there is no injection surface beyond what
+	// the operator already controls. (Sonar S4036 objects to PATH lookup for
+	// the same reason; a developer tool resolving ssh from PATH is intended.)
+	out, err := exec.CommandContext(context.Background(), "ssh", args...).CombinedOutput() //NOSONAR
 	if err != nil {
 		return string(out), fmt.Errorf("ssh %q: %w\n%s", command, err, out)
 	}
@@ -57,7 +61,8 @@ func (r sshRunner) upload(data []byte, remoteName string) error {
 		args = append(args, "-i", r.key)
 	}
 	args = append(args, tmp.Name(), r.target+":"+remoteName)
-	if out, scpErr := exec.CommandContext(context.Background(), "scp", args...).CombinedOutput(); scpErr != nil {
+	// #nosec G204 -- same reasoning as run: scp is the transport.
+	if out, scpErr := exec.CommandContext(context.Background(), "scp", args...).CombinedOutput(); scpErr != nil { //NOSONAR
 		return fmt.Errorf("scp %s: %w\n%s", remoteName, scpErr, out)
 	}
 	return nil

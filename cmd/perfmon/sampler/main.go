@@ -108,7 +108,7 @@ func pct(prev, cur cpuTicks) (busyPct int) {
 		return 0
 	}
 	// The quotient is 0..100 by construction; the conversion cannot overflow.
-	return int((cur.busy - prev.busy) * 100 / dt) //nolint:gosec // G115: bounded above
+	return int((cur.busy - prev.busy) * 100 / dt) // #nosec G115 -- the quotient is 0..100 by construction
 }
 
 func push(client *http.Client, url, job, host, line string, ts time.Time) {
