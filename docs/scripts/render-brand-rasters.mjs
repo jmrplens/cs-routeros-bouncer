@@ -17,7 +17,13 @@
  *   node scripts/render-brand-rasters.mjs           # write the PNGs
  *   node scripts/render-brand-rasters.mjs --check   # exit 1 if any is stale
  */
-import { assertNoSpansSurvive, stripSpans } from "../src/lib/svg-spans.mjs";
+import {
+	markBodyFrom,
+	MONO,
+	paletteFrom,
+	standaloneMarkFrom,
+	token,
+} from "../src/lib/brand-assets.mjs";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -27,19 +33,6 @@ import sharp from "sharp";
 const DOCS = fileURLToPath(new URL("..", import.meta.url));
 const THEME = path.join(DOCS, "src/styles/theme.css");
 const MARK = path.join(DOCS, "src/assets/logo-light.svg");
-
-/** Resolve one custom property out of a selector block in theme.css. */
-function token(css, selector, name) {
-	const start = css.indexOf(selector);
-	if (start === -1) throw new Error(`theme.css: no \`${selector}\` block`);
-	const end = css.indexOf("\n}", start);
-	const found = new RegExp(`--${name}:\\s*([^;]+);`).exec(
-		css.slice(start, end),
-	);
-	if (!found)
-		throw new Error(`theme.css: \`${selector}\` declares no --${name}`);
-	return found[1].trim();
-}
 
 const css = readFileSync(THEME, "utf8");
 
@@ -99,41 +92,10 @@ function assertManifestMatchesPalette(dark) {
 	}
 }
 
-const palette = {
-	// The rasters are cut from the LIGHT theme: a favicon sits on browser
-	// chrome, and an app icon on a launcher, neither of which follows the
-	// site's theme switch.
-	ink: token(css, ':root[data-theme="light"] {', "rb-heading"),
-	grid: token(css, ':root[data-theme="light"] {', "rb-muted"),
-	ground: token(css, ':root[data-theme="light"] {', "rb-page"),
-	accent: token(css, ':root[data-theme="light"] {', "rb-accent"),
-};
-
-/** The mono family the site's own stack resolves to on a Linux renderer. */
-const MONO = "DejaVu Sans Mono";
+const palette = paletteFrom(css);
 
 assertRailMatchesToken(palette.accent);
 assertManifestMatchesPalette(token(css, ":root {", "rb-page"));
-
-/** Append concrete colours so the standalone file renders outside a browser. */
-function standaloneMark() {
-	const svg = readFileSync(MARK, "utf8");
-	// The committed mark paints itself with the CSS system colours CanvasText
-	// and GrayText, which is what lets it work as a favicon in any context. A
-	// rasteriser resolves neither, so a second <style> is appended — later
-	// rules win — carrying the same values the site's light theme computes.
-	// Appended rather than substituted: editing the existing block means
-	// parsing SVG with a regex, which is how the first attempt at this script
-	// produced malformed XML.
-	const close = svg.lastIndexOf("</svg>");
-	if (close === -1) throw new Error(`${MARK}: no closing </svg>`);
-	const override = `<style>
-		.rb-mark__lane { fill: ${palette.ink}; }
-		.rb-mark__halt { fill: ${palette.grid}; }
-		.rb-mark__rail { fill: ${palette.accent}; }
-	</style>`;
-	return Buffer.from(svg.slice(0, close) + override + svg.slice(close));
-}
 
 /**
  * The social card: mark, wordmark, and one line saying what the thing is.
@@ -145,29 +107,11 @@ function standaloneMark() {
  * that matches the site beats a hand-cut one that contradicts it.
  */
 function socialCard() {
-	const mark = readFileSync(MARK, "utf8");
-	// Lift the mark's shapes into the card. Taken from the end of the opening
-	// <svg> tag rather than from a <defs> block: the mark has none, and slicing
-	// from a missing marker silently produced a card with no mark on it — which
-	// shipped once, because the byte count still changed and nobody looked.
-	const open = mark.indexOf(">", mark.indexOf("<svg")) + 1;
-	const close = mark.lastIndexOf("</svg>");
-	if (open <= 0 || close <= open)
-		throw new Error(`${MARK}: cannot find the mark body`);
-	// Strip the mark's own <style> on the way in. It would land *after* the
-	// card's stylesheet below and beat it on equal specificity, so the card
-	// would be painted by the standalone file's colours instead of the tokens
-	// read from theme.css. Today that is latent rather than broken: librsvg
-	// drops `fill: CanvasText` as an unrecognised value, so the card's rule
-	// survives by accident — but the rail's `#4d4a98` is a valid colour and
-	// does win, which is why the card's accent only matches the theme because
-	// assertRailMatchesToken() forces the two to stay equal. One rasteriser
-	// release that learns system colours and the whole card changes silently.
-	const inner = stripSpans(mark.slice(open, close));
-	assertNoSpansSurvive(inner, MARK);
-	if (!/<(path|rect|circle|g)\b/.test(inner)) {
-		throw new Error(`${MARK}: the extracted body carries no shapes`);
-	}
+	// `markBodyFrom` lifts the shapes and strips the mark's own <style> on the
+	// way in — that block would land after the card's stylesheet below and beat
+	// it on equal specificity, painting the card from the standalone file's
+	// literals instead of the tokens read from theme.css.
+	const inner = markBodyFrom(readFileSync(MARK, "utf8"), MARK);
 	// Laid out for a 64-unit mark: 200px tall is scale 3.125. The previous
 	// layout carried a 0.86 scale tuned for a 256-unit drawing, which rendered
 	// the new mark at a twelfth of its intended size.
@@ -265,7 +209,9 @@ const ICO = "public/favicon.ico";
 const ICO_SIZES = [16, 32, 48];
 
 async function render(size, opaque) {
-	const mark = sharp(standaloneMark(), { density: 384 }).resize(size, size);
+	const mark = sharp(standaloneMarkFrom(readFileSync(MARK, "utf8"), palette), {
+		density: 384,
+	}).resize(size, size);
 	if (!opaque) return mark.png({ compressionLevel: 9 }).toBuffer();
 	return sharp({
 		create: {
@@ -301,7 +247,10 @@ for (const [relative, size, opaque] of [
 		})
 			.composite([
 				{
-					input: await sharp(standaloneMark(), { density: 384 })
+					input: await sharp(
+						standaloneMarkFrom(readFileSync(MARK, "utf8"), palette),
+						{ density: 384 },
+					)
 						.resize(MASKABLE_MARK, MASKABLE_MARK)
 						.png()
 						.toBuffer(),

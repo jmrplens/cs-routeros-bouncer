@@ -1,6 +1,8 @@
 ---
 import Default from "@astrojs/starlight/components/Head.astro";
+import { getCollection } from "astro:content";
 import { getFirstCommitDate } from "../../lib/latest-release.mjs";
+import { cardPath, HOME_LABELS, SEGMENT_LABELS } from "../../lib/sections.mjs";
 
 /**
  * Serialize a JSON-LD value for embedding via `set:html` in a `<script>` tag.
@@ -15,12 +17,15 @@ const SITE_URL = "https://jmrplens.github.io/cs-routeros-bouncer/";
 const AUTHOR_ID = "https://jmrp.io/#person";
 const SOFTWARE_ID = "https://github.com/jmrplens/cs-routeros-bouncer#software";
 const WEBSITE_ID = `${SITE_URL}#website`;
-const OG_IMAGE = {
-	"@type": "ImageObject",
-	url: `${SITE_URL}og-image.png`,
-	width: 1200,
-	height: 630,
-};
+/**
+ * The social card for this page, rendered by `src/pages/og/[...slug].png.ts`.
+ *
+ * One card per page rather than one for the site: every link previewed as the
+ * same banner before, so the preview told a reader nothing the URL had not.
+ * The site-wide card stays as the fallback for anything rendered outside
+ * Starlight's routing, which is the only case with no entry to name.
+ */
+const SITE_CARD = `${SITE_URL}og-image.png`;
 
 /**
  * Locale-stripped ids of pages that are structured reference material
@@ -36,30 +41,6 @@ const API_REFERENCE_PAGES = new Set([
 	"getting-started/cli-reference",
 	"monitoring/prometheus",
 ]);
-
-/** Top-level sidebar group labels, keyed by language and URL segment, for BreadcrumbList generation. */
-const SEGMENT_LABELS: Record<string, Record<string, string>> = {
-	en: {
-		"getting-started": "Getting Started",
-		configuration: "Configuration",
-		architecture: "Architecture",
-		monitoring: "Monitoring",
-		development: "Development",
-	},
-	es: {
-		"getting-started": "Primeros pasos",
-		configuration: "Configuración",
-		architecture: "Arquitectura",
-		monitoring: "Monitorización",
-		development: "Desarrollo",
-	},
-};
-
-/** Name of the root breadcrumb, per language. */
-const HOME_LABELS: Record<string, string> = {
-	en: "Home",
-	es: "Inicio",
-};
 
 /**
  * Only these groups have their own index page (via a `slug:` frontmatter
@@ -231,6 +212,24 @@ const strippedId =
 		: id;
 
 const canonicalUrl = Astro.url.href;
+// The cards are generated from the docs collection, so membership in it — not
+// the presence of an entry — is what says a page has one. Starlight synthesises
+// a route for 404 with an entry of its own and no collection page behind it,
+// which pointed that page at a card nothing ever rendered.
+const CARD_IDS = new Set(
+	(await getCollection("docs")).map((page) => cardPath(page.id)),
+);
+const cardId = entry ? cardPath(entry.id) : null;
+const cardUrl =
+	cardId !== null && CARD_IDS.has(cardId)
+		? `${SITE_URL}og/${cardId}.png`
+		: SITE_CARD;
+const OG_IMAGE = {
+	"@type": "ImageObject",
+	url: cardUrl,
+	width: 1200,
+	height: 630,
+};
 const title = entry?.data.title;
 const description = entry?.data.description;
 const dateModified = lastUpdated ? lastUpdated.toISOString() : undefined;
@@ -373,6 +372,20 @@ const dataset =
 	/* X/Twitter falls back to og: tags for title/description, but emitting the
 dedicated tags removes the ambiguity for other card-consuming crawlers. */
 }
+{
+	/* Emitted here rather than in the global `head` array because the card is
+per page. Starlight renders `<Default>` above, so these come after its own
+tags — later wins for the scrapers that take the last value, and the global
+array no longer declares a competing one either way. */
+}
+<meta property="og:image" content={cardUrl} />
+<meta name="twitter:image" content={cardUrl} />
+{
+	title && (
+		<meta property="og:image:alt" content={`${title} — cs-routeros-bouncer`} />
+	)
+}
+
 {title && <meta name="twitter:title" content={title} />}
 {description && <meta name="twitter:description" content={description} />}
 

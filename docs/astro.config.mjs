@@ -484,27 +484,11 @@ export default defineConfig({
 			head: [
 				{
 					tag: "meta",
-					attrs: {
-						property: "og:image",
-						content:
-							"https://jmrplens.github.io/cs-routeros-bouncer/og-image.png",
-					},
-				},
-				{
-					tag: "meta",
 					attrs: { property: "og:image:width", content: "1200" },
 				},
 				{
 					tag: "meta",
 					attrs: { property: "og:image:height", content: "630" },
-				},
-				{
-					tag: "meta",
-					attrs: {
-						property: "og:image:alt",
-						content:
-							"cs-routeros-bouncer — CrowdSec bouncer for MikroTik RouterOS",
-					},
 				},
 				{
 					tag: "meta",
@@ -522,14 +506,6 @@ export default defineConfig({
 					attrs: {
 						name: "twitter:card",
 						content: "summary_large_image",
-					},
-				},
-				{
-					tag: "meta",
-					attrs: {
-						name: "twitter:image",
-						content:
-							"https://jmrplens.github.io/cs-routeros-bouncer/og-image.png",
 					},
 				},
 				// Two, not one: `theme-color` paints the browser chrome, and a
