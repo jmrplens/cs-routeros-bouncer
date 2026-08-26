@@ -26,10 +26,23 @@ const systemScriptPath = "/system/script"
 // (proto/reader.go), whose comment already names bulk script sources as the
 // traffic it expects.
 //
-// So the real constraint on this constant is not message size. It is the
-// trade between amortizing four round trips per chunk (find, add, run, remove)
-// and the length of one non-interruptible script run on the router. 100 has
-// never been swept against that trade; see the benchmarking documentation.
+// The real constraint is not message size either. It is the trade between
+// amortizing four round trips per chunk (find, add, run, remove) and the length
+// of one non-interruptible script run on the router — and that trade has now
+// been swept against the live device, three interleaved rounds of 4,000 entries
+// at 50 / 100 / 250 / 500 / 1000:
+//
+//	wall = entries × 1.30 ms  +  chunks × 1.0 ms
+//
+// The per-entry term dominates completely. For the 22,000-entry import that is
+// 28.6 s of insertions against 0.23 s of scaffolding at this size — and 0.02 s
+// at a chunk of 1,000, so the whole 20× range of sizes is worth 0.2 s out of
+// 29. (The model predicts 28.9 s for the current setting, which is what the
+// import measures.)
+//
+// So 100 stays, now for a measured reason rather than a wrong one: it is deep
+// into the flat part of the curve, and a larger chunk buys nothing while making
+// a single script run longer and less interruptible.
 const bulkChunkSize = 100
 
 // BulkAddAddresses adds many addresses at once using a RouterOS script.
@@ -39,9 +52,6 @@ func (c *Client) BulkAddAddresses(proto, list string, entries []BulkEntry) (adde
 	if len(entries) == 0 {
 		return 0, nil
 	}
-
-	path := addressListPath(proto)
-	_ = path // used in fallback
 
 	total := 0
 	for start := 0; start < len(entries); start += bulkChunkSize {
