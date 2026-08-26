@@ -275,8 +275,8 @@ func TestInstallUploadsForContainerStep(t *testing.T) {
 		t.Fatal(err)
 	}
 	f := &fakeRunner{present: map[string]bool{}}
-	if _, err := install(f, o, []byte("img")); err != nil {
-		t.Fatal(err)
+	if _, installErr := install(f, o, []byte("img")); installErr != nil {
+		t.Fatal(installErr)
 	}
 	if f.uploads != 1 {
 		t.Fatalf("uploads = %d, want exactly 1", f.uploads)
