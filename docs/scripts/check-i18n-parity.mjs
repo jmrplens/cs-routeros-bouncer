@@ -1841,8 +1841,8 @@ for (const locale of LOCALES) {
 		}
 
 		// Malformed YAML yields no shape at all; flow style yields a correct shape
-		// that this project has decided not to accept. Both are reported rather
-		// than compared, so neither can turn into a confusing key-path diff.
+		// that this project has decided not to accept. Both are reported here; the
+		// first also suppresses the diff below, for the reason given there.
 		for (const [label, shape] of [
 			[page, english],
 			[`${locale}/${page}`, translated],
@@ -1857,8 +1857,21 @@ for (const locale of LOCALES) {
 			}
 		}
 
-		const onlyEnglish = missingFrom(english.keys, translated.keys);
-		const onlyTranslated = missingFrom(translated.keys, english.keys);
+		// Only the YAML errors suppress the diff. `frontmatterShape` returns empty
+		// keys and counts for malformed YAML, so comparing anyway reports every
+		// key as missing on one side and extra on the other — a wall of noise
+		// stacked on top of the parse error that actually explains it. Flow style
+		// is different: it yields a correct shape this project simply declines to
+		// accept, so those pages are still worth diffing.
+		const frontmatterComparable =
+			english.yamlErrors.length === 0 && translated.yamlErrors.length === 0;
+
+		const onlyEnglish = frontmatterComparable
+			? missingFrom(english.keys, translated.keys)
+			: [];
+		const onlyTranslated = frontmatterComparable
+			? missingFrom(translated.keys, english.keys)
+			: [];
 		const details = [];
 		if (onlyEnglish.length > 0) {
 			details.push(`missing in ${locale}: ${onlyEnglish.join(", ")}`);
@@ -1866,9 +1879,12 @@ for (const locale of LOCALES) {
 		if (onlyTranslated.length > 0) {
 			details.push(`extra in ${locale}: ${onlyTranslated.join(", ")}`);
 		}
-		for (const sequence of [
-			...new Set([...english.counts.keys(), ...translated.counts.keys()]),
-		].sort()) {
+		const sequences = frontmatterComparable
+			? [
+					...new Set([...english.counts.keys(), ...translated.counts.keys()]),
+				].sort()
+			: [];
+		for (const sequence of sequences) {
 			const inEnglish = english.counts.get(sequence) ?? 0;
 			const inTranslated = translated.counts.get(sequence) ?? 0;
 			if (inEnglish !== inTranslated) {

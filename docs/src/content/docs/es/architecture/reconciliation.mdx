@@ -36,7 +36,7 @@ Por defecto, la reconciliación se ejecuta al arrancar y después cada `15m`. Co
 
 4. **Aplicar**
 
-   Ejecutar las adiciones (mediante scripts masivos, 100 IPs por lote) y las eliminaciones (mediante llamadas paralelas a la API usando el pool de conexiones configurado). Cada una de las dos actualiza la caché con lo que ha intentado escribir.
+   Ejecutar las adiciones (mediante scripts masivos, 100 IPs por lote) y las eliminaciones (llamadas paralelas a la API a través del pool de conexiones cuando este llegó a abrirse, y una a una por la conexión principal cuando no). Cada una de las dos actualiza la caché con lo que ha intentado escribir.
 
 5. **Verificar**
 

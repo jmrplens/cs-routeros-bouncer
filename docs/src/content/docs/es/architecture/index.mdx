@@ -24,6 +24,12 @@ flowchart LR
         R --> FW[Reglas de firewall]
         R --> AL[Address lists]
     end
+    H ~~~ LEG
+    subgraph LEG["Leyenda"]
+        direction TB
+        LA["continua"] --> LB["escritura: cambia el estado"]
+        LC["discontinua"] -.-> LD["lectura: no cambia nada"]
+    end
 ```
 
 Las dos ramas de la derecha de ese diagrama no son adorno. `/metrics` es el endpoint de Prometheus que lee el dashboard incluido, y `/health` es el endpoint que consulta la comprobación de salud de un contenedor; ambos los sirve el mismo servidor HTTP, que arranca incluso con las métricas desactivadas.
@@ -41,7 +47,7 @@ Todos los diagramas de este sitio trazan la misma distinción, porque es la que 
 - Una línea **continua** es una **escritura**. Cambia el estado del router: aparece o desaparece una entrada de address-list, se crea, se mueve o se elimina una regla de firewall.
 - Una línea **discontinua** es una **lectura**, una comprobación o un descarte. Nada cambia en el router: llegan decisiones por el stream de la LAPI, se lista una address-list, se mide la deriva, se descarta una decisión.
 
-Tres canales llevan esa distinción, para que el diagrama siga leyéndose en escala de grises, con cualquier tipo de deficiencia en la visión del color y sobre papel: el patrón de la línea, después el color y, por último, una leyenda dibujada dentro de cada diagrama con esas mismas dos líneas. La convención está escrita en `docs/src/styles/diagram.css`; los colores salen de `docs/src/styles/theme.css` en tiempo de compilación, así que los diagramas siguen la paleta en lugar de fijar la suya.
+Tres canales llevan esa distinción, para que el diagrama siga leyéndose en escala de grises, con cualquier tipo de deficiencia en la visión del color y sobre papel: el patrón de la línea, después el color y, por último, una leyenda dibujada con esas mismas dos líneas dentro de cada diagrama de flujo. El diagrama de secuencia es la excepción: ahí una flecha continua es una petición y una discontinua la respuesta, que es la convención propia de Mermaid y no la distinción lectura/escritura, así que rotularlo con esta leyenda lo haría ilegible. La convención está escrita en `docs/src/styles/diagram.css`; los colores salen de `docs/src/styles/theme.css` en tiempo de compilación, así que los diagramas siguen la paleta en lugar de fijar la suya.
 
 ## Temas en profundidad
 

@@ -36,7 +36,7 @@ By default, reconciliation runs at startup and then every `15m`. Configure `crow
 
 4. **Apply**
 
-   Execute additions (via bulk scripts, 100 IPs/batch) and deletions (via parallel API calls using the configured connection pool). Each of the two patches the cache with what it attempted to write.
+   Execute additions (via bulk scripts, 100 IPs/batch) and deletions (parallel API calls through the connection pool when it opened, one by one on the main connection when it did not). Each of the two patches the cache with what it attempted to write.
 
 5. **Verify**
 

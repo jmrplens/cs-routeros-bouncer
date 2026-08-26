@@ -24,6 +24,12 @@ flowchart LR
         R --> FW[Firewall Rules]
         R --> AL[Address Lists]
     end
+    H ~~~ LEG
+    subgraph LEG["Legend"]
+        direction TB
+        LA["solid"] --> LB["a write: state changes"]
+        LC["dashed"] -.-> LD["a read: nothing is changed"]
+    end
 ```
 
 The two branches on the right of that diagram are not decoration. `/metrics` is the Prometheus endpoint the shipped dashboard reads, and `/health` is the endpoint a container health check calls; both are served by the same HTTP server, which starts even when metrics are disabled.
@@ -41,7 +47,7 @@ Every diagram on this site draws the same distinction between what the bouncer w
 - A **solid** edge is a **write**. Router state changes: an address-list entry appears or disappears, a firewall rule is created, moved or removed.
 - A **dashed** edge is a **read**, a test, or a discard. Nothing on the router changes: decisions stream in from the LAPI, an address list is listed, drift is measured, a decision is dropped.
 
-Three channels carry that distinction, so a diagram still reads in greyscale, with any form of colour vision deficiency, and on paper: the line pattern, then colour, then a legend drawn inside each diagram from those same two edges. The convention is written down in `docs/src/styles/diagram.css`; the colours come from `docs/src/styles/theme.css` at build time, so diagrams follow the palette instead of pinning their own.
+Three channels carry that distinction, so a diagram still reads in greyscale, with any form of colour vision deficiency, and on paper: the line pattern, then colour, then a legend drawn from those same two edges inside every flowchart. The sequence diagram is the exception: there a solid arrow is a request and a dashed one the reply, which is Mermaid's own convention and not the read/write distinction, so labelling it with this legend would misread it. The convention is written down in `docs/src/styles/diagram.css`; the colours come from `docs/src/styles/theme.css` at build time, so diagrams follow the palette instead of pinning their own.
 
 ## Deep-dive topics
 

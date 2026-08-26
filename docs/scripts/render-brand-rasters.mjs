@@ -17,6 +17,7 @@
  *   node scripts/render-brand-rasters.mjs           # write the PNGs
  *   node scripts/render-brand-rasters.mjs --check   # exit 1 if any is stale
  */
+import { assertNoSpansSurvive, stripSpans } from "../src/lib/svg-spans.mjs";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -114,7 +115,17 @@ function socialCard() {
 	const close = mark.lastIndexOf("</svg>");
 	if (open <= 0 || close <= open)
 		throw new Error(`${MARK}: cannot find the mark body`);
-	const inner = mark.slice(open, close);
+	// Strip the mark's own <style> on the way in. It would land *after* the
+	// card's stylesheet below and beat it on equal specificity, so the card
+	// would be painted by the standalone file's colours instead of the tokens
+	// read from theme.css. Today that is latent rather than broken: librsvg
+	// drops `fill: CanvasText` as an unrecognised value, so the card's rule
+	// survives by accident — but the rail's `#4d4a98` is a valid colour and
+	// does win, which is why the card's accent only matches the theme because
+	// assertRailMatchesToken() forces the two to stay equal. One rasteriser
+	// release that learns system colours and the whole card changes silently.
+	const inner = stripSpans(mark.slice(open, close));
+	assertNoSpansSurvive(inner, MARK);
 	if (!/<(path|rect|circle|g)\b/.test(inner)) {
 		throw new Error(`${MARK}: the extracted body carries no shapes`);
 	}
