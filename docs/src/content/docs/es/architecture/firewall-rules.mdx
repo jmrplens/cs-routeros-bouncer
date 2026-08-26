@@ -62,7 +62,7 @@ La colocación se calcula sobre los **candidatos**: todas las reglas que ya est�
 flowchart TB
     accTitle: La escalera de colocación de reglas, con sus reintentos y sus alternativas
     accDescr: Cuando ya existen todas las reglas del bloque, el bouncer lee la estrategia configurada. La estrategia bottom termina ahí. Cualquier otra estrategia lista primero las reglas de ese menú de firewall y se queda con las que no llevan la firma del bouncer como candidatas; si el listado falla, el bloque se queda al final. Las estrategias top y position apuntan a la candidata cero o al índice configurado, y un índice más allá de la última candidata deja el bloque al final. Las estrategias por comentario buscan un ancla, por coincidencia exacta o por subcadena, y apuntan al ancla misma en before_comment o a la candidata siguiente en after_comment; si en after_comment el ancla es la última candidata, el bloque se queda al final. Un ancla que no aparece, o un movimiento que RouterOS rechaza, recurre a top de manera predeterminada o a bottom si así se configura. El movimiento recorre la lista de candidatas hacia abajo, probando la siguiente cada vez que RouterOS lo rechaza, y deja el bloque al final cuando ya no queda ninguna.
-    A["Ya existen todas las reglas del bloque"] --> S{"estrategia"}
+    A["Ya existen todas las reglas del bloque"] -.-> S{"estrategia"}
     S -. "bottom" .-> B["Se queda al final"]
     S -. "cualquier otra" .-> L["Listar las reglas de este menú"]
     L -. "el listado falla" .-> B
@@ -75,12 +75,12 @@ flowchart TB
     F -. "bottom" .-> B
     I -. "índice demasiado alto" .-> B
     J -. "el ancla es la última" .-> B
-    I --> M["Mover el bloque delante de ella"]
-    J --> M
+    I -.-> M["Mover el bloque delante de ella"]
+    J -.-> M
     M --> P["Bloque colocado"]
     M -. "rechazado" .-> R["Siguiente candidata hacia abajo"]
     M -. "rechazado, con ancla" .-> F
-    R --> M
+    R -.-> M
     R -. "no queda ninguna" .-> B
 
     subgraph LEG["Leyenda"]

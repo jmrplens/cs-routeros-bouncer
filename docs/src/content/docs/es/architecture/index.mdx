@@ -87,26 +87,26 @@ sequenceDiagram
     participant MT as Router MikroTik
 
     Note over B: Arranque
-    B->>CS: Conectar y autenticar
+    B-->>CS: Conectar y autenticar
     B->>MT: Conectar vía API
     B->>MT: Crear reglas de firewall
-    B->>CS: Obtener todas las decisiones activas
+    B-->>CS: Obtener todas las decisiones activas
     B->>MT: Reconciliar listas de direcciones
 
     Note over B: Bucle de ejecución
     loop Cada update_frequency
-        CS->>B: Decisiones nuevas/eliminadas
+        CS-->>B: Decisiones nuevas/eliminadas
         alt Decisión de ban
-            B->>B: Consultar caché de direcciones
+            B-->>B: Consultar caché de direcciones
             B->>MT: Añadir IP si falta
         else Decisión de unban
-            B->>B: Consultar caché de direcciones
+            B-->>B: Consultar caché de direcciones
             B->>MT: Eliminar IP si está presente
         end
     end
 
     loop Cada reconciliation_interval
-        B->>CS: Obtener snapshot de decisiones activas
+        B-->>CS: Obtener snapshot de decisiones activas
         B->>MT: Reconciliar la deriva de las address-lists
     end
 

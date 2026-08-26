@@ -7,9 +7,10 @@
 
 		The pass/stop distinction is carried by LENGTH before it is carried
 		by colour, so the mark still reads in greyscale and on paper. That is
-		not decoration: the accent and the subordinate tone measure 1.01 to 1
-		apart in the light theme, so anything relying on that pair alone to
-		tell two things apart would collapse into one tone.
+		not decoration: the accent and the subordinate tone measure 1.19 to 1
+		apart in the light theme and 1.24 to 1 in the dark one, so anything
+		relying on that pair alone to tell two things apart would come very
+		close to collapsing into a single tone.
 
 		NO ids, NO defs, NO clipPath, NO mask. The mark this replaced used a
 		clipPath and a mask whose ids were document-global and collided the

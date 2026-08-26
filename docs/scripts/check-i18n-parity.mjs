@@ -19,6 +19,14 @@
  *      attributes — a heading can survive in both locales while the component
  *      that renders the section under it vanishes from one.
  *
+ * Plus one thing that is not a comparison at all: a component tag written in a
+ * `.md` page is a hard error (5). `.md` is markdown, not MDX, so Astro emits
+ * the tag as raw HTML and it renders nothing. It therefore cannot be counted as
+ * an invocation, and the gate used to ignore it — which meant a `.md` page
+ * could lose a whole section on both sides and stay green. Every page in this
+ * corpus is `.mdx` today, so that was latent, and latent is exactly how the
+ * three defects listed below got in.
+ *
  * ## Why this parses instead of scanning
  *
  * This file used to hand-parse markdown line by line. That approach produced
@@ -66,9 +74,21 @@
  * more YAML keys — and malformed YAML is now reported instead of silently
  * mis-shaped.
  *
+ * MDX expressions are not mdast, and are not read as text either. An attribute
+ * value (`paths={[…]}`) and a body expression (`{list.map(…)}`) each carry the
+ * ESTree acorn produced for them, so a component nested inside one is found by
+ * walking that tree, and the identity of an expression-valued attribute is
+ * derived from it. Both used to be text: the key was the expression's source
+ * with whitespace runs collapsed, which claimed to be layout-independent and
+ * was not — Prettier adds a trailing comma when it breaks a literal, so one
+ * invocation could key two ways; and collapsing ate whitespace *inside* string
+ * literals, so two different instances could key the same. A tree has neither
+ * problem, because a line break and a trailing comma are not nodes and the
+ * contents of a string literal are.
+ *
  * ## What still reads raw text, and why
  *
- * Two things, both deliberate:
+ * Three things, all deliberate:
  *
  *   • Splitting frontmatter from the body. The frontmatter mdast extensions
  *     are NOT in this project's dependency tree (unlike the four parser
@@ -82,6 +102,12 @@
  *     node's own source range is re-read to see whether a closing delimiter is
  *     actually there. Positions come from the parser; only the delimiter test
  *     is textual.
+ *   • Blanking HTML comments inside an `html` node when scanning a `.md` page
+ *     for stray component tags. Markdown has no comment node, so a comment
+ *     inside a larger html block is part of that block's text. It is a single
+ *     non-greedy pass over one node's own value — not the chained `.replace()`
+ *     of defect #2 — and it errs towards silence: an unclosed `<!--` blanks to
+ *     the end of the node, and is separately a hard error anyway.
  *
  * ## Scope
  *
@@ -247,8 +273,9 @@ function frontmatterShape(frontmatter) {
  *
  * `.mdx` gets the MDX extensions, `.md` does not — that mirrors how Astro
  * treats the two, and it matters: a `<Component />` in a plain `.md` file is
- * raw HTML, not an invocation, and counting it as one would report a mismatch
- * against a page that renders nothing.
+ * raw HTML, not an invocation. It renders as an unknown element (i.e. as
+ * nothing), so counting it as an invocation would compare a section that does
+ * not exist. `strayComponentTags` fails such a page outright instead; see there.
  * @param {string} body
  * @param {string} extension
  * @returns {import("mdast").Root}
@@ -264,6 +291,12 @@ function parseBody(body, extension) {
 
 /**
  * Walk every node of an mdast tree in document order.
+ *
+ * This walks mdast only. Everything an MDX expression holds — an attribute
+ * value, a `{…}` block in the body — is an ESTree, not mdast, and is reached
+ * through `walkEstree` from the one visitor that needs it (`componentCalls`).
+ * Heading outlines deliberately do not follow expressions: a heading cannot be
+ * written inside one.
  * @param {object} tree
  * @param {(node: any) => void} visit
  */
@@ -273,10 +306,199 @@ function walkTree(tree, visit) {
 		visit(node);
 		if (Array.isArray(node.children))
 			for (const child of node.children) step(child);
-		// MDX attribute values can hold whole markdown trees in principle; they
-		// hold expressions here, and expressions are not content. Not descended.
 	}
 	step(tree);
+}
+
+// Properties of an ESTree node that carry source position or attached comments
+// rather than program structure. Skipped when walking and when canonicalising,
+// which is what makes both formatting-independent.
+const ESTREE_NOISE = new Set([
+	"start",
+	"end",
+	"loc",
+	"range",
+	"comments",
+	"leadingComments",
+	"trailingComments",
+]);
+
+/**
+ * Walk every node of an ESTree in document order, following arrays and nested
+ * objects generically so no node type has to be enumerated.
+ * @param {unknown} node
+ * @param {(node: any) => void} visit
+ */
+function walkEstree(node, visit) {
+	if (Array.isArray(node)) {
+		for (const item of node) walkEstree(item, visit);
+		return;
+	}
+	if (node === null || typeof node !== "object") return;
+	/** @type {any} */
+	const record = node;
+	if (typeof record.type === "string") visit(record);
+	for (const [key, value] of Object.entries(record)) {
+		if (ESTREE_NOISE.has(key)) continue;
+		walkEstree(value, visit);
+	}
+}
+
+/**
+ * Render an ESTree `Literal` back to a canonical form.
+ * String values are re-quoted from the parsed value, never from `raw`, so quote
+ * style and escape spelling cannot change the key; the characters inside the
+ * string are preserved exactly, because those are meaning, not formatting.
+ * @param {any} node
+ * @returns {string}
+ */
+function canonicalLiteral(node) {
+	if (node.regex !== undefined && node.regex !== null) {
+		return `/${node.regex.pattern}/${node.regex.flags}`;
+	}
+	if (node.bigint !== undefined && node.bigint !== null)
+		return `${node.bigint}n`;
+	return typeof node.value === "string"
+		? JSON.stringify(node.value)
+		: String(node.value);
+}
+
+/**
+ * Canonical, formatting-independent rendering of an ESTree expression.
+ *
+ * This is the identity of an expression-valued attribute. It is taken from the
+ * *tree*, never from the source text, and that is the whole point: the tree is
+ * what Prettier is not allowed to change, whereas the source text is exactly
+ * what Prettier does change.
+ *
+ * The previous version collapsed whitespace runs in the source text and claimed
+ * that made the key wrap-independent. It did not, in either direction:
+ *
+ *   • it under-normalised. Prettier adds a trailing comma when it breaks a
+ *     literal across lines, so `paths={["a", "b"]}` and the same attribute
+ *     wrapped yield `{["a", "b"]}` and `{[ "a", "b", ]}` — two keys for one
+ *     invocation, and a parity failure with nothing behind it. Comments inside
+ *     the expression survived into the key for the same reason.
+ *   • it over-normalised. Whitespace inside a string literal is not formatting,
+ *     it is the value: `path={"a  b"}` and `path={"a b"}` are different
+ *     instances and collapsed to the same key, so a real divergence passed.
+ *
+ * Both are gone here because a trailing comma, a line break and a comment are
+ * not nodes, while the contents of a string literal are.
+ *
+ * Node types that carry an expression are spelled out so the key stays readable
+ * in a failure report (`ConfigOption[paths={["a.b","c.d"]}]`). Anything else falls
+ * through to a generic structural rendering rather than to a guess — unusual
+ * syntax gets an ugly key, never a wrong or a formatting-dependent one.
+ * @param {any} node
+ * @returns {string}
+ */
+function canonicalExpression(node) {
+	if (node === null || node === undefined) return "";
+	switch (node.type) {
+		case "Program": {
+			const statement = node.body.find(
+				(/** @type {any} */ entry) => entry.type === "ExpressionStatement",
+			);
+			return statement === undefined
+				? canonicalUnknown(node)
+				: canonicalExpression(statement.expression);
+		}
+		case "ExpressionStatement":
+			return canonicalExpression(node.expression);
+		// Parentheses and optional-chain wrappers are punctuation, not meaning.
+		case "ParenthesizedExpression":
+		case "ChainExpression":
+			return canonicalExpression(node.expression);
+		case "Identifier":
+		case "JSXIdentifier":
+			return node.name;
+		case "PrivateIdentifier":
+			return `#${node.name}`;
+		case "Literal":
+			return canonicalLiteral(node);
+		case "TemplateLiteral": {
+			let out = "`";
+			for (const [index, quasi] of node.quasis.entries()) {
+				// `value.raw` is the text between the delimiters: significant, kept.
+				out += quasi.value.raw;
+				if (index < node.expressions.length) {
+					out += `\${${canonicalExpression(node.expressions[index])}}`;
+				}
+			}
+			return `${out}\``;
+		}
+		case "TaggedTemplateExpression":
+			return `${canonicalExpression(node.tag)}${canonicalExpression(node.quasi)}`;
+		case "MemberExpression":
+			return node.computed
+				? `${canonicalExpression(node.object)}${node.optional ? "?." : ""}[${canonicalExpression(node.property)}]`
+				: `${canonicalExpression(node.object)}${node.optional ? "?." : "."}${canonicalExpression(node.property)}`;
+		case "ArrayExpression":
+			return `[${node.elements.map((/** @type {any} */ e) => canonicalExpression(e)).join(",")}]`;
+		case "ObjectExpression":
+			return `{${node.properties.map((/** @type {any} */ p) => canonicalExpression(p)).join(",")}}`;
+		case "Property":
+			return node.computed
+				? `[${canonicalExpression(node.key)}]:${canonicalExpression(node.value)}`
+				: `${canonicalExpression(node.key)}:${canonicalExpression(node.value)}`;
+		case "SpreadElement":
+		case "RestElement":
+			return `...${canonicalExpression(node.argument)}`;
+		case "CallExpression":
+			return `${canonicalExpression(node.callee)}${node.optional ? "?." : ""}(${node.arguments.map((/** @type {any} */ a) => canonicalExpression(a)).join(",")})`;
+		case "NewExpression":
+			return `new ${canonicalExpression(node.callee)}(${node.arguments.map((/** @type {any} */ a) => canonicalExpression(a)).join(",")})`;
+		case "UnaryExpression":
+			return `${node.operator}${canonicalExpression(node.argument)}`;
+		case "BinaryExpression":
+		case "LogicalExpression":
+			return `(${canonicalExpression(node.left)}${node.operator}${canonicalExpression(node.right)})`;
+		case "ConditionalExpression":
+			return `(${canonicalExpression(node.test)}?${canonicalExpression(node.consequent)}:${canonicalExpression(node.alternate)})`;
+		case "SequenceExpression":
+			return `(${node.expressions.map((/** @type {any} */ e) => canonicalExpression(e)).join(",")})`;
+		case "JSXExpressionContainer":
+			return `{${canonicalExpression(node.expression)}}`;
+		case "JSXEmptyExpression":
+			return "";
+		default:
+			return canonicalUnknown(node);
+	}
+}
+
+/**
+ * Structural rendering for an ESTree node this file does not spell out. Own
+ * properties are sorted so the result cannot depend on property order, and the
+ * position and comment fields are dropped so it cannot depend on layout.
+ * @param {any} node
+ * @returns {string}
+ */
+function canonicalUnknown(node) {
+	const parts = Object.keys(node)
+		.filter((key) => key !== "type" && !ESTREE_NOISE.has(key))
+		.sort()
+		.map((key) => `${key}=${canonicalValue(node[key])}`);
+	return `${node.type}(${parts.join(",")})`;
+}
+
+/** @param {unknown} value @returns {string} */
+function canonicalValue(value) {
+	if (Array.isArray(value)) {
+		return `[${value.map((item) => canonicalValue(item)).join(",")}]`;
+	}
+	if (typeof value === "bigint") return `${value}n`;
+	if (value !== null && typeof value === "object") {
+		/** @type {any} */
+		const record = value;
+		if (typeof record.type === "string") return canonicalExpression(record);
+		return `{${Object.keys(record)
+			.filter((key) => !ESTREE_NOISE.has(key))
+			.sort()
+			.map((key) => `${key}=${canonicalValue(record[key])}`)
+			.join(",")}}`;
+	}
+	return String(JSON.stringify(value));
 }
 
 /**
@@ -320,15 +542,45 @@ function headingLevels(tree) {
  * which is what retires the two sanitisation defects this file used to carry.
  * An invocation Prettier wrapped across several lines is one node, so line
  * layout cannot change the key either.
+ *
+ * Invocations inside MDX expressions are counted too, and key identically to
+ * the same invocation written at the top level. Two places hold them:
+ * `<Card body={<Home section="x" />} />`, where the component lives in an
+ * attribute value, and `{list.map((x) => <Home section={x} />)}`, where it lives
+ * in a body expression. Neither is mdast — both are ESTrees hanging off
+ * `data.estree` — so both are reached with `walkEstree` rather than `walkTree`.
+ * An MDX `{/* … *\/}` comment is an expression whose ESTree has an empty body,
+ * so nothing inside one is reachable and nothing inside one is counted.
  * @param {object} tree
  * @returns {Map<string, number>}
  */
 function componentCalls(tree) {
 	/** @type {Map<string, number>} */
 	const calls = new Map();
+	/** @param {string} key */
+	const record = (key) => calls.set(key, (calls.get(key) ?? 0) + 1);
+
 	walkTree(tree, (node) => {
+		if (
+			node.type === "mdxFlowExpression" ||
+			node.type === "mdxTextExpression" ||
+			node.type === "mdxjsEsm"
+		) {
+			collectJsxCalls(node.data?.estree, record);
+			return;
+		}
 		if (node.type !== "mdxJsxFlowElement" && node.type !== "mdxJsxTextElement")
 			return;
+
+		// Attribute values first: they are counted whatever the element itself is,
+		// because `<div style={<Home />}>` is still a lost section.
+		for (const attribute of node.attributes ?? []) {
+			// `mdxJsxAttribute` holds its expression under `value.data`;
+			// `mdxJsxExpressionAttribute` (`{...props}`) holds it under `data`.
+			collectJsxCalls(attribute.value?.data?.estree, record);
+			collectJsxCalls(attribute.data?.estree, record);
+		}
+
 		// A fragment (`<>`) has a null name and identifies nothing.
 		if (typeof node.name !== "string") return;
 		// MDX makes a node of every JSX element, raw HTML included, so the
@@ -337,33 +589,163 @@ function componentCalls(tree) {
 		// corpus, and counting `<br />` and friends would make prose-level layout
 		// differences — which are allowed to differ per locale — fail this gate.
 		if (!/^[A-Z]/.test(node.name)) return;
-		let key = node.name;
-		for (const attribute of IDENTIFYING_ATTRIBUTES) {
-			const found = (node.attributes ?? []).find(
-				(candidate) =>
-					candidate.type === "mdxJsxAttribute" && candidate.name === attribute,
-			);
-			if (found === undefined) continue;
-			// A literal value is a string. An expression (`path={slug}`) arrives as a
-			// node carrying its own source, which is still a stable identity — the
-			// old regex saw only quoted values and silently fell back to a bare name.
-			// Whitespace inside an expression is collapsed so that the key does not
-			// depend on how Prettier happened to wrap it — a translated sibling
-			// attribute can change the line width and rewrap the expression in one
-			// locale only, which must not read as a different instance.
-			const value =
-				typeof found.value === "string"
-					? found.value
-					: typeof found.value?.value === "string"
-						? `{${found.value.value.replace(/\s+/g, " ").trim()}}`
-						: null;
-			if (value === null) continue; // Valueless attribute identifies nothing.
-			key = `${node.name}[${attribute}=${value}]`;
-			break;
-		}
-		calls.set(key, (calls.get(key) ?? 0) + 1);
+		record(
+			componentKey(node.name, (attribute) =>
+				mdastAttributeValue(node, attribute),
+			),
+		);
 	});
 	return calls;
+}
+
+/**
+ * Count every capitalised JSX element inside an ESTree, at any depth: nested in
+ * an attribute of another element, returned from a callback, inside a ternary.
+ * `walkEstree` is generic, so no expression shape has to be anticipated.
+ * @param {unknown} estree
+ * @param {(key: string) => void} record
+ */
+function collectJsxCalls(estree, record) {
+	if (estree === null || estree === undefined) return;
+	walkEstree(estree, (node) => {
+		if (node.type !== "JSXElement") return;
+		const name = jsxElementName(node);
+		if (name === null || !/^[A-Z]/.test(name)) return;
+		record(
+			componentKey(name, (attribute) => jsxAttributeValue(node, attribute)),
+		);
+	});
+}
+
+/**
+ * The name of an ESTree `JSXElement`, or null for a shape that names nothing.
+ * @param {any} node
+ * @returns {string | null}
+ */
+function jsxElementName(node) {
+	/** @param {any} name @returns {string | null} */
+	function nameOf(name) {
+		if (name === null || name === undefined) return null;
+		if (name.type === "JSXIdentifier") return name.name;
+		if (name.type === "JSXMemberExpression") {
+			const object = nameOf(name.object);
+			const property = nameOf(name.property);
+			return object === null || property === null
+				? null
+				: `${object}.${property}`;
+		}
+		if (name.type === "JSXNamespacedName") {
+			return `${name.namespace?.name}:${name.name?.name}`;
+		}
+		return null;
+	}
+	return nameOf(node.openingElement?.name);
+}
+
+/**
+ * Build the key for one invocation: the component name, plus the first
+ * identifying attribute it carries. Shared by the mdast and the ESTree side so
+ * the *same* invocation keys the same wherever it was written — an attribute
+ * expression counted differently from a top-level tag would be a mismatch this
+ * gate invented.
+ * @param {string} name
+ * @param {(attribute: string) => string | null} valueOf
+ * @returns {string}
+ */
+function componentKey(name, valueOf) {
+	for (const attribute of IDENTIFYING_ATTRIBUTES) {
+		const value = valueOf(attribute);
+		if (value === null) continue; // Absent, or valueless: identifies nothing.
+		return `${name}[${attribute}=${value}]`;
+	}
+	return name;
+}
+
+/**
+ * Read one identifying attribute off an mdast JSX element.
+ * A literal value is a plain string. An expression (`path={slug}`) arrives as a
+ * node carrying its own ESTree, canonicalised so the key is what the expression
+ * *is* rather than how it was laid out.
+ * @param {any} node
+ * @param {string} attribute
+ * @returns {string | null}
+ */
+function mdastAttributeValue(node, attribute) {
+	const found = (node.attributes ?? []).find(
+		(/** @type {any} */ candidate) =>
+			candidate.type === "mdxJsxAttribute" && candidate.name === attribute,
+	);
+	if (found === undefined) return null;
+	if (typeof found.value === "string") return found.value;
+	const estree = found.value?.data?.estree;
+	if (estree === null || estree === undefined) return null;
+	return `{${canonicalExpression(estree)}}`;
+}
+
+/**
+ * Read one identifying attribute off an ESTree `JSXElement`. A string literal
+ * yields its bare value, exactly as the mdast side does, so the two agree.
+ * @param {any} node
+ * @param {string} attribute
+ * @returns {string | null}
+ */
+function jsxAttributeValue(node, attribute) {
+	const found = (node.openingElement?.attributes ?? []).find(
+		(/** @type {any} */ candidate) =>
+			candidate.type === "JSXAttribute" && candidate.name?.name === attribute,
+	);
+	if (found === undefined) return null;
+	const value = found.value;
+	if (value === null || value === undefined) return null; // Valueless.
+	if (value.type === "Literal") {
+		return typeof value.value === "string"
+			? value.value
+			: canonicalLiteral(value);
+	}
+	if (value.type === "JSXExpressionContainer") {
+		if (value.expression?.type === "JSXEmptyExpression") return null;
+		return `{${canonicalExpression(value.expression)}}`;
+	}
+	return null;
+}
+
+/**
+ * Report component-looking tags written in a plain `.md` page.
+ *
+ * A `.md` page is markdown, not MDX: Astro passes `<Home section="faq" />`
+ * through as raw HTML, the browser makes an unknown element of it, and nothing
+ * renders. So it cannot be counted as an invocation — but it must not be
+ * ignored either, which is what this gate used to do. Every page in the corpus
+ * is `.mdx` today, so a `.md` page carrying a component tag would have been
+ * invisible on both sides: no component counted, no mismatch, green gate,
+ * missing section. It is a hard error instead — the page is broken in that
+ * locale whether or not its twin agrees.
+ *
+ * Only `html` nodes are looked at, so a tag inside a code fence, an indented
+ * block or an inline code span is a `code`/`inlineCode` node and cannot reach
+ * here — the parser owns those boundaries, as everywhere else in this file.
+ *
+ * What is textual is one thing: markdown has no comment node, so an HTML
+ * comment *inside* an html block (`<div>` … `<!-- <Home /> -->` … `</div>`) is
+ * part of that node's value. Comment spans are blanked with a single
+ * non-greedy pass — not the chained `.replace()` that once left a bare `<!--`
+ * behind — and an unclosed `<!--` blanks to end of node, which is conservative
+ * (a component after it is not reported) and already a hard error by way of
+ * `unterminatedConstruct`.
+ * @param {object} tree
+ * @returns {string[]}
+ */
+function strayComponentTags(tree) {
+	/** @type {Set<string>} */
+	const names = new Set();
+	walkTree(tree, (node) => {
+		if (node.type !== "html" || typeof node.value !== "string") return;
+		const visible = node.value.replace(/<!--[\s\S]*?(?:-->|$)/g, " ");
+		for (const match of visible.matchAll(/<\/?([A-Z][A-Za-z0-9_.]*)/g)) {
+			names.add(match[1]);
+		}
+	});
+	return [...names].sort();
 }
 
 /**
@@ -421,11 +803,12 @@ function unterminatedConstruct(body, tree) {
 
 /**
  * @param {string} relativePath page path relative to DOCS_DIR
- * @returns {{ keys: Set<string>, counts: Map<string, number>, flow: string[], yamlErrors: string[], levels: number[], components: Map<string, number>, unterminated: string | null, parseError: string | null }}
+ * @returns {{ keys: Set<string>, counts: Map<string, number>, flow: string[], yamlErrors: string[], levels: number[], components: Map<string, number>, strayComponents: string[], unterminated: string | null, parseError: string | null }}
  */
 function readPage(relativePath) {
 	const source = readFileSync(path.join(DOCS_DIR, relativePath), "utf8");
 	const { frontmatter, body } = splitFrontmatter(source);
+	const extension = path.extname(relativePath);
 	const shape =
 		frontmatter === null
 			? { keys: new Set(), counts: new Map(), flow: [], yamlErrors: [] }
@@ -433,7 +816,7 @@ function readPage(relativePath) {
 
 	let tree;
 	try {
-		tree = parseBody(body, path.extname(relativePath));
+		tree = parseBody(body, extension);
 	} catch (error) {
 		// MDX is a real grammar and rejects invalid syntax — notably `<!-- -->`,
 		// which MDX has no notion of. A page that does not parse cannot be
@@ -443,6 +826,7 @@ function readPage(relativePath) {
 			...shape,
 			levels: [],
 			components: new Map(),
+			strayComponents: [],
 			unterminated: null,
 			parseError: `${error.reason ?? error.message}${place}`,
 		};
@@ -452,6 +836,9 @@ function readPage(relativePath) {
 		...shape,
 		levels: headingLevels(tree),
 		components: componentCalls(tree),
+		// Only `.md` can carry one: in `.mdx` the same tag is a real invocation,
+		// counted above.
+		strayComponents: extension === ".md" ? strayComponentTags(tree) : [],
 		unterminated: unterminatedConstruct(body, tree),
 		parseError: null,
 	};
@@ -497,6 +884,7 @@ function pageOf(source, extension = ".mdx") {
 	return {
 		levels: headingLevels(tree),
 		components: componentCalls(tree),
+		strayComponents: extension === ".md" ? strayComponentTags(tree) : [],
 		unterminated: unterminatedConstruct(body, tree),
 	};
 }
@@ -990,7 +1378,186 @@ title: T
 		},
 	],
 	[
-		"components in a plain .md page are markup, not invocations",
+		"an expression key does not depend on how Prettier wrapped it",
+		() => {
+			// Prettier adds a trailing comma when it breaks a literal across lines.
+			// Collapsing whitespace in the source text — what this used to do — left
+			// that comma in the key, so one invocation keyed two ways and parity
+			// failed with nothing behind it.
+			const inline = pageOf(`---
+title: T
+---
+
+<ConfigOption paths={["a.b", "c.d"]} title="Short" />
+`);
+			const broken = pageOf(`---
+title: T
+---
+
+<ConfigOption
+  paths={[
+    "a.b",
+    "c.d",
+  ]}
+  title="Un titulo traducido lo bastante largo como para partir la etiqueta"
+/>
+`);
+			expect(
+				callList(inline.components) === `ConfigOption[paths={["a.b","c.d"]}]x1`,
+				`inline: ${callList(inline.components)}`,
+			);
+			expect(
+				callList(inline.components) === callList(broken.components),
+				`${callList(inline.components)} vs ${callList(broken.components)}`,
+			);
+		},
+	],
+	[
+		"whitespace inside a string literal is meaning, not layout",
+		() => {
+			// The mirror of the case above: collapsing the source text merged two
+			// genuinely different instances into one key, so a real divergence
+			// between the locales passed silently.
+			const wide = pageOf(`---
+title: T
+---
+
+<ConfigOption path={"a  b"} />
+`);
+			const narrow = pageOf(`---
+title: T
+---
+
+<ConfigOption path={"a b"} />
+`);
+			expect(
+				callList(wide.components) !== callList(narrow.components),
+				`both keyed as ${callList(wide.components)}`,
+			);
+		},
+	],
+	[
+		"a comment inside an expression does not change the key",
+		() => {
+			const commented = pageOf(`---
+title: T
+---
+
+<ConfigOption path={/* which one */ slug} />
+`);
+			const plain = pageOf(`---
+title: T
+---
+
+<ConfigOption path={slug} />
+`);
+			expect(
+				callList(commented.components) === "ConfigOption[path={slug}]x1",
+				`components: ${callList(commented.components)}`,
+			);
+			expect(
+				callList(commented.components) === callList(plain.components),
+				`${callList(commented.components)} vs ${callList(plain.components)}`,
+			);
+		},
+	],
+	[
+		"a component nested in an attribute expression is counted",
+		() => {
+			// The AST rewrite lost this: walkTree stopped at the mdast element and
+			// never entered the attribute, so the page yielded `Card` alone and a
+			// locale that dropped the nested invocation compared equal.
+			const page = pageOf(`---
+title: T
+---
+
+<Card body={<Home section="x" />} />
+`);
+			expect(
+				callList(page.components) === "Cardx1 Home[section=x]x1",
+				`components: ${callList(page.components)}`,
+			);
+		},
+	],
+	[
+		"a nested invocation keys the same as the same tag written at top level",
+		() => {
+			const nested = pageOf(`---
+title: T
+---
+
+<Card body={<Home section="faq" />} />
+`);
+			const top = pageOf(`---
+title: T
+---
+
+<Home section="faq" />
+`);
+			expect(
+				nested.components.get("Home[section=faq]") === 1,
+				`nested: ${callList(nested.components)}`,
+			);
+			expect(
+				top.components.get("Home[section=faq]") === 1,
+				`top: ${callList(top.components)}`,
+			);
+		},
+	],
+	[
+		"components nested several expressions deep are all counted",
+		() => {
+			const page = pageOf(`---
+title: T
+---
+
+<Card body={<Wrapper slot={<Home section={"deep"} />} />} />
+`);
+			expect(
+				callList(page.components) ===
+					`Cardx1 Home[section={"deep"}]x1 Wrapperx1`,
+				`components: ${callList(page.components)}`,
+			);
+		},
+	],
+	[
+		"components inside a body expression are counted",
+		() => {
+			const page = pageOf(`---
+title: T
+---
+
+{sections.map((section) => (
+  <Home section={section} />
+))}
+
+Inline {<VersionBadge />} too.
+`);
+			expect(
+				callList(page.components) ===
+					"Home[section={section}]x1 VersionBadgex1",
+				`components: ${callList(page.components)}`,
+			);
+		},
+	],
+	[
+		"lowercase tags nested in an expression stay excluded",
+		() => {
+			const page = pageOf(`---
+title: T
+---
+
+<Card body={<span>x</span>} />
+`);
+			expect(
+				callList(page.components) === "Cardx1",
+				`components: ${callList(page.components)}`,
+			);
+		},
+	],
+	// -- component tags in a .md page ----------------------------------------
+	[
+		"components in a plain .md page are markup, and a hard error",
 		() => {
 			const page = pageOf(
 				`---
@@ -1003,11 +1570,168 @@ title: T
 `,
 				".md",
 			);
+			// Not counted: a .md page really does render nothing here, so comparing
+			// it as an invocation would compare a section that does not exist.
 			expect(
 				callList(page.components) === "",
 				`components: ${callList(page.components)}`,
 			);
+			expect(
+				page.strayComponents.join(",") === "Home",
+				`stray: [${page.strayComponents}]`,
+			);
 			expect(page.levels.join(",") === "2", `levels: [${page.levels}]`);
+		},
+	],
+	[
+		"an inline component tag in a .md paragraph is caught too",
+		() => {
+			const page = pageOf(
+				`---
+title: T
+---
+
+Text with <VersionBadge /> in the middle of a sentence.
+`,
+				".md",
+			);
+			expect(
+				page.strayComponents.join(",") === "VersionBadge",
+				`stray: [${page.strayComponents}]`,
+			);
+		},
+	],
+	[
+		"a closing tag alone still reports the component in a .md page",
+		() => {
+			const page = pageOf(
+				`---
+title: T
+---
+
+<Tabs>
+
+text
+
+</Tabs>
+`,
+				".md",
+			);
+			expect(
+				page.strayComponents.join(",") === "Tabs",
+				`stray: [${page.strayComponents}]`,
+			);
+		},
+	],
+	[
+		"plain HTML in a .md page is not a stray component",
+		() => {
+			const page = pageOf(
+				`---
+title: T
+---
+
+<details>
+<summary>x</summary>
+</details>
+
+Text with a <br /> in it.
+`,
+				".md",
+			);
+			expect(
+				page.strayComponents.length === 0,
+				`stray: [${page.strayComponents}]`,
+			);
+		},
+	],
+	[
+		"a commented-out component in a .md page is not reported",
+		() => {
+			const page = pageOf(
+				`---
+title: T
+---
+
+<!-- <Home section="faq" /> -->
+
+<div>
+  <!-- <ConfigOption path="a.b" /> -->
+</div>
+
+## Visible
+`,
+				".md",
+			);
+			expect(
+				page.strayComponents.length === 0,
+				`stray: [${page.strayComponents}]`,
+			);
+			expect(page.unterminated === null, `unterminated: ${page.unterminated}`);
+		},
+	],
+	[
+		"a component beside a comment in the same .md html block is still caught",
+		() => {
+			const page = pageOf(
+				`---
+title: T
+---
+
+<div>
+  <!-- a note -->
+  <Home section="faq" />
+</div>
+`,
+				".md",
+			);
+			expect(
+				page.strayComponents.join(",") === "Home",
+				`stray: [${page.strayComponents}]`,
+			);
+		},
+	],
+	[
+		"a component in a .md code block or code span is not a stray tag",
+		() => {
+			const page = pageOf(
+				`---
+title: T
+---
+
+Use \`<Home section="ghost" />\` to render it.
+
+\`\`\`mdx
+<ConfigOption path="ghost" />
+\`\`\`
+
+    <RuleSet scope="ghost" />
+`,
+				".md",
+			);
+			expect(
+				page.strayComponents.length === 0,
+				`stray: [${page.strayComponents}]`,
+			);
+		},
+	],
+	[
+		"a .mdx page never reports stray tags — they are real invocations there",
+		() => {
+			const page = pageOf(`---
+title: T
+---
+
+<Home section="faq" />
+`);
+			expect(
+				page.strayComponents.length === 0,
+				`stray: [${page.strayComponents}]`,
+			);
+			expect(
+				callList(page.components) === "Home[section=faq]x1",
+				`components: ${callList(page.components)}`,
+			);
 		},
 	],
 ];
@@ -1060,17 +1784,18 @@ if (englishPages.length === 0) {
 /** @type {string[]} */ const unreadableOutlines = [];
 /** @type {string[]} */ const unreadableFrontmatter = [];
 /** @type {string[]} */ const unparseablePages = [];
+/** @type {string[]} */ const strayComponentPages = [];
 
 const englishSet = new Set(englishPages);
 /** @type {Map<string, ReturnType<typeof readPage>>} */
-const englishCache = new Map();
+const pageCache = new Map();
 
 /** @param {string} relativePath @returns {ReturnType<typeof readPage>} */
-function readEnglish(relativePath) {
-	let page = englishCache.get(relativePath);
+function read(relativePath) {
+	let page = pageCache.get(relativePath);
 	if (page === undefined) {
 		page = readPage(relativePath);
-		englishCache.set(relativePath, page);
+		pageCache.set(relativePath, page);
 	}
 	return page;
 }
@@ -1088,8 +1813,8 @@ for (const locale of LOCALES) {
 			continue;
 		}
 
-		const english = readEnglish(page);
-		const translated = readPage(`${locale}/${page}`);
+		const english = read(page);
+		const translated = read(`${locale}/${page}`);
 
 		// A page that does not parse has no outline and no components to compare.
 		// Reported once, here; the structural comparisons below are then skipped so
@@ -1180,7 +1905,19 @@ for (const locale of LOCALES) {
 			componentMismatches.push(`${page} — ${componentDiff.join("; ")}`);
 		}
 
-		if (english.levels.join(",") !== translated.levels.join(",")) {
+		// Only compare outlines that are trustworthy. An unterminated fence or
+		// comment hides every heading after it, so the levels array is a
+		// prefix of the real one — and two pages can agree on a truncated
+		// prefix while differing after it, or disagree only because one side
+		// truncated. Either way the comparison says nothing, and reporting it
+		// on top of the unterminated-construct failure sends the reader
+		// looking for a section that is not missing. The page already fails.
+		const outlineIsReadable =
+			english.unterminated === null && translated.unterminated === null;
+		if (
+			outlineIsReadable &&
+			english.levels.join(",") !== translated.levels.join(",")
+		) {
 			headingMismatches.push(
 				`${page} — en: [${english.levels.join(" ")}] (${english.levels.length} headings)\n` +
 					`${" ".repeat(4)}${locale}: [${translated.levels.join(" ")}] (${translated.levels.length} headings)`,
@@ -1190,6 +1927,25 @@ for (const locale of LOCALES) {
 
 	for (const page of localePages) {
 		if (!englishSet.has(page)) orphanTranslations.push(`${locale}/${page}`);
+	}
+}
+
+// A component tag in a `.md` page renders as nothing, so it is a defect in that
+// one page rather than a disagreement between twins — nothing a comparison
+// could ever surface. Checked over every page, twinned or not, so an
+// untranslated page or an orphaned translation is still covered. `read` is
+// cached, so the twins compared above are not parsed twice.
+for (const page of [
+	...englishPages,
+	...LOCALES.flatMap((locale) =>
+		listPages(path.join(DOCS_DIR, locale)).map((entry) => `${locale}/${entry}`),
+	),
+]) {
+	const stray = read(page).strayComponents;
+	if (stray.length > 0) {
+		strayComponentPages.push(
+			`${page} — ${stray.map((name) => `<${name}>`).join(", ")}`,
+		);
 	}
 }
 
@@ -1227,6 +1983,11 @@ report(
 	"A component rendered in one locale and not the other drops a whole section while its heading survives.",
 );
 report(
+	"Component tags in a .md page",
+	strayComponentPages,
+	"A .md page is markdown, not MDX: the tag is emitted as raw HTML and renders nothing. Rename the page to .mdx (and import the component), or remove the tag.",
+);
+report(
 	"Pages that could not be parsed",
 	unparseablePages,
 	"The page is not valid MDX, so it has no structure to compare (and would not build).",
@@ -1248,6 +2009,7 @@ const failures =
 	frontmatterMismatches.length +
 	headingMismatches.length +
 	componentMismatches.length +
+	strayComponentPages.length +
 	unparseablePages.length +
 	unreadableOutlines.length +
 	unreadableFrontmatter.length;
@@ -1266,5 +2028,7 @@ if (failures > 0) {
 // provenance, not a structural diff.
 console.log(
 	`✓ i18n parity: ${englishPages.length} English pages, ${twinCount} twin(s) across ${LOCALES.join(", ")} — ` +
-		"page set, frontmatter keys, heading outline and component invocations match (structure only; body prose is not compared).",
+		"page set, frontmatter keys, heading outline and component invocations match " +
+		"(invocations counted inside MDX attribute and body expressions too; a component tag in a .md page is a hard error). " +
+		"Structure only; body prose is not compared.",
 );

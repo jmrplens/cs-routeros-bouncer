@@ -9,31 +9,32 @@ Cómo procesa el bouncer las decisiones entrantes de CrowdSec.
 
 ## Flujo de procesamiento
 
-Una decisión puede descartarse en dos sitios, y solo en dos: en la **Local API**, que nunca envía lo que la consulta del bouncer excluye, y en el **propio bouncer**, que comprueba unas pocas cosas antes de tocar RouterOS. No hay una tercera etapa: ni una cadena de filtros dentro del bouncer, ni una política por decisión. Todo lo que sobrevive a los dos carriles acaba en una address-list, y nada más lo hace.
+Una decisión puede descartarse en dos sitios: en la **Local API**, que nunca envía lo que la consulta del bouncer excluye, y en el **propio bouncer**, que comprueba unas pocas cosas antes de tocar RouterOS. No hay una tercera etapa: ni una cadena de filtros dentro del bouncer, ni una política por decisión. La consulta tampoco es la misma en los dos caminos: el stream en vivo lleva los filtros de scope, origen y escenario, y la instantánea de reconciliación añade un cuarto, `type=ban`, mientras el conjunto de tipos aplicados se deje con su valor por defecto. Todo lo que sobrevive a los dos carriles acaba en una address-list, y nada más lo hace.
 
 ```mermaid
 flowchart TB
     accTitle: Dónde puede descartarse una decisión de CrowdSec antes de llegar al router
-    accDescr: Tres carriles. En el primero, la Local API aplica los filtros de scope, origen y escenario que viajan en la consulta del bouncer, así que lo que excluyen nunca se envía y nada local lo registra. En el segundo, el bouncer descarta una decisión nueva sin duración, una cuyo tipo no está en el conjunto que aplica y una de una familia de protocolo desactivada, todo ello sin dejar registro; una duración que no puede analizar se advierte y se aplica como cuatro horas en lugar de descartarse, y un ban cuya dirección ya está en la caché en memoria se omite sin llamar a la API. Una expiración se omite si su dirección no está en la caché o ya no está en el router. En el tercero, lo que queda se añade a la address-list o se elimina de ella.
+    accDescr: Tres carriles. En el primero, la Local API aplica los filtros de scope, origen y escenario que viajan en la consulta del bouncer, más un filtro de tipo en la instantánea de reconciliación mientras el conjunto de tipos aplicados sea el predeterminado, así que lo que excluyen nunca se envía y nada local lo registra. En el segundo, primero se descarta la decisión nueva que no trae duración; toda decisión que queda, expiraciones incluidas, se descarta después si su tipo no está en el conjunto que aplica y si su familia de protocolo está desactivada, todo ello sin dejar registro. Una duración que no puede analizar se advierte y se aplica como cuatro horas en lugar de descartarse. Un ban cuya dirección ya está en la caché en memoria se omite sin llamar a la API, y una expiración se omite si su dirección no está en la caché o ya no está en el router. En el tercero, lo que queda se añade a la address-list o se elimina de ella.
     subgraph LAPI["Carril 1 · LAPI de CrowdSec, lado servidor"]
         ALL["Todas las decisiones que tiene la LAPI"]
         ALL -. "scope, origen, escenario" .-> N1["Nunca se envía, nunca se registra"]
+        ALL -. "tipo: solo en la instantánea, conjunto predeterminado" .-> N1
         ALL -. "cumple la consulta" .-> SENT["Se envía al bouncer"]
     end
     subgraph BOUNCER["Carril 2 · Bouncer, en proceso"]
         SENT -. "ban" .-> D{"¿duración?"}
         D -. "falta" .-> N2["Descartada, sin registro"]
-        D -. "no se puede analizar" .-> W["Advertencia, se aplica como 4h"]
         D -. "presente" .-> T{"¿tipo aplicado?"}
-        W -.-> T
+        SENT -. "expiración" .-> T
         T -. "no" .-> N2
+        T -. "sí, duración que no se puede analizar" .-> W["Advertencia, se aplica como 4h"]
         T -. "sí" .-> PR{"¿familia habilitada?"}
+        W -.-> PR
         PR -. "no" .-> N2
-        PR -. "sí" .-> CA{"¿en la caché?"}
+        PR -. "ban" .-> CA{"¿en la caché?"}
+        PR -. "expiración" .-> CD{"¿en la caché y todavía en el router?"}
         CA -. "sí: ban duplicado" .-> N3["Se omite, la entrada se deja como está"]
-        SENT -. "expiración" .-> CD{"¿en la caché y todavía en el router?"}
         CD -. "no" .-> N3
-        N3 ~~~ CD
     end
     subgraph ROUTER["Carril 3 · MikroTik"]
         CA -- "no" --> ADD["Añadida a la address-list"]

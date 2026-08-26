@@ -1,7 +1,18 @@
 ---
 import { Icon } from "@astrojs/starlight/components";
 
-const t = Astro.locals.t;
+// Strings for the toggle, keyed by page language, in the same shape the
+// custom Footer uses (`Astro.locals.starlightRoute.lang`; the root locale is
+// English). Starlight's own `themeSelect.*` strings cannot serve here: they
+// are the *options* of a three-way select ("Dark", "Oscuro"), and this
+// control needs the name of a thing that is either on or off.
+const TOGGLE_STRINGS: Record<string, { darkTheme: string }> = {
+	en: { darkTheme: "Dark theme" },
+	es: { darkTheme: "Tema oscuro" },
+};
+
+const lang = Astro.locals.starlightRoute?.lang ?? "en";
+const t = TOGGLE_STRINGS[lang] ?? TOGGLE_STRINGS.en;
 ---
 
 {
@@ -25,21 +36,38 @@ Starlight renders in the mobile menu drawer (MobileMenuFooter.astro).
 The icon is swapped in CSS off `:root[data-theme]`, not in script, so
 it is already correct in the first painted frame. It shows the CURRENT
 theme, matching what the select's own label icon shows, rather than the
-one a tap would move to. */
+one a tap would move to.
+
+WHY AN `aria-pressed` TOGGLE AND NOT AN ACTION-NAMED BUTTON
+
+A button's accessible name is read as what activating it will do, so
+the two shapes that expose this control honestly are (a) a name that
+states the action and is rewritten on every change ("Switch to dark
+theme"), or (b) a constant name for the thing being toggled plus
+`aria-pressed` for its state. This is (b), for three reasons:
+
+  1. The state is then a real ARIA state, so it is exposed the same way
+     to every consumer — announced on activation without the name
+     changing under the user, and readable by anything querying the
+     accessibility tree.
+  2. The name stays constant, which is what speech-input users need:
+     "click Dark theme" keeps working in both themes, whereas a name
+     that flips between "Switch to dark theme" and "Switch to light
+     theme" names a target that is gone the moment it is spoken.
+  3. It agrees with the icon, which by the decision above shows the
+     CURRENT theme rather than the destination. Under (a) the name
+     would announce the destination while the icon showed the origin;
+     under (b) both describe the same present state.
+
+The rendered `aria-pressed="false"` is a placeholder: the theme is not
+known at build time (this is a static build, and the theme comes from
+`localStorage`/`prefers-color-scheme` in the before-paint script). The
+script below corrects it when the element upgrades, from the document
+itself, and the same MutationObserver keeps it correct afterwards. */
 }
-<rb-theme-toggle
-	data-dark={t("themeSelect.dark")}
-	data-light={t("themeSelect.light")}
->
-	<button type="button" class="toggle">
-		{
-			/* The accessible name is "Select theme: Dark" — the label, then the
-		state, both from Starlight's own translation files, so this component
-		introduces no string that would need translating by hand. The state
-		half is filled in and kept current by the script below. */
-		}
-		<span class="sr-only">{`${t("themeSelect.accessibleLabel")}: `}</span>
-		<span class="sr-only" data-state></span>
+<rb-theme-toggle>
+	<button type="button" class="toggle" aria-pressed="false">
+		<span class="sr-only">{t.darkTheme}</span>
 		<Icon name="sun" class="icon light-only" />
 		<Icon name="moon" class="icon dark-only" />
 	</button>
@@ -102,8 +130,7 @@ one a tap would move to. */
 	class ThemeToggle extends HTMLElement {
 		connectedCallback() {
 			const button = this.querySelector("button");
-			const state = this.querySelector<HTMLElement>("[data-state]");
-			if (!button || !state) return;
+			if (!button) return;
 
 			/** Whichever theme the document is currently painting. */
 			const current = (): "dark" | "light" =>
@@ -111,7 +138,7 @@ one a tap would move to. */
 
 			/** Reads the state back off the document, never off a local copy. */
 			const sync = () => {
-				state.textContent = this.dataset[current()] ?? "";
+				button.setAttribute("aria-pressed", String(current() === "dark"));
 			};
 
 			sync();
@@ -119,6 +146,8 @@ one a tap would move to. */
 			// in ThemeProvider.astro and by ThemeSelect's change handler. This
 			// observer is the only way this control learns the theme, so it
 			// cannot disagree with either of them, or with the desktop select.
+			// It is also what keeps `aria-pressed` honest when the theme is
+			// changed from somewhere else, e.g. the select in the mobile drawer.
 			new MutationObserver(sync).observe(document.documentElement, {
 				attributes: true,
 				attributeFilter: ["data-theme"],
@@ -138,6 +167,10 @@ one a tap would move to. */
 					if (!select) return;
 					select.value = next;
 					select.dispatchEvent(new Event("change", { bubbles: true }));
+					// `aria-pressed` is not set here: the observer above sets it
+					// from `data-theme` once Starlight has actually applied the
+					// change, so a rejected or redirected change cannot leave the
+					// button claiming a state the document is not in.
 				})();
 			});
 		}

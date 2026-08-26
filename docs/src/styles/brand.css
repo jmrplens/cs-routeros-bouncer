@@ -18,17 +18,51 @@
    THE CO-BRANDING IS RETIRED. That indigo/teal split borrowed two
    companies' colours for a project neither has endorsed, and at
    the ~23px the header renders it, a two-colour split is not a
-   signal, it is mush. One ink for the shield body and the dot; a
-   subordinate tone for the arcs, which are the quieter half of
-   the drawing in every sense.
+   signal, it is mush.
 
-   The two inks are `--rb-heading` and `--rb-muted`, both already
-   gated against `--rb-page`: check-contrast.mjs measures
-   `--sl-color-white` (→ --rb-heading) and `--sl-color-gray-3`
-   (→ --rb-muted) on `--sl-color-black` (→ --rb-page) in both
-   themes. No new pair is needed for the wordmark, and none is
-   needed for the arcs either — they clear the text threshold,
-   which is stricter than the 3:1 that would apply to a graphic.
+   THREE INKS, NOT TWO. `src/assets/logo-*.svg` draws four
+   horizontal lanes and one vertical rail. Three lanes cross the
+   rail and take `--rb-heading`; the fourth halts at it and takes
+   the subordinate `--rb-muted`; the rail itself takes
+   `--rb-accent`. (An earlier draft of this note described a
+   shield, a dot and a pair of arcs. No such shape is in the file
+   — check the paths before trusting a comment about them.)
+
+   AGAINST THE PAGE, all three are already gated, so neither the
+   mark nor the wordmark needs a new pair for that adjacency:
+   check-contrast.mjs measures `--sl-color-white` (→ --rb-heading,
+   17.19:1 dark / 17.70:1 light), `--sl-color-gray-3`
+   (→ --rb-muted, 6.18 / 6.44) and `--sl-color-text-accent`
+   (→ --rb-accent, 5.00 / 7.64) on `--sl-color-black`
+   (→ --rb-page), in both themes.
+
+   AGAINST EACH OTHER IS A DIFFERENT QUESTION, and it is the one
+   this comment used to answer with the page numbers, which do not
+   apply to it. The rail is painted last, over the lanes, so it
+   shares a hard edge with all four: the halted lane ends at x=20
+   exactly where the rail begins, and each crossing lane is cut by
+   the rail. Measured, the lanes are unbroken rectangles — the widest
+   spans x=4 to x=60 — and the rail is drawn OVER them at x=20 to x=28,
+   so no lane is cut or resumed; the crossing reads because the lane
+   emerges on the far side while the halted one stops at the rail. Those
+   edges are
+   lane-on-rail 3.44:1 dark / 2.32:1 light, and halt-on-rail
+   1.24:1 dark / 1.19:1 light. Neither is gated; neither clears
+   3:1 in the light theme.
+
+   THAT IS ACCEPTABLE, but not because something stricter covers
+   it. It is that WCAG 1.4.11 reaches a graphic only where the
+   graphic carries the information, and nothing here rides on
+   those edges: the mark is `aria-hidden`, the link's accessible
+   name is the live text in `.rb-wordmark` beside it, and the
+   pass/stop distinction is carried by LENGTH — three lanes
+   continue 20–32 units past the rail, the fourth stops dead. In
+   greyscale, on paper, or with the rail deleted outright, the
+   mark still reads. If that ever stops being true — if the mark
+   is given a real accessible role, or the geometry is levelled so
+   only colour separates halt from pass — halt-on-rail is the pair
+   to add to check-contrast.mjs, at the 3:1 non-text threshold,
+   and it fails today.
 
    This sheet declares no tokens. theme.css owns the palette. */
 
@@ -40,7 +74,7 @@
    inherited by luck.
 
    `align-items: baseline` is the composition: an inline SVG's
-   baseline is its bottom edge, so the shield sits ON the wordmark's
+   baseline is its bottom edge, so the mark sits ON the wordmark's
    baseline instead of being centred against it, and the two read as
    one line of type rather than an image with a caption.
    ------------------------------------------------------------------ */
@@ -75,12 +109,13 @@
    the boundary is what the product IS — the traffic is not ours.
 
    A LANE that crosses takes the heading ink at full strength; the one that
-   HALTS takes the muted tone. Those two are 2.75:1 apart in luminance, so
-   they stay distinguishable in greyscale — which matters, because the
-   accent and the muted tone measure 1.01:1 apart in the light theme and
-   would collapse into one tone if the pass/stop distinction rode on them.
-   It does not: the crossing lanes are visibly LONGER than the halted one,
-   and colour only reinforces what the geometry already says. */
+   HALTS takes the muted tone. Those two are 2.75:1 apart in the light theme
+   and 2.78:1 in the dark one, so they stay distinguishable in greyscale —
+   which matters, because the accent and the muted tone measure 1.19:1 apart
+   in the light theme (1.24:1 dark) and would collapse into one tone if the
+   pass/stop distinction rode on them. It does not: the crossing lanes are
+   visibly LONGER than the halted one, and colour only reinforces what the
+   geometry already says. */
 .rb-mark__lane {
 	fill: var(--rb-heading);
 }
