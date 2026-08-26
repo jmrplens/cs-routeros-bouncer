@@ -25,8 +25,8 @@ import (
 func fakeLoginServer(t *testing.T, ln net.Listener, wrap func(net.Conn) net.Conn) {
 	t.Helper()
 	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
+		conn, acceptErr := ln.Accept()
+		if acceptErr != nil {
 			return
 		}
 		if wrap != nil {
@@ -35,12 +35,12 @@ func fakeLoginServer(t *testing.T, ln net.Listener, wrap func(net.Conn) net.Conn
 		r := proto.NewReader(conn)
 		w := proto.NewWriter(conn)
 		for {
-			if _, err := r.ReadSentence(); err != nil {
+			if _, readErr := r.ReadSentence(); readErr != nil {
 				return
 			}
 			w.BeginSentence()
 			w.WriteWord("!done")
-			if err := w.EndSentence(); err != nil {
+			if endErr := w.EndSentence(); endErr != nil {
 				return
 			}
 		}
