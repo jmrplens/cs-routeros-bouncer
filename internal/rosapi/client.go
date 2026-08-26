@@ -30,6 +30,9 @@ type Client struct {
 	mu      sync.Mutex
 	// cmdMu serializes one whole command (write + reply); see RunArgsContext.
 	cmdMu sync.Mutex
+	// cmdTimeout bounds one whole command via connection deadlines; zero means
+	// no bound. Set through SetCommandTimeout.
+	cmdTimeout time.Duration
 
 	r proto.Reader
 	w proto.Writer
@@ -126,6 +129,24 @@ func (c *Client) logger() *slog.Logger {
 	defer c.logMutex.Unlock()
 
 	return c.log
+}
+
+// deadliner is the subset of net.Conn the command timeout needs. Declared
+// here so tests can hand in a net.Pipe end and mocks can opt out.
+type deadliner interface {
+	SetDeadline(t time.Time) error
+}
+
+// SetCommandTimeout bounds every subsequent command (write + full reply) with
+// a connection deadline. It exists because a RouterOS device that accepts the
+// TCP connection and then stalls — mid-reply, or before one — would otherwise
+// block a command forever: the sync client has no other cancellation left.
+// A zero duration removes the bound. No-op when the transport cannot carry
+// deadlines (the mock used in tests, for one).
+func (c *Client) SetCommandTimeout(d time.Duration) {
+	c.cmdMu.Lock()
+	defer c.cmdMu.Unlock()
+	c.cmdTimeout = d
 }
 
 // Close closes the connection to the RouterOS device.

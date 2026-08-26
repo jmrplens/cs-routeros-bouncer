@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"strings"
+	"time"
 )
 
 // redactSecrets masks the value of any word that carries a credential, so a
@@ -53,6 +54,15 @@ func (c *Client) RunArgsContext(_ context.Context, sentences []string) (*Reply, 
 	// unblock a pending read by closing the connection under it.
 	c.cmdMu.Lock()
 	defer c.cmdMu.Unlock()
+
+	if c.cmdTimeout > 0 {
+		if d, ok := c.rwc.(deadliner); ok {
+			// One deadline covers the write and the whole reply; cleared on
+			// the way out so an idle gap between commands can never trip it.
+			_ = d.SetDeadline(time.Now().Add(c.cmdTimeout))
+			defer func() { _ = d.SetDeadline(time.Time{}) }()
+		}
+	}
 
 	c.w.BeginSentence()
 	for _, sentence := range sentences {
