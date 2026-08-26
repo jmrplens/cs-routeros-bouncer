@@ -29,7 +29,7 @@ type point struct {
 type marker struct {
 	relS  float64
 	label string
-	// kind selects the colour: "neutral", "write" or "done".
+	// kind selects the color: "neutral", "write" or "done".
 	kind string
 }
 
@@ -37,7 +37,7 @@ type marker struct {
 type chartPalette struct {
 	page, grid, text, muted string
 	cpu, ram                string
-	// One colour per marker kind, so each event chip and its line match and
+	// One color per marker kind, so each event chip and its line match and
 	// no kind can be confused with either data series.
 	markNeutral, markWrite, markDone string
 }
@@ -150,8 +150,8 @@ func renderChart(pts []point, marks []marker, p chartPalette, title string) stri
 		padL+plotW/2.0, chartH-16, fontCSS, p.muted)
 
 	// Event markers under the data so the series stay legible over them. Each
-	// kind gets its own colour, shared by the dashed line and the label chip.
-	markColour := func(kind string) string {
+	// kind gets its own color, shared by the dashed line and the label chip.
+	markColor := func(kind string) string {
 		switch kind {
 		case "write":
 			return p.markWrite
@@ -161,16 +161,16 @@ func renderChart(pts []point, marks []marker, p chartPalette, title string) stri
 			return p.markNeutral
 		}
 	}
-	// Chips stagger onto a second row when neighbours would overlap — the
+	// Chips stagger onto a second row when neighbors would overlap — the
 	// first two events sit six seconds apart and their labels do not fit side
 	// by side at this scale.
 	const chipCharW, chipH, chipPad, rowGap = 6.2, 16.0, 6.0, 20.0
 	rowEnd := []float64{-1e9, -1e9}
 	for _, m := range marks {
 		x := xPos(m.relS, tMin, tMax)
-		colour := markColour(m.kind)
+		color := markColor(m.kind)
 		fmt.Fprintf(&sb, `<line x1="%.1f" y1="%d" x2="%.1f" y2="%d" stroke="%s" stroke-width="1.5" stroke-dasharray="5 4"/>`+"\n",
-			x, padT, x, chartH-padB, colour)
+			x, padT, x, chartH-padB, color)
 		w := chipCharW*float64(len(m.label)) + 2*chipPad
 		row := 0
 		if x-w/2 < rowEnd[0]+6 {
@@ -179,7 +179,7 @@ func renderChart(pts []point, marks []marker, p chartPalette, title string) stri
 		rowEnd[row] = x + w/2
 		baseline := float64(padT) - 8 - float64(row)*rowGap
 		fmt.Fprintf(&sb, `<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="4" fill="%s"/>`+"\n",
-			x-w/2, baseline-chipH+4, w, chipH, colour)
+			x-w/2, baseline-chipH+4, w, chipH, color)
 		fmt.Fprintf(&sb, `<text x="%.1f" y="%.1f" %s font-size="11" text-anchor="middle" fill="%s">%s</text>`+"\n",
 			x, baseline, fontCSS, p.page, xmlEscape(m.label))
 	}
