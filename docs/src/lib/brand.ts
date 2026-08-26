@@ -83,17 +83,27 @@ function toInlineForm(source: string, file: string): string {
 		}
 	}
 
-	const svg = source
-		.replace(STANDALONE_A11Y, INLINE_A11Y)
-		// Comments are the only prose that differs between the light and dark
-		// files, and none of it is worth repeating on every page of the site.
-		.replaceAll(/<!--[\s\S]*?-->/g, "")
-		// Reason 1 above. The `<style>` block is the standalone colour path.
-		.replaceAll(/<style\b[^>]*>[\s\S]*?<\/style>/g, "")
-		.replaceAll(/>\s+</g, "><")
-		.trim();
+	const svg = collapseWhitespaceBetweenTags(
+		stripSpans(source.replace(STANDALONE_A11Y, INLINE_A11Y)),
+	).trim();
 
-	if (/<style\b/i.test(svg)) {
+	if (!svg.endsWith("</svg>")) {
+		throw new Error(
+			`${file}: stripping consumed the closing tag, which means an unterminated ` +
+				"span — or a comment marker inside an attribute value — swallowed the " +
+				"rest of the file.",
+		);
+	}
+
+	if (svg.includes("<!--")) {
+		throw new Error(
+			`${file}: an XML comment opener survived stripping, which means the ` +
+				"file nests one comment inside another. Inlined, everything after " +
+				"it would be swallowed by a comment the browser never closes.",
+		);
+	}
+
+	if (/<\/?style\b/i.test(svg)) {
 		throw new Error(
 			`${file}: a <style> element survived stripping. Inlined, it would style ` +
 				"the whole host document, not the mark.",
@@ -164,7 +174,7 @@ const MARK_REFS: readonly string[] = [...MARK.matchAll(/url\(#([^)]+)\)/g)]
 const danglingRefs = MARK_REFS.filter((ref) => !MARK_IDS.includes(ref));
 if (danglingRefs.length > 0) {
 	throw new Error(
-		`the mark references ${danglingRefs.map((r) => `#${r}`).join(", ")} but ` +
+		`the mark references ${danglingRefs.map((r) => "#" + r).join(", ")} but ` +
 			"declares no such id, so that element would render as nothing.",
 	);
 }
@@ -175,7 +185,49 @@ if (danglingRefs.length > 0) {
  * `scope` is required rather than generated so the built HTML is deterministic
  * across pages and reviewable in a diff. It must be unique among the calls on
  * any one page; a collision is a duplicate id, which `pnpm run html:validate`
- * fails on over `dist/**` — the gate that would have caught the original bug.
+ * fails on over `dist/**
+ * Remove XML comments and `<style>` blocks in ONE left-to-right pass.
+ *
+ * Not with `.replaceAll()`: its lazy regexes only match spans that are closed,
+ * so an unterminated `<style>` or `<!--` passes through untouched, and a marker
+ * sitting inside an attribute value is matched as if it opened a real span.
+ * CodeQL flags this shape as incomplete multi-character sanitization. The
+ * consequence is not hypothetical for the `<style>` half: a `<style>` that
+ * survives into an inlined SVG styles the whole host document, not the mark.
+ * Consuming each span as it is entered cannot leave a partial marker behind.
+ *
+ * Comments are the only prose that differs between the light and dark files and
+ * none of it is worth repeating on every page; the `<style>` block is the
+ * standalone colour path, which the page's own tokens replace.
+ */
+function stripSpans(source: string): string {
+	const spans: readonly (readonly [string, string])[] = [
+		["<!--", "-->"],
+		["<style", "</style>"],
+	];
+	let out = "";
+	let i = 0;
+	outer: while (i < source.length) {
+		for (const [open, close] of spans) {
+			if (!source.startsWith(open, i)) continue;
+			const end = source.indexOf(close, i + open.length);
+			// Unterminated: consume the rest. Emitting it would be worse — the
+			// half-open span is exactly what must not reach the page.
+			i = end === -1 ? source.length : end + close.length;
+			continue outer;
+		}
+		out += source[i];
+		i += 1;
+	}
+	return out;
+}
+
+/** Squeeze the whitespace between tags that pretty-printing left behind. */
+function collapseWhitespaceBetweenTags(source: string): string {
+	return source.replaceAll(/>\s+</g, "><");
+}
+
+/**` — the gate that would have caught the original bug.
  *
  * @param scope - Call-site name, lowercase and hyphenated, e.g. `"site-title"`.
  * @returns SVG markup for `set:html`.
