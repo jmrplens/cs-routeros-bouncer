@@ -47,7 +47,7 @@ func (c *Client) RunArgsContext(_ context.Context, sentences []string) (*Reply, 
 	// One command at a time, held across the reply. Without tags — pruned with
 	// the async mode — replies carry nothing to match them to requests, so two
 	// concurrent RunArgs on one client could each read the other's reply. The
-	// bouncer serialises at its own layer today; this makes the vendored
+	// bouncer serializes at its own layer today; this makes the vendored
 	// client safe on its own terms rather than by its caller's discipline.
 	// Deliberately not c.mu: Close() takes that one, and it must stay able to
 	// unblock a pending read by closing the connection under it.
