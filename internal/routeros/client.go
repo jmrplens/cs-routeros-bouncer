@@ -50,8 +50,21 @@ func NewClient(cfg config.MikroTikConfig) *Client {
 	}
 }
 
-// defaultDial creates a real RouterOS connection using the go-routeros library.
+// defaultDial creates a real RouterOS connection using the vendored client.
 func defaultDial(cfg config.MikroTikConfig) (RouterConn, error) {
+	conn, err := dialRaw(cfg)
+	if err != nil {
+		return nil, err
+	}
+	// mikrotik.command_timeout was parsed, defaulted and documented since the
+	// beginning — and read by nothing, so a router that accepted the TCP
+	// connection and then stalled held a command forever. Wire it where the
+	// deadline can actually live: on the connection, around each command.
+	conn.SetCommandTimeout(cfg.CommandTimeout)
+	return conn, nil
+}
+
+func dialRaw(cfg config.MikroTikConfig) (*routeros.Client, error) {
 	if cfg.TLS {
 		tlsConfig := &tls.Config{
 			// #nosec G402 -- user-configurable option; RouterOS ships a self-signed cert by default.
