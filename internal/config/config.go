@@ -451,6 +451,14 @@ type MetricsConfig struct {
 	ListenPort           int           `yaml:"listen_port" mapstructure:"listen_port"`
 	RouterOSPollInterval time.Duration `yaml:"routeros_poll_interval" mapstructure:"routeros_poll_interval"`
 	TrackProcessed       bool          `yaml:"track_processed" mapstructure:"track_processed"`
+	// PprofEnabled exposes Go's runtime profiler under /debug/pprof on the
+	// metrics listener. Off by default and deliberately so: that listener
+	// binds 0.0.0.0, heap profiles can carry fragments of anything the process
+	// has held — API keys and router credentials included — and
+	// /debug/pprof/profile blocks a request for its whole sampling window.
+	// Turn it on to investigate, bind the listener to localhost while it is
+	// on, and turn it off again.
+	PprofEnabled bool `yaml:"pprof_enabled" mapstructure:"pprof_enabled"`
 }
 
 // Load reads configuration from a YAML file and environment variables.
@@ -495,6 +503,7 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("metrics.listen_addr", "0.0.0.0")
 	v.SetDefault("metrics.listen_port", 2112)
 	v.SetDefault("metrics.routeros_poll_interval", "30s")
+	v.SetDefault("metrics.pprof_enabled", false)
 	v.SetDefault("metrics.track_processed", true)
 
 	// Environment variable bindings (flat names for Docker compatibility)
@@ -556,6 +565,7 @@ func Load(configPath string) (*Config, error) {
 		"metrics.enabled":                "METRICS_ENABLED",
 		"metrics.listen_addr":            "METRICS_ADDR",
 		"metrics.listen_port":            "METRICS_PORT",
+		"metrics.pprof_enabled":          "METRICS_PPROF_ENABLED",
 		"metrics.routeros_poll_interval": "METRICS_ROUTEROS_POLL_INTERVAL",
 		"metrics.track_processed":        "METRICS_TRACK_PROCESSED",
 	}

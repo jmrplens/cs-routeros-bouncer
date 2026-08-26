@@ -104,6 +104,35 @@ metrics:
   track_processed: true
 ```
 
+### `metrics.pprof_enabled` <Badge text="Avanzado" variant="caution" />
+
+<ConfigOption path="metrics.pprof_enabled" />
+
+Sirve el perfilador de Go bajo `/debug/pprof` en el listener de métricas, para
+investigar dónde gasta CPU o retiene memoria el bouncer:
+
+```sh
+go tool pprof -seconds 30 http://127.0.0.1:2112/debug/pprof/profile
+go tool pprof http://127.0.0.1:2112/debug/pprof/heap
+```
+
+Déjalo apagado salvo que estés perfilando, y pon
+`metrics.listen_addr: "127.0.0.1"` mientras esté activo. Dos razones, ambas
+concretas: un perfil de heap contiene fragmentos de lo que el proceso haya
+tenido en memoria —tu API key de CrowdSec y la contraseña del router entre
+ellos— y `/debug/pprof/profile` mantiene una petición abierta durante toda su
+ventana de muestreo, lo que lo convierte en una palanca de denegación de
+servicio en un listener expuesto.
+
+El bouncer registra un aviso en cada arranque mientras esto está activo, de
+modo que un ajuste olvidado se ve en lugar de pasar callado.
+
+```yaml
+metrics:
+  pprof_enabled: false
+  listen_addr: "127.0.0.1"
+```
+
 ### Métricas disponibles
 
 <LinkCard
