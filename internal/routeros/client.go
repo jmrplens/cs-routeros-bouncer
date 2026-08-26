@@ -9,11 +9,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-routeros/routeros/v3"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
 	"github.com/jmrplens/cs-routeros-bouncer/internal/config"
+	routeros "github.com/jmrplens/cs-routeros-bouncer/internal/rosapi"
 )
 
 // Client wraps the RouterOS API connection with reconnection logic.

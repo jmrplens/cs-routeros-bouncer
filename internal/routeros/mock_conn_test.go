@@ -8,10 +8,9 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/go-routeros/routeros/v3"
-	"github.com/go-routeros/routeros/v3/proto"
-
 	"github.com/jmrplens/cs-routeros-bouncer/internal/config"
+	routeros "github.com/jmrplens/cs-routeros-bouncer/internal/rosapi"
+	"github.com/jmrplens/cs-routeros-bouncer/internal/rosapi/proto"
 )
 
 // mockConn implements RouterConn for testing.
