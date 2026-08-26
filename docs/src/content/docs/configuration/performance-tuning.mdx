@@ -35,13 +35,11 @@ Check or raise the RouterOS limit:
 
 During reconciliation, additions use temporary RouterOS scripts instead of one API call per IP. Each script carries up to 100 addresses.
 
-That chunk size is not about message size — the RouterOS API takes words far larger than these scripts, and a chunk of 1,000 entries transfers without complaint. It is the trade between amortizing the four round trips each chunk costs (find, add, run, remove) and how long a single non-interruptible script run holds the router. Sweeping it against an RB5009 gives:
+That chunk size is not about message size — the RouterOS API takes words far larger than these scripts, and a chunk of 1,000 entries transfers without complaint. It is the trade between amortizing the four round trips each chunk costs (find, add, run, remove) and how long a single non-interruptible script run holds the router.
 
-```text
-wall = entries × 1.30 ms  +  chunks × 1.0 ms
-```
+Sweeping it against an RB5009 — five interleaved rounds of 4,000 entries at 50/100/250/500/1000 — the medians land between 4.36 s and 5.78 s across that whole 20× range. The useful result is that the sweep cannot resolve a winner: within one chunk size the interquartile range reaches 2.55 s, larger than the 1.43 s that separates the best size from the worst, and which size looks best depends on which estimator you use (median and minimum pick 1,000; the mean picks 100).
 
-The per-entry term dominates so heavily that the knob barely exists: importing 22,000 entries spends 28.6 s inserting rows against 0.23 s of chunk scaffolding at 100, or 0.02 s at 1,000. There is no reason to change it.
+What is stable is the shape: inserting a row costs ~1.2–1.3 ms and dominates everything else, so a 22,000-entry import spends roughly 27 s inserting against somewhere between 0.2 s and 2.3 s of chunk scaffolding. There is no reason to change this value, and no measurement here that would tell you what to change it to.
 
 If a bulk script fails, the bouncer logs a warning and falls back to individual adds for that chunk. Duplicate entries are skipped or refreshed without reconnecting the API session.
 

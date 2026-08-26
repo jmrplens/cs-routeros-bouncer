@@ -35,13 +35,11 @@ Comprueba o aumenta el límite de RouterOS:
 
 Durante la reconciliación, las adiciones usan scripts temporales de RouterOS en lugar de una llamada a la API por cada IP. Cada script lleva hasta 100 direcciones.
 
-Ese tamaño de bloque no tiene que ver con el tamaño del mensaje — la API de RouterOS admite palabras mucho mayores que estos scripts, y un bloque de 1.000 entradas se transfiere sin protestar. Es el compromiso entre amortizar los cuatro viajes de ida y vuelta que cuesta cada bloque (buscar, añadir, ejecutar, eliminar) y cuánto tiempo retiene al router una única ejecución de script no interrumpible. Barriéndolo contra un RB5009 sale:
+Ese tamaño de bloque no tiene que ver con el tamaño del mensaje — la API de RouterOS admite palabras mucho mayores que estos scripts, y un bloque de 1.000 entradas se transfiere sin protestar. Es el compromiso entre amortizar los cuatro viajes de ida y vuelta que cuesta cada bloque (buscar, añadir, ejecutar, eliminar) y cuánto tiempo retiene al router una única ejecución de script no interrumpible.
 
-```text
-tiempo = entradas × 1,30 ms  +  bloques × 1,0 ms
-```
+Barriéndolo contra un RB5009 — cinco rondas intercaladas de 4.000 entradas con 50/100/250/500/1000 — las medianas caen entre 4,36 s y 5,78 s en todo ese rango de 20×. El resultado útil es que el barrido no puede resolver un ganador: dentro de un mismo tamaño el rango intercuartílico llega a 2,55 s, mayor que los 1,43 s que separan al mejor tamaño del peor, y qué tamaño parece mejor depende del estimador que uses (mediana y mínimo eligen 1.000; la media elige 100).
 
-El término por entrada domina tanto que el mando apenas existe: importar 22.000 entradas gasta 28,6 s insertando filas frente a 0,23 s de andamiaje de bloques con 100, o 0,02 s con 1.000. No hay motivo para cambiarlo.
+Lo que sí es estable es la forma: insertar una fila cuesta ~1,2–1,3 ms y domina todo lo demás, así que importar 22.000 entradas gasta unos 27 s insertando frente a entre 0,2 s y 2,3 s de andamiaje de bloques. No hay motivo para cambiar este valor, ni ninguna medición aquí que te diga a qué cambiarlo.
 
 Si un script masivo falla, el bouncer registra un aviso y recurre a adiciones individuales para ese bloque. Las entradas duplicadas se omiten o se refrescan sin reconectar la sesión de la API.
 

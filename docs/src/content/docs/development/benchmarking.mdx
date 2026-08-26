@@ -136,7 +136,21 @@ chunk 500   5.395s
 chunk 1000  6.194s
 ```
 
-No cost model produces that shape. Re-run as three interleaved rounds reporting the best time per size, it flattens to 4.5–6.1 s across the whole 20× range — which is the real finding: the chunk size barely matters, because the per-entry insertion cost dominates the per-chunk scaffolding by more than a hundred to one.
+No cost model produces that shape.
+
+**Report a spread, not a single number.** The obvious repair — interleave the sizes across rounds and take the best time each — is still wrong, just less obviously. A minimum is a defensible estimator when noise is one-sided, but it throws away exactly the information that decides whether the comparison means anything. Re-run keeping every sample, the same sweep says:
+
+| chunk | median |   mean |    IQR |
+| ----: | -----: | -----: | -----: |
+|    50 | 5.78 s | 6.86 s | 1.76 s |
+|   100 | 5.06 s | 5.31 s | 0.22 s |
+|   250 | 5.31 s | 6.39 s | 2.47 s |
+|   500 | 5.50 s | 5.77 s | 0.84 s |
+|  1000 | 4.36 s | 5.75 s | 2.55 s |
+
+The spread within a single chunk size reaches 2.55 s, while the gap between the best and worst size is 1.43 s. The noise on one arm is larger than the difference between arms, so the sweep resolves nothing — and sure enough, which size "wins" depends on the estimator: median and minimum pick 1,000, the mean picks 100. Reporting only the best of three rounds would have hidden all of that behind a clean-looking table.
+
+The conclusion survived, because it never rested on the ranking: inserting a row dominates, so no chunk size in this range moves the import measurably. But the first write-up of it stated a two-term cost model to two significant figures that the data does not support.
 
 A useful reflex: before believing a result, ask what else changed between the two measurements. Usually it is time.
 

@@ -90,18 +90,25 @@ Medido en un MikroTik RB5009UG+S+ (ARM64, 4 núcleos @ 1400 MHz, 1 GB de RAM, Ro
 | Reconciliación en frío (tiempo total) | ~58 s                                                                |
 | Trabajo de adición masiva en RouterOS | ~35–36 s                                                             |
 | Pico de CPU observado en el router    | ~39% durante grandes ráfagas de adición/eliminación                  |
-| Comprobación periódica sin deriva     | ~1,9 s, sin escrituras de adición/eliminación                        |
+| Comprobación periódica sin deriva     | ~3–4 s, sin escrituras de adición/eliminación                        |
 | Eliminación masiva CAPI → solo local  | ~26.800 eliminaciones en ~77 s de trabajo de eliminación en RouterOS |
 
-La cifra que se ha movido es la de la comprobación sin deriva: era de ~3–4 s
-cuando se midió esta tabla, y dos cambios posteriores explican la diferencia —
-la pasada de reconciliación dejó de pedir dos propiedades de la address-list que
-no lee nadie (−11,2%), y un desbaneo individual dejó de recorrer la lista para
-redescubrir un id que ya tenía. El valor actual sale del propio histograma
-`operation_duration_seconds` del bouncer en un RB5009 de producción (RouterOS
-7.24.1, 22.332 entradas IPv4 más ~525 IPv6, intervalo de 60 s): **1,86 s a lo
-largo de 28 ciclos consecutivos**, un ciclo de trabajo del 3,1% frente al tiempo
-real. De eso, los dos listados de address-list son el 98,5%.
+### Coste en régimen con el código actual
+
+La fila de comprobación sin deriva de arriba pertenece a la versión y a la lista
+con la que se midió. Dos cambios posteriores la movieron: la pasada de
+reconciliación dejó de pedir dos propiedades de la address-list que no lee nadie
+(−11,2%), y un desbaneo individual dejó de recorrer la lista para redescubrir un
+id que ya tenía. Vuelta a medir en el mismo equipo con RouterOS 7.24.1,
+guardando 22.857 entradas (22.332 IPv4 más ~525 IPv6) con intervalo de 60 s, y
+tomada del propio histograma `operation_duration_seconds` del bouncer en lugar
+de con un cronómetro:
+
+| Métrica                                | 22.857 entradas, RouterOS 7.24.1        |
+| -------------------------------------- | --------------------------------------- |
+| Comprobación periódica sin deriva      | 1,86 s a lo largo de 28 ciclos seguidos |
+| Ciclo de trabajo con intervalo de 60 s | 3,1% del tiempo real                    |
+| Parte gastada en las dos lecturas      | 98,5%                                   |
 
 Qué implica esto para el ajuste: el coste lo domina la lectura de la lista, así
 que escala con cuántas entradas guarda el router, no con cuánta deriva haya que

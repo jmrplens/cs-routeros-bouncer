@@ -139,7 +139,21 @@ bloque 500   5,395s
 bloque 1000  6,194s
 ```
 
-Ningún modelo de coste produce esa forma. Repetido como tres rondas intercaladas reportando el mejor tiempo por tamaño, se aplana a 4,5–6,1 s en todo el rango de 20× — que es el hallazgo real: el tamaño de bloque apenas importa, porque el coste de inserción por entrada domina al andamiaje por bloque en más de cien a uno.
+Ningún modelo de coste produce esa forma.
+
+**Reporta una dispersión, no un solo número.** El arreglo evidente — intercalar los tamaños entre rondas y quedarse con el mejor tiempo de cada uno — sigue siendo incorrecto, solo que de forma menos evidente. El mínimo es un estimador defendible cuando el ruido es unilateral, pero tira justo la información que decide si la comparación significa algo. Repetido guardando todas las muestras, el mismo barrido dice:
+
+| bloque | mediana |  media |    IQR |
+| -----: | ------: | -----: | -----: |
+|     50 |  5,78 s | 6,86 s | 1,76 s |
+|    100 |  5,06 s | 5,31 s | 0,22 s |
+|    250 |  5,31 s | 6,39 s | 2,47 s |
+|    500 |  5,50 s | 5,77 s | 0,84 s |
+|   1000 |  4,36 s | 5,75 s | 2,55 s |
+
+La dispersión dentro de un mismo tamaño llega a 2,55 s, mientras que la distancia entre el mejor y el peor tamaño es de 1,43 s. El ruido de una variante es mayor que la diferencia entre variantes, así que el barrido no resuelve nada — y, en efecto, qué tamaño "gana" depende del estimador: mediana y mínimo eligen 1.000, la media elige 100. Reportar solo el mejor de tres rondas habría escondido todo eso tras una tabla de aspecto impecable.
+
+La conclusión sobrevivió, porque nunca dependió del ranking: insertar una fila domina, así que ningún tamaño de bloque en este rango mueve el import de forma medible. Pero la primera redacción enunciaba un modelo de coste de dos términos con dos cifras significativas que los datos no sostienen.
 
 Un reflejo útil: antes de creerte un resultado, pregunta qué más cambió entre las dos mediciones. Casi siempre es el tiempo.
 
