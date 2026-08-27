@@ -16,7 +16,7 @@ A [CrowdSec](https://www.crowdsec.net/) remediation component (bouncer) for [Mik
 
 **📖 [Full documentation](https://jmrp.io/docs/cs-routeros-bouncer/)** — available in English and Spanish.
 
-This README covers installation and the settings most deployments need. The documentation site carries the rest, and carries it more reliably: its [configuration reference](https://jmrp.io/docs/cs-routeros-bouncer/configuration/) is **generated from `internal/config/config.go`**, and its [firewall rule listing](https://jmrp.io/docs/cs-routeros-bouncer/architecture/firewall-rules/) is generated from `internal/manager`, both gated in CI so they cannot drift from the binary. A hand-written copy here could, and has.
+This README covers installation and the settings most deployments need. The documentation site carries the rest, and carries it more reliably: its [configuration reference](https://jmrp.io/docs/cs-routeros-bouncer/configuration/) is **generated from `internal/config/config.go`** and regenerated in CI, which fails on any diff. The [firewall rule listing](https://jmrp.io/docs/cs-routeros-bouncer/architecture/firewall-rules/) is not generated but is single-sourced: one module, read field by field out of `internal/manager`, rendered on every page that shows the rules — so the three copies that used to disagree are now one. A hand-written copy here would be a fourth, and the last one drifted.
 
 | If you want to | Go to |
 | --- | --- |
@@ -318,12 +318,14 @@ Set `metrics.enabled: true` and the bouncer serves two endpoints on `metrics.lis
 
 ```bash
 curl http://localhost:2112/health
-# {"routeros_connected":true,"status":"ok","version":"1.5.0"}
+# {"routeros_connected":true,"status":"ok","version":"X.Y.Z"}
 
 curl http://localhost:2112/metrics
 ```
 
 Metrics cover decisions processed, active decisions by origin, operation latencies, RouterOS connection state and router CPU/memory, plus CrowdSec LAPI usage metrics (including traffic dropped by the bouncer's own rules, which is what makes it show up in `cscli metrics`).
+
+Neither endpoint is authenticated, and `metrics.listen_addr` defaults to `0.0.0.0` — so enabling metrics exposes them on every interface the host has. Bind them to `127.0.0.1`, or firewall the port, unless the scrape genuinely comes from elsewhere. The same applies with more force to `metrics.pprof_enabled`: a heap profile carries fragments of whatever the process has held, including the CrowdSec API key and the RouterOS password.
 
 The full metric list, a ready-made Grafana dashboard and alerting examples are in [Monitoring](https://jmrp.io/docs/cs-routeros-bouncer/monitoring/prometheus/).
 

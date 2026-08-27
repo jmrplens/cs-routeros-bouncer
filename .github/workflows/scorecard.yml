@@ -11,6 +11,13 @@
 # `publish_results: true` is what makes the badge resolve; without it the
 # shields endpoint answers "invalid repo path". It publishes only an analysis
 # of public repository metadata.
+#
+# The actions here are pinned to commit SHAs while the rest of this repository
+# pins to release tags. The inconsistency is deliberate: this is the one
+# workflow holding `id-token: write`, so a tag repointed under it could mint an
+# OIDC token in this repository's name. Elsewhere a moved tag costs a bad build.
+# Scorecard's own Pinned-Dependencies check will report the rest of the tree —
+# which is the sort of thing it is here to surface.
 name: Scorecard
 
 on:
@@ -35,25 +42,25 @@ jobs:
       actions: read
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
 
       - name: Run analysis
-        uses: ossf/scorecard-action@v2.4.4
+        uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.4
         with:
           results_file: results.sarif
           results_format: sarif
           publish_results: true
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: SARIF file
           path: results.sarif
           retention-days: 5
 
       - name: Upload to code-scanning
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@486fec2a3ea2626afcd8c7e9208b4f515078dd7e # codeql-bundle-v2.26.4
         with:
           sarif_file: results.sarif
