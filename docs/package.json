@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "astro dev",
     "start": "astro dev",
-    "analyze": "pnpm run config:check && pnpm run brand:check && pnpm run i18n:check && pnpm run contrast:check && pnpm run check && pnpm run lint && pnpm run format:check && pnpm run build && pnpm run html:validate && pnpm run cards:check",
+    "analyze": "pnpm run config:check && pnpm run identity:check && pnpm run brand:check && pnpm run i18n:check && pnpm run contrast:check && pnpm run check && pnpm run lint && pnpm run format:check && pnpm run build && pnpm run html:validate && pnpm run cards:check",
     "brand:rasters": "node scripts/render-brand-rasters.mjs",
     "brand:check": "node scripts/render-brand-rasters.mjs --check",
     "config:extract": "node scripts/extract-config-schema.mjs",
@@ -21,6 +21,7 @@
     "format:check": "prettier --check .",
     "html:validate": "test -n \"$(find dist -name '*.html' -print -quit 2>/dev/null)\" || { echo 'No HTML files found in docs/dist. Run pnpm build first.' >&2; exit 1; }; html-validate --max-warnings 0 \"dist/**/*.html\"",
     "check": "astro check",
+    "identity:check": "node scripts/sync-identity.mjs --check",
     "identity:sync": "node scripts/sync-identity.mjs",
     "build": "astro build",
     "preview": "astro preview",
