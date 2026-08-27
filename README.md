@@ -6,7 +6,6 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/jmrplens/cs-routeros-bouncer.svg)](https://pkg.go.dev/github.com/jmrplens/cs-routeros-bouncer)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=jmrplens_cs-routeros-bouncer&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=jmrplens_cs-routeros-bouncer)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=jmrplens_cs-routeros-bouncer&metric=coverage)](https://sonarcloud.io/summary/new_code?id=jmrplens_cs-routeros-bouncer)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/jmrplens/cs-routeros-bouncer/badge)](https://scorecard.dev/viewer/?uri=github.com/jmrplens/cs-routeros-bouncer)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/jmrplens/cs-routeros-bouncer)](https://go.dev/)
 
