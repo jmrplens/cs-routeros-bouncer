@@ -1,5 +1,6 @@
 # cs-routeros-bouncer
 
+[![CrowdSec Hub](https://img.shields.io/badge/CrowdSec-Hub-4d4a98)](https://app.crowdsec.net/hub/author/jmrplens/remediation-components/cs-routeros-bouncer)
 [![CI](https://github.com/jmrplens/cs-routeros-bouncer/actions/workflows/ci.yml/badge.svg)](https://github.com/jmrplens/cs-routeros-bouncer/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/jmrplens/cs-routeros-bouncer)](https://github.com/jmrplens/cs-routeros-bouncer/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/jmrplens/cs-routeros-bouncer/total)](https://github.com/jmrplens/cs-routeros-bouncer/releases)
@@ -9,7 +10,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/jmrplens/cs-routeros-bouncer)](https://go.dev/)
 
-A [CrowdSec](https://www.crowdsec.net/) remediation component (bouncer) for [MikroTik RouterOS](https://mikrotik.com/software) that automatically manages firewall rules and address lists via the RouterOS API.
+A [CrowdSec](https://www.crowdsec.net/) remediation component (bouncer) for [MikroTik RouterOS](https://mikrotik.com/software) that automatically manages firewall rules and address lists via the RouterOS API. Listed on the [CrowdSec Hub](https://app.crowdsec.net/hub/author/jmrplens/remediation-components/cs-routeros-bouncer).
 
 ## Documentation
 
