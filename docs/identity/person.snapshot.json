@@ -36,6 +36,7 @@
   "email": "mail@jmrp.io",
   "url": "https://jmrp.io/",
   "mainEntityOfPage": "https://jmrp.io/about/",
+  "publishingPrinciples": "https://jmrp.io/about/#editorial",
   "image": {
     "@type": "ImageObject",
     "url": "https://jmrp.io/identity/avatar.png",
@@ -235,6 +236,9 @@
       "@id": "https://github.com/jmrplens/TFG-TFM_EPS#software"
     },
     {
+      "@id": "https://github.com/jmrplens/portainer-mcp#software"
+    },
+    {
       "@id": "https://github.com/jmrplens/A-Lab#software"
     },
     {
@@ -248,6 +252,24 @@
     },
     {
       "@id": "https://github.com/jmrplens/FDTDexamples#software"
+    },
+    {
+      "@id": "https://github.com/jmrplens/CATT2Matlab#software"
+    },
+    {
+      "@id": "https://github.com/jmrplens/FFT2octave#software"
+    },
+    {
+      "@id": "https://github.com/jmrplens/getANSIfrequencies#software"
+    },
+    {
+      "@id": "https://github.com/jmrplens/dBFA2Matlab#software"
+    },
+    {
+      "@id": "https://github.com/jmrplens/MATLAB_Instruments#software"
+    },
+    {
+      "@id": "https://github.com/jmrplens/picoScopeMATLAB#software"
     },
     {
       "@id": "https://mcp.jmrp.io/gitlab#api"
@@ -278,6 +300,7 @@
     "https://codeberg.org/jmrplens",
     "https://gitlab.com/jmrp",
     "https://pypi.org/user/jmrplens/",
-    "https://hub.docker.com/u/jmrplens"
+    "https://hub.docker.com/u/jmrplens",
+    "https://tangled.org/jmrp.io"
   ]
 }
