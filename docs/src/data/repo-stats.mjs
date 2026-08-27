@@ -117,6 +117,10 @@ const GORELEASER = ".goreleaser.yaml";
 // never parses Go, so the defaults are taken from here rather than re-parsing
 // `v.SetDefault(...)` a second time.
 const CONFIG_SCHEMA = "docs/src/data/config-schema.json";
+// The page that documents measured operation costs, each stated with the
+// hardware and list size it was taken on. Measurements belong here rather than
+// in the README, which states no conditions and which nothing gates.
+const BENCHMARKING = "docs/src/content/docs/development/benchmarking.mdx";
 
 // ---------------------------------------------------------------------------
 // Minimal YAML helpers
@@ -303,22 +307,29 @@ export const routerosGeneration = matchOrThrow(
 )[1];
 
 /**
- * Median latency of an individual ban write to the RouterOS API, as measured in
- * the README's benchmark table.
+ * Median latency of an individual ban write to the RouterOS API.
  *
- * Source: the "Ban (add IP)" row of the "Measured operation latency" table in
- * `README.md`. `label` is the table's own rendering (en dash, tilde); `min`,
- * `max` and `unit` are there so prose can phrase it differently — "about 1-3
- * ms" in a sentence, "~1–3 ms/op" in a card title — without either copy being
- * typed by hand.
+ * Source: the "Cache-first optimistic add" row of the real-world results table
+ * in `development/benchmarking.mdx`. `label` is the table's own rendering (en
+ * dash, tilde); `min`, `max` and `unit` are there so prose can phrase it
+ * differently — "about 1-3 ms" in a sentence, "~1–3 ms/op" in a card title —
+ * without either copy being typed by hand.
+ *
+ * This used to parse the README's benchmark table. That table was removed:
+ * every figure in it was stated without the hardware or list size it came from,
+ * and two of them were wrong — an unban was credited with a ~2 ms API call when
+ * it measured 1,155 ms against 22,000 entries before the id cache landed, and
+ * the rule count was four when a stock configuration writes eight. A number the
+ * documentation site renders should be read from the page that states its
+ * conditions and that CI builds, not from prose nothing checks.
  * @type {{ min: number, max: number, unit: string, approximate: boolean, label: string }}
  */
 export const banLatency = (() => {
 	const row = matchOrThrow(
-		readme,
-		/^\|[ \t]*Ban \(add IP\)[ \t]*\|[ \t]*\*\*(~)?(\d+)[–-](\d+)[ \t]*(ms|s)\*\*/m,
-		README,
-		"the `Ban (add IP)` benchmark row",
+		readSource(BENCHMARKING),
+		/^\|[ \t]*Cache-first optimistic add[^|]*\|[ \t]*(~)?(\d+)[–-](\d+)[ \t]*(ms|s) per operation/m,
+		BENCHMARKING,
+		"the `Cache-first optimistic add` benchmark row",
 	);
 	const [, approx, min, max, unit] = row;
 	return {
