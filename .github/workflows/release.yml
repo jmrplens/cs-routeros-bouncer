@@ -24,7 +24,7 @@ jobs:
           go-version-file: go.mod
 
       - id: syft
-        uses: anchore/sbom-action/download-syft@v0.24.0
+        uses: anchore/sbom-action/download-syft@v0.24.2
 
       - name: Add Syft to PATH
         run: dirname "${SYFT_CMD}" >> "$GITHUB_PATH"
