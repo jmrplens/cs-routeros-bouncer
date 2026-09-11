@@ -10,6 +10,12 @@ on:
       - "docs/pnpm-lock.yaml"
       - "docs/public/**"
       - "docs/src/**"
+      # The #person snapshot that jmrplens/jmrp.io propagates on every change
+      # to the canonical identity; the site splices it into its @graph, so a
+      # commit here must rebuild. Absent from this list, four syncs between
+      # 2026-08-29 and 2026-09-10 landed without a build and the site served
+      # a #person with 14 of 24 sameAs for two weeks.
+      - "docs/identity/**"
       - "docs/tsconfig.json"
   workflow_dispatch:
 
