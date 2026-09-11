@@ -99,8 +99,9 @@ device is never a flat line.
 ### Method note
 
 The 100 ms series comes from a sampler container running on the router itself,
-reading the shared kernel's `/proc/stat` and `/proc/meminfo` at 10 Hz and
-pushing batches straight to Loki — RouterOS's own `cpu-load` updates only once
+reading the shared kernel's `/proc/stat` at 10 Hz — and `/proc/meminfo` once
+per second, since memory does not move at 100 ms on this workload — and
+pushing batches straight to Loki. RouterOS's own `cpu-load` updates only once
 per second, so scripts cannot see below that. The capture protocol: stop the
 bouncer, delete both address lists, let the router settle, then start the
 bouncer and record through the first reconciliation into steady state.
@@ -115,10 +116,32 @@ go run ./cmd/perfmon install -router admin@192.168.88.1 -port 22 \
 
 It cross-builds the sampler, packs the container image without needing Docker,
 creates the veth, NAT and firewall-list memberships idempotently, starts the
-container and verifies that samples reach Loki. `uninstall` removes exactly
-what it created; `capture` pulls any window as CSV; `plot` redraws the chart
-above from the committed dataset. Run any verb with `-h` for the full flag
-list.
+container and verifies that samples reach Loki. `capture` pulls any window as
+CSV; `plot` redraws the chart above from the committed dataset. Run any verb
+with `-h` for the full flag list.
+
+`uninstall` removes exactly what `install` created and nothing else: every
+object is selected by the exact comment tag `install` wrote, never by a
+pattern — the address-list table it touches is the one the bouncer keeps its
+blocking state in, so a substring match there was never acceptable — plus the
+uploaded image file. It then re-runs its own ownership checks and fails,
+naming the step, if anything remains. A hand-made setup that happens to share
+the container name is left alone on both sides: `install` sees the effect and
+skips it, `uninstall` does not own it and ignores it.
+
+Two things about the deployment are deliberate and worth knowing before you
+rely on it. The container's root lives on the router's tmpfs by default and it
+is registered with `start-on-boot=no`, so it does **not** survive a reboot —
+an instrument should leave no trace on a device it was only borrowing;
+`install` is idempotent and fast to rerun. And the installer makes two
+firewall-list memberships because the default RouterOS firewall silently
+eats container traffic without them: the raw rule `drop the rest
+(in-interface-list=!LAN)` drops every packet from a veth that is not in the
+`LAN` interface list, and `drop local if not from default IP range` matches a
+source outside the `LANs` address list. The symptom is that ICMP to the
+container works while its outbound TCP produces no conntrack entry and no
+masquerade counter; the sniffer shows nothing. Both memberships are created
+and removed with the rest.
 
 ## Measuring against a live router
 

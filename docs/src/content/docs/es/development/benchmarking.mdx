@@ -101,8 +101,9 @@ plana.
 ### Nota sobre el método
 
 La serie de 100 ms procede de un contenedor muestreador que corre en el propio
-router, leyendo `/proc/stat` y `/proc/meminfo` del kernel compartido a 10 Hz y
-empujando lotes directamente a Loki — el `cpu-load` propio de RouterOS se
+router, leyendo `/proc/stat` del kernel compartido a 10 Hz — y `/proc/meminfo`
+una vez por segundo, porque la memoria no se mueve a 100 ms en esta carga — y
+empujando lotes directamente a Loki. El `cpu-load` propio de RouterOS se
 actualiza solo una vez por segundo, así que los scripts no pueden ver por
 debajo de eso. El protocolo de captura: parar el bouncer, borrar ambas listas
 de direcciones, dejar asentar el router, y arrancar el bouncer grabando a
@@ -119,9 +120,33 @@ go run ./cmd/perfmon install -router admin@192.168.88.1 -port 22 \
 Compila el muestreador en cruzado, empaqueta la imagen del contenedor sin
 necesitar Docker, crea el veth, el NAT y las pertenencias a listas del firewall
 de forma idempotente, arranca el contenedor y verifica que las muestras llegan
-a Loki. `uninstall` elimina exactamente lo que creó; `capture` extrae cualquier
-ventana como CSV; `plot` redibuja la gráfica de arriba desde el dataset
-versionado. Cualquier verbo con `-h` muestra la lista completa de flags.
+a Loki. `capture` extrae cualquier ventana como CSV; `plot` redibuja la gráfica
+de arriba desde el dataset versionado. Cualquier verbo con `-h` muestra la
+lista completa de flags.
+
+`uninstall` elimina exactamente lo que `install` creó y nada más: cada objeto
+se selecciona por el comentario exacto que `install` escribió, nunca por un
+patrón — la tabla de address-lists que toca es la misma en la que el bouncer
+guarda su estado de bloqueo, así que una coincidencia por subcadena ahí nunca
+fue aceptable — más el fichero de imagen subido. Después vuelve a ejecutar sus
+propias comprobaciones de propiedad y falla, nombrando el paso, si queda algo.
+Un montaje hecho a mano que comparta el nombre del contenedor queda intacto
+por ambos lados: `install` ve el efecto y lo salta, `uninstall` no lo posee y
+lo ignora.
+
+Dos cosas del despliegue son deliberadas y conviene saberlas antes de
+confiar en él. La raíz del contenedor vive en la tmpfs del router por defecto
+y se registra con `start-on-boot=no`, así que **no** sobrevive a un reinicio —
+un instrumento no debe dejar rastro en un dispositivo que solo tomaba
+prestado; `install` es idempotente y rápido de repetir. Y el instalador crea
+dos pertenencias a listas del firewall porque el firewall por defecto de
+RouterOS se come el tráfico del contenedor en silencio sin ellas: la regla raw
+`drop the rest (in-interface-list=!LAN)` descarta cada paquete de un veth que
+no esté en la lista de interfaces `LAN`, y `drop local if not from default IP
+range` coincide con un origen fuera de la address-list `LANs`. El síntoma es
+que el ICMP al contenedor funciona mientras su TCP saliente no genera entrada
+de conntrack ni contador de masquerade; el sniffer no muestra nada. Ambas
+pertenencias se crean y se eliminan con el resto.
 
 ## Medir contra un router en producción
 

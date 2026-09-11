@@ -164,19 +164,24 @@ func TestCaptureSurfacesHTTPErrors(t *testing.T) {
 }
 
 // TestUninstallRunsRemovalsInReverse pins that uninstall touches every step's
-// removal and keeps going past failures.
+// removal, newest first, and keeps going past failures.
 func TestUninstallRunsRemovalsInReverse(t *testing.T) {
 	o, _, err := parseOptions([]string{"-router", "u@h"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	f := &fakeRunner{present: map[string]bool{}}
-	uninstall(f, o)
+	if uninstallErr := uninstall(f, o); uninstallErr != nil {
+		t.Fatal(uninstallErr)
+	}
 	if len(f.ran) != len(steps(o)) {
 		t.Fatalf("uninstall ran %d commands, want %d", len(f.ran), len(steps(o)))
 	}
 	if !strings.Contains(f.ran[0], "/container/stop") {
 		t.Fatalf("first removal should stop the container, got %q", f.ran[0])
+	}
+	if !strings.Contains(f.ran[len(f.ran)-1], "/interface/veth/remove") {
+		t.Fatalf("last removal should drop the veth, got %q", f.ran[len(f.ran)-1])
 	}
 }
 

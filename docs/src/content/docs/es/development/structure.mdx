@@ -95,7 +95,7 @@ Benchmark de operaciones sueltas de RouterOS, descrito en [Benchmarking](/cs-rou
 Instrumentación en el propio router, también cubierta en [Benchmarking](/cs-routeros-bouncer/es/development/benchmarking/):
 
 - Compila de forma cruzada un muestreador de `/proc/stat` a 10 Hz y lo empaqueta como imagen de contenedor sin necesitar Docker
-- Lo instala en un dispositivo RouterOS de forma idempotente (veth, NAT, pertenencia a listas de firewall) y desinstala exactamente lo que creó
+- Lo instala en un dispositivo RouterOS de forma idempotente (veth, NAT, pertenencia a listas de firewall), desinstala exactamente lo que creó — seleccionado por comentario exacto, más la imagen subida — y verifica la desinstalación
 - Descarga ventanas de captura desde Loki en CSV y dibuja la gráfica del ciclo de vida
 
 ### `internal/config`

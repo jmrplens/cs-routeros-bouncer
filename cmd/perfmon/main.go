@@ -2,11 +2,11 @@
 // monitor used for the performance numbers in the documentation.
 //
 // The monitor is a 6 MiB scratch container running ON the RouterOS device,
-// sampling the shared kernel's /proc/stat and /proc/meminfo at 10 Hz and
-// pushing one batched line per second straight to Loki. RouterOS's own
-// cpu-load metric updates once per second; this is the only way to see below
-// that. Per-process attribution is not possible from the container (own PID
-// namespace).
+// sampling the shared kernel's /proc/stat at 10 Hz — and /proc/meminfo once
+// per batch, so memory is a 1 Hz series — and pushing one batched line per
+// second straight to Loki. RouterOS's own cpu-load metric updates once per
+// second; this is the only way to see below that. Per-process attribution is
+// not possible from the container (own PID namespace).
 //
 // Usage:
 //
@@ -18,10 +18,12 @@
 //
 // Requirements: ssh and scp on PATH with key access to the router, the
 // container package enabled on the device, and a Loki instance the router can
-// reach. Everything install creates is tagged with the container name in its
-// comment; uninstall removes exactly that set. The container's root lives on
-// the router's tmpfs, so it does NOT survive a reboot — rerun install (it is
-// idempotent and fast) after one.
+// reach. Everything install creates carries one exact comment tag; uninstall
+// removes exactly that set — matched by the tag, never by pattern — plus the
+// uploaded image file, then re-runs its ownership checks and fails if anything
+// remains. The container's root lives on the router's tmpfs by default and it
+// is registered with start-on-boot=no, so it does NOT survive a reboot —
+// rerun install (it is idempotent and fast) after one.
 package main
 
 import (
@@ -29,9 +31,13 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 )
+
+// validName bounds the -name flag; see parseOptions.
+var validName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,31}$`)
 
 type options struct {
 	router     string // user@host for ssh
@@ -67,7 +73,7 @@ func parseOptions(args []string) (options, *flag.FlagSet, error) {
 	fs.StringVar(&o.router, "router", "", "ssh target for the router, user@host (required)")
 	fs.StringVar(&o.port, "port", "22", "ssh port on the router")
 	fs.StringVar(&o.key, "key", "", "ssh identity file (default: ssh agent / config)")
-	fs.StringVar(&o.name, "name", "cpuhr01", "container name; tags every object created")
+	fs.StringVar(&o.name, "name", "cpuhr01", "container name; tags every object created (letters, digits, - _ .)")
 	fs.StringVar(&o.veth, "veth", "veth-cpuhr", "veth interface name on the router")
 	fs.StringVar(&o.subnet, "subnet", "172.30.9.0/30", "point-to-point /30 for the container") // NOSONAR S1313 -- a documented default the operator overrides
 	fs.StringVar(&o.ifaceList, "iface-list", "LAN", "interface list the veth must join (raw drop-the-rest trap)")
@@ -85,6 +91,14 @@ func parseOptions(args []string) (options, *flag.FlagSet, error) {
 	fs.StringVar(&o.title, "title", "First reconciliation on an RB5009 — 22,000 entries, sampled at 100 ms", "plot: chart title")
 	if err := fs.Parse(args); err != nil {
 		return o, fs, err
+	}
+
+	// The name is interpolated verbatim into every RouterOS command: the
+	// comment tag, the envlist name, the image file name and the root-dir
+	// path. Keep it to characters that cannot close a quote or start an
+	// expression, so no value can widen what a remove matches.
+	if !validName.MatchString(o.name) {
+		return o, fs, fmt.Errorf("-name must match %s, got %q", validName, o.name)
 	}
 
 	// Derive the two host addresses of the /30: .1 router side, .2 container.
@@ -149,8 +163,7 @@ func dispatch(verb string, o options, fs *flag.FlagSet) error {
 		time.Sleep(15 * time.Second)
 		return verify(o)
 	case "uninstall":
-		uninstall(r, o)
-		return nil
+		return uninstall(r, o)
 	case "verify":
 		return verify(o)
 	case "capture":
