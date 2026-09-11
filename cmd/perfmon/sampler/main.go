@@ -1,11 +1,14 @@
-// Command sampler reads the router's real per-core CPU and memory at 10 Hz and
-// pushes one line per second to Loki. It runs as a container ON the RouterOS
-// device: the kernel is shared, so /proc/stat exposes the true per-core
-// jiffies — the only sub-second source the system has, since RouterOS's own
-// cpu-load updates once per second. /proc/meminfo is global too. Per-process
-// data is NOT available: the container has its own PID namespace.
+// Command sampler reads the router's real per-core CPU at 10 Hz, and its
+// memory once per second, and pushes one line per second to Loki. It runs as
+// a container ON the RouterOS device: the kernel is shared, so /proc/stat
+// exposes the true per-core jiffies — the only sub-second source the system
+// has, since RouterOS's own cpu-load updates once per second. /proc/meminfo
+// is global too, and is read once per batch: memory does not move at 100 ms
+// on this workload, CPU does. Per-process data is NOT available: the
+// container has its own PID namespace.
 //
-// Each second it emits one line carrying ten 100 ms samples:
+// Each second it emits one line carrying ten 100 ms CPU samples and one
+// memory reading:
 //
 //	CPUHR01 v=1 q=<seq> t=<total%>,... c0=... c1=... c2=... c3=... ma=<KiB> mf=<KiB>
 //

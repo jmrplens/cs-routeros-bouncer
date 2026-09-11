@@ -69,67 +69,105 @@ func (r sshRunner) upload(data []byte, remoteName string) error {
 }
 
 // step is one idempotent install action: skip when check finds it, create
-// otherwise. Uninstall runs remove in reverse order for the steps that have
-// one.
+// otherwise. Uninstall runs remove in reverse order, then runs owned for
+// every step and refuses to report success while any count is non-zero.
+//
+// check and owned deliberately ask different questions. check asks whether
+// the EFFECT exists, however it got there (a veth of that name, that subnet
+// in that list) — which is what makes install idempotent against a hand-made
+// setup. owned selects only what install itself created, by the exact
+// comment tag it wrote, and remove uses that same selector — which is what
+// keeps uninstall from touching a hand-made setup, or anything else that
+// happens to share a substring with the container name. The address-list
+// table this tool writes to is the one the bouncer keeps its blocking state
+// in; a pattern match there is not an option.
 type step struct {
 	name   string
-	check  string // RouterOS expression printing a count; "0" means absent
+	check  string // RouterOS expression printing a count; "0" means the effect is absent
 	create string
+	owned  string // RouterOS expression printing how many objects install created still exist
 	remove string
 }
 
+// tagFor is the exact comment every object install creates carries, and the
+// only thing uninstall matches on.
+func tagFor(name string) string {
+	return name + ": high-resolution monitor (managed by cmd/perfmon)"
+}
+
 // steps returns the install plan for the given options. Every object it
-// creates carries the container name in its comment, which is what remove
-// matches on — nothing else on the router is touched.
+// creates carries tagFor(o.name) in its comment, verbatim, and every remove
+// selects by that exact comment together with the identity its check used —
+// nothing else on the router is touched.
 func steps(o options) []step {
-	tag := o.name + ": high-resolution monitor (managed by cmd/perfmon)"
+	tag := tagFor(o.name)
+	byTag := ` comment="` + tag + `"`
+	envList := o.name + "-env"
+	imageFile := o.name + ".tar"
 	return []step{
 		{
 			name:   "veth interface " + o.veth,
 			check:  `:put [:len [/interface/veth/find name="` + o.veth + `"]]`,
-			create: `/interface/veth/add name="` + o.veth + `" address=` + o.containerIP + `/30 gateway=` + o.gatewayIP + ` comment="` + tag + `"`,
-			remove: `/interface/veth/remove [find name="` + o.veth + `"]`,
+			create: `/interface/veth/add name="` + o.veth + `" address=` + o.containerIP + `/30 gateway=` + o.gatewayIP + byTag,
+			owned:  `:put [:len [/interface/veth/find name="` + o.veth + `"` + byTag + `]]`,
+			remove: `/interface/veth/remove [find name="` + o.veth + `"` + byTag + `]`,
 		},
 		{
 			name:   "router address " + o.gatewayIP,
 			check:  `:put [:len [/ip/address/find interface="` + o.veth + `"]]`,
-			create: `/ip/address/add address=` + o.gatewayIP + `/30 interface="` + o.veth + `" comment="` + tag + `"`,
-			remove: `/ip/address/remove [find interface="` + o.veth + `"]`,
+			create: `/ip/address/add address=` + o.gatewayIP + `/30 interface="` + o.veth + `"` + byTag,
+			owned:  `:put [:len [/ip/address/find interface="` + o.veth + `"` + byTag + `]]`,
+			remove: `/ip/address/remove [find interface="` + o.veth + `"` + byTag + `]`,
 		},
 		{
 			// Without this, the defconf raw rule `drop the rest
 			// (in-interface-list=!LAN)` silently eats every packet the
-			// container sends. Found the hard way; see docs/perfmon.
+			// container sends. Found the hard way; the method note in
+			// docs/src/content/docs/development/benchmarking.mdx records
+			// both traps.
 			name:   "interface-list membership " + o.ifaceList,
 			check:  `:put [:len [/interface/list/member/find interface="` + o.veth + `" list="` + o.ifaceList + `"]]`,
-			create: `/interface/list/member/add list="` + o.ifaceList + `" interface="` + o.veth + `" comment="` + tag + `"`,
-			remove: `/interface/list/member/remove [find interface="` + o.veth + `"]`,
+			create: `/interface/list/member/add list="` + o.ifaceList + `" interface="` + o.veth + `"` + byTag,
+			owned:  `:put [:len [/interface/list/member/find interface="` + o.veth + `" list="` + o.ifaceList + `"` + byTag + `]]`,
+			remove: `/interface/list/member/remove [find interface="` + o.veth + `" list="` + o.ifaceList + `"` + byTag + `]`,
 		},
 		{
 			// The sibling trap: `drop local if not from default IP range`
 			// matches src outside the LANs address list.
 			name:   "address-list membership " + o.addrList,
 			check:  `:put [:len [/ip/firewall/address-list/find list="` + o.addrList + `" address="` + o.subnet + `"]]`,
-			create: `/ip/firewall/address-list/add list="` + o.addrList + `" address=` + o.subnet + ` comment="` + tag + `"`,
-			remove: `/ip/firewall/address-list/remove [find comment~"` + o.name + `"]`,
+			create: `/ip/firewall/address-list/add list="` + o.addrList + `" address=` + o.subnet + byTag,
+			owned:  `:put [:len [/ip/firewall/address-list/find list="` + o.addrList + `" address="` + o.subnet + `"` + byTag + `]]`,
+			remove: `/ip/firewall/address-list/remove [find list="` + o.addrList + `" address="` + o.subnet + `"` + byTag + `]`,
 		},
 		{
+			// In a find, an address attribute only matches when quoted:
+			// unquoted, RouterOS parses it as an ip and the comparison with
+			// the stored prefix comes back empty (verified on 7.24.1).
 			name:   "srcnat masquerade to Loki",
-			check:  `:put [:len [/ip/firewall/nat/find comment~"` + o.name + `"]]`,
-			create: `/ip/firewall/nat/add chain=srcnat src-address=` + o.containerIP + ` dst-address=` + o.lokiHost + ` action=masquerade comment="` + tag + `"`,
-			remove: `/ip/firewall/nat/remove [find comment~"` + o.name + `"]`,
+			check:  `:put [:len [/ip/firewall/nat/find chain=srcnat src-address="` + o.containerIP + `"]]`,
+			create: `/ip/firewall/nat/add chain=srcnat src-address=` + o.containerIP + ` dst-address=` + o.lokiHost + ` action=masquerade` + byTag,
+			owned:  `:put [:len [/ip/firewall/nat/find chain=srcnat src-address="` + o.containerIP + `"` + byTag + `]]`,
+			remove: `/ip/firewall/nat/remove [find chain=srcnat src-address="` + o.containerIP + `"` + byTag + `]`,
 		},
 		{
+			// The image file is uploaded by install right before this step
+			// runs, and RouterOS keeps it on flash after extracting it; it is
+			// part of what uninstall owes the device.
 			name:  "container " + o.name,
-			check: `:put [:len [/container/find comment~"` + o.name + `"]]`,
-			create: `/container/envs/add list="` + o.name + `-env" name=LOKI_URL value="` + o.lokiPushURL() + `"; ` +
-				`/container/envs/add list="` + o.name + `-env" name=HOST_NAME value="` + o.hostLabel + `"; ` +
-				`/container/add file=` + o.name + `.tar interface="` + o.veth + `" root-dir=` + o.rootDir + `/` + o.name +
-				` envlist="` + o.name + `-env" logging=yes start-on-boot=no comment="` + tag + `"; ` +
-				`:delay 6s; /container/start [find comment~"` + o.name + `"]`,
-			remove: `/container/stop [find comment~"` + o.name + `"]; :delay 4s; ` +
-				`/container/remove [find comment~"` + o.name + `"]; ` +
-				`/container/envs/remove [find list="` + o.name + `-env"]`,
+			check: `:put [:len [/container/find file="` + imageFile + `"]]`,
+			create: `/container/envs/add list="` + envList + `" name=LOKI_URL value="` + o.lokiPushURL() + `"; ` +
+				`/container/envs/add list="` + envList + `" name=HOST_NAME value="` + o.hostLabel + `"; ` +
+				`/container/add file=` + imageFile + ` interface="` + o.veth + `" root-dir=` + o.rootDir + `/` + o.name +
+				` envlist="` + envList + `" logging=yes start-on-boot=no` + byTag + `; ` +
+				`:delay 6s; /container/start [find` + byTag + `]`,
+			owned: `:put ([:len [/container/find` + byTag + `]] + ` +
+				`[:len [/container/envs/find list="` + envList + `"]] + ` +
+				`[:len [/file/find name="` + imageFile + `"]])`,
+			remove: `/container/stop [find` + byTag + `]; :delay 4s; ` +
+				`/container/remove [find` + byTag + `]; ` +
+				`/container/envs/remove [find list="` + envList + `"]; ` +
+				`/file/remove [find name="` + imageFile + `"]`,
 		},
 	}
 }
@@ -162,20 +200,34 @@ func install(r runner, o options, image []byte) (int, error) {
 	return created, nil
 }
 
-// uninstall removes everything install created, newest first, and ignores
-// what is already gone.
-func uninstall(r runner, o options) {
+// uninstall removes everything install created, newest first, ignoring what
+// is already gone — then asks the router, step by step, whether anything
+// install created is still there, and returns an error naming what is. A
+// removal that printed nothing is not evidence; the count is.
+func uninstall(r runner, o options) error {
 	plan := steps(o)
 	for _, s := range slices.Backward(plan) {
-		if s.remove == "" {
-			continue
-		}
 		if _, err := r.run(s.remove); err != nil {
 			fmt.Printf("  skip  %s (%v)\n", s.name, firstLine(err))
 			continue
 		}
 		fmt.Printf("  gone  %s\n", s.name)
 	}
+	var left []string
+	for _, s := range plan {
+		out, err := r.run(s.owned)
+		if err != nil {
+			return fmt.Errorf("verify %s: %w", s.name, err)
+		}
+		if strings.TrimSpace(out) != "0" {
+			left = append(left, s.name)
+		}
+	}
+	if len(left) > 0 {
+		return fmt.Errorf("uninstall left %d object(s) behind: %s", len(left), strings.Join(left, "; "))
+	}
+	fmt.Println("uninstall verified: nothing perfmon created remains on the router")
+	return nil
 }
 
 func firstLine(err error) string {

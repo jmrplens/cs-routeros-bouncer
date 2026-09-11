@@ -95,7 +95,7 @@ Single-operation RouterOS benchmark, described in [Benchmarking](/cs-routeros-bo
 Router-side instrumentation, also covered in [Benchmarking](/cs-routeros-bouncer/development/benchmarking/):
 
 - Cross-builds a 10 Hz `/proc/stat` sampler and packs it as a container image without Docker
-- Installs it on a RouterOS device idempotently (veth, NAT, firewall list membership) and removes exactly what it created
+- Installs it on a RouterOS device idempotently (veth, NAT, firewall list membership), removes exactly what it created — selected by exact comment tag, plus the uploaded image — and verifies the teardown
 - Pulls capture windows from Loki as CSV and renders the lifecycle chart
 
 ### `internal/config`
