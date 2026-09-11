@@ -130,9 +130,12 @@ patrón — la tabla de address-lists que toca es la misma en la que el bouncer
 guarda su estado de bloqueo, así que una coincidencia por subcadena ahí nunca
 fue aceptable — más el fichero de imagen subido. Después vuelve a ejecutar sus
 propias comprobaciones de propiedad y falla, nombrando el paso, si queda algo.
-Un montaje hecho a mano que comparta el nombre del contenedor queda intacto
-por ambos lados: `install` ve el efecto y lo salta, `uninstall` no lo posee y
-lo ignora.
+Un montaje hecho a mano que comparta un nombre queda intacto por ambos lados:
+`install` se niega a continuar y nombra la colisión — no construye sobre
+objetos que no creó y que después no eliminaría — y `uninstall` no lo posee y
+lo ignora. El envlist y la imagen subida, que RouterOS no puede etiquetar, se
+firman con una entrada `PERFMON_TAG` en el envlist y solo se eliminan mientras
+ese marcador exista.
 
 Dos cosas del despliegue son deliberadas y conviene saberlas antes de
 confiar en él. La raíz del contenedor vive en la tmpfs del router por defecto

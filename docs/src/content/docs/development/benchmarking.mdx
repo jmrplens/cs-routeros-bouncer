@@ -126,8 +126,11 @@ pattern — the address-list table it touches is the one the bouncer keeps its
 blocking state in, so a substring match there was never acceptable — plus the
 uploaded image file. It then re-runs its own ownership checks and fails,
 naming the step, if anything remains. A hand-made setup that happens to share
-the container name is left alone on both sides: `install` sees the effect and
-skips it, `uninstall` does not own it and ignores it.
+a name is left alone on both sides: `install` refuses to proceed and names the
+collision — it does not build on objects it did not create and will not later
+remove — and `uninstall` does not own it and ignores it. The envlist and the
+uploaded image, which RouterOS cannot tag, are signed by a `PERFMON_TAG`
+entry in the envlist and are removed only while that marker exists.
 
 Two things about the deployment are deliberate and worth knowing before you
 rely on it. The container's root lives on the router's tmpfs by default and it

@@ -68,25 +68,34 @@ func TestImageTarShape(t *testing.T) {
 	}
 }
 
-// fakeRunner scripts the router: canned answers for queries (any :put), a
-// log of writes. A query answers "1" when it mentions a present fragment.
+// fakeRunner scripts the router. Writes are the commands that start with a
+// menu path; everything else (:put, :if …) is a query and answers "1" when it
+// mentions a fragment marked true. Ownership queries always carry the tag,
+// so they are answered from owned when that map is set — which is how a test
+// models "the effect exists, but perfmon did not create it". When owned is
+// nil, everything present counts as ours.
 type fakeRunner struct {
-	present map[string]bool // command fragment -> exists
+	present map[string]bool // fragment -> the effect exists (answers check)
+	owned   map[string]bool // fragment -> perfmon's own object exists (answers owned); nil = same as present
 	ran     []string
 	uploads int
 }
 
 func (f *fakeRunner) run(command string) (string, error) {
-	if strings.HasPrefix(command, ":put") {
-		for frag, ok := range f.present {
-			if strings.Contains(command, frag) && ok {
-				return "1\n", nil
-			}
-		}
-		return "0\n", nil
+	if strings.HasPrefix(command, "/") {
+		f.ran = append(f.ran, command)
+		return "", nil
 	}
-	f.ran = append(f.ran, command)
-	return "", nil
+	table := f.present
+	if f.owned != nil && strings.Contains(command, "(managed by cmd/perfmon)") {
+		table = f.owned
+	}
+	for frag, ok := range table {
+		if ok && strings.Contains(command, frag) {
+			return "1\n", nil
+		}
+	}
+	return "0\n", nil
 }
 
 func (f *fakeRunner) upload([]byte, string) error {
@@ -119,6 +128,84 @@ func TestInstallIsIdempotent(t *testing.T) {
 	}
 	if created != 0 {
 		t.Fatalf("second install created %d steps; want 0\nran: %v", created, full.ran)
+	}
+}
+
+// TestInstallRefusesWhatItDoesNotOwn pins the rule this tool builds on:
+// ours → skip, exists-but-not-ours → refuse naming the object, absent →
+// create. The reference router is exactly this case — a hand-made sampler
+// on the default names — and the old behavior was to skip silently and
+// then, at uninstall, delete its image file.
+func TestInstallRefusesWhatItDoesNotOwn(t *testing.T) {
+	o, _, err := parseOptions([]string{"-router", "u@h"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := map[string]string{ // present fragment -> step name the error must carry
+		o.veth:          "veth interface",
+		o.subnet:        "address-list membership",
+		o.name + ".tar": "container " + o.name,
+		o.name + "-env": "container " + o.name,
+	}
+	for frag, wantStep := range cases {
+		f := &fakeRunner{present: map[string]bool{frag: true}, owned: map[string]bool{}}
+		_, installErr := install(f, o, []byte("img"))
+		if installErr == nil {
+			t.Fatalf("install with foreign %q succeeded; ran %v", frag, f.ran)
+		}
+		if !strings.Contains(installErr.Error(), wantStep) || !strings.Contains(installErr.Error(), "not created by perfmon") {
+			t.Fatalf("install with foreign %q: error does not name the collision: %v", frag, installErr)
+		}
+		if len(f.ran) != 0 && frag != o.veth {
+			// Steps before the collision are legitimately created; nothing
+			// may be created at or after it.
+			for _, cmd := range f.ran {
+				if strings.Contains(cmd, frag) {
+					t.Fatalf("install wrote to the foreign object %q: %s", frag, cmd)
+				}
+			}
+		}
+	}
+}
+
+// TestUninstallGuardsDerivedResourcesByMarker pins that the envlist and the
+// image file — the two objects that cannot carry a comment — are removed
+// only inside the marker guard, that the marker is written first and
+// removed last, and that with no marker uninstall touches neither.
+func TestUninstallGuardsDerivedResourcesByMarker(t *testing.T) {
+	o, _, err := parseOptions([]string{"-router", "u@h"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	container := steps(o)[len(steps(o))-1]
+	marker := `/container/envs/find list="` + o.name + `-env" name="PERFMON_TAG" value="` + tagFor(o.name) + `"`
+
+	// create: marker before any other env entry
+	if i, j := strings.Index(container.create, "name=PERFMON_TAG"), strings.Index(container.create, "name=LOKI_URL"); i < 0 || j < 0 || i > j {
+		t.Fatalf("marker is not the first env entry written: %s", container.create)
+	}
+	// remove: guard opens, file and non-marker envs go, marker goes last
+	guard := strings.Index(container.remove, `:if ([:len [`+marker+`]] > 0) do={`)
+	file := strings.Index(container.remove, `/file/remove [find name="`+o.name+`.tar"]`)
+	envs := strings.Index(container.remove, `/container/envs/remove [find list="`+o.name+`-env" name!="PERFMON_TAG"]`)
+	last := strings.LastIndex(container.remove, `/container/envs/remove [`+marker+`]`)
+	if guard < 0 || file < 0 || envs < 0 || last < 0 {
+		t.Fatalf("removal lacks the guard, the file removal, the env removal or the marker removal:\n%s", container.remove)
+	}
+	if guard >= file || file >= envs || envs >= last {
+		t.Fatalf("removal order is not guard → file → envs → marker:\n%s", container.remove)
+	}
+	// owned: counts the file and the envlist only under the marker
+	if !strings.HasPrefix(container.owned, `:if ([:len [`+marker+`]] > 0) do={`) {
+		t.Fatalf("ownership query is not marker-guarded: %s", container.owned)
+	}
+
+	// Behavior: foreign image file and envlist, no marker → uninstall does
+	// not report them as leftovers, and its removals never name them
+	// outside the guard (the guard is what protects them on the router).
+	f := &fakeRunner{present: map[string]bool{o.name + ".tar": true, o.name + "-env": true}, owned: map[string]bool{}}
+	if uninstallErr := uninstall(f, o); uninstallErr != nil {
+		t.Fatalf("uninstall over foreign derived resources returned %v", uninstallErr)
 	}
 }
 
@@ -203,18 +290,84 @@ func TestUninstallVerifiesAndFailsOnLeftovers(t *testing.T) {
 	}
 }
 
-// TestNameFlagIsBounded pins that -name cannot carry anything that would
-// widen a RouterOS selector: a quote, a regex metacharacter, a space.
-func TestNameFlagIsBounded(t *testing.T) {
-	for _, bad := range []string{``, `a"b`, `cpu.*`, `a b`, `x/y`, `$name`, `-lead`, strings.Repeat("a", 33)} {
-		if _, _, err := parseOptions([]string{"-router", "u@h", "-name", bad}); err == nil {
-			t.Fatalf("-name %q was accepted", bad)
+// TestFlagsAreBounded pins that no flag interpolated into a RouterOS command
+// can carry a quote, a separator, a pattern or a parent reference, and that
+// the structured ones (-subnet, -loki, -port) must parse as what they are.
+func TestFlagsAreBounded(t *testing.T) {
+	bad := [][]string{
+		{"-name", ``},
+		{"-name", `a"b`},
+		{"-name", `cpu.*`},
+		{"-name", `a b`},
+		{"-name", `x/y`},
+		{"-name", `$name`},
+		{"-name", `-lead`},
+		{"-name", strings.Repeat("a", 33)},
+		{"-veth", `v"eth`},
+		{"-veth", `a;b`},
+		{"-iface-list", `L AN`},
+		{"-addr-list", `LANs]`},
+		{"-job", `j"ob`},
+		{"-host-label", `h$`},
+		{"-root-dir", `../disk`},
+		{"-root-dir", `disk/../x`},
+		{"-root-dir", `a"b`},
+		{"-root-dir", ``},
+		{"-arch", `ARM 64`},
+		{"-arch", ``},
+		{"-port", `0`},
+		{"-port", `65536`},
+		{"-port", `abc`},
+		{"-subnet", `10.0.0.0/24`},
+		{"-subnet", `10.0.0.1/30`},
+		{"-subnet", `abc`},
+		{"-subnet", `fd00::/30`},
+		{"-loki", `ftp://x`},
+		{"-loki", `http://`},
+		{"-loki", `http://h:1/path`},
+		{"-loki", `h:1`},
+	}
+	for _, args := range bad {
+		if _, _, err := parseOptions(append([]string{"-router", "u@h"}, args...)); err == nil {
+			t.Fatalf("%v was accepted", args)
 		}
 	}
-	for _, good := range []string{`cpuhr01`, `a`, `mon-2.b_c`, strings.Repeat("a", 32)} {
-		if _, _, err := parseOptions([]string{"-router", "u@h", "-name", good}); err != nil {
-			t.Fatalf("-name %q was rejected: %v", good, err)
+	good := [][]string{
+		{"-name", `cpuhr01`},
+		{"-name", `a`},
+		{"-name", `mon-2.b_c`},
+		{"-name", strings.Repeat("a", 32)},
+		{"-veth", `veth-cpuhr`},
+		{"-iface-list", `LAN`},
+		{"-addr-list", `LANs`},
+		{"-job", `cpuhr01`},
+		{"-host-label", `rb5009`},
+		{"-root-dir", `tmpfs`},
+		{"-root-dir", `disk1/perf.mon`},
+		{"-arch", `arm64`},
+		{"-port", `2200`},
+		{"-subnet", `172.30.9.0/30`},
+		{"-loki", `https://loki.example:3100/`},
+	}
+	for _, args := range good {
+		if _, _, err := parseOptions(append([]string{"-router", "u@h"}, args...)); err != nil {
+			t.Fatalf("%v was rejected: %v", args, err)
 		}
+	}
+}
+
+// TestDerivedAddressesAndLokiHost pins what the structured flags turn into:
+// the two ends of the /30 and the NAT rule's destination host.
+func TestDerivedAddressesAndLokiHost(t *testing.T) {
+	o, _, err := parseOptions([]string{"-router", "u@h", "-subnet", "10.9.8.4/30", "-loki", "https://loki.example:3100/"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o.gatewayIP != "10.9.8.5" || o.containerIP != "10.9.8.6" {
+		t.Fatalf("derived /30 ends: gateway %s container %s", o.gatewayIP, o.containerIP)
+	}
+	if o.lokiHost != "loki.example" || o.lokiBase != "https://loki.example:3100" || o.lokiPushURL() != "https://loki.example:3100/loki/api/v1/push" {
+		t.Fatalf("loki: host %s base %s push %s", o.lokiHost, o.lokiBase, o.lokiPushURL())
 	}
 }
 
