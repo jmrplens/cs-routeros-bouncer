@@ -30,14 +30,36 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
 
-// validName bounds the -name flag; see parseOptions.
-var validName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,31}$`)
+// Every string flag below is interpolated verbatim into RouterOS commands
+// that run over the operator's own admin ssh session, so there is no
+// privilege boundary for a crafted value to cross — but a quote or a
+// semicolon in one turns a clear failure into a confusing RouterOS syntax
+// error, or a selector into something wider than intended. The flags are
+// therefore bounded to what RouterOS object names and paths can carry, and
+// the tool fails fast, before the first command, on anything else.
+var (
+	// validName bounds -name, which also becomes the envlist name, the
+	// image file name and the root-dir leaf.
+	validName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,31}$`)
+	// validObjectName bounds RouterOS object and list names: -veth,
+	// -iface-list, -addr-list, and the Loki labels -job and -host-label.
+	validObjectName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$`)
+	// validRootDir bounds -root-dir: a disk name or a slash-separated path
+	// on the router, no quotes, no parent references.
+	validRootDir = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_./-]{0,63}$`)
+	// validArch bounds -arch to what GOARCH and the image manifest accept.
+	validArch = regexp.MustCompile(`^[a-z0-9]{1,16}$`)
+)
 
 type options struct {
 	router     string // user@host for ssh
@@ -93,30 +115,66 @@ func parseOptions(args []string) (options, *flag.FlagSet, error) {
 		return o, fs, err
 	}
 
-	// The name is interpolated verbatim into every RouterOS command: the
-	// comment tag, the envlist name, the image file name and the root-dir
-	// path. Keep it to characters that cannot close a quote or start an
-	// expression, so no value can widen what a remove matches.
+	if err := validateFlags(o); err != nil {
+		return o, fs, err
+	}
+	return deriveEndpoints(o, fs)
+}
+
+// validateFlags bounds every value that is interpolated into a RouterOS
+// command; see the regexps above for why.
+func validateFlags(o options) error {
 	if !validName.MatchString(o.name) {
-		return o, fs, fmt.Errorf("-name must match %s, got %q", validName, o.name)
+		return fmt.Errorf("-name must match %s, got %q", validName, o.name)
 	}
+	for flagName, value := range map[string]string{
+		"-veth": o.veth, "-iface-list": o.ifaceList, "-addr-list": o.addrList,
+		"-job": o.job, "-host-label": o.hostLabel,
+	} {
+		if !validObjectName.MatchString(value) {
+			return fmt.Errorf("%s must match %s, got %q", flagName, validObjectName, value)
+		}
+	}
+	if !validRootDir.MatchString(o.rootDir) || slices.Contains(strings.Split(o.rootDir, "/"), "..") {
+		return fmt.Errorf("-root-dir must match %s with no \"..\" segment, got %q", validRootDir, o.rootDir)
+	}
+	if !validArch.MatchString(o.arch) {
+		return fmt.Errorf("-arch must match %s, got %q", validArch, o.arch)
+	}
+	if port, err := strconv.Atoi(o.port); err != nil || port < 1 || port > 65535 {
+		return fmt.Errorf("-port must be 1-65535, got %q", o.port)
+	}
+	return nil
+}
 
-	// Derive the two host addresses of the /30: .1 router side, .2 container.
-	base, _, ok := strings.Cut(o.subnet, "/")
-	if !ok {
-		return o, fs, fmt.Errorf("-subnet must be CIDR, got %q", o.subnet)
+// deriveEndpoints turns the structured flags into what the commands need:
+// the two ends of the /30 and the Loki host the NAT rule names.
+func deriveEndpoints(o options, fs *flag.FlagSet) (options, *flag.FlagSet, error) {
+	// The /30 is the whole point-to-point link: .1 router side, .2 container.
+	// Anything but an IPv4 /30 cannot yield those two addresses.
+	ip, network, err := net.ParseCIDR(o.subnet)
+	if err != nil || ip.To4() == nil {
+		return o, fs, fmt.Errorf("-subnet must be an IPv4 CIDR, got %q", o.subnet)
 	}
-	octets := strings.Split(base, ".")
-	if len(octets) != 4 {
-		return o, fs, fmt.Errorf("-subnet must be IPv4, got %q", o.subnet)
+	if ones, _ := network.Mask.Size(); ones != 30 {
+		return o, fs, fmt.Errorf("-subnet must be a /30, got %q", o.subnet)
 	}
-	prefix := strings.Join(octets[:3], ".")
-	o.gatewayIP = prefix + ".1"
-	o.containerIP = prefix + ".2"
+	if !ip.Equal(network.IP) {
+		return o, fs, fmt.Errorf("-subnet must be the network address, got %q (network %s)", o.subnet, network)
+	}
+	base := network.IP.To4()
+	o.subnet = network.String()
+	o.gatewayIP = net.IPv4(base[0], base[1], base[2], base[3]+1).String()
+	o.containerIP = net.IPv4(base[0], base[1], base[2], base[3]+2).String()
 
-	hostPart := strings.TrimPrefix(o.lokiBase, "http://")
-	hostPart = strings.TrimPrefix(hostPart, "https://")
-	o.lokiHost, _, _ = strings.Cut(hostPart, ":")
+	// The Loki base is both the URL the sampler pushes to and the host the
+	// NAT rule names; it must parse as one, with a scheme and a host.
+	u, err := url.Parse(o.lokiBase)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || (u.Path != "" && u.Path != "/") {
+		return o, fs, fmt.Errorf("-loki must be http(s)://host[:port] with no path, got %q", o.lokiBase)
+	}
+	o.lokiBase = u.Scheme + "://" + u.Host
+	o.lokiHost = u.Hostname()
 	return o, fs, nil
 }
 

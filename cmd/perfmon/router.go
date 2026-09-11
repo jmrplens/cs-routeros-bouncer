@@ -68,19 +68,21 @@ func (r sshRunner) upload(data []byte, remoteName string) error {
 	return nil
 }
 
-// step is one idempotent install action: skip when check finds it, create
-// otherwise. Uninstall runs remove in reverse order, then runs owned for
-// every step and refuses to report success while any count is non-zero.
+// step is one install action with three questions and two verbs. Install
+// asks owned first: ours already → skip. Then check: exists but not ours →
+// refuse, naming the object, because perfmon does not build on objects it
+// does not own and will not later remove. Neither → create. Uninstall runs
+// remove in reverse order, then asks owned for every step and refuses to
+// report success while any count is non-zero.
 //
-// check and owned deliberately ask different questions. check asks whether
-// the EFFECT exists, however it got there (a veth of that name, that subnet
-// in that list) — which is what makes install idempotent against a hand-made
-// setup. owned selects only what install itself created, by the exact
-// comment tag it wrote, and remove uses that same selector — which is what
-// keeps uninstall from touching a hand-made setup, or anything else that
-// happens to share a substring with the container name. The address-list
-// table this tool writes to is the one the bouncer keeps its blocking state
-// in; a pattern match there is not an option.
+// owned selects only what install itself created, by the exact comment tag
+// it wrote, and remove uses that same selector — which is what keeps
+// uninstall from touching a hand-made setup, or anything else that happens
+// to share a substring with the container name. The address-list table this
+// tool writes to is the one the bouncer keeps its blocking state in; a
+// pattern match there is not an option. check asks the broader question —
+// does the EFFECT exist, however it got there — and its only job is to
+// detect a collision with something that is not ours.
 type step struct {
 	name   string
 	check  string // RouterOS expression printing a count; "0" means the effect is absent
@@ -95,6 +97,13 @@ func tagFor(name string) string {
 	return name + ": high-resolution monitor (managed by cmd/perfmon)"
 }
 
+// markerName is the environment entry that signs the envlist. Neither
+// /container/envs nor /file carries a comment, so ownership of the two
+// resources the container step derives — the envlist and the uploaded image
+// — is established by this entry holding the exact tag, and the image is
+// considered ours only while the marker exists.
+const markerName = "PERFMON_TAG"
+
 // steps returns the install plan for the given options. Every object it
 // creates carries tagFor(o.name) in its comment, verbatim, and every remove
 // selects by that exact comment together with the identity its check used —
@@ -104,6 +113,7 @@ func steps(o options) []step {
 	byTag := ` comment="` + tag + `"`
 	envList := o.name + "-env"
 	imageFile := o.name + ".tar"
+	marker := `[/container/envs/find list="` + envList + `" name="` + markerName + `" value="` + tag + `"]`
 	return []step{
 		{
 			name:   "veth interface " + o.veth,
@@ -153,37 +163,56 @@ func steps(o options) []step {
 		{
 			// The image file is uploaded by install right before this step
 			// runs, and RouterOS keeps it on flash after extracting it; it is
-			// part of what uninstall owes the device.
-			name:  "container " + o.name,
-			check: `:put [:len [/container/find file="` + imageFile + `"]]`,
-			create: `/container/envs/add list="` + envList + `" name=LOKI_URL value="` + o.lokiPushURL() + `"; ` +
+			// part of what uninstall owes the device. The marker is written
+			// first and removed last, so a removal that fails half-way leaves
+			// the envlist and the image counted as ours, and uninstall says
+			// so instead of reporting clean.
+			name: "container " + o.name,
+			check: `:put ([:len [/container/find file="` + imageFile + `"]] + ` +
+				`[:len [/container/envs/find list="` + envList + `"]] + ` +
+				`[:len [/file/find name="` + imageFile + `"]])`,
+			create: `/container/envs/add list="` + envList + `" name=` + markerName + ` value="` + tag + `"; ` +
+				`/container/envs/add list="` + envList + `" name=LOKI_URL value="` + o.lokiPushURL() + `"; ` +
 				`/container/envs/add list="` + envList + `" name=HOST_NAME value="` + o.hostLabel + `"; ` +
 				`/container/add file=` + imageFile + ` interface="` + o.veth + `" root-dir=` + o.rootDir + `/` + o.name +
 				` envlist="` + envList + `" logging=yes start-on-boot=no` + byTag + `; ` +
 				`:delay 6s; /container/start [find` + byTag + `]`,
-			owned: `:put ([:len [/container/find` + byTag + `]] + ` +
+			owned: `:if ([:len ` + marker + `] > 0) do={ ` +
+				`:put ([:len [/container/find` + byTag + `]] + ` +
 				`[:len [/container/envs/find list="` + envList + `"]] + ` +
-				`[:len [/file/find name="` + imageFile + `"]])`,
+				`[:len [/file/find name="` + imageFile + `"]]) ` +
+				`} else={ :put [:len [/container/find` + byTag + `]] }`,
 			remove: `/container/stop [find` + byTag + `]; :delay 4s; ` +
 				`/container/remove [find` + byTag + `]; ` +
-				`/container/envs/remove [find list="` + envList + `"]; ` +
-				`/file/remove [find name="` + imageFile + `"]`,
+				`:if ([:len ` + marker + `] > 0) do={ ` +
+				`/file/remove [find name="` + imageFile + `"]; ` +
+				`/container/envs/remove [find list="` + envList + `" name!="` + markerName + `"]; ` +
+				`/container/envs/remove ` + marker + ` }`,
 		},
 	}
 }
 
-// install walks the plan, creating what is missing. The container step uploads
-// the image first. It returns how many steps it created.
+// install walks the plan, creating what is missing and refusing what is
+// present but not ours. The container step uploads the image first. It
+// returns how many steps it created.
 func install(r runner, o options, image []byte) (int, error) {
 	created := 0
 	for _, s := range steps(o) {
-		out, err := r.run(s.check)
+		out, err := r.run(s.owned)
 		if err != nil {
-			return created, fmt.Errorf("check %s: %w", s.name, err)
+			return created, fmt.Errorf("check ownership of %s: %w", s.name, err)
 		}
 		if strings.TrimSpace(out) != "0" {
 			fmt.Printf("  ok    %s (already present)\n", s.name)
 			continue
+		}
+		out, err = r.run(s.check)
+		if err != nil {
+			return created, fmt.Errorf("check %s: %w", s.name, err)
+		}
+		if strings.TrimSpace(out) != "0" {
+			return created, fmt.Errorf("%s exists on the router and was not created by perfmon (no ownership tag); "+
+				"pick another -name/-veth/-subnet, or remove it by hand if it is yours", s.name)
 		}
 		if strings.HasPrefix(s.name, "container ") {
 			fmt.Printf("  up    uploading image (%d KiB)\n", len(image)/1024)
