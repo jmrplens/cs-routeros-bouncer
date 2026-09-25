@@ -228,11 +228,15 @@ serie de RAM vuelve al ritmo del muestreador en lugar de a 1 Hz.
 La gracia de un colector es que la ventana que quieres ya está guardada.
 `mikroscope forward --influx http://influx:8181 --influx-db mikroscope` escribe
 el nivel de kernel en InfluxDB 3 de forma continua — el token sale de
-`MIKROSCOPE_INFLUX_TOKEN` y nunca de un flag, porque un flag se ve en `ps` — y
-a partir de ahí una pregunta sobre CPU es una consulta, no un despliegue:
+`MIKROSCOPE_INFLUX_TOKEN`, nunca de un flag — y a partir de ahí una pregunta
+sobre CPU es una consulta, no un despliegue. El token le llega a `curl` por la
+entrada estándar, como fichero `--config`, porque un argumento lo ve cualquier
+usuario local con `ps` y `-H "Authorization: …"` es un argumento como otro
+cualquiera:
 
 ```sh
-curl -s -H "Authorization: Bearer $MIKROSCOPE_INFLUX_TOKEN" --get \
+printf 'header = "Authorization: Bearer %s"\n' "$MIKROSCOPE_INFLUX_TOKEN" |
+  curl -s --config - --get \
   http://influx:8181/api/v3/query_sql \
   --data-urlencode "db=mikroscope" \
   --data-urlencode "format=json" \

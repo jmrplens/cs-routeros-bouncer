@@ -51,9 +51,13 @@
 #   * mikroscope_softnet.{processed,dropped,time_squeeze} and
 #     mikroscope_self.cpu_us are PER-SAMPLE DELTAS. This script SUMs them.
 #     max()-min() is wrong by four orders of magnitude and looks plausible.
-#   * a complete 1 s CPU bin holds exactly 40 rows (4 cores x 10 Hz). Partial
-#     bins at a window edge average over less than a second; `cpu` reports the
-#     row count so you can see it, and `hottest` filters on it.
+#   * a complete CPU bin holds one row per core per tick, so its row count is
+#     core_count x rate x bin_seconds — 40 for the 4-core, 10 Hz default at a
+#     1 s bin, but neither number is assumed anywhere here. Partial bins at a
+#     window edge average over less than their interval; `cpu` and `window`
+#     report `cores_seen` and the row count so you can see it, and `hottest`
+#     keeps only bins that hold every core seen in the window AND as many rows
+#     as the fullest bin in it.
 #
 # A single per-core sample at 10 Hz resolves to steps of about 10 percentage
 # points, because USER_HZ is 100 and a 100 ms tick holds ~10 jiffies. Read
@@ -93,22 +97,29 @@ require_config() {
 }
 
 # host_filter emits the `host = '...'` conjunct, or nothing when
-# MIKROSCOPE_HOST_TAG is unset (one-device store).
+# MIKROSCOPE_HOST_TAG is unset (one-device store). $1 is an optional table
+# alias, needed wherever two tables are joined and `host` would be ambiguous.
 host_filter() {
 	[ -n "$host_tag" ] || return 0
-	printf " AND host = '%s'" "$host_tag"
+	if [ -n "${1:-}" ]; then
+		printf " AND %s.host = '%s'" "$1" "$host_tag"
+	else
+		printf " AND host = '%s'" "$host_tag"
+	fi
 }
 
-# run sends one statement. The token goes in a header, never in the URL, so it
-# does not reach a proxy access log.
+# run sends one statement. The token reaches curl on STDIN, as a --config file,
+# so it is in neither the URL (a proxy access log) nor the argument list (`ps`,
+# readable by any local user on a shared box). Everything else stays in argv,
+# where it is harmless and greppable.
 run() {
 	require_config
-	curl -sS --fail-with-body \
-		-H "Authorization: Bearer $token" \
-		--get "$url/api/v3/query_sql" \
-		--data-urlencode "db=$db" \
-		--data-urlencode "q=$1" \
-		--data-urlencode "format=$format"
+	printf 'header = "Authorization: Bearer %s"\n' "$token" |
+		curl -sS --fail-with-body --config - \
+			--get "$url/api/v3/query_sql" \
+			--data-urlencode "db=$db" \
+			--data-urlencode "q=$1" \
+			--data-urlencode "format=$format"
 }
 
 # ts renders a <from>/<to> argument. A bare literal becomes a timestamp
@@ -214,8 +225,8 @@ q_observer() {
 	       sum(resets) AS agent_resets, sum(oom_kill) AS oom_kills,
 	       sum(kmsg_dropped) AS kmsg_dropped
 	FROM mikroscope_self AS f
-	JOIN mikroscope_sample AS s ON s.time = f.time
-	WHERE f.time >= $(ts "$from") AND f.time < $(ts "$to")
+	JOIN mikroscope_sample AS s ON s.time = f.time AND s.host = f.host
+	WHERE f.time >= $(ts "$from") AND f.time < $(ts "$to")$(host_filter f)
 	SQL
 }
 
@@ -226,7 +237,7 @@ q_continuity() {
 	cat <<-SQL
 	WITH d AS (
 	  SELECT time,
-	         CAST(seq AS BIGINT) - LAG(CAST(seq AS BIGINT)) OVER (ORDER BY time) AS dseq,
+	         CAST(seq AS BIGINT) - LAG(CAST(seq AS BIGINT)) OVER (PARTITION BY host ORDER BY time) AS dseq,
 	         dt_ns
 	  FROM mikroscope_sample
 	  WHERE time >= $(ts "$from") AND time < $(ts "$to")$(host_filter)
@@ -260,14 +271,28 @@ q_hottest() {
 	case $n in
 	*[!0-9]* | '') die "hottest: <n> must be a whole number, got '$n'" ;;
 	esac
+	# Completeness without assuming a core count or a sample rate: `e` is the
+	# set of cores this host reported anywhere in the window, and a second is
+	# complete when it holds all of them AND as many rows as the fullest
+	# second in the window. count(*) = count(DISTINCT cpu) * 10 would not do:
+	# 30 rows from 3 cores satisfies it while a fourth core is missing.
 	cat <<-SQL
-	SELECT date_bin(INTERVAL '1 second', time) AS sec,
-	       round(avg(busy_ratio)*100, 2) AS all_pct,
-	       round(max(busy_ratio)*100, 1) AS hottest_core_pct
-	FROM mikroscope_cpu
-	WHERE time >= $(ts "$from") AND time < $(ts "$to")$(host_filter)
-	GROUP BY sec HAVING count(*) = 40
-	ORDER BY all_pct DESC LIMIT $n
+	WITH b AS (
+	  SELECT date_bin(INTERVAL '1 second', time) AS sec, cpu, busy_ratio
+	  FROM mikroscope_cpu
+	  WHERE time >= $(ts "$from") AND time < $(ts "$to")$(host_filter)),
+	e AS (SELECT count(DISTINCT cpu) AS cores FROM b),
+	g AS (
+	  SELECT sec, avg(busy_ratio)*100 AS pct_raw, max(busy_ratio)*100 AS hottest_raw,
+	         count(*) AS rows_in_sec, count(DISTINCT cpu) AS cores_seen
+	  FROM b GROUP BY sec),
+	f AS (SELECT max(rows_in_sec) AS full_rows FROM g)
+	SELECT g.sec, round(g.pct_raw, 2) AS all_pct,
+	       round(g.hottest_raw, 1) AS hottest_core_pct,
+	       g.cores_seen, g.rows_in_sec
+	FROM g CROSS JOIN e CROSS JOIN f
+	WHERE g.cores_seen = e.cores AND g.rows_in_sec = f.full_rows
+	ORDER BY g.pct_raw DESC LIMIT $n
 	SQL
 }
 
@@ -280,7 +305,7 @@ q_window() {
 	WITH c AS (
 	  SELECT date_bin(INTERVAL '$bin', time) AS bin,
 	         avg(busy_ratio)*100 AS all_pct, max(busy_ratio)*100 AS hottest_core_pct,
-	         count(*) AS cpu_rows
+	         count(*) AS cpu_rows, count(DISTINCT cpu) AS cores_seen
 	  FROM mikroscope_cpu WHERE time >= $f AND time < $t$(host_filter) GROUP BY bin),
 	m AS (
 	  SELECT date_bin(INTERVAL '$bin', time) AS bin,
@@ -294,8 +319,8 @@ q_window() {
 	  SELECT date_bin(INTERVAL '$bin', s2.time) AS bin,
 	         sum(f2.cpu_us) AS obs_cpu_us, sum(s2.dt_ns) AS obs_dt_ns
 	  FROM mikroscope_self AS f2
-	  JOIN mikroscope_sample AS s2 ON s2.time = f2.time
-	  WHERE f2.time >= $f AND f2.time < $t GROUP BY bin),
+	  JOIN mikroscope_sample AS s2 ON s2.time = f2.time AND s2.host = f2.host
+	  WHERE f2.time >= $f AND f2.time < $t$(host_filter f2) GROUP BY bin),
 	l AS (
 	  SELECT date_bin(INTERVAL '$bin', time) AS bin, avg(load1) AS load1
 	  FROM mikroscope_load WHERE time >= $f AND time < $t$(host_filter) GROUP BY bin)
@@ -307,7 +332,7 @@ q_window() {
 	       n.pkts, n.drops, n.squeezes,
 	       round(l.load1, 2) AS load1,
 	       round(s.obs_cpu_us * 1e3 / nullif(s.obs_dt_ns, 0) * 100, 2) AS observer_pct_of_core,
-	       c.cpu_rows
+	       c.cores_seen, c.cpu_rows
 	FROM c
 	JOIN m ON c.bin = m.bin
 	JOIN n ON c.bin = n.bin

@@ -220,11 +220,14 @@ instead of at 1 Hz.
 The point of a collector is that the window you want is already stored.
 `mikroscope forward --influx http://influx:8181 --influx-db mikroscope` writes
 the kernel tier into InfluxDB 3 continuously — the token comes from
-`MIKROSCOPE_INFLUX_TOKEN` and never from a flag, because a flag is visible in
-`ps` — and from then on a CPU question is a query, not a deployment:
+`MIKROSCOPE_INFLUX_TOKEN`, never from a flag — and from then on a CPU question
+is a query, not a deployment. The token reaches `curl` on standard input, as a
+`--config` file, because an argument is visible to any local user through `ps`
+and `-H "Authorization: …"` is an argument like any other:
 
 ```sh
-curl -s -H "Authorization: Bearer $MIKROSCOPE_INFLUX_TOKEN" --get \
+printf 'header = "Authorization: Bearer %s"\n' "$MIKROSCOPE_INFLUX_TOKEN" |
+  curl -s --config - --get \
   http://influx:8181/api/v3/query_sql \
   --data-urlencode "db=mikroscope" \
   --data-urlencode "format=json" \
