@@ -400,7 +400,7 @@ tests/functional/run_tests.sh                            # all but the CAPI stre
 tests/functional/run_tests.sh --capi                     # include it
 ```
 
-There is also a developer benchmark (`go run ./cmd/benchmark`) and self-installing router instrumentation that samples CPU at 10 Hz and RAM at 1 Hz (`go run ./cmd/perfmon install`). Both, and the method for measuring against a live router without fooling yourself, are covered in [Benchmarking](https://jmrp.io/docs/cs-routeros-bouncer/development/benchmarking/).
+There is also a developer benchmark (`go run ./cmd/benchmark`). Measuring the router itself — per-core CPU and memory at 10 Hz, read from inside the device — is done with [mikroscope](https://github.com/jmrplens/mikroscope), the spin-off this repository's own instrumentation grew into; `cmd/perfmon` was removed once mikroscope shipped. Both, and the method for measuring against a live router without fooling yourself, are covered in [Benchmarking](https://jmrp.io/docs/cs-routeros-bouncer/development/benchmarking/).
 
 ## Security
 

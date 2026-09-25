@@ -168,6 +168,15 @@ jobs:
           additional_files: tests/functional/lib/helpers.sh
         env:
           SHELLCHECK_OPTS: -x
+      # scripts/ was never scanned. router-perf-query.sh is the read-back side
+      # of the retired cmd/perfmon and builds SQL, so it is the last place to
+      # leave unchecked.
+      - name: Run ShellCheck on scripts
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: scripts
+        env:
+          SHELLCHECK_OPTS: -x
 
   docs:
     name: Astro docs

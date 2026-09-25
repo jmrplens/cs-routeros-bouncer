@@ -1,6 +1,6 @@
 ---
 title: Benchmarking
-description: Run the cs-routeros-bouncer benchmark tool against a MikroTik router and interpret the results, with real RB5009 (RouterOS 7.22.1) reference numbers.
+description: Run the cs-routeros-bouncer benchmark tool against a MikroTik router, measure the router itself with mikroscope, and interpret the results, with real RB5009 (RouterOS 7.22.1) reference numbers.
 ---
 
 import ThemeImage from "components/ThemeImage.astro";
@@ -73,18 +73,19 @@ For CAPI-scale deployments (tens of thousands of entries), also see [CAPI Blockl
 
 The chart below is a single continuous 70-second capture from the production
 RB5009, taken with a 10 Hz sampler reading `/proc/stat` on the router itself
-(see the note on method at the end of this page). It covers the three states an
-operator actually meets: the router idle with the bouncer stopped and the
-address list empty, the **first reconciliation** importing ~22,000 entries, and
-the quiet state that follows with the full list in place. CPU reads on the left
-axis, RAM on the right, and the dashed markers are taken from the bouncer's own
-log timestamps. Each point is the mean of five 100 ms samples; the sub-second
-peaks reach 57% for single 100 ms slices during the import.
+(the section after it names the instrument, and what has replaced it). It
+covers the three states an operator actually meets: the router idle with the
+bouncer stopped and the address list empty, the **first reconciliation**
+importing ~22,000 entries, and the quiet state that follows with the full list
+in place. CPU reads on the left axis, RAM on the right, and the dashed markers
+are taken from the bouncer's own log timestamps. Each point is the mean of five
+100 ms samples; the sub-second peaks reach 57% for single 100 ms slices during
+the import.
 
 <ThemeImage
   src="perf-lifecycle-light.svg"
   alt="Line chart of router CPU percentage and RAM megabytes over 70 seconds: near-idle CPU before the bouncer starts, a sustained plateau around 31% between the writes-begin and reconciliation-complete markers, then back to idle; RAM steps up about 19 MiB when the bouncer connects and stays flat through the import."
-  caption="First reconciliation on an RB5009 holding 22,000 entries. Regenerated with go run ./cmd/perfmon plot from the committed dataset."
+  caption="First reconciliation on an RB5009 holding 22,000 entries, captured 2026-08-26. The instrument that drew it is no longer in this repository; the dataset behind it still is."
 />
 
 The import is the plateau: roughly 31% sustained for ~26 seconds, spread across
@@ -96,55 +97,179 @@ almost nothing; memory is not where this workload bites, CPU during list reads
 is. The idle stretch also shows the router's own background blips — a real
 device is never a flat line.
 
-### Method note
+### Where this capture came from
 
-The 100 ms series comes from a sampler container running on the router itself,
-reading the shared kernel's `/proc/stat` at 10 Hz — and `/proc/meminfo` once
-per second, since memory does not move at 100 ms on this workload — and
-pushing batches straight to Loki. RouterOS's own `cpu-load` updates only once
-per second, so scripts cannot see below that. The capture protocol: stop the
-bouncer, delete both address lists, let the router settle, then start the
-bouncer and record through the first reconciliation into steady state.
+The series was taken by `cmd/perfmon`, a one-off instrument this repository
+carried from 1.5.0 until 1.6.0 removed it: it cross-built a `/proc/stat`
+sampler, side-loaded it onto the router as a container, pushed batches to Loki,
+pulled a window back as CSV and drew this SVG pair. That code is gone —
+[mikroscope](https://github.com/jmrplens/mikroscope) does the same job as a
+supported tool, and the next section is how to use it. What the instrument
+measured stays: `docs/src/data/perf-lifecycle.csv` (141 rows, 100 ms apart) and
+`perf-lifecycle-markers.csv` (three markers, read off the bouncer's own log)
+are still committed beside the figure, so every number above can be checked
+against the data it came from.
 
-The whole instrumentation deploys with one command against any RouterOS device
-with the container package enabled:
+What that costs, stated here rather than discovered later: **the two SVGs can
+no longer be regenerated from this repository.** They were rendered with the
+site's own palette read out of `theme.css`, so a palette change will not reach
+them any more. They are a frozen artefact of 2026-08-26, not a build output —
+treat a new palette, or a new question, as a reason to recapture rather than to
+recolour. mikroscope's own `plot` is not a substitute for that generator either: it
+draws three panels on one time axis from a recording, in its own palette with no dark
+variant, so it produces a different figure rather than this one.
+
+The method, as it was measured: CPU from `/proc/stat` at 10 Hz in a container
+on the router, RAM from `/proc/meminfo` once per second, since memory did not
+move at 100 ms on this workload. RouterOS's own `cpu-load` updates only once
+per second, so a script cannot see below that, which is the whole reason a
+sampler existed. The capture protocol: stop the bouncer, delete both address
+lists, let the router settle, then start the bouncer and record through the
+first reconciliation into steady state.
+
+Two things the dataset does not carry, and neither did this page before: the
+RouterOS version of that particular capture — the other reference numbers here
+were taken on 7.22.1 — and how `ram_used_mib` was derived. The instrument's own
+`capture` verb emitted `mem_avail_kib` and `mem_free_kib`, so the column
+plotted as RAM went through one conversion step that never lived in the
+repository. The CPU column is the instrument's own output; the RAM column is
+one arithmetic step away from it.
+
+## Measuring the router: use mikroscope
+
+`cmd/perfmon` is gone because it grew into its own project.
+[mikroscope](https://github.com/jmrplens/mikroscope) is that project: a static
+Go agent that runs **on** the router in a scratch container and reads the
+shared kernel's `/proc` at 1 to 100 Hz, 10 by default, plus a CLI on your
+machine that installs it, records a window with markers, draws the chart, or
+runs as a collector into eleven sinks. It carries the deployment steps, the
+dockerless image builder and the RouterOS API client that started here, with
+attribution in each package — so what follows is the same mechanism, now
+tested, released and documented on its own.
+
+What the observer costs the router is measured rather than promised: **2.69% of
+one core and 13.2 MiB resident** at the 10 Hz install default, read from the
+agent's own cgroup on an RB5009UG+S+ (4 × 1.4 GHz Cortex-A72, RouterOS 7.24.2),
+over one 300-second window at steady state with the collector forwarding to
+InfluxDB 3, on 2026-09-18. That is the same board this bouncer's own numbers
+are taken on, which is what makes the two comparable; it transfers to no other
+board. [What it costs](https://jmrp.io/docs/mikroscope/cost/) says how the
+figure is taken and how to take it on your own device.
+
+:::caution
+Two prerequisites mikroscope cannot satisfy for you: RouterOS **7.24 or later**,
+and `device-mode container=yes`, which MikroTik gates behind a physical
+reset-button press or a power cycle. `mikroscope doctor` is read-only and names
+the fix for everything else.
+:::
+
+### Putting the agent on the router
 
 ```sh
-go run ./cmd/perfmon install -router admin@192.168.88.1 -port 22 \
-  -loki http://your-loki:3100
+curl -fsSL https://raw.githubusercontent.com/jmrplens/mikroscope/main/install.sh | bash
+
+export MIKROSCOPE_ROUTER=admin@192.168.88.1
+mikroscope doctor                  # read-only preflight
+mikroscope install --ephemeral     # lists every command it will run, asks, then writes
+mikroscope status                  # what is installed, and whether it answers
 ```
 
-It cross-builds the sampler, packs the container image without needing Docker,
-creates the veth, NAT and firewall-list memberships idempotently, starts the
-container and verifies that samples reach Loki. `capture` pulls any window as
-CSV; `plot` redraws the chart above from the committed dataset. Run any verb
-with `-h` for the full flag list.
+`--ephemeral` keeps the one habit worth carrying over from the old instrument:
+it forces the container root onto tmpfs and registers it with
+`start-on-boot=no`, so an instrument leaves no trace on a device it was only
+borrowing. Leave it off for a deployment meant to survive a reboot. With no Go
+toolchain on your machine, add `--remote-image jmrplens/mikroscope-agent:latest`
+and the router pulls the image itself — nothing is built and nothing is
+uploaded.
 
-`uninstall` removes exactly what `install` created and nothing else: every
-object is selected by the exact comment tag `install` wrote, never by a
-pattern — the address-list table it touches is the one the bouncer keeps its
-blocking state in, so a substring match there was never acceptable — plus the
-uploaded image file. It then re-runs its own ownership checks and fails,
-naming the step, if anything remains. A hand-made setup that happens to share
-a name is left alone on both sides: `install` refuses to proceed and names the
-collision — it does not build on objects it did not create and will not later
-remove — and `uninstall` does not own it and ignores it. The envlist and the
-uploaded image, which RouterOS cannot tag, are signed by a `PERFMON_TAG`
-entry in the envlist and are removed only while that marker exists.
+The two default-firewall traps that used to eat this repository's sampler
+traffic are the same two, and mikroscope's installer handles both: the raw rule
+`drop the rest (in-interface-list=!LAN)` drops every packet from a veth outside
+the `LAN` interface list, and `drop local if not from default IP range` matches
+a source outside the `LANs` address list. The signature is worth recognising
+because nothing logs it: ICMP to the container answers while its outbound TCP
+produces no conntrack entry and no masquerade counter, and the sniffer shows
+nothing. [The two firewall
+traps](https://jmrp.io/docs/mikroscope/install/firewall/) is the long version.
 
-Two things about the deployment are deliberate and worth knowing before you
-rely on it. The container's root lives on the router's tmpfs by default and it
-is registered with `start-on-boot=no`, so it does **not** survive a reboot —
-an instrument should leave no trace on a device it was only borrowing;
-`install` is idempotent and fast to rerun. And the installer makes two
-firewall-list memberships because the default RouterOS firewall silently
-eats container traffic without them: the raw rule `drop the rest
-(in-interface-list=!LAN)` drops every packet from a veth that is not in the
-`LAN` interface list, and `drop local if not from default IP range` matches a
-source outside the `LANs` address list. The symptom is that ICMP to the
-container works while its outbound TCP produces no conntrack entry and no
-masquerade counter; the sniffer shows nothing. Both memberships are created
-and removed with the rest.
+### Recording a window and drawing it
+
+```sh
+mikroscope record --for 3m --out first-reconcile   # a line typed here becomes a marker
+# in another shell: systemctl start cs-routeros-bouncer
+mikroscope plot --in first-reconcile               # first-reconcile.svg, deterministic
+```
+
+`record` writes `first-reconcile.jsonl`, `.csv` and `.markers.csv`, and
+`mikroscope mark --out first-reconcile "reconciliation complete"` adds a marker
+to a recording that already exists. It starts at the agent's newest sample, so
+start it before the bouncer — or pass `--from-start` to pull whatever the
+agent's ring still holds first, 60 seconds of it at the install default.
+
+The capture protocol from the 2026-08 run is the part that decides whether the
+numbers mean anything, and none of it has changed: stop the bouncer, delete both
+address lists, let the router settle, then start recording, and only then start
+the bouncer. One thing has improved. Memory is now read and shipped on every
+tick rather than once a second — on the reference device the kernel's memory
+levels moved about 24 times a second, so a floor there would have thrown away
+real movement — which means the RAM series comes back at the sampler rate
+instead of at 1 Hz.
+
+## Reading the 10 Hz series without touching the router
+
+The point of a collector is that the window you want is already stored.
+`mikroscope forward --influx http://influx:8181 --influx-db mikroscope` writes
+the kernel tier into InfluxDB 3 continuously — the token comes from
+`MIKROSCOPE_INFLUX_TOKEN`, never from a flag — and from then on a CPU question
+is a query, not a deployment. The token reaches `curl` on standard input, as a
+`--config` file, because an argument is visible to any local user through `ps`
+and `-H "Authorization: …"` is an argument like any other:
+
+```sh
+printf 'header = "Authorization: Bearer %s"\n' "$MIKROSCOPE_INFLUX_TOKEN" |
+  curl -s --config - --get \
+  http://influx:8181/api/v3/query_sql \
+  --data-urlencode "db=mikroscope" \
+  --data-urlencode "format=json" \
+  --data-urlencode "q=SELECT time, avg(busy_ratio) * 100 AS cpu_pct
+    FROM mikroscope_cpu
+    WHERE host = 'router'
+      AND time >= '2026-09-24T18:00:00Z'
+      AND time <  '2026-09-24T18:02:00Z'
+    GROUP BY time ORDER BY time"
+```
+
+`host` is whatever the collector's `--host-tag` sets — `router` by default, and
+`rb5009` on the collector behind this project's own numbers. `busy_ratio` is a per-core
+fraction between 0 and 1, computed by the sink and clamped at 1, so averaging it over the
+`cpu` tag at one timestamp is the all-core percentage the retired dataset called
+`cpu_pct`. The raw tick deltas
+sit on the same row, with the sample's real interval `dt_ns`, if you would
+rather do that arithmetic yourself — and a rate taken over a nominal period
+instead of the real one is exactly the kind of error the next section is about.
+
+| Column of the retired dataset | Where the same quantity comes from now                                       |
+| ----------------------------- | ---------------------------------------------------------------------------- |
+| `cpu_pct`                     | `avg(busy_ratio) * 100` over the `cpu` tag of `mikroscope_cpu` at one `time` |
+| `ram_used_mib`                | `(total_kb - available_kb) / 1024.0` from `mikroscope_mem`, one row per tick |
+| `perf-lifecycle-markers.csv`  | a line typed into `record`, or `mikroscope mark` afterwards                  |
+
+`scripts/router-perf-query.sh` in this repository wraps that `curl` for the
+handful of questions this project actually asks — per-core CPU, memory,
+softnet drops, the agent's own cost, and the continuity of the window — and
+takes `MIKROSCOPE_INFLUX_URL` and `MIKROSCOPE_INFLUX_TOKEN` from the
+environment, the same variable names the collector uses. Its header documents
+the two traps worth knowing: the softnet and observer counters are per-sample
+deltas, so they must be summed rather than differenced, and a partial
+`date_bin` bin at the edge of a window averages over less than a second.
+
+[InfluxDB and SQL
+measurements](https://jmrp.io/docs/mikroscope/reference/measurements/) is the
+column list for every table, and [the InfluxDB
+sink](https://jmrp.io/docs/mikroscope/sinks/influxdb/) is what writes them.
+Grafana reading the same database is the shortest path to a chart; this
+repository's own `grafana/dashboard.json` is Prometheus-only and covers the
+bouncer's metrics, not the router's kernel.
 
 ## Measuring against a live router
 
