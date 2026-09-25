@@ -117,108 +117,104 @@ const selected = managedRules
 const shown = families.length > 0 ? families : [...FAMILIES];
 ---
 
-{
-	count && (
-		<p class="rule-set__count">
-			{/* Derived from the families this instance actually renders, not from a
+{count && (
+	<p class="rule-set__count">
+		{/* Derived from the families this instance actually renders, not from a
 			    hardcoded 2 — the `families` prop can select a single family, and a
 			    card that lists one family while claiming two is the drift this
 			    module exists to prevent. */}
-			<strong>{selected.length * shown.length}</strong> {labels.countOne}{" "}
-			{selected.length} {labels.countTwo} {shown.length} {labels.countFamilies}
-		</p>
-	)
-}
+		<strong>{selected.length * shown.length}</strong> {labels.countOne}{" "}
+		{selected.length} {labels.countTwo} {shown.length} {labels.countFamilies}
+	</p>
+)}
 
 <ul class="rule-set">
-	{
-		selected.map((rule) => {
-			const gloss = ruleGloss(rule, locale);
-			// Every family this card renders, not just the first: the code frame above
-			// lists both, so a meta row naming only the IPv4 list understates the IPv6
-			// half of the very rule it is describing.
-			// A whitelist name is supplied by the operator and is the same for both
-			// families, so rendering it once per family repeated it verbatim.
-			const lists = [
-				...new Set(shown.map((family) => addressListName(rule, family))),
-			];
-			const paths = shown.map((family) => menuPath(rule, family));
-			const defaultLabel =
-				rule.settingDefault === "unset" ? labels.unset : rule.settingDefault;
-			return (
-				<li class="rule-card" data-state={stateOf(rule.action)}>
-					<h3 class="rule-card__name">
-						{gloss.name}
-						<span class="rule-card__state">
-							{labels.state[stateOf(rule.action)]}
-						</span>
-					</h3>
-					<p class="rule-card__purpose">{gloss.purpose}</p>
-					<Code
-						code={shown.map((family) => ruleCommand(rule, family)).join("\n")}
-						lang="routeros"
-					/>
-					<dl class="rule-card__meta">
-						<div>
-							<dt>{labels.table}</dt>
-							<dd>
-								{paths.map((path, i) => (
+	{selected.map((rule) => {
+		const gloss = ruleGloss(rule, locale);
+		// Every family this card renders, not just the first: the code frame above
+		// lists both, so a meta row naming only the IPv4 list understates the IPv6
+		// half of the very rule it is describing.
+		// A whitelist name is supplied by the operator and is the same for both
+		// families, so rendering it once per family repeated it verbatim.
+		const lists = [
+			...new Set(shown.map((family) => addressListName(rule, family))),
+		];
+		const paths = shown.map((family) => menuPath(rule, family));
+		const defaultLabel =
+			rule.settingDefault === "unset" ? labels.unset : rule.settingDefault;
+		return (
+			<li class="rule-card" data-state={stateOf(rule.action)}>
+				<h3 class="rule-card__name">
+					{gloss.name}
+					<span class="rule-card__state">
+						{labels.state[stateOf(rule.action)]}
+					</span>
+				</h3>
+				<p class="rule-card__purpose">{gloss.purpose}</p>
+				<Code
+					code={shown.map((family) => ruleCommand(rule, family)).join("\n")}
+					lang="routeros"
+				/>
+				<dl class="rule-card__meta">
+					<div>
+						<dt>{labels.table}</dt>
+						<dd>
+							{paths.map((path, i) => (
+								<>
+									<code>{path}</code>
+									{i < paths.length - 1 ? " · " : ""}
+								</>
+							))}
+						</dd>
+					</div>
+					<div>
+						<dt>{labels.chain}</dt>
+						<dd>
+							<code>{rule.chain}</code>
+						</dd>
+					</div>
+					<div>
+						<dt>{labels.action}</dt>
+						<dd>
+							<code>{rule.action}</code>
+						</dd>
+					</div>
+					<div>
+						<dt>{labels.list}</dt>
+						<dd>
+							{lists[0] ? (
+								lists.map((name, i) => (
 									<>
-										<code>{path}</code>
-										{i < paths.length - 1 ? " · " : ""}
+										<code>{name}</code>
+										{i < lists.length - 1 ? " · " : ""}
 									</>
-								))}
-							</dd>
-						</div>
-						<div>
-							<dt>{labels.chain}</dt>
-							<dd>
-								<code>{rule.chain}</code>
-							</dd>
-						</div>
-						<div>
-							<dt>{labels.action}</dt>
-							<dd>
-								<code>{rule.action}</code>
-							</dd>
-						</div>
-						<div>
-							<dt>{labels.list}</dt>
-							<dd>
-								{lists[0] ? (
-									lists.map((name, i) => (
-										<>
-											<code>{name}</code>
-											{i < lists.length - 1 ? " · " : ""}
-										</>
-									))
-								) : (
-									<em>{labels.noList}</em>
-								)}
-								{rule.match?.kind === "whitelist" && (
-									<em class="rule-card__hint"> ({labels.sampleList})</em>
-								)}
-							</dd>
-						</div>
-					</dl>
-					<p class="rule-card__availability">
-						{rule.createdByDefault ? labels.byDefault : labels.notByDefault}{" "}
-						{rule.createdByDefault ? labels.gatedOn : labels.requires}{" "}
-						<code>{rule.enabledBy}</code> ({labels.defaultIs}{" "}
-						<code>{defaultLabel}</code>).
-					</p>
-					{gloss.note && <p class="rule-card__note">{gloss.note}</p>}
-					<p class="rule-card__optional">
-						{labels.optional}{" "}
-						{rule.optionalAttributes.map((option, index) => (
-							<>
-								{index > 0 && ", "}
-								<code>{option.attribute}</code> (<code>{option.setting}</code>)
-							</>
-						))}
-					</p>
-				</li>
-			);
-		})
-	}
+								))
+							) : (
+								<em>{labels.noList}</em>
+							)}
+							{rule.match?.kind === "whitelist" && (
+								<em class="rule-card__hint"> ({labels.sampleList})</em>
+							)}
+						</dd>
+					</div>
+				</dl>
+				<p class="rule-card__availability">
+					{rule.createdByDefault ? labels.byDefault : labels.notByDefault}{" "}
+					{rule.createdByDefault ? labels.gatedOn : labels.requires}{" "}
+					<code>{rule.enabledBy}</code> ({labels.defaultIs}{" "}
+					<code>{defaultLabel}</code>).
+				</p>
+				{gloss.note && <p class="rule-card__note">{gloss.note}</p>}
+				<p class="rule-card__optional">
+					{labels.optional}{" "}
+					{rule.optionalAttributes.map((option, index) => (
+						<>
+							{index > 0 && ", "}
+							<code>{option.attribute}</code> (<code>{option.setting}</code>)
+						</>
+					))}
+				</p>
+			</li>
+		);
+	})}
 </ul>

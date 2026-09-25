@@ -366,54 +366,42 @@ const dataset =
 		: null;
 ---
 
-<Default {...Astro.props}><slot /></Default>
+<Default {...Astro.props}>
+	<slot />
+</Default>
 
-{
-	/* X/Twitter falls back to og: tags for title/description, but emitting the
-dedicated tags removes the ambiguity for other card-consuming crawlers. */
-}
-{
-	/* Emitted here rather than in the global `head` array because the card is
+{/* X/Twitter falls back to og: tags for title/description, but emitting the
+dedicated tags removes the ambiguity for other card-consuming crawlers. */}
+{/* Emitted here rather than in the global `head` array because the card is
 per page. Starlight renders `<Default>` above, so these come after its own
 tags — later wins for the scrapers that take the last value, and the global
-array no longer declares a competing one either way. */
-}
+array no longer declares a competing one either way. */}
 <meta property="og:image" content={cardUrl} />
 <meta name="twitter:image" content={cardUrl} />
-{
-	title && (
-		<meta property="og:image:alt" content={`${title} — cs-routeros-bouncer`} />
-	)
-}
+{title && (
+	<meta property="og:image:alt" content={`${title} — cs-routeros-bouncer`} />
+)}
 
 {title && <meta name="twitter:title" content={title} />}
 {description && <meta name="twitter:description" content={description} />}
 
-{
-	techArticle && (
-		<script
-			type="application/ld+json"
-			is:inline
-			set:html={toLdJson(techArticle)}
-		/>
-	)
-}
-{
-	breadcrumbList && (
-		<script
-			type="application/ld+json"
-			is:inline
-			set:html={toLdJson(breadcrumbList)}
-		/>
-	)
-}
-{
-	howTo && (
-		<script type="application/ld+json" is:inline set:html={toLdJson(howTo)} />
-	)
-}
-{
-	dataset && (
-		<script type="application/ld+json" is:inline set:html={toLdJson(dataset)} />
-	)
-}
+{techArticle && (
+	<script
+		type="application/ld+json"
+		is:inline
+		set:html={toLdJson(techArticle)}
+	/>
+)}
+{breadcrumbList && (
+	<script
+		type="application/ld+json"
+		is:inline
+		set:html={toLdJson(breadcrumbList)}
+	/>
+)}
+{howTo && (
+	<script type="application/ld+json" is:inline set:html={toLdJson(howTo)} />
+)}
+{dataset && (
+	<script type="application/ld+json" is:inline set:html={toLdJson(dataset)} />
+)}

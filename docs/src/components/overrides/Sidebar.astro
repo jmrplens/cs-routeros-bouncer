@@ -6,8 +6,7 @@ type Props = Record<string, unknown>;
 const props = Astro.props as Props;
 ---
 
-{
-	/* Wraps — never replaces — Starlight's sidebar, so the tree, the
+{/* Wraps — never replaces — Starlight's sidebar, so the tree, the
 state persister and the mobile menu footer all stay upstream's. The
 only addition is the custom element below, which brings the current
 entry into view inside the sidebar's own scroll container.
@@ -23,9 +22,12 @@ the restore is skipped outright. And even when the restore does run it
 replays the PREVIOUS page's offset, which is not the same thing as
 showing the page you are now on — jump from Getting Started to
 Reconciliation and the restored offset still points at Getting
-Started. */
-}
-<rb-sidebar-reveal><Default {...props}><slot /></Default></rb-sidebar-reveal>
+Started. */}
+<rb-sidebar-reveal>
+	<Default {...props}>
+		<slot />
+	</Default>
+</rb-sidebar-reveal>
 
 <style>
 	/* The pane's own flex layout has to keep seeing the sidebar's

@@ -47,8 +47,7 @@ const prevGroup = prev && groups.get(prev.href);
 const nextGroup = next && groups.get(next.href);
 ---
 
-{
-	/* A copy of Starlight's Pagination.astro (0.41.8), not a wrapper: the
+{/* A copy of Starlight's Pagination.astro (0.41.8), not a wrapper: the
 group has to sit inside the card, and a wrapper cannot reach in. The
 markup below differs from upstream in exactly two ways —
 
@@ -64,47 +63,42 @@ Because this replaces the component, Starlight's scoped styles for
 longer emitted for this page and are carried below verbatim, still
 inside `@layer starlight.core` — chrome.css's unlayered
 `.pagination-links a` rules must keep winning over them exactly as
-they did before. */
-}
+they did before. */}
 <div class="pagination-links print:hidden" dir={dir}>
-	{
-		prev && (
-			<a href={prev.href} rel="prev">
-				<Icon name={isRtl ? "right-arrow" : "left-arrow"} size="1.5rem" />
-				<span class="stack">
-					<span class="meta">
-						{Astro.locals.t("page.previousLink")}
-						{prevGroup && (
-							<>
-								<span aria-hidden="true">·</span>
-								{prevGroup}
-							</>
-						)}
-					</span>
-					<span class="link-title">{prev.label}</span>
+	{prev && (
+		<a href={prev.href} rel="prev">
+			<Icon name={isRtl ? "right-arrow" : "left-arrow"} size="1.5rem" />
+			<span class="stack">
+				<span class="meta">
+					{Astro.locals.t("page.previousLink")}
+					{prevGroup && (
+						<>
+							<span aria-hidden="true">·</span>
+							{prevGroup}
+						</>
+					)}
 				</span>
-			</a>
-		)
-	}
-	{
-		next && (
-			<a href={next.href} rel="next">
-				<Icon name={isRtl ? "left-arrow" : "right-arrow"} size="1.5rem" />
-				<span class="stack">
-					<span class="meta">
-						{Astro.locals.t("page.nextLink")}
-						{nextGroup && (
-							<>
-								<span aria-hidden="true">·</span>
-								{nextGroup}
-							</>
-						)}
-					</span>
-					<span class="link-title">{next.label}</span>
+				<span class="link-title">{prev.label}</span>
+			</span>
+		</a>
+	)}
+	{next && (
+		<a href={next.href} rel="next">
+			<Icon name={isRtl ? "left-arrow" : "right-arrow"} size="1.5rem" />
+			<span class="stack">
+				<span class="meta">
+					{Astro.locals.t("page.nextLink")}
+					{nextGroup && (
+						<>
+							<span aria-hidden="true">·</span>
+							{nextGroup}
+						</>
+					)}
 				</span>
-			</a>
-		)
-	}
+				<span class="link-title">{next.label}</span>
+			</span>
+		</a>
+	)}
 </div>
 
 <style>
