@@ -6,3 +6,10 @@ minimumReleaseAge: 0
 allowBuilds:
   esbuild: true
   sharp: true
+
+# GHSA advisory on js-yaml < 4.3.2 (high). The fix is a patch, but the only
+# consumer is Astro's own tree, which still asks for ^4.3.1 — so it is forced
+# here rather than waiting for an Astro release. Drop this once Astro's
+# dependency range moves past it.
+overrides:
+  js-yaml@4: ^4.3.2
