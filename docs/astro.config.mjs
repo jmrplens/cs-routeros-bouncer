@@ -445,7 +445,7 @@ export default defineConfig({
 		starlight({
 			title: "cs-routeros-bouncer",
 			description:
-				"CrowdSec bouncer for MikroTik RouterOS — automatic firewall management via the RouterOS API",
+				"CrowdSec bouncer for MikroTik RouterOS: automatic firewall management via the RouterOS API",
 			defaultLocale: "root",
 			locales: {
 				root: { label: "English", lang: "en" },
@@ -732,7 +732,7 @@ export default defineConfig({
 								name: "cs-routeros-bouncer",
 								url: "https://jmrplens.github.io/cs-routeros-bouncer/",
 								description:
-									"CrowdSec bouncer for MikroTik RouterOS — automatic firewall management via the RouterOS API",
+									"CrowdSec bouncer for MikroTik RouterOS: automatic firewall management via the RouterOS API",
 								inLanguage: ["en", "es"],
 								image: {
 									"@type": "ImageObject",
@@ -787,7 +787,7 @@ export default defineConfig({
 								keywords:
 									"CrowdSec, bouncer, MikroTik, RouterOS, firewall, network security, Go",
 								description:
-									"CrowdSec bouncer for MikroTik RouterOS — automatic firewall management via the RouterOS API",
+									"CrowdSec bouncer for MikroTik RouterOS: automatic firewall management via the RouterOS API",
 								offers: { "@type": "Offer", price: 0, priceCurrency: "USD" },
 								author: { "@id": "https://jmrp.io/#person" },
 								// Same three agents jmrp.io/projects/ emits for this @id, so the merged
