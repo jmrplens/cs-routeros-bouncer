@@ -100,7 +100,7 @@ device is never a flat line.
 ### Where this capture came from
 
 The series was taken by `cmd/perfmon`, a one-off instrument this repository
-carried from 1.5.0 until it was removed: it cross-built a `/proc/stat`
+carried from 1.5.0 until 1.6.0 removed it: it cross-built a `/proc/stat`
 sampler, side-loaded it onto the router as a container, pushed batches to Loki,
 pulled a window back as CSV and drew this SVG pair. That code is gone —
 [mikroscope](https://github.com/jmrplens/mikroscope) does the same job as a
