@@ -33,7 +33,9 @@ const lang = Astro.locals.starlightRoute?.lang ?? "en";
 const t = FOOTER_STRINGS[lang] ?? FOOTER_STRINGS.en;
 ---
 
-<Default {...Astro.props}><slot /></Default>
+<Default {...Astro.props}>
+	<slot />
+</Default>
 
 <div class="custom-footer">
 	<div class="footer-inner">
@@ -42,52 +44,66 @@ const t = FOOTER_STRINGS[lang] ?? FOOTER_STRINGS.en;
 			<a
 				href="https://jmrp.io"
 				target="_blank"
-				rel="external noopener noreferrer author">José Manuel Requena Plens</a
+				rel="external noopener noreferrer author"
 			>
+				José Manuel Requena Plens
+			</a>
 			&middot; {t.builtWith}
 			<a
 				href="https://starlight.astro.build/"
 				target="_blank"
-				rel="external noopener noreferrer">Starlight</a
+				rel="external noopener noreferrer"
 			>
+				Starlight
+			</a>
 			&middot; {t.poweredBy}
 			<a
 				href="https://www.crowdsec.net/"
 				target="_blank"
-				rel="external noopener noreferrer">CrowdSec</a
+				rel="external noopener noreferrer"
 			>
+				CrowdSec
+			</a>
 		</p>
 		<p class="footer-links">
 			<a
 				href="https://github.com/jmrplens/cs-routeros-bouncer"
 				target="_blank"
-				rel="external noopener noreferrer">GitHub</a
+				rel="external noopener noreferrer"
 			>
+				GitHub
+			</a>
 			<span aria-hidden="true">&middot;</span>
 			<a
 				href="https://github.com/jmrplens/cs-routeros-bouncer/issues"
 				target="_blank"
-				rel="external noopener noreferrer">Issues</a
+				rel="external noopener noreferrer"
 			>
+				Issues
+			</a>
 			<span aria-hidden="true">&middot;</span>
 			<a
 				href="https://github.com/jmrplens/cs-routeros-bouncer/blob/main/LICENSE"
 				target="_blank"
-				rel="external noopener noreferrer">{t.license}</a
+				rel="external noopener noreferrer"
 			>
+				{t.license}
+			</a>
 			<span aria-hidden="true">&middot;</span>
-			{
-				/* The maintainer's project index: a path from this project to the
+			{/* The maintainer's project index: a path from this project to the
 			    whole portfolio, where every #software node in the identity graph
-			    is listed together. */
-			}
+			    is listed together. */}
 			<a
-				href={lang === "es"
-					? "https://jmrp.io/es/projects/"
-					: "https://jmrp.io/projects/"}
+				href={
+					lang === "es"
+						? "https://jmrp.io/es/projects/"
+						: "https://jmrp.io/projects/"
+				}
 				target="_blank"
-				rel="external noopener noreferrer">{t.allProjects}</a
+				rel="external noopener noreferrer"
 			>
+				{t.allProjects}
+			</a>
 		</p>
 	</div>
 </div>

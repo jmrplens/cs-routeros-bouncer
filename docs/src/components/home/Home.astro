@@ -128,142 +128,130 @@ const faqSchema = {
 const faqJson = JSON.stringify(faqSchema).replace(/</g, "\\u003c");
 ---
 
-{
-	section === "flow" && (
-		<ol class="flow-steps">
-			{content.flow.map((step, index) => (
-				<li class="flow-step">
-					{/*
+{section === "flow" && (
+	<ol class="flow-steps">
+		{content.flow.map((step, index) => (
+			<li class="flow-step">
+				{/*
 					  The ordinal is decoration: the <ol> already gives a screen
 					  reader "item 2 of 4", so announcing "02" as well would be the
 					  same fact twice.
 					*/}
-					<span class="flow-step__icon" aria-hidden="true">
-						{String(index + 1).padStart(2, "0")}
-					</span>
-					<span class="flow-step__title">{step.title}</span>
-					<span class="flow-step__desc">{step.description}</span>
-				</li>
+				<span class="flow-step__icon" aria-hidden="true">
+					{String(index + 1).padStart(2, "0")}
+				</span>
+				<span class="flow-step__title">{step.title}</span>
+				<span class="flow-step__desc">{step.description}</span>
+			</li>
+		))}
+	</ol>
+)}
+
+{section === "why" && (
+	<>
+		<p>
+			{content.why.lead}{" "}
+			<a href={content.why.link.href}>{content.why.link.text}</a>.
+		</p>
+		<CardGrid>
+			{content.why.cards.map((card) => (
+				<Card title={card.title}>{card.body}</Card>
 			))}
-		</ol>
-	)
-}
+		</CardGrid>
+	</>
+)}
 
-{
-	section === "why" && (
-		<>
-			<p>
-				{content.why.lead}{" "}
-				<a href={content.why.link.href}>{content.why.link.text}</a>.
+{section === "disclosure" && (
+	<div class="disclosure">
+		<p class="disclosure__lead">{content.disclosure.lead}</p>
+
+		<section class="disclosure__panel" aria-labelledby="disclosure-writes">
+			<h3 class="disclosure__title" id="disclosure-writes">
+				{content.disclosure.writes.title}
+			</h3>
+			<p class="disclosure__caption">{content.disclosure.writes.caption}</p>
+			<Code code={ruleListing} lang="routeros" title={labels.rulesTitle} />
+			<p class="disclosure__footnote">
+				{content.disclosure.writes.footnote.map((run: Segment) =>
+					typeof run === "string" ? run : <code>{run.code}</code>,
+				)}
 			</p>
-			<CardGrid>
-				{content.why.cards.map((card) => (
-					<Card title={card.title}>{card.body}</Card>
+		</section>
+
+		<section class="disclosure__panel" aria-labelledby="disclosure-limits">
+			<h3 class="disclosure__title" id="disclosure-limits">
+				{content.disclosure.limits.title}
+			</h3>
+			<dl class="disclosure__facts">
+				{content.disclosure.limits.facts.map((fact) => (
+					<div class="disclosure__fact">
+						<dt>{fact.term}</dt>
+						<dd>
+							{fact.detail.map((run: Segment) =>
+								typeof run === "string" ? run : <code>{run.code}</code>,
+							)}
+							{fact.link && (
+								<>
+									{" "}
+									<a href={fact.link.href}>{fact.link.text}</a>
+								</>
+							)}
+						</dd>
+					</div>
 				))}
-			</CardGrid>
-		</>
-	)
-}
-
-{
-	section === "disclosure" && (
-		<div class="disclosure">
-			<p class="disclosure__lead">{content.disclosure.lead}</p>
-
-			<section class="disclosure__panel" aria-labelledby="disclosure-writes">
-				<h3 class="disclosure__title" id="disclosure-writes">
-					{content.disclosure.writes.title}
-				</h3>
-				<p class="disclosure__caption">{content.disclosure.writes.caption}</p>
-				<Code code={ruleListing} lang="routeros" title={labels.rulesTitle} />
-				<p class="disclosure__footnote">
-					{content.disclosure.writes.footnote.map((run: Segment) =>
-						typeof run === "string" ? run : <code>{run.code}</code>,
-					)}
-				</p>
-			</section>
-
-			<section class="disclosure__panel" aria-labelledby="disclosure-limits">
-				<h3 class="disclosure__title" id="disclosure-limits">
-					{content.disclosure.limits.title}
-				</h3>
-				<dl class="disclosure__facts">
-					{content.disclosure.limits.facts.map((fact) => (
-						<div class="disclosure__fact">
-							<dt>{fact.term}</dt>
-							<dd>
-								{fact.detail.map((run: Segment) =>
-									typeof run === "string" ? run : <code>{run.code}</code>,
-								)}
-								{fact.link && (
-									<>
-										{" "}
-										<a href={fact.link.href}>{fact.link.text}</a>
-									</>
-								)}
-							</dd>
-						</div>
-					))}
-					{/*
+				{/*
 					  The last fact is not authored: it is `addressListLifecycle` from
 					  rules.mjs, which derives it from `Shutdown()` in manager.go. Both
 					  locales get it from the same module, so it cannot be translated
 					  into a different promise.
 					*/}
-					<div class="disclosure__fact">
-						<dt>{lifecycle.title}</dt>
-						<dd>
-							{lifecycle.body}
-							<span class="disclosure__caveat">
-								<strong>{labels.caveat}:</strong> {lifecycle.caveat}
-							</span>
-						</dd>
-					</div>
-				</dl>
-			</section>
-		</div>
-	)
-}
+				<div class="disclosure__fact">
+					<dt>{lifecycle.title}</dt>
+					<dd>
+						{lifecycle.body}
+						<span class="disclosure__caveat">
+							<strong>{labels.caveat}:</strong> {lifecycle.caveat}
+						</span>
+					</dd>
+				</div>
+			</dl>
+		</section>
+	</div>
+)}
 
-{
-	section === "requirements" && (
-		<ul class="requirements">
-			{content.requirements.map((requirement) => (
-				<li>
-					<strong>{requirement.term}</strong> {requirement.detail}
-					{requirement.note && (
-						<span class="requirements__note"> ({requirement.note})</span>
-					)}
-				</li>
-			))}
-		</ul>
-	)
-}
+{section === "requirements" && (
+	<ul class="requirements">
+		{content.requirements.map((requirement) => (
+			<li>
+				<strong>{requirement.term}</strong> {requirement.detail}
+				{requirement.note && (
+					<span class="requirements__note"> ({requirement.note})</span>
+				)}
+			</li>
+		))}
+	</ul>
+)}
 
-{
-	section === "faq" && (
-		<>
-			{content.faq.map((entry) => (
-				<details>
-					<summary>{entry.question}</summary>
-					<p>{entry.answer}</p>
-				</details>
-			))}
-			<script type="application/ld+json" is:inline set:html={faqJson} />
-		</>
-	)
-}
+{section === "faq" && (
+	<>
+		{content.faq.map((entry) => (
+			<details>
+				<summary>{entry.question}</summary>
+				<p>{entry.answer}</p>
+			</details>
+		))}
+		<script type="application/ld+json" is:inline set:html={faqJson} />
+	</>
+)}
 
-{
-	section === "explore" && (
-		<CardGrid>
-			{content.explore.map((link) => (
-				<LinkCard
-					title={link.title}
-					description={link.description}
-					href={link.href}
-				/>
-			))}
-		</CardGrid>
-	)
-}
+{section === "explore" && (
+	<CardGrid>
+		{content.explore.map((link) => (
+			<LinkCard
+				title={link.title}
+				description={link.description}
+				href={link.href}
+			/>
+		))}
+	</CardGrid>
+)}

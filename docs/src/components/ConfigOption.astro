@@ -168,76 +168,72 @@ const tableRows = (rows ?? []).map(([key, description]) => ({
 }));
 ---
 
-{
-	singleOptions.length > 0 && (
-		<p class="config-option">
-			<strong>{labels.env}:</strong>{" "}
-			{envNames.map((name, index) => (
-				<>
-					{index > 0 && " / "}
-					{name === labels.yamlOnly ? name : <code>{name}</code>}
-				</>
-			))}
-			{(defaultsAreUniform || singleOptions.length === 1) && (
-				<>
-					{" · "}
-					<strong>{labels.default}:</strong>{" "}
-					{hasDefaultValue(singleOptions[0]) ? (
-						<code>{formatDefault(singleOptions[0])}</code>
-					) : (
-						formatDefault(singleOptions[0])
-					)}
-				</>
-			)}
-			{!defaultsAreUniform && singleOptions.length > 1 && (
-				<>
-					{" · "}
-					<strong>{labels.default}:</strong>{" "}
-					{singleOptions.map((option, index) => (
-						<>
-							{index > 0 && " / "}
-							{hasDefaultValue(option) ? (
-								<code>{formatDefault(option)}</code>
-							) : (
-								formatDefault(option)
-							)}
-						</>
-					))}
-				</>
-			)}
-			{note && ` (${note})`}
-		</p>
-	)
-}
-
-{
-	tableRows.length > 0 && (
-		<table class="config-option-table">
-			<thead>
-				<tr>
-					{labels.columns.map((column) => (
-						<th scope="col">{column}</th>
-					))}
-				</tr>
-			</thead>
-			<tbody>
-				{tableRows.map(({ option, description }) => (
-					<tr>
-						<td>
-							<code>{option.path}</code>
-						</td>
-						<td>{option.env ? <code>{option.env}</code> : labels.yamlOnly}</td>
-						<td>
-							{hasDefaultValue(option) ? (
-								<code>{formatDefault(option)}</code>
-							) : (
-								formatDefault(option)
-							)}
-						</td>
-						<td set:html={inlineCode(description)} />
-					</tr>
+{singleOptions.length > 0 && (
+	<p class="config-option">
+		<strong>{labels.env}:</strong>{" "}
+		{envNames.map((name, index) => (
+			<>
+				{index > 0 && " / "}
+				{name === labels.yamlOnly ? name : <code>{name}</code>}
+			</>
+		))}
+		{(defaultsAreUniform || singleOptions.length === 1) && (
+			<>
+				{" · "}
+				<strong>{labels.default}:</strong>{" "}
+				{hasDefaultValue(singleOptions[0]) ? (
+					<code>{formatDefault(singleOptions[0])}</code>
+				) : (
+					formatDefault(singleOptions[0])
+				)}
+			</>
+		)}
+		{!defaultsAreUniform && singleOptions.length > 1 && (
+			<>
+				{" · "}
+				<strong>{labels.default}:</strong>{" "}
+				{singleOptions.map((option, index) => (
+					<>
+						{index > 0 && " / "}
+						{hasDefaultValue(option) ? (
+							<code>{formatDefault(option)}</code>
+						) : (
+							formatDefault(option)
+						)}
+					</>
 				))}
-			</tbody>
-		</table>
-	)
-}
+			</>
+		)}
+		{note && ` (${note})`}
+	</p>
+)}
+
+{tableRows.length > 0 && (
+	<table class="config-option-table">
+		<thead>
+			<tr>
+				{labels.columns.map((column) => (
+					<th scope="col">{column}</th>
+				))}
+			</tr>
+		</thead>
+		<tbody>
+			{tableRows.map(({ option, description }) => (
+				<tr>
+					<td>
+						<code>{option.path}</code>
+					</td>
+					<td>{option.env ? <code>{option.env}</code> : labels.yamlOnly}</td>
+					<td>
+						{hasDefaultValue(option) ? (
+							<code>{formatDefault(option)}</code>
+						) : (
+							formatDefault(option)
+						)}
+					</td>
+					<td set:html={inlineCode(description)} />
+				</tr>
+			))}
+		</tbody>
+	</table>
+)}

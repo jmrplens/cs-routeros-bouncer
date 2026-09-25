@@ -11,7 +11,9 @@ const { version = getLatestRelease().version } = Astro.props;
 ---
 
 <span class="version-badge" aria-label={`Version ${version}`}>
-	<span class="version-badge__label" aria-hidden="true">v</span>
+	<span class="version-badge__label" aria-hidden="true">
+		v
+	</span>
 	<span class="version-badge__value">{version}</span>
 </span>
 

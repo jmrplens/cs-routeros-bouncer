@@ -1,4 +1,11 @@
 ---
+/*
+ * `virtual:starlight/user-config` joined the list below in Starlight 0.42:
+ * 0.41 declared it in the types a consumer sees, 0.42 does not, so
+ * `astro check` reports ts(2307) for it too. Vite still resolves it at build
+ * time, and upstream's own Header still imports it.
+ */
+// @ts-expect-error - virtual module, declared only in Starlight's internal types
 import config from "virtual:starlight/user-config";
 
 /*
@@ -38,8 +45,7 @@ const shouldRenderSearch =
 	config.components.Search !== "@astrojs/starlight/components/Search.astro";
 ---
 
-{
-	/* ============================================================
+{/* ============================================================
 WHY THIS IS A COPY OF STARLIGHT'S Header.astro (0.41.8) AND NOT A
 WRAPPER.
 
@@ -75,15 +81,12 @@ WHAT DIFFERS FROM UPSTREAM, exhaustively:
 
 Everything else — element order, class names, the layer the styles sit
 in — is upstream's.
-============================================================ */
-}
+============================================================ */}
 <div class="header">
 	<div class="title-wrapper sl-flex">
 		<SiteTitle />
 	</div>
-	<div class="sl-flex print:hidden">
-		{shouldRenderSearch && <Search />}
-	</div>
+	<div class="sl-flex print:hidden">{shouldRenderSearch && <Search />}</div>
 	<div class="sl-flex print:hidden right-group">
 		<div class="sl-hidden md:sl-flex social-icons">
 			<SocialIcons />
@@ -162,7 +165,7 @@ in — is upstream's.
 				);
 				display: grid;
 				grid-template-columns:
-        /* 1 (site title): runs up until the main content column’s left edge or the width of the title, whichever is the largest  */
+	        /* 1 (site title): runs up until the main content column’s left edge or the width of the title, whichever is the largest  */
 					minmax(
 						calc(
 							var(--__sidebar-width) +

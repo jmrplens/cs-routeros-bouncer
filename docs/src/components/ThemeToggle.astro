@@ -15,8 +15,7 @@ const lang = Astro.locals.starlightRoute?.lang ?? "en";
 const t = TOGGLE_STRINGS[lang] ?? TOGGLE_STRINGS.en;
 ---
 
-{
-	/* A light/dark switch for the mobile header bar, where Starlight's
+{/* A light/dark switch for the mobile header bar, where Starlight's
 three-option theme select is not shown.
 
 IT OWNS NO STATE. On click it sets `value` on the select inside
@@ -63,8 +62,7 @@ The rendered `aria-pressed="false"` is a placeholder: the theme is not
 known at build time (this is a static build, and the theme comes from
 `localStorage`/`prefers-color-scheme` in the before-paint script). The
 script below corrects it when the element upgrades, from the document
-itself, and the same MutationObserver keeps it correct afterwards. */
-}
+itself, and the same MutationObserver keeps it correct afterwards. */}
 <rb-theme-toggle>
 	<button type="button" class="toggle" aria-pressed="false">
 		<span class="sr-only">{t.darkTheme}</span>

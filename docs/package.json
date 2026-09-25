@@ -2,7 +2,7 @@
   "name": "docs",
   "type": "module",
   "version": "0.0.1",
-  "packageManager": "pnpm@11.23.0+sha512.f00082e5b283a199b74e079da28d155c008fe232f44c8a06ea7ddfa014ecf719fc362f790ecc67b28106ddac2afb24c49a9a079159da560b2ce7d1e98efd11af",
+  "packageManager": "pnpm@12.6.0+sha512.3ef68f951cb111ac204b4a5a16f0b2ddf0da56a96e0413e81d855d9f0b55ef926714709028e1cd00c405c2c5fb7b9e8ec4dc46777c805d0373c2f2ff00fd20ec",
   "engines": {
     "node": ">=24.0.0"
   },
@@ -28,28 +28,29 @@
     "cards:check": "node scripts/check-social-cards.mjs"
   },
   "dependencies": {
-    "@astrojs/sitemap": "^3.7.3",
-    "@astrojs/starlight": "^0.41.8",
-    "astro": "^7.2.6",
+    "@astrojs/markdown-remark": "^7.3.1",
+    "@astrojs/sitemap": "^3.7.4",
+    "@astrojs/starlight": "^0.42.4",
+    "astro": "^7.3.5",
     "rehype-mermaid": "^3.0.0",
-    "sharp": "^0.35.3"
+    "sharp": "^0.35.4"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
     "@eslint/js": "^10.0.1",
-    "eslint": "^10.9.1",
-    "eslint-plugin-astro": "^3.1.0",
-    "globals": "^17.11.0",
-    "html-validate": "^11.10.0",
-    "markdownlint-cli2": "0.23.2",
+    "eslint": "^10.11.0",
+    "eslint-plugin-astro": "^3.2.1",
+    "globals": "^17.12.0",
+    "html-validate": "^11.16.0",
+    "markdownlint-cli2": "0.23.3",
     "mdast-util-from-markdown": "2.0.3",
     "mdast-util-mdx": "3.0.0",
     "micromark-extension-mdxjs": "3.0.0",
-    "playwright": "^1.62.1",
-    "prettier": "^3.9.6",
-    "prettier-plugin-astro": "^0.14.1",
+    "playwright": "^1.63.0",
+    "prettier": "^3.9.9",
+    "prettier-plugin-astro": "^1.1.0",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.68.0",
-    "yaml": "2.9.0"
+    "typescript-eslint": "^8.70.1",
+    "yaml": "2.9.1"
   }
 }
