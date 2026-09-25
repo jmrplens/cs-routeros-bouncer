@@ -355,7 +355,7 @@ const dataset =
 				isPartOf: { "@id": WEBSITE_ID },
 				inLanguage: lang,
 				measurementTechnique:
-					"Functional CAPI test suite (tests/functional/) and cmd/benchmark tool run against a MikroTik RB5009UG+S+ on RouterOS 7.24.1, with a 10 Hz /proc/stat sampler on the router for CPU/RAM",
+					"Functional CAPI test suite (tests/functional/) and cmd/benchmark tool run against a MikroTik RB5009UG+S+ on RouterOS 7.24.1; the 100 ms router-side CPU/RAM series was captured with a 10 Hz /proc/stat sampler in a container on the router (cmd/perfmon, since retired in favour of mikroscope)",
 				variableMeasured: [
 					"add operation latency",
 					"remove operation latency",

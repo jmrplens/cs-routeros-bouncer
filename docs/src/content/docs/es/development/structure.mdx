@@ -14,8 +14,6 @@ import { FileTree } from "@astrojs/starlight/components";
     - ...
   - cs-routeros-bouncer/
     - main.go Punto de entrada de la CLI
-  - perfmon/ Instrumentación del router y gráficas
-    - ...
 - internal/
   - config/
     - config.go Struct de configuración y carga
@@ -90,13 +88,7 @@ Punto de entrada de la CLI. Se encarga de:
 
 Benchmark de operaciones sueltas de RouterOS, descrito en [Benchmarking](/cs-routeros-bouncer/es/development/benchmarking/). Solo para desarrollo y planificación de capacidad.
 
-### `cmd/perfmon`
-
-Instrumentación en el propio router, también cubierta en [Benchmarking](/cs-routeros-bouncer/es/development/benchmarking/):
-
-- Compila de forma cruzada un muestreador de `/proc/stat` a 10 Hz y lo empaqueta como imagen de contenedor sin necesitar Docker
-- Lo instala en un dispositivo RouterOS de forma idempotente (veth, NAT, pertenencia a listas de firewall), desinstala exactamente lo que creó — seleccionado por comentario exacto, más la imagen subida — y verifica la desinstalación
-- Descarga ventanas de captura desde Loki en CSV y dibuja la gráfica del ciclo de vida
+Medir el propio router — CPU por core y RAM a 10 Hz, leídas desde dentro del dispositivo — ya no se hace desde este repositorio. Lo hacía `cmd/perfmon` hasta que se convirtió en [mikroscope](https://github.com/jmrplens/mikroscope), que es donde vive ese trabajo ahora; [Benchmarking](/cs-routeros-bouncer/es/development/benchmarking/) tiene los comandos.
 
 ### `internal/config`
 
