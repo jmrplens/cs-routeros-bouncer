@@ -42,6 +42,10 @@ type RouterOSClient interface {
 	// BulkAddAddresses adds multiple address-list entries efficiently, returning
 	// validation, partial-add, network, timeout, or RouterOS API errors.
 	BulkAddAddresses(proto, list string, entries []ros.BulkEntry) (int, error)
+	// AddAddressesEach adds multiple address-list entries with one API call
+	// each, never through a script, returning validation, partial-add,
+	// network, timeout, or RouterOS API errors.
+	AddAddressesEach(proto, list string, entries []ros.BulkEntry) (int, error)
 
 	// Firewall operations
 	// AddFirewallRule creates a firewall rule, returning validation, permission,

@@ -1129,6 +1129,17 @@ type fakeRouterOSPool struct {
 	entries []ros.AddressEntry
 	errs    []error
 	closed  bool
+
+	addList    string
+	addEntries []ros.BulkEntry
+	addErrs    []error
+}
+
+func (p *fakeRouterOSPool) AddAddresses(proto, list string, entries []ros.BulkEntry) (int, []error) {
+	p.proto = proto
+	p.addList = list
+	p.addEntries = append([]ros.BulkEntry(nil), entries...)
+	return len(entries) - len(p.addErrs), p.addErrs
 }
 
 func (p *fakeRouterOSPool) Connect() error { return nil }
@@ -2089,5 +2100,44 @@ func TestOutputRuleTopPlacement(t *testing.T) {
 	rule := mgr.outputRule("ip", "crowdsec-banned")
 	if rule.PlaceBefore != "" {
 		t.Fatalf("expected output rule PlaceBefore to be empty, got %q", rule.PlaceBefore)
+	}
+}
+
+// TestBulkAddMethod verifies reconciliation adds through a script only with
+// the default method, and with "api" one call per entry: through the pool
+// when there is one, else through the primary client.
+func TestBulkAddMethod(t *testing.T) {
+	entries := []ros.BulkEntry{{Address: "1.1.1.1"}, {Address: "2.2.2.2"}}
+
+	mock := &mockROS{bulkAddCount: 2}
+	mgr := newTestManager(mock, baseConfig())
+	if added, err := mgr.bulkAdd("ip", "list", entries); err != nil || added != 2 {
+		t.Fatalf("script: got (%d, %v)", added, err)
+	}
+	if len(mock.bulkAddCalls) != 1 || len(mock.addEachCalls) != 0 {
+		t.Fatalf("script: expected 1 bulk call, got %d bulk and %d each", len(mock.bulkAddCalls), len(mock.addEachCalls))
+	}
+
+	cfg := baseConfig()
+	cfg.MikroTik.BulkAddMethod = config.BulkAddAPI
+	mock = &mockROS{}
+	mgr = newTestManager(mock, cfg)
+	if added, err := mgr.bulkAdd("ip", "list", entries); err != nil || added != 2 {
+		t.Fatalf("api without pool: got (%d, %v)", added, err)
+	}
+	if len(mock.bulkAddCalls) != 0 || len(mock.addEachCalls) != 1 {
+		t.Fatalf("api without pool: expected 1 each call, got %d bulk and %d each", len(mock.bulkAddCalls), len(mock.addEachCalls))
+	}
+
+	mock = &mockROS{}
+	mgr = newTestManager(mock, cfg)
+	pool := &fakeRouterOSPool{addErrs: []error{errors.New("add timeout")}}
+	mgr.pool = pool
+	added, err := mgr.bulkAdd("ip", "list", entries)
+	if added != 1 || err == nil || !strings.Contains(err.Error(), "1 add errors") {
+		t.Fatalf("api with pool: got (%d, %v)", added, err)
+	}
+	if len(pool.addEntries) != 2 || pool.addList != "list" || len(mock.bulkAddCalls)+len(mock.addEachCalls) != 0 {
+		t.Fatalf("api with pool: expected the pool to add both entries, got %v", pool.addEntries)
 	}
 }

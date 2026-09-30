@@ -3,6 +3,7 @@ package routeros
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -115,6 +116,24 @@ func ParallelExec[T any](pool *Pool, items []T, fn func(c *Client, item T) error
 
 	wg.Wait()
 	return errs
+}
+
+// AddAddresses adds address-list entries concurrently through the pool, one
+// API call each, never through a script. It returns how many were added; an
+// entry the router already has is skipped, neither added nor an error.
+func (p *Pool) AddAddresses(proto, list string, entries []BulkEntry) (int, []error) {
+	var added atomic.Int64
+	errs := ParallelExec(p, entries, func(c *Client, entry BulkEntry) error {
+		if _, err := c.AddAddress(proto, list, entry.Address, entry.Timeout, entry.Comment); err != nil {
+			if isDuplicateEntryError(err) {
+				return nil
+			}
+			return err
+		}
+		added.Add(1)
+		return nil
+	})
+	return int(added.Load()), errs
 }
 
 // RemoveAddresses removes address-list entries concurrently through the pool.

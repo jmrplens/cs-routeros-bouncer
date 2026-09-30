@@ -64,7 +64,19 @@ type MikroTikConfig struct {
 	ConnectionTimeout time.Duration `yaml:"connection_timeout" mapstructure:"connection_timeout"`
 	CommandTimeout    time.Duration `yaml:"command_timeout" mapstructure:"command_timeout"`
 	PoolSize          int           `yaml:"pool_size" mapstructure:"pool_size"`
+	// BulkAddMethod is how reconciliation adds missing address-list entries:
+	// "script" builds a temporary /system/script per chunk of 100 entries and
+	// runs it on the router; "api" adds each entry with its own API call,
+	// spread over the connection pool, and never creates a script. Empty is
+	// "script".
+	BulkAddMethod string `yaml:"bulk_add_method" mapstructure:"bulk_add_method"`
 }
+
+// Bulk add methods for mikrotik.bulk_add_method.
+const (
+	BulkAddScript = "script"
+	BulkAddAPI    = "api"
+)
 
 // FirewallConfig holds firewall rule management settings.
 type FirewallConfig struct {
@@ -479,6 +491,7 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("mikrotik.connection_timeout", "10s")
 	v.SetDefault("mikrotik.command_timeout", "30s")
 	v.SetDefault("mikrotik.pool_size", 4)
+	v.SetDefault("mikrotik.bulk_add_method", "script")
 
 	v.SetDefault("firewall.ipv4.enabled", true)
 	v.SetDefault("firewall.ipv4.address_list", "crowdsec-banned")
@@ -534,6 +547,7 @@ func Load(configPath string) (*Config, error) {
 		"mikrotik.connection_timeout": "MIKROTIK_CONN_TIMEOUT",
 		"mikrotik.command_timeout":    "MIKROTIK_CMD_TIMEOUT",
 		"mikrotik.pool_size":          "MIKROTIK_POOL_SIZE",
+		"mikrotik.bulk_add_method":    "MIKROTIK_BULK_ADD_METHOD",
 		// Firewall
 		"firewall.ipv4.enabled":                    "FIREWALL_IPV4_ENABLED",
 		"firewall.ipv4.address_list":               "FIREWALL_IPV4_ADDRESS_LIST",
@@ -854,6 +868,11 @@ func (c *Config) validateMikroTik() error {
 	}
 	if c.MikroTik.PoolSize < 1 || c.MikroTik.PoolSize > 20 {
 		return fmt.Errorf("mikrotik.pool_size must be between 1 and 20, got %d", c.MikroTik.PoolSize)
+	}
+	switch c.MikroTik.BulkAddMethod {
+	case "", BulkAddScript, BulkAddAPI:
+	default:
+		return fmt.Errorf("mikrotik.bulk_add_method must be 'script' or 'api', got '%s'", c.MikroTik.BulkAddMethod)
 	}
 	return nil
 }

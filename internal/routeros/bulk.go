@@ -67,7 +67,7 @@ func (c *Client) BulkAddAddresses(proto, list string, entries []BulkEntry) (adde
 		n, scriptErr := c.runBulkScript(script)
 		if scriptErr != nil {
 			log.Warn().Err(scriptErr).Int("chunk_size", len(chunk)).Msg("bulk script failed, falling back to individual adds")
-			fallbackAdded, fallbackErr := c.bulkAddFallback(proto, list, chunk)
+			fallbackAdded, fallbackErr := c.AddAddressesEach(proto, list, chunk)
 			total += fallbackAdded
 			if fallbackErr != nil {
 				err = fallbackErr
@@ -80,8 +80,11 @@ func (c *Client) BulkAddAddresses(proto, list string, entries []BulkEntry) (adde
 	return total, err
 }
 
-// bulkAddFallback retries a failed script chunk using individual AddAddress calls.
-func (c *Client) bulkAddFallback(proto, list string, chunk []BulkEntry) (int, error) {
+// AddAddressesEach adds entries with one AddAddress call each, never through a
+// script: the bulk_add_method "api" without a connection pool, and the retry
+// of a failed script chunk. An entry the router already has is skipped and not
+// counted.
+func (c *Client) AddAddressesEach(proto, list string, chunk []BulkEntry) (int, error) {
 	added := 0
 	var fallbackErrs []error
 	for _, entry := range chunk {
@@ -96,7 +99,7 @@ func (c *Client) bulkAddFallback(proto, list string, chunk []BulkEntry) (int, er
 	if len(fallbackErrs) == 0 {
 		return added, nil
 	}
-	return added, fmt.Errorf("%d fallback add errors (last: %w)", len(fallbackErrs), fallbackErrs[len(fallbackErrs)-1])
+	return added, fmt.Errorf("%d add errors (last: %w)", len(fallbackErrs), fallbackErrs[len(fallbackErrs)-1])
 }
 
 // BulkEntry represents an address to add in bulk.

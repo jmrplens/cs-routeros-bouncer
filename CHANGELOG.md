@@ -1,3 +1,9 @@
+## [Unreleased]
+
+### Added
+
+- **`mikrotik.bulk_add_method: api` loads the address list without creating a script on the router** — reconciliation added missing entries through a temporary `/system/script` per chunk of 100, which is the fastest way to load a large list, but every script add and remove is a configuration change RouterOS persists to its flash, and a router whose operators keep scripts off it (or audit `/system/script`) saw the bouncer's scripts come and go at every pass that had something to add. With `api` each entry is added with its own API call, spread over the connection pool, and no script is ever created; the per-entry path is the one a failed script chunk already fell back to, now exported as `AddAddressesEach`, and the pool gains `AddAddresses`. The default stays `script`, so nothing changes without the option. Environment: `MIKROTIK_BULK_ADD_METHOD`; any other value is rejected at startup
+
 ## [1.6.0] - 2026-09-25
 
 ### Changed

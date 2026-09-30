@@ -67,6 +67,12 @@ mikrotik:
   # At startup the bouncer queries the router's API max-sessions and caps this
   # value automatically so it never exceeds the router limit.
   pool_size: 4
+  # How reconciliation adds missing address-list entries (default: "script").
+  # "script" builds a temporary /system/script per chunk of 100 entries and
+  # runs it on the router: fastest. "api" adds each entry with its own API
+  # call, spread over the pool, and never creates a script: every script add
+  # and remove is a configuration change the router persists to its flash.
+  bulk_add_method: "script"
 
 firewall:
   ipv4:

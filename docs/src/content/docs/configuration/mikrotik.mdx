@@ -95,7 +95,7 @@ Raise it if you see timeout errors on a slow device or a very large list. Both t
 
 <ConfigOption path="mikrotik.pool_size" />
 
-How many RouterOS API sessions the bouncer can use for parallel work such as reconciliation removals. A higher value increases throughput when reconciliation has many stale address-list entries to delete; adds and live decisions always use the main connection, so they are not affected.
+How many RouterOS API sessions the bouncer can use for parallel work such as reconciliation removals. A higher value increases throughput when reconciliation has many stale address-list entries to delete, and with `bulk_add_method: api` also when it has many entries to add; live decisions always use the main connection, so they are not affected.
 
 - **Valid range:** 1–20
 - **Auto-capping:** On startup the bouncer queries the router's API service `max-sessions` limit and automatically reduces the effective pool size so it never exceeds `max-sessions − 2` (reserving connections for the main client and external tools such as WinBox).
@@ -128,4 +128,27 @@ For small to medium deployments (≤ 5,000 IPs) the default `pool_size: 4` is op
 
 :::note
 Each pool connection is a full RouterOS API session. On resource-constrained routers (e.g., hAP lite) keep `pool_size` low (1–2) to avoid memory pressure.
+:::
+
+## Bulk Add Method
+
+### `mikrotik.bulk_add_method` <Badge text="Optional" variant="note" />
+
+<ConfigOption path="mikrotik.bulk_add_method" />
+
+How reconciliation (at startup and every `crowdsec.reconciliation_interval`) adds the address-list entries the router is missing. Live decisions are not affected: they are always added one API call each.
+
+- **`script`** (default): the bouncer creates a temporary `/system/script` holding up to 100 adds, runs it and removes it again. This is the fastest way to load a large list, such as the CAPI community blocklist at startup. If a script fails, that chunk is retried one call per entry.
+- **`api`**: every entry is added with its own API call, spread over the connection pool (`pool_size`). No script is ever created, so the bouncer's API user needs no more than address-list access to add, and the router's configuration is left alone.
+
+Choose `api` when scripts are unwanted on the router: every script add and remove is a configuration change RouterOS persists to its flash storage, and an audit of `/system/script` or its log then shows the bouncer's scripts coming and going. Address-list entries with a timeout, which is what decisions become, are dynamic and stay in memory either way.
+
+```yaml
+mikrotik:
+  bulk_add_method: api
+  pool_size: 4 # the adds run in parallel over the pool
+```
+
+:::tip
+Expect `api` to take longer on a large first load: one round trip per entry instead of one per 100 entries. With the pool the adds run in parallel, and after the first load reconciliation typically adds only a handful of entries, where the two methods take about the same time.
 :::

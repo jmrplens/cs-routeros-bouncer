@@ -288,6 +288,7 @@ logging:
 | `mikrotik.password` | `MIKROTIK_PASS` | _(required)_ | API password |
 | `mikrotik.tls` | `MIKROTIK_TLS` | `false` | Use TLS (port 8729) |
 | `mikrotik.pool_size` | `MIKROTIK_POOL_SIZE` | `4` | Parallel API sessions |
+| `mikrotik.bulk_add_method` | `MIKROTIK_BULK_ADD_METHOD` | `script` | Reconciliation adds: `script` (temporary `/system/script`) or `api` (one call per entry, no script) |
 | `firewall.ipv4.enabled` | `FIREWALL_IPV4_ENABLED` | `true` | Enable IPv4 blocking |
 | `firewall.ipv6.enabled` | `FIREWALL_IPV6_ENABLED` | `true` | Enable IPv6 blocking |
 | `firewall.deny_action` | `FIREWALL_DENY_ACTION` | `drop` | `drop` or `reject` |

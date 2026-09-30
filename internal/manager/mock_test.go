@@ -95,6 +95,7 @@ type mockROS struct {
 	removeAddressCalls []removeAddressCall
 	listAddressesCalls int
 	bulkAddCalls       []bulkAddCall
+	addEachCalls       []bulkAddCall
 	addRuleCalls       []addRuleCall
 	moveRuleCalls      []moveRuleCall
 	removeRuleCalls    []removeRuleCall
@@ -238,6 +239,15 @@ func (m *mockROS) BulkAddAddresses(proto, list string, entries []ros.BulkEntry) 
 	defer m.mu.Unlock()
 	m.bulkAddCalls = append(m.bulkAddCalls, bulkAddCall{proto, list, entries})
 	return m.bulkAddCount, m.bulkAddErr
+}
+
+// AddAddressesEach implements RouterOSClient.AddAddressesEach and records the
+// call arguments including the batch of entries.
+func (m *mockROS) AddAddressesEach(proto, list string, entries []ros.BulkEntry) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.addEachCalls = append(m.addEachCalls, bulkAddCall{proto, list, entries})
+	return len(entries), nil
 }
 
 // AddFirewallRule implements RouterOSClient.AddFirewallRule and records the call

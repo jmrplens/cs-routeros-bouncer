@@ -76,6 +76,7 @@ type routerOSPool interface {
 	Connect() error
 	Close()
 	RemoveAddresses(proto string, entries []rosClient.AddressEntry) []error
+	AddAddresses(proto, list string, entries []rosClient.BulkEntry) (int, []error)
 }
 
 // NewManager creates a new bouncer manager.
@@ -1463,7 +1464,7 @@ func (m *Manager) addMissingAddresses(proto, listName, metricsProto string, toAd
 		return 0
 	}
 	addStart := time.Now()
-	added, addErr := m.ros.BulkAddAddresses(proto, listName, toAdd)
+	added, addErr := m.bulkAdd(proto, listName, toAdd)
 	if addErr != nil {
 		m.logger.Warn().Err(addErr).Msg("some addresses failed to add during reconciliation")
 	}
@@ -1474,6 +1475,23 @@ func (m *Manager) addMissingAddresses(proto, listName, metricsProto string, toAd
 	metrics.ObserveOperationDuration("bulk_add", time.Since(addStart))
 	m.logger.Info().Int("added", added).Dur("elapsed", time.Since(addStart)).Msg("bulk add complete")
 	return added
+}
+
+// bulkAdd adds the missing entries with mikrotik.bulk_add_method: one
+// RouterOS script per chunk ("script"), or one API call per entry ("api"),
+// spread over the connection pool when there is one.
+func (m *Manager) bulkAdd(proto, listName string, toAdd []rosClient.BulkEntry) (int, error) {
+	if m.cfg.MikroTik.BulkAddMethod != config.BulkAddAPI {
+		return m.ros.BulkAddAddresses(proto, listName, toAdd)
+	}
+	if m.pool == nil {
+		return m.ros.AddAddressesEach(proto, listName, toAdd)
+	}
+	added, errs := m.pool.AddAddresses(proto, listName, toAdd)
+	if len(errs) > 0 {
+		return added, fmt.Errorf("%d add errors (last: %w)", len(errs), errs[len(errs)-1])
+	}
+	return added, nil
 }
 
 // addEntriesToCache records newly added address-list entries in the fast-path cache.

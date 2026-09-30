@@ -1564,7 +1564,7 @@ func TestBulkAddAddresses_FallbackRealErrorReturned(t *testing.T) {
 	mc.pushError(errors.New("add failed")) // reconnect retry fails
 
 	added, err := c.BulkAddAddresses("ip", "list", entries)
-	if err == nil || !strings.Contains(err.Error(), "fallback add errors") {
+	if err == nil || !strings.Contains(err.Error(), "1 add errors") {
 		t.Fatalf("expected fallback error, got %v", err)
 	}
 	if added != 0 {
@@ -2324,5 +2324,30 @@ func TestGetSystemHealth_EmptyResults(t *testing.T) {
 	}
 	if sh.CPUTemperature != -1 {
 		t.Errorf("CPUTemperature: expected -1 for empty results, got %f", sh.CPUTemperature)
+	}
+}
+
+// TestAddAddressesEach_NoScript verifies the per-entry path adds each entry
+// with its own address-list add and never touches /system/script.
+func TestAddAddressesEach_NoScript(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+	mc.pushReply(doneReply(map[string]string{"ret": "*A1"}))
+	mc.pushReply(doneReply(map[string]string{"ret": "*A2"}))
+
+	added, err := c.AddAddressesEach("ip", "list", []BulkEntry{
+		{Address: "1.1.1.1", Timeout: "1h", Comment: "a"},
+		{Address: "2.2.2.2", Timeout: "2h", Comment: "b"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if added != 2 {
+		t.Fatalf("expected 2 added, got %d", added)
+	}
+	for _, call := range mc.calls {
+		if call[0] != "/ip/firewall/address-list/add" {
+			t.Fatalf("expected only address-list adds, got %v", call)
+		}
 	}
 }

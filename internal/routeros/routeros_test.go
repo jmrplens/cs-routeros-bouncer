@@ -873,3 +873,33 @@ func TestPoolRemoveAddresses(t *testing.T) {
 		t.Fatalf("unexpected last remove args: %v", args)
 	}
 }
+
+// TestPoolAddAddresses verifies pooled adds use one address-list add per
+// entry, never a script, and report real failures.
+func TestPoolAddAddresses(t *testing.T) {
+	mc := newMockConn()
+	p := NewPool(config.MikroTikConfig{}, 1)
+	p.newClient = func(_ config.MikroTikConfig) *Client {
+		return &Client{dialFunc: func(_ config.MikroTikConfig) (RouterConn, error) { return mc, nil }}
+	}
+	if err := p.Connect(); err != nil {
+		t.Fatalf("Connect() error: %v", err)
+	}
+	t.Cleanup(p.Close)
+	mc.pushReply(doneReply(map[string]string{"ret": "*A1"}))
+	mc.pushError(fmt.Errorf("add failed"))
+	mc.pushError(fmt.Errorf("add failed")) // reconnect retry fails
+
+	added, errs := p.AddAddresses("ip", "list", []BulkEntry{
+		{Address: "1.1.1.1", Timeout: "1h", Comment: "a"},
+		{Address: "2.2.2.2", Timeout: "1h", Comment: "b"},
+	})
+	if added != 1 || len(errs) != 1 {
+		t.Fatalf("expected 1 added and 1 error, got %d and %v", added, errs)
+	}
+	for _, call := range mc.calls {
+		if call[0] != "/ip/firewall/address-list/add" {
+			t.Fatalf("expected only address-list adds, got %v", call)
+		}
+	}
+}
