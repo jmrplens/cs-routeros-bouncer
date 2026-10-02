@@ -412,8 +412,9 @@ func TestExampleConfigIncludesExpectedDefaults(t *testing.T) {
 	}
 }
 
-// TestSystemctlUsesPathAndReportsStderr verifies systemctl error messages include stderr.
-func TestSystemctlUsesPathAndReportsStderr(t *testing.T) {
+// TestSystemctlRunsFixedPathAndReportsStderr verifies systemctl runs from a
+// fixed candidate path and its error messages include stderr.
+func TestSystemctlRunsFixedPathAndReportsStderr(t *testing.T) {
 	tmpDir := t.TempDir()
 	logPath := filepath.Join(tmpDir, "systemctl.args")
 	scriptPath := filepath.Join(tmpDir, "systemctl")
@@ -428,7 +429,9 @@ exit 0
 	if err := os.WriteFile(scriptPath, []byte(script), 0o700); err != nil {
 		t.Fatalf("write fake systemctl: %v", err)
 	}
-	t.Setenv("PATH", tmpDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	origCandidates := systemctlCandidates
+	systemctlCandidates = []string{filepath.Join(tmpDir, "missing"), scriptPath}
+	t.Cleanup(func() { systemctlCandidates = origCandidates })
 	t.Setenv("SYSTEMCTL_LOG", logPath)
 
 	if err := systemctl("daemon-reload"); err != nil {

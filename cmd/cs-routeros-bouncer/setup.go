@@ -22,8 +22,12 @@ const (
 	defaultConfigFile  = "cs-routeros-bouncer.yaml"
 	defaultServicePath = "/etc/systemd/system/cs-routeros-bouncer.service"
 	serviceName        = "cs-routeros-bouncer"
-	systemctlPath      = "systemctl"
 )
+
+// systemctlCandidates are the fixed, root-owned locations systemctl is run
+// from, newest layout first. Resolving through PATH would let whoever controls
+// PATH choose the binary that setup runs as root.
+var systemctlCandidates = []string{"/usr/bin/systemctl", "/bin/systemctl"}
 
 // setup hooks wrap OS operations so setup/uninstall behavior can be tested
 // without touching the host system.
@@ -199,12 +203,23 @@ func safeConfigDirForRemoval(configDir string) (string, error) {
 	return absConfigDir, nil
 }
 
+// systemctlBinary returns the first systemctl candidate that exists, or the
+// first candidate so the error names a real path when none does.
+func systemctlBinary() string {
+	for _, p := range systemctlCandidates {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return systemctlCandidates[0]
+}
+
 // systemctl runs a systemctl command with the given arguments.
 func systemctl(args ...string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	// #nosec G204 -- systemctl arguments are controlled by setup/uninstall callers.
-	cmd := exec.CommandContext(ctx, systemctlPath, args...)
+	cmd := exec.CommandContext(ctx, systemctlBinary(), args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
