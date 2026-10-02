@@ -40,7 +40,7 @@ func fakeLoginServer(t *testing.T, ln net.Listener, wrap func(net.Conn) net.Conn
 			}
 			w.BeginSentence()
 			w.WriteWord("!done")
-			if endErr := w.EndSentence(); endErr != nil {
+			if w.EndSentence() != nil {
 				return
 			}
 		}

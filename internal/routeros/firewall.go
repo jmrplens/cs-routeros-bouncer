@@ -262,36 +262,12 @@ func (c *Client) RemoveFirewallRule(proto, mode, id string) error {
 
 // ListFirewallRules lists all firewall rules matching a comment prefix.
 func (c *Client) ListFirewallRules(proto, mode, commentPrefix string) ([]RuleEntry, error) {
-	path := firewallPath(proto, mode)
-
-	results, err := c.Print(path, nil, ruleProplist)
+	entries, err := c.listFirewallRules(proto, mode, func(comment string) bool {
+		return commentPrefix == "" || strings.HasPrefix(comment, commentPrefix)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("list %s/%s rules: %w", proto, mode, err)
 	}
-
-	var entries []RuleEntry
-	for _, r := range results {
-		comment := r["comment"]
-		if commentPrefix != "" && !strings.HasPrefix(comment, commentPrefix) {
-			continue
-		}
-		entries = append(entries, RuleEntry{
-			ID:               r[".id"],
-			Chain:            r["chain"],
-			Action:           r["action"],
-			SrcAddress:       r[fwAttrSrcAddress],
-			SrcAddressList:   r[fwAttrSrcAddressList],
-			DstAddressList:   r[fwAttrDstAddressList],
-			InInterface:      r[fwAttrInInterface],
-			InInterfaceList:  r[fwAttrInInterfaceList],
-			OutInterface:     r[fwAttrOutInterface],
-			OutInterfaceList: r[fwAttrOutInterfaceList],
-			ConnectionState:  r[fwAttrConnectionState],
-			RejectWith:       r[fwAttrRejectWith],
-			Comment:          r["comment"],
-		})
-	}
-
 	return entries, nil
 }
 
@@ -300,36 +276,29 @@ func (c *Client) ListFirewallRules(proto, mode, commentPrefix string) ([]RuleEnt
 // cleanup: the signature is a fixed, non-configurable identifier embedded
 // in every comment, so it finds all bouncer rules regardless of prefix.
 func (c *Client) ListFirewallRulesBySignature(proto, mode, signature string) ([]RuleEntry, error) {
-	path := firewallPath(proto, mode)
-
-	results, err := c.Print(path, nil, ruleProplist)
+	entries, err := c.listFirewallRules(proto, mode, func(comment string) bool {
+		return strings.Contains(comment, signature)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("list %s/%s rules by signature: %w", proto, mode, err)
+	}
+	return entries, nil
+}
+
+// listFirewallRules prints every rule at the proto/mode path and keeps those
+// whose comment satisfies match.
+func (c *Client) listFirewallRules(proto, mode string, match func(comment string) bool) ([]RuleEntry, error) {
+	results, err := c.Print(firewallPath(proto, mode), nil, ruleProplist)
+	if err != nil {
+		return nil, err
 	}
 
 	var entries []RuleEntry
 	for _, r := range results {
-		comment := r["comment"]
-		if !strings.Contains(comment, signature) {
-			continue
+		if match(r["comment"]) {
+			entries = append(entries, ruleEntryFromAttrs(r))
 		}
-		entries = append(entries, RuleEntry{
-			ID:               r[".id"],
-			Chain:            r["chain"],
-			Action:           r["action"],
-			SrcAddress:       r[fwAttrSrcAddress],
-			SrcAddressList:   r[fwAttrSrcAddressList],
-			DstAddressList:   r[fwAttrDstAddressList],
-			InInterface:      r[fwAttrInInterface],
-			InInterfaceList:  r[fwAttrInInterfaceList],
-			OutInterface:     r[fwAttrOutInterface],
-			OutInterfaceList: r[fwAttrOutInterfaceList],
-			ConnectionState:  r[fwAttrConnectionState],
-			RejectWith:       r[fwAttrRejectWith],
-			Comment:          r["comment"],
-		})
 	}
-
 	return entries, nil
 }
 
@@ -347,21 +316,28 @@ func (c *Client) FindFirewallRuleByComment(proto, mode, comment string) (*RuleEn
 		return nil, fmt.Errorf("find %s/%s rule by comment %q: %w", proto, mode, comment, err)
 	}
 
-	return &RuleEntry{
-		ID:               result[".id"],
-		Chain:            result["chain"],
-		Action:           result["action"],
-		SrcAddress:       result[fwAttrSrcAddress],
-		SrcAddressList:   result[fwAttrSrcAddressList],
-		DstAddressList:   result[fwAttrDstAddressList],
-		InInterface:      result[fwAttrInInterface],
-		InInterfaceList:  result[fwAttrInInterfaceList],
-		OutInterface:     result[fwAttrOutInterface],
-		OutInterfaceList: result[fwAttrOutInterfaceList],
-		ConnectionState:  result[fwAttrConnectionState],
-		RejectWith:       result[fwAttrRejectWith],
-		Comment:          result["comment"],
-	}, nil
+	entry := ruleEntryFromAttrs(result)
+	return &entry, nil
+}
+
+// ruleEntryFromAttrs maps a RouterOS reply, fetched with ruleProplist, to a
+// RuleEntry.
+func ruleEntryFromAttrs(r map[string]string) RuleEntry {
+	return RuleEntry{
+		ID:               r[".id"],
+		Chain:            r["chain"],
+		Action:           r["action"],
+		SrcAddress:       r[fwAttrSrcAddress],
+		SrcAddressList:   r[fwAttrSrcAddressList],
+		DstAddressList:   r[fwAttrDstAddressList],
+		InInterface:      r[fwAttrInInterface],
+		InInterfaceList:  r[fwAttrInInterfaceList],
+		OutInterface:     r[fwAttrOutInterface],
+		OutInterfaceList: r[fwAttrOutInterfaceList],
+		ConnectionState:  r[fwAttrConnectionState],
+		RejectWith:       r[fwAttrRejectWith],
+		Comment:          r["comment"],
+	}
 }
 
 // RuleCounters holds byte and packet counters for a single firewall rule.
