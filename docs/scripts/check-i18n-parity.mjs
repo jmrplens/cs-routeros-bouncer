@@ -847,11 +847,15 @@ function unterminatedConstruct(body, tree) {
 			const lines = raw.split("\n");
 			const opening = /^[ \t]*(`{3,}|~{3,})/.exec(lines[0]);
 			if (opening === null) return; // Indented code block: nothing to close.
+			// A closing fence is a run of the same marker, at least as long as
+			// the opening one, with only spaces or tabs around it. Checked
+			// directly rather than through a RegExp built from the marker.
 			const marker = opening[1][0];
-			const closing = new RegExp(
-				`^[ \\t]*\\${marker}{${opening[1].length},}[ \\t]*$`,
-			);
-			if (lines.length < 2 || !closing.test(lines[lines.length - 1])) {
+			const closing = lines[lines.length - 1].replace(/^[ \t]+|[ \t]+$/g, "");
+			const closes =
+				closing.length >= opening[1].length &&
+				[...closing].every((ch) => ch === marker);
+			if (lines.length < 2 || !closes) {
 				found = "code fence";
 			}
 		} else if (node.type === "html") {
