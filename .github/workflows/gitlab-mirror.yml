@@ -103,17 +103,26 @@ jobs:
           fi
 
           gitlab_api="https://gitlab.com/api/v4/projects/${GITLAB_PROJECT_ID}"
+          # The asset-links listing pages at 20 by default and every release
+          # since v1.4.0 carries 51 links. Reading only the first page made
+          # every link past it look missing, so the sync POSTed it again and
+          # GitLab refused with 400 "Name has already been taken". 100 is the
+          # API's page maximum.
 
           request_json() {
             local method="$1"
             local url="$2"
             local payload="$3"
-            curl --fail --show-error --silent \
+            local response
+            if ! response=$(curl --fail-with-body --show-error --silent \
               --request "$method" \
               --header "PRIVATE-TOKEN: ${GITLAB_API_TOKEN}" \
               --header "Content-Type: application/json" \
               --data "$payload" \
-              "$url" >/dev/null
+              "$url"); then
+              echo "::error::GitLab ${method} ${url#"$gitlab_api"} failed: ${response}" >&2
+              return 1
+            fi
           }
 
           release_exists() {
@@ -166,15 +175,15 @@ jobs:
               desired_names["$link_name"]=1
             done < <(jq -r '.[].name' <<<"$desired_links")
 
-            current_links=$(curl --fail --show-error --silent \
+            current_links=$(curl --fail-with-body --show-error --silent \
               --header "PRIVATE-TOKEN: ${GITLAB_API_TOKEN}" \
-              "${gitlab_api}/releases/${tag_encoded}/assets/links")
+              "${gitlab_api}/releases/${tag_encoded}/assets/links?per_page=100")
 
             while IFS= read -r link; do
               link_id=$(jq -r '.id' <<<"$link")
               link_name=$(jq -r '.name' <<<"$link")
               if [ -z "${desired_names[$link_name]+x}" ] || [ -n "${seen_names[$link_name]+x}" ]; then
-                curl --fail --show-error --silent \
+                curl --fail-with-body --show-error --silent \
                   --request DELETE \
                   --header "PRIVATE-TOKEN: ${GITLAB_API_TOKEN}" \
                   "${gitlab_api}/releases/${tag_encoded}/assets/links/${link_id}" >/dev/null
@@ -217,9 +226,9 @@ jobs:
               request_json POST "${gitlab_api}/releases" "$create_release_payload"
             fi
 
-            existing_links=$(curl --fail --show-error --silent \
+            existing_links=$(curl --fail-with-body --show-error --silent \
               --header "PRIVATE-TOKEN: ${GITLAB_API_TOKEN}" \
-              "${gitlab_api}/releases/${tag_encoded}/assets/links")
+              "${gitlab_api}/releases/${tag_encoded}/assets/links?per_page=100")
             desired_links=$(jq -c '[{name: "GitHub Release", url: .url, link_type: "other"}] + [.assets[]? | {name: .name, url: .url, link_type: "package"}]' <<<"$release_json")
 
             jq -c '.[]' <<<"$desired_links" |
