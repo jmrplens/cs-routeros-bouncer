@@ -847,9 +847,11 @@ function unterminatedConstruct(body, tree) {
 			const lines = raw.split("\n");
 			const opening = /^[ \t]*(`{3,}|~{3,})/.exec(lines[0]);
 			if (opening === null) return; // Indented code block: nothing to close.
+			// The marker is ` or ~, neither of which is a RegExp metacharacter,
+			// so it goes into the pattern unescaped.
 			const marker = opening[1][0];
 			const closing = new RegExp(
-				`^[ \\t]*\\${marker}{${opening[1].length},}[ \\t]*$`,
+				`^[ \\t]*${marker}{${opening[1].length},}[ \\t]*$`,
 			);
 			if (lines.length < 2 || !closing.test(lines[lines.length - 1])) {
 				found = "code fence";

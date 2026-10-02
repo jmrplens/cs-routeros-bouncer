@@ -45,3 +45,6 @@ plan/
 # MkDocs build output
 /site/
 GEO-AUDIT-REPORT.md
+
+# Throwaway tool binary built at the repo root in #110
+/chunksweep
