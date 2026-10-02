@@ -41,8 +41,9 @@
  * WHAT IS TRANSLATED
  *
  * Nothing structural. `i18n.en` / `i18n.es` carry the human gloss — a name and
- * a sentence of purpose, kept in `rule-glosses.mjs` — and every chain, action, attribute, setting path and
- * comment string is rendered from the same fields in both locales. A rule
+ * a sentence of purpose, kept in `rule-glosses.mjs` — and every chain, action,
+ * attribute, setting path and comment string is rendered from the same fields
+ * in both locales. A rule
  * cannot therefore be right in one language and wrong in the other.
  */
 
