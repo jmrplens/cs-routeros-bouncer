@@ -151,45 +151,53 @@ func newDeviceError(message string) *routeros.DeviceError {
 type barrierConn struct {
 	*mockConn
 	once    sync.Once
-	arrived *sync.WaitGroup
-	reached *sync.WaitGroup
+	barrier *barrier
+}
+
+// barrier is shared by the connections of one test.
+type barrier struct {
+	mu       sync.Mutex
+	left     int
+	all      chan struct{} // closed when the last connection arrives
+	timedOut bool
 }
 
 // newBarrierConns returns n connections over one shared mock.
 func newBarrierConns(mc *mockConn, n int) []*barrierConn {
-	arrived, reached := &sync.WaitGroup{}, &sync.WaitGroup{}
-	arrived.Add(n)
-	reached.Add(n)
+	b := &barrier{left: n, all: make(chan struct{})}
 	conns := make([]*barrierConn, n)
 	for i := range conns {
-		conns[i] = &barrierConn{mockConn: mc, arrived: arrived, reached: reached}
+		conns[i] = &barrierConn{mockConn: mc, barrier: b}
 	}
 	return conns
 }
 
 // RunArgs waits at the barrier on the first call, then answers from the mock.
-func (b *barrierConn) RunArgs(args []string) (*routeros.Reply, error) {
-	b.once.Do(func() {
-		b.arrived.Done()
-		done := make(chan struct{})
-		go func() { b.arrived.Wait(); close(done) }()
+func (c *barrierConn) RunArgs(args []string) (*routeros.Reply, error) {
+	c.once.Do(func() {
+		b := c.barrier
+		b.mu.Lock()
+		b.left--
+		if b.left == 0 {
+			close(b.all)
+		}
+		b.mu.Unlock()
 		select {
-		case <-done:
-			b.reached.Done()
+		case <-b.all:
 		case <-time.After(5 * time.Second):
+			b.mu.Lock()
+			b.timedOut = true
+			b.mu.Unlock()
 		}
 	})
-	return b.mockConn.RunArgs(args)
+	return c.mockConn.RunArgs(args)
 }
 
-// overlapped reports whether every connection passed the barrier together.
+// overlapped reports whether every connection arrived and none gave up
+// waiting for the others.
 func overlapped(conns []*barrierConn) bool {
-	done := make(chan struct{})
-	go func() { conns[0].reached.Wait(); close(done) }()
-	select {
-	case <-done:
-		return true
-	case <-time.After(time.Second):
-		return false
-	}
+	b := conns[0].barrier
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.left == 0 && !b.timedOut
 }

@@ -139,7 +139,7 @@ Each pool connection is a full RouterOS API session. On resource-constrained rou
 How reconciliation (at startup and every `crowdsec.reconciliation_interval`) adds the address-list entries the router is missing. Live decisions are not affected: they are always added one API call each.
 
 - **`script`** (default): the bouncer creates a temporary `/system/script` holding up to 100 adds, runs it and removes it again. This is the fastest way to load a large list, such as the CAPI community blocklist at startup. If a script fails, that chunk is retried one call per entry.
-- **`api`**: every entry is added with its own API call, spread over the connection pool (`pool_size`). No script is ever created, and the router's configuration is left alone.
+- **`api`**: every entry is added with its own API call, spread over the connection pool (`pool_size`), or one after another on the main connection when the pool could not be opened. No script is ever created, and the router's configuration is left alone.
 
 Choose `api` when scripts are unwanted on the router. RouterOS logs every script add with the script's full source, so each reconciliation pass that adds entries writes all of its adds into the router log, and an audit of `/system/script` shows the bouncer's scripts coming and going; each script add and remove is also a configuration change RouterOS persists. An address-list add with a timeout over the API leaves no log line. Address-list entries with a timeout, which is what decisions become, are dynamic and stay in memory either way.
 
@@ -150,5 +150,5 @@ mikrotik:
 ```
 
 :::tip
-Expect `api` to take much longer on a large first load: one round trip per entry instead of one per 100 entries. Scripts are about 97 times faster than one API call after another (see [Architecture](/cs-routeros-bouncer/architecture/#script-based-bulk-add)), and the pool divides that by at most `pool_size`, so loading the CAPI community blocklist takes minutes rather than seconds. Live decisions are processed only once the first reconciliation has finished, and between later passes. After the first load, reconciliation typically adds only a handful of entries, where the two methods take about the same time.
+Expect `api` to take much longer on a large first load: one round trip per entry instead of one per 100 entries. Scripts are about 97 times faster than one API call after another (see [Architecture](/cs-routeros-bouncer/architecture/#script-based-bulk-add)), and the pool divides that by at most `pool_size`, so loading the CAPI community blocklist takes minutes rather than seconds, and with `pool_size: 1`, as advised above for small routers, close to an hour. Live decisions are processed only once the first reconciliation has finished, and between later passes. After the first load, reconciliation typically adds only a handful of entries, where the two methods take about the same time.
 :::

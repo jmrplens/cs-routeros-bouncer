@@ -181,7 +181,7 @@ This is significantly faster than the "check-first" approach (~400 ms per IP), w
 
 ### Connection pool
 
-The bouncer maintains a configurable pool of persistent RouterOS API connections. The pool serves reconciliation removals, and with `bulk_add_method: api` also its adds: stale entries are deleted, and with `api` missing ones added, concurrently across the pool using the generic `ParallelExec` helper. In the RB5009 CAPI test, removing ~26,800 CAPI-only entries took ~77 s of RouterOS removal work. If the pool cannot be opened, removals fall back to the main connection.
+The bouncer maintains a configurable pool of persistent RouterOS API connections. The pool serves reconciliation removals, and with `bulk_add_method: api` also its adds: stale entries are deleted, and with `api` missing ones added, concurrently across the pool using the generic `ParallelExec` helper. In the RB5009 CAPI test, removing ~26,800 CAPI-only entries took ~77 s of RouterOS removal work. If the pool cannot be opened, removals, and with `bulk_add_method: api` the adds, fall back to the main connection, one call after another.
 
 ### Script-based bulk add
 
