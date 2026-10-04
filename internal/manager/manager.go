@@ -187,7 +187,8 @@ func (m *Manager) Start(ctx context.Context) error {
 	return m.processLiveDecisions(ctx, banCh, deleteCh, errCh, reconcileC)
 }
 
-// configureConnectionPool creates the optional RouterOS connection pool used by bulk cleanup.
+// configureConnectionPool creates the optional RouterOS connection pool used by
+// reconciliation removals and, with bulk_add_method api, its adds.
 func (m *Manager) configureConnectionPool() {
 	poolSize := m.cfg.MikroTik.PoolSize
 	if maxSessions := m.ros.GetAPIMaxSessions(); maxSessions > 0 {

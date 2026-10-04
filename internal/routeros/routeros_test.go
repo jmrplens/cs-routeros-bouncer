@@ -874,14 +874,18 @@ func TestPoolRemoveAddresses(t *testing.T) {
 	}
 }
 
-// TestPoolAddAddresses_Concurrent runs the pooled adds over four connections:
-// every entry ends as added or as an error, and the counter and the error list
-// hold up under the race detector.
+// TestPoolAddAddresses_Concurrent runs the pooled adds over four connections
+// that are all busy at once: every entry ends as added or as an error, and the
+// counter and the error list hold up under the race detector.
 func TestPoolAddAddresses_Concurrent(t *testing.T) {
 	mc := newMockConn()
+	conns := newBarrierConns(mc, 4)
 	p := NewPool(config.MikroTikConfig{}, 4)
+	next := 0
 	p.newClient = func(_ config.MikroTikConfig) *Client {
-		return &Client{dialFunc: func(_ config.MikroTikConfig) (RouterConn, error) { return mc, nil }}
+		conn := conns[next]
+		next++
+		return &Client{dialFunc: func(_ config.MikroTikConfig) (RouterConn, error) { return conn, nil }}
 	}
 	if err := p.Connect(); err != nil {
 		t.Fatalf("Connect() error: %v", err)
@@ -904,6 +908,9 @@ func TestPoolAddAddresses_Concurrent(t *testing.T) {
 	}
 	if got := mc.callCount(); got != 50 {
 		t.Fatalf("expected 50 adds, got %d calls", got)
+	}
+	if !overlapped(conns) {
+		t.Fatal("expected all four pool connections to add at the same time")
 	}
 }
 

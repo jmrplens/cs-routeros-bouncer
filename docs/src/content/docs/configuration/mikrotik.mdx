@@ -150,5 +150,5 @@ mikrotik:
 ```
 
 :::tip
-Expect `api` to take longer on a large first load: one round trip per entry instead of one per 100 entries. With the pool the adds run in parallel, and after the first load reconciliation typically adds only a handful of entries, where the two methods take about the same time.
+Expect `api` to take much longer on a large first load: one round trip per entry instead of one per 100 entries. Scripts are about 97 times faster than one API call after another (see [Architecture](/cs-routeros-bouncer/architecture/#script-based-bulk-add)), and the pool divides that by at most `pool_size`, so loading the CAPI community blocklist takes minutes rather than seconds. Live decisions are processed only once the first reconciliation has finished, and between later passes. After the first load, reconciliation typically adds only a handful of entries, where the two methods take about the same time.
 :::

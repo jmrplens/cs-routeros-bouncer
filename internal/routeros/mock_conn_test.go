@@ -7,6 +7,7 @@ package routeros
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/jmrplens/cs-routeros-bouncer/internal/config"
 	routeros "github.com/jmrplens/cs-routeros-bouncer/internal/rosapi"
@@ -141,5 +142,54 @@ func newDeviceError(message string) *routeros.DeviceError {
 			Word: "!trap",
 			Map:  map[string]string{"message": message},
 		},
+	}
+}
+
+// barrierConn holds its first command until every connection of the barrier
+// has one in flight, or five seconds have passed: a pool test sees whether its
+// workers really overlap.
+type barrierConn struct {
+	*mockConn
+	once    sync.Once
+	arrived *sync.WaitGroup
+	reached *sync.WaitGroup
+}
+
+// newBarrierConns returns n connections over one shared mock.
+func newBarrierConns(mc *mockConn, n int) []*barrierConn {
+	arrived, reached := &sync.WaitGroup{}, &sync.WaitGroup{}
+	arrived.Add(n)
+	reached.Add(n)
+	conns := make([]*barrierConn, n)
+	for i := range conns {
+		conns[i] = &barrierConn{mockConn: mc, arrived: arrived, reached: reached}
+	}
+	return conns
+}
+
+// RunArgs waits at the barrier on the first call, then answers from the mock.
+func (b *barrierConn) RunArgs(args []string) (*routeros.Reply, error) {
+	b.once.Do(func() {
+		b.arrived.Done()
+		done := make(chan struct{})
+		go func() { b.arrived.Wait(); close(done) }()
+		select {
+		case <-done:
+			b.reached.Done()
+		case <-time.After(5 * time.Second):
+		}
+	})
+	return b.mockConn.RunArgs(args)
+}
+
+// overlapped reports whether every connection passed the barrier together.
+func overlapped(conns []*barrierConn) bool {
+	done := make(chan struct{})
+	go func() { conns[0].reached.Wait(); close(done) }()
+	select {
+	case <-done:
+		return true
+	case <-time.After(time.Second):
+		return false
 	}
 }
