@@ -86,21 +86,22 @@ type mockROS struct {
 	pollCount          atomic.Int32 // tracks GetSystemResources calls
 
 	// Call tracking — inspected in assertions after calling the method under test.
-	connectCalls       int
-	closeCalls         int
-	identityCalls      int
-	addAddressCalls    []addAddressCall
-	findAddressCalls   []findAddressCall
-	updateTimeoutCalls []updateTimeoutCall
-	removeAddressCalls []removeAddressCall
-	listAddressesCalls int
-	bulkAddCalls       []bulkAddCall
-	addEachCalls       []bulkAddCall
-	addRuleCalls       []addRuleCall
-	moveRuleCalls      []moveRuleCall
-	removeRuleCalls    []removeRuleCall
-	findRuleCalls      []findRuleCall
-	getCountersCalls   int
+	connectCalls        int
+	closeCalls          int
+	identityCalls       int
+	addAddressCalls     []addAddressCall
+	findAddressCalls    []findAddressCall
+	updateTimeoutCalls  []updateTimeoutCall
+	removeAddressCalls  []removeAddressCall
+	listAddressesCalls  int
+	listAddressesPrefix string
+	bulkAddCalls        []bulkAddCall
+	addEachCalls        []bulkAddCall
+	addRuleCalls        []addRuleCall
+	moveRuleCalls       []moveRuleCall
+	removeRuleCalls     []removeRuleCall
+	findRuleCalls       []findRuleCall
+	getCountersCalls    int
 }
 
 // addAddressCall captures the arguments to a single AddAddress invocation.
@@ -229,6 +230,7 @@ func (m *mockROS) ListAddresses(proto, list, commentPrefix string) ([]ros.Addres
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.listAddressesCalls++
+	m.listAddressesPrefix = commentPrefix
 	return m.listAddresses, m.listAddressesErr
 }
 
@@ -1548,6 +1550,45 @@ func TestReconcileAddresses_PopulatesCache(t *testing.T) {
 	}
 	if !has2 {
 		t.Error("expected newly added address 10.0.0.2 in cache")
+	}
+}
+
+// TestReconcileAddresses_LeavesForeignEntries verifies that an address held by
+// an entry with a foreign comment is neither added again (AddAddress would
+// rewrite the entry's comment and timeout and so take it over), nor removed,
+// nor cached, and that the listing asks for every entry of the list.
+func TestReconcileAddresses_LeavesForeignEntries(t *testing.T) {
+	mock := &mockROS{
+		listAddresses: []ros.AddressEntry{
+			{ID: "*1", Address: "10.0.0.1", Comment: "crowdsec-bouncer|existing"},
+			{ID: "*2", Address: "10.0.0.2", Comment: "blocked by hand"},
+		},
+		bulkAddCount: 1,
+	}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	mgr := newTestManager(mock, cfg)
+
+	mgr.reconcileAddresses(context.Background(), []*crowdsec.Decision{
+		{Proto: "ip", Value: "10.0.0.1", Origin: "cscli"},
+		{Proto: "ip", Value: "10.0.0.2", Origin: "cscli"},
+		{Proto: "ip", Value: "10.0.0.3", Origin: "cscli"},
+	})
+
+	if mock.listAddressesPrefix != "" {
+		t.Errorf("expected the whole list, got prefix %q", mock.listAddressesPrefix)
+	}
+	if len(mock.bulkAddCalls) != 1 || len(mock.bulkAddCalls[0].Entries) != 1 || mock.bulkAddCalls[0].Entries[0].Address != "10.0.0.3" {
+		t.Fatalf("expected only 10.0.0.3 to be added, got %+v", mock.bulkAddCalls)
+	}
+	if len(mock.removeAddressCalls) != 0 {
+		t.Errorf("expected no removal, got %+v", mock.removeAddressCalls)
+	}
+	mgr.cacheMu.RLock()
+	_, hasForeign := mgr.addressCache["10.0.0.2"]
+	mgr.cacheMu.RUnlock()
+	if hasForeign {
+		t.Error("expected the foreign address to stay out of the cache")
 	}
 }
 

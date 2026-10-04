@@ -1731,8 +1731,8 @@ func TestReconcileAddresses_ExistingAddressesUnchanged(t *testing.T) {
 func TestReconcileAddresses_RemoveStaleAddress(t *testing.T) {
 	mock := &mockROS{
 		listAddresses: []ros.AddressEntry{
-			{ID: "*1", Address: "1.1.1.1", List: "crowdsec-banned", Comment: "cs|x|y @cs-routeros-bouncer"},
-			{ID: "*2", Address: "2.2.2.2", List: "crowdsec-banned", Comment: "cs|x|y @cs-routeros-bouncer"},
+			{ID: "*1", Address: "1.1.1.1", List: "crowdsec-banned", Comment: "crowdsec-bouncer|x|y @cs-routeros-bouncer"},
+			{ID: "*2", Address: "2.2.2.2", List: "crowdsec-banned", Comment: "crowdsec-bouncer|x|y @cs-routeros-bouncer"},
 		},
 	}
 	cfg := baseConfig()

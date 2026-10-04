@@ -1340,14 +1340,15 @@ type reconcileResult struct {
 // reconcileProtocolAddresses applies the address-list diff for one RouterOS protocol.
 func (m *Manager) reconcileProtocolAddresses(proto string, decisions []*crowdsec.Decision, start time.Time) (reconcileResult, error) {
 	listName := m.getAddressListName(proto)
-	existing, err := m.ros.ListAddresses(proto, listName, m.commentPrefix())
+	listed, err := m.ros.ListAddresses(proto, listName, "")
 	if err != nil {
 		m.logger.Error().Err(err).Str("proto", proto).Msg("error listing current addresses")
 		metrics.RecordError("find")
 		return reconcileResult{}, err
 	}
 
-	diff := buildReconcileDiff(proto, decisions, existing, m.commentPrefix())
+	existing, foreign := splitForeignAddresses(listed, m.commentPrefix())
+	diff := buildReconcileDiff(proto, decisions, existing, foreign, m.commentPrefix())
 	m.refreshAddressCache(proto, diff.currentMap)
 	metricsProto := metricsProtoName(proto)
 	added := m.addMissingAddresses(proto, listName, metricsProto, diff.toAdd)
@@ -1367,15 +1368,33 @@ func (m *Manager) reconcileProtocolAddresses(proto string, decisions []*crowdsec
 }
 
 // buildReconcileDiff computes additions and removals from desired and current address state.
-func buildReconcileDiff(proto string, decisions []*crowdsec.Decision, existing []rosClient.AddressEntry, commentPrefix string) reconcileDiff {
+func buildReconcileDiff(proto string, decisions []*crowdsec.Decision, existing []rosClient.AddressEntry, foreign map[string]struct{}, commentPrefix string) reconcileDiff {
 	shouldExist := desiredAddressMap(proto, decisions)
 	currentMap := currentAddressMap(existing)
 	return reconcileDiff{
 		shouldExist: shouldExist,
 		currentMap:  currentMap,
-		toAdd:       missingAddressEntries(shouldExist, currentMap, commentPrefix),
+		toAdd:       missingAddressEntries(shouldExist, currentMap, foreign, commentPrefix),
 		toRemove:    staleAddressEntries(shouldExist, currentMap),
 	}
+}
+
+// splitForeignAddresses separates the bouncer's entries, whose comment starts
+// with the prefix, from foreign ones in the same list. A foreign entry is never
+// compared, removed or cached, and its address is not added again: the router
+// refuses the duplicate, and AddAddress would take the entry over by rewriting
+// its comment and timeout. The address stays blocked by the foreign entry.
+func splitForeignAddresses(listed []rosClient.AddressEntry, commentPrefix string) (owned []rosClient.AddressEntry, foreign map[string]struct{}) {
+	owned = make([]rosClient.AddressEntry, 0, len(listed))
+	foreign = make(map[string]struct{})
+	for _, entry := range listed {
+		if strings.HasPrefix(entry.Comment, commentPrefix) {
+			owned = append(owned, entry)
+			continue
+		}
+		foreign[entry.Address] = struct{}{}
+	}
+	return owned, foreign
 }
 
 // desiredAddressMap indexes active decisions by normalized RouterOS address.
@@ -1401,10 +1420,13 @@ func currentAddressMap(existing []rosClient.AddressEntry) map[string]rosClient.A
 }
 
 // missingAddressEntries builds RouterOS bulk-add entries for decisions not yet present.
-func missingAddressEntries(shouldExist map[string]*crowdsec.Decision, currentMap map[string]rosClient.AddressEntry, commentPrefix string) []rosClient.BulkEntry {
+func missingAddressEntries(shouldExist map[string]*crowdsec.Decision, currentMap map[string]rosClient.AddressEntry, foreign map[string]struct{}, commentPrefix string) []rosClient.BulkEntry {
 	var toAdd []rosClient.BulkEntry
 	for addr, decision := range shouldExist {
 		if _, exists := currentMap[addr]; exists {
+			continue
+		}
+		if _, isForeign := foreign[addr]; isForeign {
 			continue
 		}
 		toAdd = append(toAdd, rosClient.BulkEntry{

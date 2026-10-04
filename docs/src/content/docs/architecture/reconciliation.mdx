@@ -49,10 +49,10 @@ The diff itself is per protocol family and per address list. Two sets go in — 
 ```mermaid
 flowchart TB
     accTitle: The reconciliation diff: snapshot in, router state in, adds and removes out
-    accDescr: A snapshot of active decisions becomes the wanted set, one entry per decision for this protocol family, keyed by normalised address. The address list on the router becomes the present set, but only the entries whose comment starts with the configured comment prefix; entries with any other comment are fetched from the router and then dropped client-side, so they are never compared and never removed — but they do cost transfer on every pass. Comparing the two sets address by address yields the entries to add and the entries to remove. The in-memory address cache is replaced from that same listing before any write goes out. Additions then go through a bulk RouterOS script of up to a hundred entries, dropping to one API call per entry when a script fails, or with bulk_add_method api through one API call per entry over the pool; removals go through the connection pool when it opened, and one by one on the main connection otherwise. Each add and each remove patches the cache again with what it attempted, and the reconciliation metrics are recorded once both have run.
+    accDescr: A snapshot of active decisions becomes the wanted set, one entry per decision for this protocol family, keyed by normalised address. The address list on the router becomes the present set, but only the entries whose comment starts with the configured comment prefix; entries with any other comment are fetched from the router and then dropped client-side, so they are never compared, never removed and their addresses never added again — but they do cost transfer on every pass. Comparing the two sets address by address yields the entries to add and the entries to remove. The in-memory address cache is replaced from that same listing before any write goes out. Additions then go through a bulk RouterOS script of up to a hundred entries, dropping to one API call per entry when a script fails, or with bulk_add_method api through one API call per entry over the pool; removals go through the connection pool when it opened, and one by one on the main connection otherwise. Each add and each remove patches the cache again with what it attempted, and the reconciliation metrics are recorded once both have run.
     SNAP["Active decisions: the startup burst, or a fresh snapshot"] -.-> WANT["Wanted: one entry per decision for this family"]
     LIST["The address list on the router"] -.-> HAVE["Present: entries whose comment starts with comment_prefix"]
-    LIST -. "any other comment" .-> FOREIGN["Fetched, then dropped: never compared, never removed"]
+    LIST -. "any other comment" .-> FOREIGN["Fetched, then dropped: never compared, removed or added again"]
     HAVE -. "before any write" .-> CACHE["Address cache replaced from this listing"]
     WANT -.-> DIFF{"compare, address by address"}
     HAVE -.-> DIFF
@@ -77,7 +77,7 @@ flowchart TB
     end
 ```
 
-The prefix filter on the _present_ set is what makes reconciliation safe to point at a shared list. The bouncer asks RouterOS for the list by name and then keeps only the entries whose comment starts with the configured `comment_prefix`, so an address you added by hand — or one another tool maintains — is not in the comparison at all, and the "present, not wanted" branch can never reach it.
+The prefix filter on the _present_ set is what makes reconciliation safe to point at a shared list. The bouncer asks RouterOS for the list by name and then keeps only the entries whose comment starts with the configured `comment_prefix`, so an address you added by hand — or one another tool maintains — is not in the comparison at all, and the "present, not wanted" branch can never reach it. Nor is its address added again when a decision wants it: the router would refuse the duplicate, and a per-entry add would take the entry over by rewriting its comment and timeout. The address stays blocked by that entry.
 
 The comparison is by normalised address, not by decision: several decisions for the same IP collapse to one wanted entry, and only the last one read supplies the timeout and comment written with it.
 
