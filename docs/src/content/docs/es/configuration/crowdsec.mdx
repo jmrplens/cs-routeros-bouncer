@@ -57,7 +57,7 @@ Con qué frecuencia se obtiene de la LAPI una instantánea completa de las decis
 
 `crowdsec.reconciliation_interval` / `CROWDSEC_RECONCILIATION_INTERVAL` usa el formato de duración de Go, como `1m`, `15m` o `1h`.
 
-Establécelo en `0` para deshabilitar la reconciliación periódica. Cualquier valor distinto de cero debe ser de al menos `1m`. RouterOS mantiene una entrada de address-list como mucho `35w3d13h13m56s`; la entrada de una decisión más larga termina entonces y la vuelve a añadir la siguiente pasada, así que con `0` queda fuera del router el resto de la decisión.
+Establécelo en `0` para deshabilitar la reconciliación periódica. Cualquier valor distinto de cero debe ser de al menos `1m`. RouterOS mantiene una entrada de address-list como mucho `35w3d13h13m56s`; la entrada de una decisión más larga termina entonces y la vuelve a añadir la siguiente pasada, así que con `0` queda fuera del router el resto de la decisión. Con independencia de ello, el bouncer lee el uptime del router antes de la primera reconciliación y luego cada minuto, y reconcilia en el acto tras un reinicio, que elimina del router todas las entradas dinámicas. Una reconciliación que falla se reintenta hasta que una sale bien, tras un minuto y luego tras el doble de la última espera: como mucho cinco minutos mientras la LAPI no responde, como mucho una hora tras una pasada que falló en el router. Esto vale para toda reconciliación, al arrancar, tras un reinicio y periódica, y una pasada también falla cuando fallan adiciones que hizo. Un ban en vivo cuya adición puede no haber llegado al router, como mientras el router no responde, va seguido de una reconciliación un minuto después.
 
 ```yaml
 crowdsec:
