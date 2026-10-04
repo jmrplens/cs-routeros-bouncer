@@ -70,8 +70,8 @@ mikrotik:
   # How reconciliation adds missing address-list entries (default: "script").
   # "script" builds a temporary /system/script per chunk of 100 entries and
   # runs it on the router: fastest. "api" adds each entry with its own API
-  # call, spread over the pool, and never creates a script: every script add
-  # and remove is a configuration change the router persists to its flash.
+  # call, spread over the pool, and never creates a script, whose every add
+  # RouterOS logs with its full source and persists as a configuration change.
   bulk_add_method: "script"
 
 firewall:

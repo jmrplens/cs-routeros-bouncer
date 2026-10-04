@@ -1,6 +1,6 @@
 ---
 title: Configuración de MikroTik
-description: "Configura la conexión del bouncer con la API de RouterOS: dirección, credenciales, TLS, tiempos de espera y dimensionado del pool de conexiones (1-20)."
+description: "Configura la conexión del bouncer con la API de RouterOS: dirección, credenciales, TLS, tiempos de espera, dimensionado del pool de conexiones (1-20) y el método de alta en bloque."
 ---
 
 import { Badge } from "@astrojs/starlight/components";
@@ -139,9 +139,9 @@ Cada conexión del pool es una sesión completa de la API de RouterOS. En router
 Cómo añade la reconciliación (al arrancar y cada `crowdsec.reconciliation_interval`) las entradas del address-list que le faltan al router. Las decisiones en vivo no se ven afectadas: siempre se añaden con una llamada a la API cada una.
 
 - **`script`** (por defecto): el bouncer crea un `/system/script` temporal con hasta 100 adiciones, lo ejecuta y lo vuelve a eliminar. Es la forma más rápida de cargar una lista grande, como la lista comunitaria de CAPI al arrancar. Si un script falla, ese bloque se reintenta con una llamada por entrada.
-- **`api`**: cada entrada se añade con su propia llamada a la API, repartidas entre las conexiones del pool (`pool_size`). Nunca se crea un script, así que al usuario de la API del bouncer le basta con acceso al address-list para añadir, y la configuración del router no se toca.
+- **`api`**: cada entrada se añade con su propia llamada a la API, repartidas entre las conexiones del pool (`pool_size`). Nunca se crea un script, y la configuración del router no se toca.
 
-Elige `api` cuando no se quieren scripts en el router: cada alta y baja de un script es un cambio de configuración que RouterOS guarda en su memoria flash, y una auditoría de `/system/script` o de su log muestra entonces los scripts del bouncer apareciendo y desapareciendo. Las entradas del address-list con timeout, que es en lo que se convierten las decisiones, son dinámicas y se quedan en memoria en ambos casos.
+Elige `api` cuando no se quieren scripts en el router. RouterOS registra cada alta de un script con su código completo, así que cada pasada de reconciliación que añade entradas escribe todas sus adiciones en el log del router, y una auditoría de `/system/script` muestra los scripts del bouncer apareciendo y desapareciendo; cada alta y baja de un script es además un cambio de configuración que RouterOS guarda. Una adición al address-list con timeout por la API no deja ninguna línea en el log. Las entradas del address-list con timeout, que es en lo que se convierten las decisiones, son dinámicas y se quedan en memoria en ambos casos.
 
 ```yaml
 mikrotik:

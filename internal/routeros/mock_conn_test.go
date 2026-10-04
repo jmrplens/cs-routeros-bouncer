@@ -131,10 +131,15 @@ func newTestClient(mc *mockConn) *Client {
 // newDuplicateDeviceError returns a DeviceError simulating the RouterOS
 // "already have such entry" trap, used across multiple tests.
 func newDuplicateDeviceError() *routeros.DeviceError {
+	return newDeviceError("failure: already have such entry")
+}
+
+// newDeviceError returns a RouterOS trap with the given message.
+func newDeviceError(message string) *routeros.DeviceError {
 	return &routeros.DeviceError{
 		Sentence: &proto.Sentence{
 			Word: "!trap",
-			Map:  map[string]string{"message": "failure: already have such entry"},
+			Map:  map[string]string{"message": message},
 		},
 	}
 }

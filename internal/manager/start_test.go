@@ -2117,6 +2117,9 @@ func TestBulkAddMethod(t *testing.T) {
 	if len(mock.bulkAddCalls) != 1 || len(mock.addEachCalls) != 0 {
 		t.Fatalf("script: expected 1 bulk call, got %d bulk and %d each", len(mock.bulkAddCalls), len(mock.addEachCalls))
 	}
+	if got := mgr.bulkAddMethod(); got != config.BulkAddScript {
+		t.Fatalf("script: method %q", got)
+	}
 
 	cfg := baseConfig()
 	cfg.MikroTik.BulkAddMethod = config.BulkAddAPI
@@ -2127,6 +2130,9 @@ func TestBulkAddMethod(t *testing.T) {
 	}
 	if len(mock.bulkAddCalls) != 0 || len(mock.addEachCalls) != 1 {
 		t.Fatalf("api without pool: expected 1 each call, got %d bulk and %d each", len(mock.bulkAddCalls), len(mock.addEachCalls))
+	}
+	if got := mgr.bulkAddMethod(); got != config.BulkAddAPI {
+		t.Fatalf("api: method %q", got)
 	}
 
 	mock = &mockROS{}

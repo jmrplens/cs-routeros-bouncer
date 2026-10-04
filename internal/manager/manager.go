@@ -1473,7 +1473,7 @@ func (m *Manager) addMissingAddresses(proto, listName, metricsProto string, toAd
 		metrics.RecordDecision("ban", metricsProto, "reconcile")
 	}
 	metrics.ObserveOperationDuration("bulk_add", time.Since(addStart))
-	m.logger.Info().Int("added", added).Dur("elapsed", time.Since(addStart)).Msg("bulk add complete")
+	m.logger.Info().Str("method", m.bulkAddMethod()).Int("added", added).Dur("elapsed", time.Since(addStart)).Msg("bulk add complete")
 	return added
 }
 
@@ -1481,7 +1481,7 @@ func (m *Manager) addMissingAddresses(proto, listName, metricsProto string, toAd
 // RouterOS script per chunk ("script"), or one API call per entry ("api"),
 // spread over the connection pool when there is one.
 func (m *Manager) bulkAdd(proto, listName string, toAdd []rosClient.BulkEntry) (int, error) {
-	if m.cfg.MikroTik.BulkAddMethod != config.BulkAddAPI {
+	if m.bulkAddMethod() != config.BulkAddAPI {
 		return m.ros.BulkAddAddresses(proto, listName, toAdd)
 	}
 	if m.pool == nil {
@@ -1492,6 +1492,15 @@ func (m *Manager) bulkAdd(proto, listName string, toAdd []rosClient.BulkEntry) (
 		return added, fmt.Errorf("%d add errors (last: %w)", len(errs), errs[len(errs)-1])
 	}
 	return added, nil
+}
+
+// bulkAddMethod is the method bulkAdd uses: "api" when configured, "script"
+// otherwise.
+func (m *Manager) bulkAddMethod() string {
+	if m.cfg.MikroTik.BulkAddMethod == config.BulkAddAPI {
+		return config.BulkAddAPI
+	}
+	return config.BulkAddScript
 }
 
 // addEntriesToCache records newly added address-list entries in the fast-path cache.

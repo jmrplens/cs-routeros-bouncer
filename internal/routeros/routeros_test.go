@@ -874,6 +874,39 @@ func TestPoolRemoveAddresses(t *testing.T) {
 	}
 }
 
+// TestPoolAddAddresses_Concurrent runs the pooled adds over four connections:
+// every entry ends as added or as an error, and the counter and the error list
+// hold up under the race detector.
+func TestPoolAddAddresses_Concurrent(t *testing.T) {
+	mc := newMockConn()
+	p := NewPool(config.MikroTikConfig{}, 4)
+	p.newClient = func(_ config.MikroTikConfig) *Client {
+		return &Client{dialFunc: func(_ config.MikroTikConfig) (RouterConn, error) { return mc, nil }}
+	}
+	if err := p.Connect(); err != nil {
+		t.Fatalf("Connect() error: %v", err)
+	}
+	t.Cleanup(p.Close)
+	entries := make([]BulkEntry, 50)
+	for i := range entries {
+		entries[i] = BulkEntry{Address: fmt.Sprintf("10.0.0.%d", i+1), Timeout: "1h", Comment: "c"}
+		if i%5 == 4 {
+			// a device error is not retried, so it takes exactly one reply
+			mc.pushError(newDeviceError("failure: invalid value"))
+			continue
+		}
+		mc.pushReply(doneReply(map[string]string{"ret": fmt.Sprintf("*%X", i+1)}))
+	}
+
+	added, errs := p.AddAddresses("ip", "list", entries)
+	if added != 40 || len(errs) != 10 {
+		t.Fatalf("expected 40 added and 10 errors, got %d and %d", added, len(errs))
+	}
+	if got := mc.callCount(); got != 50 {
+		t.Fatalf("expected 50 adds, got %d calls", got)
+	}
+}
+
 // TestPoolAddAddresses_DuplicateRefreshedAndCounted verifies that a pooled add
 // of an entry the router already has, added between the reconcile diff and the
 // add, refreshes it and counts it, as AddAddressesEach does.

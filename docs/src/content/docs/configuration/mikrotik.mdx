@@ -1,6 +1,6 @@
 ---
 title: MikroTik Configuration
-description: "Configure the RouterOS API connection for cs-routeros-bouncer: address, credentials, TLS, timeouts, and connection pool sizing (1-20)."
+description: "Configure the RouterOS API connection for cs-routeros-bouncer: address, credentials, TLS, timeouts, connection pool sizing (1-20), and the bulk add method."
 ---
 
 import { Badge } from "@astrojs/starlight/components";
@@ -139,9 +139,9 @@ Each pool connection is a full RouterOS API session. On resource-constrained rou
 How reconciliation (at startup and every `crowdsec.reconciliation_interval`) adds the address-list entries the router is missing. Live decisions are not affected: they are always added one API call each.
 
 - **`script`** (default): the bouncer creates a temporary `/system/script` holding up to 100 adds, runs it and removes it again. This is the fastest way to load a large list, such as the CAPI community blocklist at startup. If a script fails, that chunk is retried one call per entry.
-- **`api`**: every entry is added with its own API call, spread over the connection pool (`pool_size`). No script is ever created, so the bouncer's API user needs no more than address-list access to add, and the router's configuration is left alone.
+- **`api`**: every entry is added with its own API call, spread over the connection pool (`pool_size`). No script is ever created, and the router's configuration is left alone.
 
-Choose `api` when scripts are unwanted on the router: every script add and remove is a configuration change RouterOS persists to its flash storage, and an audit of `/system/script` or its log then shows the bouncer's scripts coming and going. Address-list entries with a timeout, which is what decisions become, are dynamic and stay in memory either way.
+Choose `api` when scripts are unwanted on the router. RouterOS logs every script add with the script's full source, so each reconciliation pass that adds entries writes all of its adds into the router log, and an audit of `/system/script` shows the bouncer's scripts coming and going; each script add and remove is also a configuration change RouterOS persists. An address-list add with a timeout over the API leaves no log line. Address-list entries with a timeout, which is what decisions become, are dynamic and stay in memory either way.
 
 ```yaml
 mikrotik:
