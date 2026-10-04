@@ -119,8 +119,9 @@ func ParallelExec[T any](pool *Pool, items []T, fn func(c *Client, item T) error
 }
 
 // AddAddresses adds address-list entries concurrently through the pool, one
-// API call each, never through a script. It returns how many were added; an
-// entry the router already has is skipped, neither added nor an error.
+// API call each, never through a script. It counts every entry AddAddress
+// accepts, including one the router already had, whose timeout and comment
+// AddAddress refreshes, as AddAddressesEach does.
 func (p *Pool) AddAddresses(proto, list string, entries []BulkEntry) (int, []error) {
 	var added atomic.Int64
 	errs := ParallelExec(p, entries, func(c *Client, entry BulkEntry) error {

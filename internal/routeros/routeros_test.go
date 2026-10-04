@@ -874,6 +874,32 @@ func TestPoolRemoveAddresses(t *testing.T) {
 	}
 }
 
+// TestPoolAddAddresses_DuplicateRefreshedAndCounted verifies that a pooled add
+// of an entry the router already has, added between the reconcile diff and the
+// add, refreshes it and counts it, as AddAddressesEach does.
+func TestPoolAddAddresses_DuplicateRefreshedAndCounted(t *testing.T) {
+	mc := newMockConn()
+	p := NewPool(config.MikroTikConfig{}, 1)
+	p.newClient = func(_ config.MikroTikConfig) *Client {
+		return &Client{dialFunc: func(_ config.MikroTikConfig) (RouterConn, error) { return mc, nil }}
+	}
+	if err := p.Connect(); err != nil {
+		t.Fatalf("Connect() error: %v", err)
+	}
+	t.Cleanup(p.Close)
+	mc.pushError(newDuplicateDeviceError())
+	mc.pushReply(reReply(map[string]string{".id": "*A1", "address": "1.1.1.1", "list": "list", "timeout": "1h", "comment": "a"}))
+	mc.pushReply(emptyReply())
+
+	added, errs := p.AddAddresses("ip", "list", []BulkEntry{{Address: "1.1.1.1", Timeout: "2h", Comment: "a"}})
+	if added != 1 || len(errs) != 0 {
+		t.Fatalf("expected 1 added and no error, got %d and %v", added, errs)
+	}
+	if got := mc.callCount(); got != 3 {
+		t.Fatalf("expected add, find and set, got %d calls", got)
+	}
+}
+
 // TestPoolAddAddresses verifies pooled adds use one address-list add per
 // entry, never a script, and report real failures.
 func TestPoolAddAddresses(t *testing.T) {

@@ -82,8 +82,8 @@ func (c *Client) BulkAddAddresses(proto, list string, entries []BulkEntry) (adde
 
 // AddAddressesEach adds entries with one AddAddress call each, never through a
 // script: the bulk_add_method "api" without a connection pool, and the retry
-// of a failed script chunk. An entry the router already has is skipped and not
-// counted.
+// of a failed script chunk. It counts every entry AddAddress accepts, including
+// one the router already had, whose timeout and comment AddAddress refreshes.
 func (c *Client) AddAddressesEach(proto, list string, chunk []BulkEntry) (int, error) {
 	added := 0
 	var fallbackErrs []error
