@@ -68,12 +68,13 @@ mikrotik:
   # value automatically so it never exceeds the router limit.
   pool_size: 4
   # How reconciliation adds missing address-list entries (default: "script").
-  # "script" builds a temporary /system/script per chunk of 100 entries and
-  # runs it on the router: four API calls per chunk, so latency to the router
-  # barely matters. "api" adds each entry with its own API call, spread over
-  # the pool, and never creates a script, whose every add RouterOS logs with
-  # its full source and persists as a configuration change. On the router's
-  # LAN "api" is the faster of the two; over a link with latency, "script" is.
+  # "script" sends chunks of 100 entries as RouterOS scripts: one /execute call
+  # each on RouterOS 7.8rc1 and later, which stores and logs nothing, and a
+  # temporary /system/script on older versions, which RouterOS logs with its
+  # full source. A chunk costs the same few round trips however many entries
+  # it holds, so latency to the router barely matters. "api" adds each entry
+  # with its own API call, spread over the pool, runs no script, and caches
+  # each entry's id so an unban needs no lookup.
   bulk_add_method: "script"
 
 firewall:

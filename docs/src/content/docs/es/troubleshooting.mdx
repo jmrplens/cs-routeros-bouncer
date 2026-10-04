@@ -248,7 +248,7 @@ Los mensajes de duplicado repetidos cada pocos segundos suelen indicar que la ca
 
 ### Avisos de fallback de scripts masivos
 
-Durante la reconciliación, las adiciones se envían en scripts de RouterOS de hasta 100 entradas (con el valor por defecto `bulk_add_method: script`). Si un script falla, el bouncer recurre a adiciones individuales para ese bloque y continúa.
+Durante la reconciliación, las adiciones se envían en scripts de RouterOS de hasta 100 entradas (con el valor por defecto `bulk_add_method: script`): una llamada a `/execute` por script en RouterOS 7.8rc1 y posteriores, y un `/system/script` temporal en versiones anteriores. El bouncer registra una vez cuál usa, como `bulk add script runner`. Si un script falla, el bouncer recurre a adiciones individuales para ese bloque y continúa. Si el router rechaza el propio `/execute`, el bouncer registra `RouterOS refused /execute as-string` y usa el script guardado a partir de entonces.
 
 Si el fallback ocurre con frecuencia:
 

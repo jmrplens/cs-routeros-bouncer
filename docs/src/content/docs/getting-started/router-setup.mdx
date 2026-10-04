@@ -69,7 +69,7 @@ All other policies are explicitly denied to follow the principle of least privil
 
 `!ftp`, `!local`, `!ssh`, `!reboot`, `!policy`, `!test`, `!password`, `!sniff`, `!romon`, `!rest-api`
 
-Denying `!policy` is safe even though the bouncer creates and runs a temporary `/system/script` for each bulk chunk. RouterOS only requires the `policy` permission to run a script whose own policy set exceeds the caller's, and a script created over the API inherits the creating user's policies — so `read,write,api` is sufficient. Verified against RouterOS 7.24.1 with a group carrying exactly these policies: `bulk script executed` succeeds and bulk adds are not degraded to per-address writes.
+Denying `!policy` is safe even though the bouncer runs a script for each bulk chunk: through `/execute` on RouterOS 7.8rc1 and later, and as a temporary `/system/script` before that. RouterOS only requires the `policy` permission to run a script whose own policy set exceeds the caller's; `/execute` runs with the caller's policies, and a script created over the API inherits them — so `read,write,api` is sufficient. Verified with groups carrying no more than these policies, against RouterOS 7.24.1 for the stored script and 7.24.4 for `/execute`: bulk adds go through and are not degraded to per-address writes.
 
 ## Firewall access
 

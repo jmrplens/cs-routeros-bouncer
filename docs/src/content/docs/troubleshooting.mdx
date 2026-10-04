@@ -248,7 +248,7 @@ Repeated duplicate messages every few seconds usually mean the in-memory cache i
 
 ### Bulk script fallback warnings
 
-During reconciliation, additions are sent in RouterOS scripts of up to 100 entries (with the default `bulk_add_method: script`). If a script fails, the bouncer falls back to individual adds for that chunk and keeps going.
+During reconciliation, additions are sent in RouterOS scripts of up to 100 entries (with the default `bulk_add_method: script`): one `/execute` call each on RouterOS 7.8rc1 and later, a temporary `/system/script` on older versions. The bouncer logs which one it uses once, as `bulk add script runner`. If a script fails, the bouncer falls back to individual adds for that chunk and keeps going. If the router refuses `/execute` itself, the bouncer logs `RouterOS refused /execute as-string` and uses the stored script from then on.
 
 If fallback happens often:
 

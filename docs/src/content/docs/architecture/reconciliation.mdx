@@ -127,13 +127,19 @@ Periodic reconciliation is usually light: when there is no drift, it lists curre
 
 ### Script-based bulk add
 
-Instead of one API call per entry, each paying a round trip to the router, the bouncer uploads a temporary RouterOS script named `crowdsec-bulk-import` and runs it by its internal id:
+Instead of one API call per entry, each paying a round trip to the router, the bouncer sends up to 100 adds as one RouterOS script. On RouterOS 7.8rc1 and later it runs the script with a single call:
+
+```routeros
+/execute =script=<source> =as-string=
+```
+
+`as-string` makes the call wait for the script and return what it printed: the number of entries it added. Nothing is stored and nothing reaches the router log. On older versions, or when the router refuses `/execute`, the bouncer uploads a temporary script named `crowdsec-bulk-import`, runs it by its internal id and removes it:
 
 ```routeros
 /system/script/run =number=<script-id>
 ```
 
-Each script run adds up to 100 IPs using `:do { ... } on-error={}` to handle duplicates gracefully.
+Each script adds up to 100 IPs using `:do { ... } on-error={}` to handle duplicates gracefully.
 
 ### Parallel deletion
 

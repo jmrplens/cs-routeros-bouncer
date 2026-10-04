@@ -65,10 +65,10 @@ type MikroTikConfig struct {
 	CommandTimeout    time.Duration `yaml:"command_timeout" mapstructure:"command_timeout"`
 	PoolSize          int           `yaml:"pool_size" mapstructure:"pool_size"`
 	// BulkAddMethod is how reconciliation adds missing address-list entries:
-	// "script" builds a temporary /system/script per chunk of 100 entries and
-	// runs it on the router; "api" adds each entry with its own API call,
-	// spread over the connection pool, and never creates a script. Empty is
-	// "script".
+	// "script" sends chunks of 100 entries as RouterOS scripts, one /execute
+	// call each on RouterOS 7.8rc1 and later and a temporary /system/script
+	// before that; "api" adds each entry with its own API call, spread over
+	// the connection pool, and never runs a script. Empty is "script".
 	BulkAddMethod string `yaml:"bulk_add_method" mapstructure:"bulk_add_method"`
 }
 
