@@ -103,3 +103,65 @@ func TestDefaultDialTLS(t *testing.T) {
 	_, err = conn.RunArgs([]string{"/system/identity/print"})
 	require.NoError(t, err)
 }
+
+// TestDefaultDialConnectionTimeout verifies that mikrotik.connection_timeout
+// bounds the dial: a router that accepts the TCP connection and never answers
+// the login, or with TLS the handshake, must not hold the dial, and so a
+// reconnect, forever.
+func TestDefaultDialConnectionTimeout(t *testing.T) {
+	for _, useTLS := range []bool{false, true} {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = ln.Close() })
+		go func() {
+			conn, acceptErr := ln.Accept()
+			if acceptErr != nil {
+				return
+			}
+			t.Cleanup(func() { _ = conn.Close() })
+			// accepted, never answered
+		}()
+
+		done := make(chan error, 1)
+		go func() {
+			_, dialErr := defaultDial(config.MikroTikConfig{
+				Address:           ln.Addr().String(),
+				Username:          "u",
+				Password:          "p",
+				TLS:               useTLS,
+				TLSInsecure:       true,
+				ConnectionTimeout: 200 * time.Millisecond,
+			})
+			done <- dialErr
+		}()
+		select {
+		case dialErr := <-done:
+			require.Error(t, dialErr)
+		case <-time.After(3 * time.Second):
+			t.Fatalf("dial with tls=%v ignored connection_timeout", useTLS)
+		}
+	}
+}
+
+// TestDefaultDialClearsLoginDeadline verifies that the connection_timeout
+// deadline ends with the login: with command_timeout 0 nothing else resets it,
+// and a command after it would fail on a deadline long past.
+func TestDefaultDialClearsLoginDeadline(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ln.Close() })
+	fakeLoginServer(t, ln, nil)
+
+	conn, err := defaultDial(config.MikroTikConfig{
+		Address:           ln.Addr().String(),
+		Username:          "u",
+		Password:          "p",
+		ConnectionTimeout: 100 * time.Millisecond,
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() })
+
+	time.Sleep(200 * time.Millisecond)
+	_, err = conn.RunArgs([]string{"/system/identity/print"})
+	require.NoError(t, err)
+}
