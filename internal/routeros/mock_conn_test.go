@@ -126,7 +126,18 @@ func newTestClient(mc *mockConn) *Client {
 		dialFunc: func(_ config.MikroTikConfig) (RouterConn, error) {
 			return mc, nil
 		},
+		// Bulk adds use the stored /system/script unless a test opts into
+		// /execute (newExecuteTestClient) or into reading the version.
+		runnerKnown: true,
 	}
+}
+
+// newExecuteTestClient returns a test client whose bulk adds go through
+// /execute with as-string, as on RouterOS 7.8rc1 and later.
+func newExecuteTestClient(mc *mockConn) *Client {
+	c := newTestClient(mc)
+	c.useExecute = true
+	return c
 }
 
 // newDuplicateDeviceError returns a DeviceError simulating the RouterOS

@@ -3,6 +3,8 @@ package routeros
 import (
 	"errors"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -47,14 +49,23 @@ const systemScriptPath = "/system/script"
 // coefficient down: inserting rows dominates, and no chunk size in this range
 // changes the import enough to measure reliably. So 100 stays — deep in the
 // flat region, and short enough to keep a single script run interruptible.
+//
+// With /execute (RouterOS 7.8rc1 and later, see runChunk) a chunk is one round
+// trip instead of four, which only flattens this further. The cap that matters
+// there is RouterOS's own: an executed script "can not be larger than 64kB",
+// and 100 entries stay far below it.
 const bulkChunkSize = 100
 
-// BulkAddAddresses adds many addresses at once using a RouterOS script.
-// This is dramatically faster than individual API calls because the script
-// executes locally on the router without per-command network round-trips.
-// failed holds the entries of failed chunks that the per-entry retry could not
-// add either. A chunk whose script ran counts all its entries as added: the
-// script skips an entry it cannot add without saying so.
+// executeMaxScriptBytes is the largest script /execute takes, per the RouterOS
+// scripting manual. A bigger one goes through a stored /system/script instead.
+const executeMaxScriptBytes = 64 * 1024
+
+// BulkAddAddresses adds many addresses through RouterOS scripts of up to
+// bulkChunkSize adds each (runChunk), so a chunk costs the same few round trips
+// however many entries it holds. failed holds the entries of failed chunks that
+// the per-entry retry could not add either. Through /execute the count is the
+// script's own, without the entries it skipped; a stored script cannot report
+// one, so its chunk counts every entry as added.
 func (c *Client) BulkAddAddresses(proto, list string, entries []BulkEntry) (added int, failed []BulkEntry, err error) {
 	if len(entries) == 0 {
 		return 0, nil, nil
@@ -67,7 +78,7 @@ func (c *Client) BulkAddAddresses(proto, list string, entries []BulkEntry) (adde
 
 		script := buildBulkAddScript(proto, list, chunk)
 
-		n, scriptErr := c.runBulkScript(script)
+		n, scriptErr := c.runChunk(script)
 		if scriptErr != nil {
 			log.Warn().Err(scriptErr).Int("chunk_size", len(chunk)).Msg("bulk script failed, falling back to individual adds")
 			fallbackAdded, fallbackFailed, fallbackErr := c.AddAddressesEach(proto, list, chunk)
@@ -169,6 +180,109 @@ func buildBulkAddScript(proto, list string, entries []BulkEntry) string {
 
 	sb.WriteString(":put $count\n")
 	return sb.String()
+}
+
+// errExecuteRejected marks a device error from /execute itself, as opposed to
+// an error inside the script: the router does not take the command.
+var errExecuteRejected = errors.New("routeros rejected /execute as-string")
+
+// runChunk runs one bulk-add script. On RouterOS 7.8rc1 and later it goes
+// through /execute with as-string: a single API call that runs the script
+// synchronously and hands back its :put output, so the count is exact and no
+// script is stored — nothing reaches the configuration or the router log,
+// where a stored script's creation is logged with its whole source. Older
+// routers, a script over the /execute size limit, and a router that refuses
+// /execute get the stored /system/script of runBulkScript; a refusal is
+// remembered for the rest of the client's life.
+func (c *Client) runChunk(source string) (int, error) {
+	if len(source) <= executeMaxScriptBytes && c.executeSupported() {
+		n, err := c.runExecuteScript(source)
+		if !errors.Is(err, errExecuteRejected) {
+			return n, err
+		}
+		c.runnerMu.Lock()
+		c.useExecute = false
+		c.runnerMu.Unlock()
+		log.Warn().Err(err).Msg("RouterOS refused /execute as-string; bulk adds use a stored /system/script from now on")
+	}
+	return c.runBulkScript(source)
+}
+
+// executeSupported reports whether bulk-add scripts go through /execute. It
+// reads the router's version on first use; a failed read is retried on the
+// next chunk rather than settling on the slower runner for good.
+func (c *Client) executeSupported() bool {
+	c.runnerMu.Lock()
+	defer c.runnerMu.Unlock()
+	if !c.runnerKnown {
+		sr, err := c.GetSystemResources()
+		if err != nil {
+			log.Warn().Err(err).Msg("could not read the RouterOS version; this bulk chunk uses a stored /system/script")
+			return false
+		}
+		c.runnerKnown = true
+		c.useExecute = executeAsStringSupported(sr.Version)
+		runner := "stored /system/script"
+		if c.useExecute {
+			runner = "/execute as-string"
+		}
+		log.Info().Str("routeros", sr.Version).Str("runner", runner).Msg("bulk add script runner")
+	}
+	return c.useExecute
+}
+
+// routerOSVersion matches the leading release in /system/resource's version,
+// such as "7.24.4 (stable)", "7.8rc1 (testing)" or "7.25beta3 (development)".
+var routerOSVersion = regexp.MustCompile(`^(\d+)\.(\d+)(?:\.\d+)?(beta|rc)?`)
+
+// executeAsStringSupported reports whether a RouterOS version takes the
+// as-string parameter of :execute. It arrived in 7.8rc1 ("console - added
+// "as-string" parameter to the ":execute" command"); 7.8beta2 and beta3 do not
+// have it. A version it cannot read counts as older.
+func executeAsStringSupported(version string) bool {
+	m := routerOSVersion.FindStringSubmatch(strings.TrimSpace(version))
+	if m == nil {
+		return false
+	}
+	major, _ := strconv.Atoi(m[1])
+	minor, _ := strconv.Atoi(m[2])
+	switch {
+	case major != 7:
+		return major > 7
+	case minor != 8:
+		return minor > 8
+	default:
+		return m[3] != "beta"
+	}
+}
+
+// runExecuteScript runs source through /execute with as-string and returns
+// the count its final :put printed. A device error on the command itself is
+// errExecuteRejected; anything but a number in the output is an error inside
+// the script — an :error comes back there as text, not as an API error — and
+// fails the chunk so BulkAddAddresses retries it entry by entry.
+func (c *Client) runExecuteScript(source string) (int, error) {
+	start := time.Now()
+	reply, err := c.Run("/execute", "=script="+source, "=as-string=")
+	if err != nil {
+		if isDeviceError(err) {
+			return 0, fmt.Errorf("%w: %w", errExecuteRejected, err)
+		}
+		return 0, fmt.Errorf("execute bulk script: %w", err)
+	}
+	ret := ""
+	if reply != nil && reply.Done != nil {
+		ret = strings.TrimSpace(reply.Done.Map["ret"])
+	}
+	n, convErr := strconv.Atoi(ret)
+	if convErr != nil {
+		if len(ret) > 200 {
+			ret = ret[:200] + "…"
+		}
+		return 0, fmt.Errorf("execute bulk script: output %q is not a count", ret)
+	}
+	log.Debug().Dur("elapsed", time.Since(start)).Int("added", n).Msg("bulk script executed")
+	return n, nil
 }
 
 // runBulkScript creates, executes, and cleans up a temporary RouterOS script.
