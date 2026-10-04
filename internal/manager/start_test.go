@@ -1196,6 +1196,23 @@ func TestCreateFirewallRules_ExistingRuleSkipsAdd(t *testing.T) {
 // TestReconcileAddresses_BulkAddPartialError verifies that when BulkAdd
 // returns an error along with a partial count, the partial additions are
 // still reflected in the cache and metrics.
+// TestReconcileAddresses_PassesContextToAdds verifies that the reconcile
+// context reaches the add, so a shutdown stops a long first load.
+func TestReconcileAddresses_PassesContextToAdds(t *testing.T) {
+	type key struct{}
+	mock := &mockROS{bulkAddCount: 1}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	mgr := newTestManager(mock, cfg)
+	ctx := context.WithValue(context.Background(), key{}, "reconcile")
+
+	mgr.reconcileAddresses(ctx, []*crowdsec.Decision{{Proto: "ip", Value: "10.0.0.1", Origin: "test"}})
+
+	if mock.bulkAddCtx == nil || mock.bulkAddCtx.Value(key{}) != "reconcile" {
+		t.Fatalf("expected the reconcile context at the add, got %v", mock.bulkAddCtx)
+	}
+}
+
 func TestReconcileAddresses_BulkAddPartialError(t *testing.T) {
 	mock := &mockROS{
 		bulkAddCount: 5, // 5 of 10 succeeded
@@ -1299,7 +1316,7 @@ type fakeRouterOSPool struct {
 	addErrs    []error
 }
 
-func (p *fakeRouterOSPool) AddAddresses(proto, list string, entries []ros.BulkEntry) (added int, failed []ros.BulkEntry, errs []error) {
+func (p *fakeRouterOSPool) AddAddresses(_ context.Context, proto, list string, entries []ros.BulkEntry) (added int, failed []ros.BulkEntry, errs []error) {
 	p.proto = proto
 	p.addList = list
 	p.addEntries = append([]ros.BulkEntry(nil), entries...)
@@ -2335,7 +2352,7 @@ func TestBulkAddMethod(t *testing.T) {
 
 	mock := &mockROS{bulkAddCount: 2}
 	mgr := newTestManager(mock, baseConfig())
-	if added, failed, err := mgr.bulkAdd("ip", "list", entries); err != nil || added != 2 || len(failed) != 0 {
+	if added, failed, err := mgr.bulkAdd(context.Background(), "ip", "list", entries); err != nil || added != 2 || len(failed) != 0 {
 		t.Fatalf("script: got (%d, %v, %v)", added, failed, err)
 	}
 	if len(mock.bulkAddCalls) != 1 || len(mock.addEachCalls) != 0 {
@@ -2349,7 +2366,7 @@ func TestBulkAddMethod(t *testing.T) {
 	cfg.MikroTik.BulkAddMethod = config.BulkAddAPI
 	mock = &mockROS{}
 	mgr = newTestManager(mock, cfg)
-	if added, failed, err := mgr.bulkAdd("ip", "list", entries); err != nil || added != 2 || len(failed) != 0 {
+	if added, failed, err := mgr.bulkAdd(context.Background(), "ip", "list", entries); err != nil || added != 2 || len(failed) != 0 {
 		t.Fatalf("api without pool: got (%d, %v, %v)", added, failed, err)
 	}
 	if len(mock.bulkAddCalls) != 0 || len(mock.addEachCalls) != 1 {
@@ -2363,7 +2380,7 @@ func TestBulkAddMethod(t *testing.T) {
 	mgr = newTestManager(mock, cfg)
 	pool := &fakeRouterOSPool{addErrs: []error{errors.New("add timeout")}}
 	mgr.pool = pool
-	added, failed, err := mgr.bulkAdd("ip", "list", entries)
+	added, failed, err := mgr.bulkAdd(context.Background(), "ip", "list", entries)
 	if added != 1 || err == nil || !strings.Contains(err.Error(), "1 add errors") || len(failed) != 1 || failed[0].Address != "1.1.1.1" {
 		t.Fatalf("api with pool: got (%d, %v, %v)", added, failed, err)
 	}

@@ -155,5 +155,5 @@ Medido en un RB5009 (RouterOS 7.24.4), cargando unas 24.400 decisiones al arranc
 - **En la LAN del router** (0,2 ms), `script` mediante `/execute` tardó unos 21 s y `api` con `pool_size: 1` unos 23 s, ambos con aproximadamente la mitad de CPU del router que un script guardado, que tardó unos 36 s. Con el `pool_size: 4` por defecto, `api` tardó lo mismo que un script guardado, porque aquí las sesiones extra solo compiten entre sí. Una pasada que añade unas pocas entradas tarda milisegundos con cualquiera de los dos.
 - **Con un enlace con latencia**, cada adición por la API paga un viaje de ida y vuelta, mientras que un script paga uno por cada 100 entradas mediante `/execute` y cuatro como script guardado. A 36 ms, `script` tardó unos 33 s mediante `/execute`, 70 s como script guardado, y `api` 76 s con `pool_size: 16`; a 33 ms había tardado 3,7 min con 4 y 13 min con 1.
 
-Las decisiones en vivo solo se procesan cuando ha terminado la primera reconciliación, y entre las pasadas siguientes.
+Las decisiones en vivo solo se procesan cuando ha terminado la primera reconciliación, y entre las pasadas siguientes. Un apagado detiene las adiciones de una pasada en curso; el siguiente arranque añade lo que falte.
 :::

@@ -7,6 +7,7 @@
 ### Fixed
 
 - **`mikrotik.connection_timeout` bounds the dial and the login** — it was parsed and documented but read by nothing, so a router that accepted the connection and never answered the login held the startup dial, and every reconnect, forever. The dial now uses it for the TCP connect and puts its deadline on the connection for the login; `0` keeps no bound
+- **A shutdown stops the adds of a running reconciliation** — the adds ignored the context, so a stop during a long first load waited until every entry was added, and the container runtime killed the bouncer before it could clean up. All three add paths now stop taking entries once the context is done and report the rest as failed, so none of them is cached; `ParallelExecContext` carries the context, and `ParallelExec` reports every item with `ErrPoolClosed` instead of panicking when the pool is closed; a client given back to a closed pool is closed instead of panicking either
 
 ## [1.7.2] - 2026-10-06
 

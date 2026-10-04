@@ -77,7 +77,7 @@ type routerOSPool interface {
 	Connect() error
 	Close()
 	RemoveAddresses(proto string, entries []rosClient.AddressEntry) []error
-	AddAddresses(proto, list string, entries []rosClient.BulkEntry) (added int, failed []rosClient.BulkEntry, errs []error)
+	AddAddresses(ctx context.Context, proto, list string, entries []rosClient.BulkEntry) (added int, failed []rosClient.BulkEntry, errs []error)
 }
 
 // NewManager creates a new bouncer manager.
@@ -1406,7 +1406,7 @@ func (m *Manager) reconcileAddresses(ctx context.Context, decisions []*crowdsec.
 		if ctx.Err() != nil {
 			return
 		}
-		result, err := m.reconcileProtocolAddresses(proto, decisions, start)
+		result, err := m.reconcileProtocolAddresses(ctx, proto, decisions, start)
 		if err != nil {
 			complete = false
 			continue
@@ -1442,7 +1442,7 @@ type reconcileResult struct {
 }
 
 // reconcileProtocolAddresses applies the address-list diff for one RouterOS protocol.
-func (m *Manager) reconcileProtocolAddresses(proto string, decisions []*crowdsec.Decision, start time.Time) (reconcileResult, error) {
+func (m *Manager) reconcileProtocolAddresses(ctx context.Context, proto string, decisions []*crowdsec.Decision, start time.Time) (reconcileResult, error) {
 	listName := m.getAddressListName(proto)
 	listed, err := m.ros.ListAddresses(proto, listName, "")
 	if err != nil {
@@ -1455,7 +1455,7 @@ func (m *Manager) reconcileProtocolAddresses(proto string, decisions []*crowdsec
 	diff := buildReconcileDiff(proto, decisions, existing, foreign, m.commentPrefix())
 	m.refreshAddressCache(proto, diff.currentMap)
 	metricsProto := metricsProtoName(proto)
-	added := m.addMissingAddresses(proto, listName, metricsProto, diff.toAdd)
+	added := m.addMissingAddresses(ctx, proto, listName, metricsProto, diff.toAdd)
 	removed := m.removeStaleAddresses(proto, metricsProto, diff.toRemove)
 	m.recordReconciliationMetrics(metricsProto, len(diff.shouldExist), added, removed)
 
@@ -1586,12 +1586,12 @@ func (m *Manager) refreshAddressCache(proto string, currentMap map[string]rosCli
 }
 
 // addMissingAddresses bulk-adds missing entries and records reconciliation metrics.
-func (m *Manager) addMissingAddresses(proto, listName, metricsProto string, toAdd []rosClient.BulkEntry) int {
+func (m *Manager) addMissingAddresses(ctx context.Context, proto, listName, metricsProto string, toAdd []rosClient.BulkEntry) int {
 	if len(toAdd) == 0 {
 		return 0
 	}
 	addStart := time.Now()
-	added, failed, addErr := m.bulkAdd(proto, listName, toAdd)
+	added, failed, addErr := m.bulkAdd(ctx, proto, listName, toAdd)
 	if addErr != nil {
 		m.logger.Warn().Err(addErr).Int("unconfirmed", len(failed)).Msg("some addresses failed to add during reconciliation")
 	}
@@ -1607,15 +1607,16 @@ func (m *Manager) addMissingAddresses(proto, listName, metricsProto string, toAd
 // bulkAdd adds the missing entries with mikrotik.bulk_add_method: one
 // RouterOS script per chunk ("script"), or one API call per entry ("api"),
 // spread over the connection pool when there is one. failed holds the entries
-// whose add failed.
-func (m *Manager) bulkAdd(proto, listName string, toAdd []rosClient.BulkEntry) (added int, failed []rosClient.BulkEntry, err error) {
+// whose add failed; once ctx is done the adds stop and the entries left count
+// as failed.
+func (m *Manager) bulkAdd(ctx context.Context, proto, listName string, toAdd []rosClient.BulkEntry) (added int, failed []rosClient.BulkEntry, err error) {
 	if m.bulkAddMethod() != config.BulkAddAPI {
-		return m.ros.BulkAddAddresses(proto, listName, toAdd)
+		return m.ros.BulkAddAddresses(ctx, proto, listName, toAdd)
 	}
 	if m.pool == nil {
-		return m.ros.AddAddressesEach(proto, listName, toAdd)
+		return m.ros.AddAddressesEach(ctx, proto, listName, toAdd)
 	}
-	added, failed, errs := m.pool.AddAddresses(proto, listName, toAdd)
+	added, failed, errs := m.pool.AddAddresses(ctx, proto, listName, toAdd)
 	if len(errs) > 0 {
 		return added, failed, fmt.Errorf("%d add errors (last: %w)", len(errs), errs[len(errs)-1])
 	}

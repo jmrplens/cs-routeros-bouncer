@@ -1,6 +1,7 @@
 package routeros
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"regexp"
@@ -65,14 +66,20 @@ const executeMaxScriptBytes = 64 * 1024
 // however many entries it holds. failed holds the entries of failed chunks that
 // the per-entry retry could not add either. Through /execute the count is the
 // script's own, without the entries it skipped; a stored script cannot report
-// one, so its chunk counts every entry as added.
-func (c *Client) BulkAddAddresses(proto, list string, entries []BulkEntry) (added int, failed []BulkEntry, err error) {
+// one, so its chunk counts every entry as added. Once ctx is done no further
+// chunk runs, and its entries are failed too.
+func (c *Client) BulkAddAddresses(ctx context.Context, proto, list string, entries []BulkEntry) (added int, failed []BulkEntry, err error) {
 	if len(entries) == 0 {
 		return 0, nil, nil
 	}
 
 	total := 0
 	for start := 0; start < len(entries); start += bulkChunkSize {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			failed = append(failed, entries[start:]...)
+			err = ctxErr
+			break
+		}
 		end := min(start+bulkChunkSize, len(entries))
 		chunk := entries[start:end]
 
@@ -81,7 +88,7 @@ func (c *Client) BulkAddAddresses(proto, list string, entries []BulkEntry) (adde
 		n, scriptErr := c.runChunk(script)
 		if scriptErr != nil {
 			log.Warn().Err(scriptErr).Int("chunk_size", len(chunk)).Msg("bulk script failed, falling back to individual adds")
-			fallbackAdded, fallbackFailed, fallbackErr := c.AddAddressesEach(proto, list, chunk)
+			fallbackAdded, fallbackFailed, fallbackErr := c.AddAddressesEach(ctx, proto, list, chunk)
 			total += fallbackAdded
 			failed = append(failed, fallbackFailed...)
 			if fallbackErr != nil {
@@ -100,9 +107,15 @@ func (c *Client) BulkAddAddresses(proto, list string, entries []BulkEntry) (adde
 // of a failed script chunk. It counts every entry AddAddress accepts, including
 // one the router already had, whose timeout and comment AddAddress refreshes,
 // and returns the entries whose add failed. It sets ID on every entry it adds.
-func (c *Client) AddAddressesEach(proto, list string, chunk []BulkEntry) (added int, failed []BulkEntry, err error) {
+// Once ctx is done it adds no more, and the entries left are failed too.
+func (c *Client) AddAddressesEach(ctx context.Context, proto, list string, chunk []BulkEntry) (added int, failed []BulkEntry, err error) {
 	var fallbackErrs []error
 	for i := range chunk {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			failed = append(failed, chunk[i:]...)
+			fallbackErrs = append(fallbackErrs, ctxErr)
+			break
+		}
 		entry := &chunk[i]
 		id, addErr := c.AddAddress(proto, list, entry.Address, entry.Timeout, entry.Comment)
 		if addErr != nil {

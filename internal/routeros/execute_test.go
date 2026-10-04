@@ -1,6 +1,7 @@
 package routeros
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -45,7 +46,7 @@ func TestBulkAddAddresses_ExecuteCountsFromOutput(t *testing.T) {
 	c := newExecuteTestClient(mc)
 	mc.pushReply(doneReply(map[string]string{"ret": "2"}))
 
-	added, failed, err := c.BulkAddAddresses("ip", "list", bulkEntries(2))
+	added, failed, err := c.BulkAddAddresses(context.Background(), "ip", "list", bulkEntries(2))
 	if err != nil || added != 2 || len(failed) != 0 {
 		t.Fatalf("expected 2 added and nothing failed, got %d, %v, %v", added, failed, err)
 	}
@@ -65,7 +66,7 @@ func TestBulkAddAddresses_ExecuteCountsOnlyWhatItAdded(t *testing.T) {
 	c := newExecuteTestClient(mc)
 	mc.pushReply(doneReply(map[string]string{"ret": "0"}))
 
-	added, failed, err := c.BulkAddAddresses("ip", "list", bulkEntries(2))
+	added, failed, err := c.BulkAddAddresses(context.Background(), "ip", "list", bulkEntries(2))
 	if err != nil || added != 0 || len(failed) != 0 {
 		t.Fatalf("expected 0 added and no error, got %d, %v, %v", added, failed, err)
 	}
@@ -84,7 +85,7 @@ func TestBulkAddAddresses_ExecuteErrorRetriesEntryByEntry(t *testing.T) {
 	mc.pushReply(doneReply(map[string]string{"ret": "*A1"}))
 	mc.pushReply(doneReply(map[string]string{"ret": "*A2"}))
 
-	added, failed, err := c.BulkAddAddresses("ip", "list", bulkEntries(2))
+	added, failed, err := c.BulkAddAddresses(context.Background(), "ip", "list", bulkEntries(2))
 	if err != nil || added != 2 || len(failed) != 0 {
 		t.Fatalf("expected the retry to add both, got %d, %v, %v", added, failed, err)
 	}
@@ -108,7 +109,7 @@ func TestBulkAddAddresses_ExecuteRefusedUsesStoredScript(t *testing.T) {
 	mc.pushReply(emptyReply())                                    // run script
 	mc.pushReply(emptyReply())                                    // remove script
 
-	if added, _, err := c.BulkAddAddresses("ip", "list", bulkEntries(2)); err != nil || added != 2 {
+	if added, _, err := c.BulkAddAddresses(context.Background(), "ip", "list", bulkEntries(2)); err != nil || added != 2 {
 		t.Fatalf("expected the stored script to add both, got %d, %v", added, err)
 	}
 	if c.useExecute {
@@ -119,7 +120,7 @@ func TestBulkAddAddresses_ExecuteRefusedUsesStoredScript(t *testing.T) {
 	mc.pushReply(doneReply(map[string]string{"ret": "*SCRIPT2"}))
 	mc.pushReply(emptyReply())
 	mc.pushReply(emptyReply())
-	if _, _, err := c.BulkAddAddresses("ip", "list", bulkEntries(1)); err != nil {
+	if _, _, err := c.BulkAddAddresses(context.Background(), "ip", "list", bulkEntries(1)); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if mc.calls[5][0] != "/system/script/print" {
@@ -136,7 +137,7 @@ func TestBulkAddAddresses_RunnerFromVersion(t *testing.T) {
 	mc.pushReply(reReply(map[string]string{"version": "7.24.4 (stable)"}))
 	mc.pushReply(doneReply(map[string]string{"ret": "1"}))
 
-	if added, _, err := c.BulkAddAddresses("ip", "list", bulkEntries(1)); err != nil || added != 1 {
+	if added, _, err := c.BulkAddAddresses(context.Background(), "ip", "list", bulkEntries(1)); err != nil || added != 1 {
 		t.Fatalf("expected 1 added, got %d, %v", added, err)
 	}
 	if mc.calls[0][0] != "/system/resource/print" || mc.calls[1][0] != "/execute" {
@@ -156,7 +157,7 @@ func TestBulkAddAddresses_RunnerOldRouter(t *testing.T) {
 	mc.pushReply(emptyReply())
 	mc.pushReply(emptyReply())
 
-	if _, _, err := c.BulkAddAddresses("ip", "list", bulkEntries(1)); err != nil {
+	if _, _, err := c.BulkAddAddresses(context.Background(), "ip", "list", bulkEntries(1)); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if mc.calls[1][0] != "/system/script/print" {
@@ -176,7 +177,7 @@ func TestBulkAddAddresses_VersionReadRetried(t *testing.T) {
 	mc.pushReply(emptyReply())
 	mc.pushReply(emptyReply())
 
-	if _, _, err := c.BulkAddAddresses("ip", "list", bulkEntries(1)); err != nil {
+	if _, _, err := c.BulkAddAddresses(context.Background(), "ip", "list", bulkEntries(1)); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if c.runnerKnown {
@@ -185,7 +186,7 @@ func TestBulkAddAddresses_VersionReadRetried(t *testing.T) {
 
 	mc.pushReply(reReply(map[string]string{"version": "7.24.4 (stable)"}))
 	mc.pushReply(doneReply(map[string]string{"ret": "1"}))
-	if _, _, err := c.BulkAddAddresses("ip", "list", bulkEntries(1)); err != nil {
+	if _, _, err := c.BulkAddAddresses(context.Background(), "ip", "list", bulkEntries(1)); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !c.runnerKnown || !c.useExecute || mc.calls[6][0] != "/execute" {
@@ -207,7 +208,7 @@ func TestBulkAddAddresses_ExecuteOverSizeUsesStoredScript(t *testing.T) {
 	mc.pushReply(emptyReply())
 	mc.pushReply(emptyReply())
 
-	if _, _, err := c.BulkAddAddresses("ip", "list", entries); err != nil {
+	if _, _, err := c.BulkAddAddresses(context.Background(), "ip", "list", entries); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if mc.calls[0][0] != "/system/script/print" {
@@ -227,7 +228,7 @@ func TestBulkAddAddresses_ExecuteOtherTrapKeepsExecute(t *testing.T) {
 	mc.pushError(newDeviceError("not enough permissions (9)"))
 	mc.pushReply(doneReply(map[string]string{"ret": "*A1"}))
 
-	if added, _, err := c.BulkAddAddresses("ip", "list", bulkEntries(1)); err != nil || added != 1 {
+	if added, _, err := c.BulkAddAddresses(context.Background(), "ip", "list", bulkEntries(1)); err != nil || added != 1 {
 		t.Fatalf("expected the retry to add the entry, got %d, %v", added, err)
 	}
 	if !c.useExecute || mc.calls[1][0] != "/ip/firewall/address-list/add" {
@@ -235,7 +236,7 @@ func TestBulkAddAddresses_ExecuteOtherTrapKeepsExecute(t *testing.T) {
 	}
 
 	mc.pushReply(doneReply(map[string]string{"ret": "1"}))
-	if _, _, err := c.BulkAddAddresses("ip", "list", bulkEntries(1)); err != nil {
+	if _, _, err := c.BulkAddAddresses(context.Background(), "ip", "list", bulkEntries(1)); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if mc.calls[2][0] != "/execute" {
