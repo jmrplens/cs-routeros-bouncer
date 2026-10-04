@@ -53,6 +53,11 @@ var ErrDuplicateReportedButNotFound = errors.New("routeros reported duplicate en
 // because the address already exists.
 var ErrAddressDuplicate = errors.New("routeros address already exists")
 
+// ErrAddRefused reports that RouterOS refused an address-list add with a trap
+// other than a duplicate: the entry is not on the router. A transport error or
+// a !fatal leaves that open and does not carry it.
+var ErrAddRefused = errors.New("routeros refused the address-list add")
+
 // ErrForeignEntry reports that an address-list add hit an existing entry whose
 // comment lacks the owner prefix: the entry is left as it is.
 var ErrForeignEntry = errors.New("routeros address held by a foreign entry")
@@ -191,6 +196,19 @@ func isDeviceError(err error) bool {
 	return errors.As(err, &de)
 }
 
+// errNoConnection marks a command Run could not send, or not send again,
+// because connecting to the router failed. A !trap inside it is the login's.
+var errNoConnection = errors.New("no RouterOS connection")
+
+// isTrapError reports whether the router refused the command with a !trap. A
+// !fatal ends the session, and a !trap from the login of a reconnect refused
+// the login, so neither says anything about the command.
+func isTrapError(err error) bool {
+	var de *routeros.DeviceError
+	return errors.As(err, &de) && de.Sentence != nil && de.Sentence.Word == "!trap" &&
+		!errors.Is(err, errNoConnection)
+}
+
 // isNoSuchItemError reports whether RouterOS returned its missing-item trap text.
 func isNoSuchItemError(err error) bool {
 	if err == nil {
@@ -230,7 +248,7 @@ func (c *Client) run(canceled func() error, exec func(RouterConn) (*routeros.Rep
 		}
 	}
 	if err := c.ensureConnected(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", errNoConnection, err)
 	}
 
 	reply, err := exec(c.conn)
@@ -252,7 +270,7 @@ func (c *Client) run(canceled func() error, exec func(RouterConn) (*routeros.Rep
 	c.logger.Warn().Err(err).Msg("RouterOS command failed, attempting reconnect")
 	c.dropConnLocked()
 	if reconnectErr := c.ensureConnected(); reconnectErr != nil {
-		return nil, fmt.Errorf("reconnect failed: %w", reconnectErr)
+		return nil, fmt.Errorf("reconnect failed: %w: %w", errNoConnection, reconnectErr)
 	}
 
 	reply, err = exec(c.conn)

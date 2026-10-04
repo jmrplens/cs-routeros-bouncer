@@ -38,7 +38,7 @@ Por defecto, la reconciliación se ejecuta al arrancar y después cada `15m`. Co
 
 4. **Aplicar**
 
-   Ejecutar las adiciones (mediante scripts masivos, 100 IPs por lote, o con `bulk_add_method: api` una llamada a la API por entrada, por el pool cuando este llegó a abrirse y una a una por la conexión principal cuando no) y las eliminaciones (llamadas paralelas a la API a través del pool de conexiones cuando este llegó a abrirse, y una a una por la conexión principal cuando no). Las adiciones actualizan la caché con las entradas que no se notificaron como fallidas, las eliminaciones con lo que han intentado.
+   Ejecutar las adiciones (mediante scripts masivos, 100 IPs por lote, o con `bulk_add_method: api` una llamada a la API por entrada, por el pool cuando este llegó a abrirse y una a una por la conexión principal cuando no) y las eliminaciones (llamadas paralelas a la API a través del pool de conexiones cuando este llegó a abrirse, y una a una por la conexión principal cuando no). Las adiciones actualizan la caché con las entradas que no se notificaron como fallidas, las eliminaciones con lo que han intentado. Una entrada notificada como fallida puede haber llegado al router de todos modos, así que se guarda como incierta hasta el siguiente listado: un ban en vivo la añade, y un unban en vivo la busca en el router en lugar de omitirla.
 
 5. **Verificar**
 
@@ -136,7 +136,7 @@ En lugar de una llamada a la API por entrada, cada una con su viaje de ida y vue
 /execute =script=<source> =as-string=
 ```
 
-`as-string` hace que la llamada espere al script y devuelva lo que imprimió: el número de entradas que añadió. No se guarda nada y nada llega al log del router. En versiones anteriores, para un bloque por encima del límite de 64 kB de `/execute`, o cuando el router resulta no tener `/execute` con `as-string`, el bouncer sube un script temporal llamado `crowdsec-bulk-import`, lo ejecuta por su id interno y lo elimina:
+`as-string` hace que la llamada espere al script y devuelva lo que imprimió: las posiciones de las adiciones que no pudo hacer, que luego se reintentan con su propia llamada a la API. No se guarda nada y nada llega al log del router. En versiones anteriores, para un bloque por encima del límite de 64 kB de `/execute`, o cuando el router resulta no tener `/execute` con `as-string`, el bouncer sube un script temporal llamado `crowdsec-bulk-import`, lo ejecuta por su id interno y lo elimina:
 
 ```routeros
 /system/script/run =number=<script-id>

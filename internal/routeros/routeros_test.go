@@ -523,11 +523,8 @@ func TestBuildBulkAddScriptIPv4Single(t *testing.T) {
 	if !strings.Contains(script, `timeout="4h"`) {
 		t.Error("expected timeout in script")
 	}
-	if !strings.Contains(script, `:local count 0`) {
-		t.Error("expected counter initialization")
-	}
-	if !strings.Contains(script, `:put $count`) {
-		t.Error("expected count output at end")
+	if !strings.HasSuffix(script, `:put ("`+bulkDoneMarker+`" . $failed)`+"\n") {
+		t.Errorf("expected the closing line with the failed positions at the end, got:\n%s", script)
 	}
 }
 
@@ -575,8 +572,45 @@ func TestBuildBulkAddScriptMultipleEntries(t *testing.T) {
 		t.Errorf("expected 3 :do blocks, got %d", count)
 	}
 	// Should have 3 on-error handlers
-	if count := strings.Count(script, "} on-error={}"); count != 3 {
+	if count := strings.Count(script, "} on-error={"); count != 3 {
 		t.Errorf("expected 3 on-error blocks, got %d", count)
+	}
+}
+
+// TestBuildBulkAddScriptRecordsFailures verifies that an add the script cannot
+// make records its position instead of vanishing.
+func TestBuildBulkAddScriptRecordsFailures(t *testing.T) {
+	script := buildBulkAddScript("ip", "test-list", []BulkEntry{{Address: "1.1.1.1"}, {Address: "2.2.2.2"}})
+
+	if !strings.HasPrefix(script, `:local failed ""`+"\n") {
+		t.Errorf("expected the failed positions started empty, got:\n%s", script)
+	}
+	if !strings.Contains(script, `} on-error={ :set failed ($failed . "1,") }`) {
+		t.Errorf("expected the second add to record position 1 on error, got:\n%s", script)
+	}
+}
+
+// TestParseBulkOutput verifies that only output ending in the closing line
+// counts as a run that finished, whatever came before it, and that a position
+// that is not a number makes the output unreadable.
+func TestParseBulkOutput(t *testing.T) {
+	for _, tc := range []struct {
+		out     string
+		want    []int
+		wantErr bool
+	}{
+		{out: bulkDoneMarker, want: nil},
+		{out: bulkDoneMarker + "3,1,", want: []int{3, 1}},
+		{out: "line\r\n" + bulkDoneMarker + "0,\r\n", want: []int{0}},
+		{out: "", wantErr: true},
+		{out: "boom (:error; line 1)", wantErr: true},
+		{out: bulkDoneMarker + "1,\r\nlater", wantErr: true},
+		{out: bulkDoneMarker + "x,", wantErr: true},
+	} {
+		got, err := parseBulkOutput(tc.out)
+		if (err != nil) != tc.wantErr || !slices.Equal(got, tc.want) {
+			t.Errorf("%q: got %v, %v", tc.out, got, err)
+		}
 	}
 }
 
@@ -584,11 +618,8 @@ func TestBuildBulkAddScriptMultipleEntries(t *testing.T) {
 func TestBuildBulkAddScriptEmpty(t *testing.T) {
 	script := buildBulkAddScript("ip", "test", nil)
 
-	if !strings.Contains(script, ":local count 0") {
-		t.Error("expected counter initialization")
-	}
-	if !strings.Contains(script, ":put $count") {
-		t.Error("expected count output")
+	if !strings.Contains(script, ":put (\""+bulkDoneMarker+"\" . $failed)") {
+		t.Error("expected the closing line")
 	}
 	if strings.Contains(script, "address-list/add") {
 		t.Error("expected no add commands for empty entries")

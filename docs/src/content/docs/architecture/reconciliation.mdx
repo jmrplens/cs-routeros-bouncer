@@ -38,7 +38,7 @@ By default, reconciliation runs at startup and then every `15m`. Configure `crow
 
 4. **Apply**
 
-   Execute additions (via bulk scripts, 100 IPs/batch, or with `bulk_add_method: api` one API call per entry, over the pool when it opened and one by one on the main connection when it did not) and deletions (parallel API calls through the connection pool when it opened, one by one on the main connection when it did not). Additions patch the cache with the entries not reported failed, deletions with what they attempted.
+   Execute additions (via bulk scripts, 100 IPs/batch, or with `bulk_add_method: api` one API call per entry, over the pool when it opened and one by one on the main connection when it did not) and deletions (parallel API calls through the connection pool when it opened, one by one on the main connection when it did not). Additions patch the cache with the entries not reported failed, deletions with what they attempted. An entry reported failed may still have reached the router, so it is kept as uncertain until the next listing: a live ban adds it, and a live unban looks it up on the router instead of skipping it.
 
 5. **Verify**
 
@@ -135,7 +135,7 @@ Instead of one API call per entry, each paying a round trip to the router, the b
 /execute =script=<source> =as-string=
 ```
 
-`as-string` makes the call wait for the script and return what it printed: the number of entries it added. Nothing is stored and nothing reaches the router log. On older versions, for a chunk over the 64 kB `/execute` limit, or when the router turns out to lack `/execute` with `as-string`, the bouncer uploads a temporary script named `crowdsec-bulk-import`, runs it by its internal id and removes it:
+`as-string` makes the call wait for the script and return what it printed: the positions of the adds it could not make, which are then retried with their own API call. Nothing is stored and nothing reaches the router log. On older versions, for a chunk over the 64 kB `/execute` limit, or when the router turns out to lack `/execute` with `as-string`, the bouncer uploads a temporary script named `crowdsec-bulk-import`, runs it by its internal id and removes it:
 
 ```routeros
 /system/script/run =number=<script-id>
