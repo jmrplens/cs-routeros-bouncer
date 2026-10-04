@@ -693,6 +693,83 @@ func TestAddAddress_DuplicateUpdatesTimeout(t *testing.T) {
 	}
 }
 
+// TestAddAddress_DuplicateForeignLeftAlone verifies that with an owner prefix
+// a duplicate whose existing entry has a foreign comment is not rewritten: the
+// entry belongs to the operator or another tool, and taking it over would let
+// the bouncer remove it later.
+func TestAddAddress_DuplicateForeignLeftAlone(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+	c.SetOwnerPrefix("crowdsec-bouncer")
+
+	mc.pushError(newDuplicateDeviceError())
+	mc.pushReply(reReply(map[string]string{".id": "*AB", "address": "1.2.3.4", "list": "crowdsec", "comment": "blocked by hand"}))
+
+	_, err := c.AddAddress("ip", "crowdsec", "1.2.3.4", "4h", "crowdsec-bouncer|cscli")
+	if !errors.Is(err, ErrForeignEntry) {
+		t.Fatalf("expected ErrForeignEntry, got %v", err)
+	}
+	if got := mc.callCount(); got != 2 {
+		t.Fatalf("expected add and find only, no set, got %d calls", got)
+	}
+}
+
+// TestOwnedComment pins where the owner prefix ends: at the end of the comment,
+// at "|" or at a space, so a longer prefix is not ours.
+func TestOwnedComment(t *testing.T) {
+	for _, c := range []struct {
+		comment, prefix string
+		owned           bool
+	}{
+		{"crowdsec-bouncer|cscli|ssh-bf|2026-10-04T10:00:00Z @cs-routeros-bouncer", "crowdsec-bouncer", true},
+		{"crowdsec-bouncer @cs-routeros-bouncer", "crowdsec-bouncer", true},
+		{"crowdsec-bouncer", "crowdsec-bouncer", true},
+		{"crowdsec-bouncer-site2|cscli", "crowdsec-bouncer", false},
+		{"blocked by hand", "crowdsec-bouncer", false},
+		{"", "crowdsec-bouncer", false},
+		{"anything", "", true},
+	} {
+		if got := OwnedComment(c.comment, c.prefix); got != c.owned {
+			t.Errorf("OwnedComment(%q, %q) = %v, want %v", c.comment, c.prefix, got, c.owned)
+		}
+	}
+}
+
+// TestAddAddress_DuplicateLongerPrefixForeign verifies that an entry whose
+// prefix only starts with the owner prefix counts as foreign.
+func TestAddAddress_DuplicateLongerPrefixForeign(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+	c.SetOwnerPrefix("crowdsec-bouncer")
+
+	mc.pushError(newDuplicateDeviceError())
+	mc.pushReply(reReply(map[string]string{".id": "*AB", "address": "1.2.3.4", "list": "crowdsec", "comment": "crowdsec-bouncer-site2|cscli"}))
+
+	if _, err := c.AddAddress("ip", "crowdsec", "1.2.3.4", "4h", "crowdsec-bouncer|cscli"); !errors.Is(err, ErrForeignEntry) {
+		t.Fatalf("expected ErrForeignEntry, got %v", err)
+	}
+}
+
+// TestAddAddress_DuplicateOwnedRefreshed verifies that with an owner prefix a
+// duplicate of the bouncer's own entry is still refreshed.
+func TestAddAddress_DuplicateOwnedRefreshed(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+	c.SetOwnerPrefix("crowdsec-bouncer")
+
+	mc.pushError(newDuplicateDeviceError())
+	mc.pushReply(reReply(map[string]string{".id": "*AB", "address": "1.2.3.4", "list": "crowdsec", "comment": "crowdsec-bouncer|cscli|old"}))
+	mc.pushReply(emptyReply())
+
+	id, err := c.AddAddress("ip", "crowdsec", "1.2.3.4", "4h", "crowdsec-bouncer|cscli")
+	if err != nil || id != "*AB" {
+		t.Fatalf("expected the owned entry refreshed, got %q, %v", id, err)
+	}
+	if got := mc.callCount(); got != 3 {
+		t.Fatalf("expected add, find and set, got %d calls", got)
+	}
+}
+
 // TestAddAddress_DuplicateNoTimeout verifies that when a duplicate exists and
 // no timeout or comment is provided, the existing entry is returned without updating.
 func TestAddAddress_DuplicateNoTimeout(t *testing.T) {
@@ -1415,7 +1492,7 @@ func TestBulkAddAddresses_EmptyInput(t *testing.T) {
 	mc := newMockConn()
 	c := newTestClient(mc)
 
-	added, err := c.BulkAddAddresses("ip", "list", nil)
+	added, _, err := c.BulkAddAddresses("ip", "list", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1443,7 +1520,7 @@ func TestBulkAddAddresses_SingleChunk(t *testing.T) {
 	mc.pushReply(emptyReply())                                    // Run script
 	mc.pushReply(emptyReply())                                    // Remove script
 
-	added, err := c.BulkAddAddresses("ip", "list", entries)
+	added, _, err := c.BulkAddAddresses("ip", "list", entries)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1474,7 +1551,7 @@ func TestBulkAddAddresses_MultipleChunks(t *testing.T) {
 	mc.pushReply(emptyReply())
 	mc.pushReply(emptyReply())
 
-	added, err := c.BulkAddAddresses("ip", "list", entries)
+	added, _, err := c.BulkAddAddresses("ip", "list", entries)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1500,7 +1577,7 @@ func TestBulkAddAddresses_ScriptFailsFallsBack(t *testing.T) {
 	// Fallback to individual AddAddress
 	mc.pushReply(doneReply(map[string]string{"ret": "*A1"})) // AddAddress succeeds
 
-	added, err := c.BulkAddAddresses("ip", "list", entries)
+	added, _, err := c.BulkAddAddresses("ip", "list", entries)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1538,13 +1615,51 @@ func TestBulkAddAddresses_FallbackAlreadyHaveIgnored(t *testing.T) {
 	// Set updates timeout and comment.
 	mc.pushReply(emptyReply())
 
-	added, err := c.BulkAddAddresses("ip", "list", entries)
+	added, _, err := c.BulkAddAddresses("ip", "list", entries)
 	// No error because "already have" is handled gracefully.
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if added != 1 {
 		t.Fatalf("expected 1 added (existing updated), got %d", added)
+	}
+}
+
+// TestBulkAddAddresses_FailedOnlyFromFailedChunk verifies that when the first
+// chunk's script runs and the second chunk's script fails, only the entry its
+// per-entry retry could not add is reported as failed: the first chunk's
+// entries are on the router and must be cached, or a live unban skips them.
+func TestBulkAddAddresses_FailedOnlyFromFailedChunk(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+
+	entries := make([]BulkEntry, bulkChunkSize+2)
+	for i := range entries {
+		entries[i] = BulkEntry{Address: fmt.Sprintf("10.0.%d.%d", i/250, i%250+1), Timeout: "1h", Comment: "test"}
+	}
+
+	// chunk 1: find, add, run and remove the script
+	mc.pushReply(emptyReply())
+	mc.pushReply(doneReply(map[string]string{"ret": "*S1"}))
+	mc.pushReply(emptyReply())
+	mc.pushReply(emptyReply())
+	// chunk 2: find, then the script add fails twice (reconnect retry)
+	mc.pushReply(emptyReply())
+	mc.pushError(errors.New("script add"))
+	mc.pushError(errors.New("script add"))
+	// per-entry retry: the first entry is added, the second refused
+	mc.pushReply(doneReply(map[string]string{"ret": "*A1"}))
+	mc.pushError(newDeviceError("failure: invalid value"))
+
+	added, failed, err := c.BulkAddAddresses("ip", "list", entries)
+	if err == nil {
+		t.Fatal("expected the retry's error")
+	}
+	if added != bulkChunkSize+1 {
+		t.Fatalf("expected %d added, got %d", bulkChunkSize+1, added)
+	}
+	if len(failed) != 1 || failed[0].Address != entries[bulkChunkSize+1].Address {
+		t.Fatalf("expected only %s as failed, got %+v", entries[bulkChunkSize+1].Address, failed)
 	}
 }
 
@@ -1563,8 +1678,8 @@ func TestBulkAddAddresses_FallbackRealErrorReturned(t *testing.T) {
 	mc.pushError(errors.New("add failed")) // fallback AddAddress fails
 	mc.pushError(errors.New("add failed")) // reconnect retry fails
 
-	added, err := c.BulkAddAddresses("ip", "list", entries)
-	if err == nil || !strings.Contains(err.Error(), "fallback add errors") {
+	added, _, err := c.BulkAddAddresses("ip", "list", entries)
+	if err == nil || !strings.Contains(err.Error(), "1 add errors") {
 		t.Fatalf("expected fallback error, got %v", err)
 	}
 	if added != 0 {
@@ -2324,5 +2439,64 @@ func TestGetSystemHealth_EmptyResults(t *testing.T) {
 	}
 	if sh.CPUTemperature != -1 {
 		t.Errorf("CPUTemperature: expected -1 for empty results, got %f", sh.CPUTemperature)
+	}
+}
+
+// TestAddAddressesEach_ReportsFailed verifies that an entry whose add fails is
+// returned as failed, so the manager keeps it out of the address cache.
+func TestAddAddressesEach_ReportsFailed(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+	mc.pushReply(doneReply(map[string]string{"ret": "*A1"}))
+	mc.pushError(newDeviceError("failure: invalid value"))
+
+	added, failed, err := c.AddAddressesEach("ip", "list", []BulkEntry{
+		{Address: "1.1.1.1", Timeout: "1h", Comment: "a"},
+		{Address: "2.2.2.2", Timeout: "1h", Comment: "b"},
+	})
+	if err == nil || added != 1 || len(failed) != 1 || failed[0].Address != "2.2.2.2" {
+		t.Fatalf("expected 1 added and 2.2.2.2 failed with an error, got %d, %+v, %v", added, failed, err)
+	}
+}
+
+// TestAddAddressesEach_NoScript verifies the per-entry path adds each entry
+// with its own address-list add and never touches /system/script.
+func TestAddAddressesEach_NoScript(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+	mc.pushReply(doneReply(map[string]string{"ret": "*A1"}))
+	mc.pushReply(doneReply(map[string]string{"ret": "*A2"}))
+
+	added, failed, err := c.AddAddressesEach("ip", "list", []BulkEntry{
+		{Address: "1.1.1.1", Timeout: "1h", Comment: "a"},
+		{Address: "2.2.2.2", Timeout: "2h", Comment: "b"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if added != 2 || len(failed) != 0 {
+		t.Fatalf("expected 2 added, got %d", added)
+	}
+	for _, call := range mc.calls {
+		if call[0] != "/ip/firewall/address-list/add" {
+			t.Fatalf("expected only address-list adds, got %v", call)
+		}
+	}
+}
+
+// TestAddAddressesEach_SetsIDs verifies that the per-entry path records the
+// RouterOS id of every entry it adds.
+func TestAddAddressesEach_SetsIDs(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+	mc.pushReply(doneReply(map[string]string{"ret": "*A1"}))
+	mc.pushReply(doneReply(map[string]string{"ret": "*A2"}))
+
+	entries := []BulkEntry{{Address: "1.1.1.1", Timeout: "1h"}, {Address: "2.2.2.2", Timeout: "1h"}}
+	if _, _, err := c.AddAddressesEach("ip", "list", entries); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if entries[0].ID != "*A1" || entries[1].ID != "*A2" {
+		t.Fatalf("expected ids *A1 and *A2, got %q and %q", entries[0].ID, entries[1].ID)
 	}
 }

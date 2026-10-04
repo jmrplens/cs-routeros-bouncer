@@ -1070,6 +1070,7 @@ func TestCreateFirewallRules_ExistingRuleSkipsAdd(t *testing.T) {
 func TestReconcileAddresses_BulkAddPartialError(t *testing.T) {
 	mock := &mockROS{
 		bulkAddCount: 5, // 5 of 10 succeeded
+		bulkAddFailN: 5,
 		bulkAddErr:   errors.New("partial failure: 5 of 10"),
 	}
 	cfg := baseConfig()
@@ -1089,13 +1090,47 @@ func TestReconcileAddresses_BulkAddPartialError(t *testing.T) {
 	// This should not panic despite the error
 	mgr.reconcileAddresses(context.Background(), decisions)
 
-	// Cache should still be populated (all entries added optimistically)
+	// The five confirmed entries are cached, so a live unban finds them even
+	// without a later pass (crowdsec.reconciliation_interval 0); the five
+	// failed ones are not, so a live ban for them is applied.
+	failed := mock.bulkAddCalls[0].Entries[:5]
 	mgr.cacheMu.RLock()
 	cacheSize := len(mgr.addressCache)
+	_, hasFailed := mgr.addressCache[failed[0].Address]
 	mgr.cacheMu.RUnlock()
 
-	if cacheSize == 0 {
-		t.Error("cache should have entries even with partial bulk add error")
+	if cacheSize != 5 || hasFailed {
+		t.Errorf("expected the 5 confirmed entries cached and no failed one, got %d cached, failed cached %v", cacheSize, hasFailed)
+	}
+}
+
+// TestReconcileAddresses_APICachesOnlyConfirmed verifies that with
+// bulk_add_method api an entry whose add failed stays out of the address
+// cache, while the confirmed ones are cached.
+func TestReconcileAddresses_APICachesOnlyConfirmed(t *testing.T) {
+	mock := &mockROS{}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	cfg.MikroTik.BulkAddMethod = config.BulkAddAPI
+	mgr := newTestManager(mock, cfg)
+	pool := &fakeRouterOSPool{addErrs: []error{errors.New("add timeout")}}
+	mgr.pool = pool
+
+	mgr.reconcileAddresses(context.Background(), []*crowdsec.Decision{
+		{Proto: "ip", Value: "10.0.0.1", Origin: "test", Type: "ban"},
+		{Proto: "ip", Value: "10.0.0.2", Origin: "test", Type: "ban"},
+	})
+
+	if len(pool.addEntries) != 2 {
+		t.Fatalf("expected the pool to add both entries, got %+v", pool.addEntries)
+	}
+	failedAddr := pool.addEntries[0].Address
+	mgr.cacheMu.RLock()
+	_, hasFailed := mgr.addressCache[failedAddr]
+	cacheSize := len(mgr.addressCache)
+	mgr.cacheMu.RUnlock()
+	if hasFailed || cacheSize != 1 {
+		t.Fatalf("expected only the confirmed entry cached, failed %s cached=%v, cache size %d", failedAddr, hasFailed, cacheSize)
 	}
 }
 
@@ -1129,6 +1164,18 @@ type fakeRouterOSPool struct {
 	entries []ros.AddressEntry
 	errs    []error
 	closed  bool
+
+	addList    string
+	addEntries []ros.BulkEntry
+	addErrs    []error
+}
+
+func (p *fakeRouterOSPool) AddAddresses(proto, list string, entries []ros.BulkEntry) (added int, failed []ros.BulkEntry, errs []error) {
+	p.proto = proto
+	p.addList = list
+	p.addEntries = append([]ros.BulkEntry(nil), entries...)
+	// the first len(addErrs) entries fail
+	return len(entries) - len(p.addErrs), entries[:len(p.addErrs)], p.addErrs
 }
 
 func (p *fakeRouterOSPool) Connect() error { return nil }
@@ -1720,8 +1767,8 @@ func TestReconcileAddresses_ExistingAddressesUnchanged(t *testing.T) {
 func TestReconcileAddresses_RemoveStaleAddress(t *testing.T) {
 	mock := &mockROS{
 		listAddresses: []ros.AddressEntry{
-			{ID: "*1", Address: "1.1.1.1", List: "crowdsec-banned", Comment: "cs|x|y @cs-routeros-bouncer"},
-			{ID: "*2", Address: "2.2.2.2", List: "crowdsec-banned", Comment: "cs|x|y @cs-routeros-bouncer"},
+			{ID: "*1", Address: "1.1.1.1", List: "crowdsec-banned", Comment: "crowdsec-bouncer|x|y @cs-routeros-bouncer"},
+			{ID: "*2", Address: "2.2.2.2", List: "crowdsec-banned", Comment: "crowdsec-bouncer|x|y @cs-routeros-bouncer"},
 		},
 	}
 	cfg := baseConfig()
@@ -1769,6 +1816,28 @@ func TestReconcileAddresses_ZeroDurationNoTimeout(t *testing.T) {
 // ===========================================================================
 // handleUnban additional coverage
 // ===========================================================================
+
+// TestHandleUnban_ForeignEntryNotRemoved verifies that an unban that has to
+// look the address up does not remove an entry with a foreign comment.
+func TestHandleUnban_ForeignEntryNotRemoved(t *testing.T) {
+	mock := &mockROS{findAddressEntry: &ros.AddressEntry{ID: "*F1", Address: "5.5.5.5", Comment: "blocked by hand"}}
+	mgr := newTestManager(mock, baseConfig())
+	mgr.cacheMu.Lock()
+	mgr.addressCache["5.5.5.5"] = ""
+	mgr.cacheMu.Unlock()
+
+	mgr.handleUnban(&crowdsec.Decision{Value: "5.5.5.5", Proto: "ip"})
+
+	if len(mock.removeAddressCalls) != 0 {
+		t.Fatalf("expected the foreign entry to stay, got removals %+v", mock.removeAddressCalls)
+	}
+	mgr.cacheMu.RLock()
+	_, inCache := mgr.addressCache["5.5.5.5"]
+	mgr.cacheMu.RUnlock()
+	if inCache {
+		t.Error("expected the address out of the cache")
+	}
+}
 
 // TestHandleUnban_UsesCachedIDAndSkipsLookup pins the fast path this cache
 // exists for: when the cache carries an id, the unban deletes by it and never
@@ -1833,7 +1902,7 @@ func TestHandleUnban_StaleCachedIDSettlesQuietly(t *testing.T) {
 func TestHandleUnban_TransportErrorFallsBackToLookup(t *testing.T) {
 	mock := &mockROS{
 		removeAddressErr: errors.New("connection reset"),
-		findAddressEntry: &ros.AddressEntry{ID: "*99", Address: "5.5.5.5"},
+		findAddressEntry: &ros.AddressEntry{ID: "*99", Address: "5.5.5.5", Comment: "crowdsec-bouncer|cscli"},
 	}
 	cfg := baseConfig()
 	cfg.Firewall.IPv6.Enabled = false
@@ -1858,7 +1927,7 @@ func TestHandleUnban_TransportErrorFallsBackToLookup(t *testing.T) {
 // found in cache, found on router, successfully removed.
 func TestHandleUnban_SuccessfulRemove(t *testing.T) {
 	mock := &mockROS{
-		findAddressEntry: &ros.AddressEntry{ID: "*99", Address: "5.5.5.5"},
+		findAddressEntry: &ros.AddressEntry{ID: "*99", Address: "5.5.5.5", Comment: "crowdsec-bouncer|cscli"},
 	}
 	cfg := baseConfig()
 	cfg.Firewall.IPv6.Enabled = false
@@ -2089,5 +2158,63 @@ func TestOutputRuleTopPlacement(t *testing.T) {
 	rule := mgr.outputRule("ip", "crowdsec-banned")
 	if rule.PlaceBefore != "" {
 		t.Fatalf("expected output rule PlaceBefore to be empty, got %q", rule.PlaceBefore)
+	}
+}
+
+// TestBulkAddMethod verifies reconciliation adds through a script only with
+// the default method, and with "api" one call per entry: through the pool
+// when there is one, else through the primary client.
+func TestBulkAddMethod(t *testing.T) {
+	entries := []ros.BulkEntry{{Address: "1.1.1.1"}, {Address: "2.2.2.2"}}
+
+	mock := &mockROS{bulkAddCount: 2}
+	mgr := newTestManager(mock, baseConfig())
+	if added, failed, err := mgr.bulkAdd("ip", "list", entries); err != nil || added != 2 || len(failed) != 0 {
+		t.Fatalf("script: got (%d, %v, %v)", added, failed, err)
+	}
+	if len(mock.bulkAddCalls) != 1 || len(mock.addEachCalls) != 0 {
+		t.Fatalf("script: expected 1 bulk call, got %d bulk and %d each", len(mock.bulkAddCalls), len(mock.addEachCalls))
+	}
+	if got := mgr.bulkAddMethod(); got != config.BulkAddScript {
+		t.Fatalf("script: method %q", got)
+	}
+
+	cfg := baseConfig()
+	cfg.MikroTik.BulkAddMethod = config.BulkAddAPI
+	mock = &mockROS{}
+	mgr = newTestManager(mock, cfg)
+	if added, failed, err := mgr.bulkAdd("ip", "list", entries); err != nil || added != 2 || len(failed) != 0 {
+		t.Fatalf("api without pool: got (%d, %v, %v)", added, failed, err)
+	}
+	if len(mock.bulkAddCalls) != 0 || len(mock.addEachCalls) != 1 {
+		t.Fatalf("api without pool: expected 1 each call, got %d bulk and %d each", len(mock.bulkAddCalls), len(mock.addEachCalls))
+	}
+	if got := mgr.bulkAddMethod(); got != config.BulkAddAPI {
+		t.Fatalf("api: method %q", got)
+	}
+
+	mock = &mockROS{}
+	mgr = newTestManager(mock, cfg)
+	pool := &fakeRouterOSPool{addErrs: []error{errors.New("add timeout")}}
+	mgr.pool = pool
+	added, failed, err := mgr.bulkAdd("ip", "list", entries)
+	if added != 1 || err == nil || !strings.Contains(err.Error(), "1 add errors") || len(failed) != 1 || failed[0].Address != "1.1.1.1" {
+		t.Fatalf("api with pool: got (%d, %v, %v)", added, failed, err)
+	}
+	if len(pool.addEntries) != 2 || pool.addList != "list" || len(mock.bulkAddCalls)+len(mock.addEachCalls) != 0 {
+		t.Fatalf("api with pool: expected the pool to add both entries, got %v", pool.addEntries)
+	}
+}
+
+// TestAddEntriesToCacheKeepsIDs verifies that reconciled adds keep the id the
+// per-entry path reported, so a live unban removes them without a lookup.
+func TestAddEntriesToCacheKeepsIDs(t *testing.T) {
+	mgr := newTestManager(&mockROS{}, baseConfig())
+	mgr.addEntriesToCache("ip", []ros.BulkEntry{{Address: "1.1.1.1", ID: "*A1"}, {Address: "2.2.2.2"}})
+	if got := mgr.addressCache["1.1.1.1"]; got != "*A1" {
+		t.Fatalf("expected the cached id *A1, got %q", got)
+	}
+	if got, ok := mgr.addressCache["2.2.2.2"]; !ok || got != "" {
+		t.Fatalf("expected 2.2.2.2 cached without an id, got %q (present %v)", got, ok)
 	}
 }

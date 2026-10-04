@@ -76,13 +76,16 @@ type routerOSPool interface {
 	Connect() error
 	Close()
 	RemoveAddresses(proto string, entries []rosClient.AddressEntry) []error
+	AddAddresses(proto, list string, entries []rosClient.BulkEntry) (added int, failed []rosClient.BulkEntry, errs []error)
 }
 
 // NewManager creates a new bouncer manager.
 func NewManager(cfg config.Config, version string) *Manager {
+	client := rosClient.NewClient(cfg.MikroTik)
+	client.SetOwnerPrefix(commentPrefixOf(cfg))
 	return &Manager{
 		cfg:          cfg,
-		ros:          rosClient.NewClient(cfg.MikroTik),
+		ros:          client,
 		stream:       crowdsec.NewStream(cfg.CrowdSec, version),
 		logger:       log.With().Str("component", "manager").Logger(),
 		version:      version,
@@ -94,8 +97,13 @@ func NewManager(cfg config.Config, version string) *Manager {
 // commentPrefix returns the effective comment prefix from config,
 // falling back to defaultCommentPrefix if not set.
 func (m *Manager) commentPrefix() string {
-	if m.cfg.Firewall.CommentPrefix != "" {
-		return m.cfg.Firewall.CommentPrefix
+	return commentPrefixOf(m.cfg)
+}
+
+// commentPrefixOf is the comment prefix of cfg, or the default.
+func commentPrefixOf(cfg config.Config) string {
+	if cfg.Firewall.CommentPrefix != "" {
+		return cfg.Firewall.CommentPrefix
 	}
 	return defaultCommentPrefix
 }
@@ -186,7 +194,8 @@ func (m *Manager) Start(ctx context.Context) error {
 	return m.processLiveDecisions(ctx, banCh, deleteCh, errCh, reconcileC)
 }
 
-// configureConnectionPool creates the optional RouterOS connection pool used by bulk cleanup.
+// configureConnectionPool creates the optional RouterOS connection pool used by
+// reconciliation removals and, with bulk_add_method api, its adds.
 func (m *Manager) configureConnectionPool() {
 	poolSize := m.cfg.MikroTik.PoolSize
 	if maxSessions := m.ros.GetAPIMaxSessions(); maxSessions > 0 {
@@ -200,11 +209,19 @@ func (m *Manager) configureConnectionPool() {
 			poolSize = limit
 		}
 	}
-	m.pool = rosClient.NewPool(m.cfg.MikroTik, poolSize)
+	m.pool = m.newConnectionPool(poolSize)
 	if err := m.pool.Connect(); err != nil {
 		m.logger.Warn().Err(err).Msg("could not create connection pool, falling back to single connection")
 		m.pool = nil
 	}
+}
+
+// newConnectionPool returns an unconnected pool whose clients know the comment
+// prefix.
+func (m *Manager) newConnectionPool(size int) *rosClient.Pool {
+	pool := rosClient.NewPool(m.cfg.MikroTik, size)
+	pool.SetOwnerPrefix(m.commentPrefix())
+	return pool
 }
 
 // recordRouterIdentity stores RouterOS identity labels for Prometheus metrics.
@@ -581,8 +598,13 @@ func (m *Manager) handleBan(d *crowdsec.Decision) {
 
 	// AddAddress handles duplicates internally: if the address already exists
 	// on the router it finds the existing entry and updates its attributes,
-	// returning the existing ID with nil error.
+	// returning the existing ID with nil error. An entry with a foreign comment
+	// is left alone and not cached, so no unban removes it.
 	entryID, err := m.ros.AddAddress(d.Proto, listName, d.Value, timeout, comment)
+	if errors.Is(err, rosClient.ErrForeignEntry) {
+		m.logger.Info().Str("address", d.Value).Str("list", listName).Msg("address already held by a foreign entry, left alone")
+		return
+	}
 	if err != nil {
 		m.logger.Error().Err(err).Str("address", d.Value).Str("list", listName).Msg("error adding address to MikroTik")
 		metrics.RecordError("add")
@@ -740,6 +762,18 @@ func (m *Manager) handleUnban(d *crowdsec.Decision) {
 		m.logger.Debug().
 			Str("address", d.Value).
 			Msg("address not found in MikroTik (already expired?)")
+		return
+	}
+
+	if !rosClient.OwnedComment(entry.Comment, m.commentPrefix()) {
+		// A foreign entry holds the address: not the bouncer's to remove.
+		m.cacheMu.Lock()
+		delete(m.addressCache, addr)
+		m.cacheMu.Unlock()
+
+		m.logger.Info().
+			Str("address", d.Value).
+			Msg("address held by a foreign entry, not removed")
 		return
 	}
 
@@ -1294,7 +1328,7 @@ func (m *Manager) removeFirewallRules() {
 // reconcileAddresses performs initial state reconciliation on startup.
 // Compares CrowdSec active decisions with MikroTik address lists
 // and adds/removes entries as needed.
-// Uses script-based bulk add and parallel workers for maximum speed.
+// Adds through mikrotik.bulk_add_method, removes through the pool.
 // reconcileAddresses synchronizes RouterOS address lists with the active CrowdSec decisions.
 func (m *Manager) reconcileAddresses(ctx context.Context, decisions []*crowdsec.Decision) {
 	if ctx.Err() != nil {
@@ -1338,14 +1372,15 @@ type reconcileResult struct {
 // reconcileProtocolAddresses applies the address-list diff for one RouterOS protocol.
 func (m *Manager) reconcileProtocolAddresses(proto string, decisions []*crowdsec.Decision, start time.Time) (reconcileResult, error) {
 	listName := m.getAddressListName(proto)
-	existing, err := m.ros.ListAddresses(proto, listName, m.commentPrefix())
+	listed, err := m.ros.ListAddresses(proto, listName, "")
 	if err != nil {
 		m.logger.Error().Err(err).Str("proto", proto).Msg("error listing current addresses")
 		metrics.RecordError("find")
 		return reconcileResult{}, err
 	}
 
-	diff := buildReconcileDiff(proto, decisions, existing, m.commentPrefix())
+	existing, foreign := splitForeignAddresses(listed, m.commentPrefix())
+	diff := buildReconcileDiff(proto, decisions, existing, foreign, m.commentPrefix())
 	m.refreshAddressCache(proto, diff.currentMap)
 	metricsProto := metricsProtoName(proto)
 	added := m.addMissingAddresses(proto, listName, metricsProto, diff.toAdd)
@@ -1365,15 +1400,33 @@ func (m *Manager) reconcileProtocolAddresses(proto string, decisions []*crowdsec
 }
 
 // buildReconcileDiff computes additions and removals from desired and current address state.
-func buildReconcileDiff(proto string, decisions []*crowdsec.Decision, existing []rosClient.AddressEntry, commentPrefix string) reconcileDiff {
+func buildReconcileDiff(proto string, decisions []*crowdsec.Decision, existing []rosClient.AddressEntry, foreign map[string]struct{}, commentPrefix string) reconcileDiff {
 	shouldExist := desiredAddressMap(proto, decisions)
 	currentMap := currentAddressMap(existing)
 	return reconcileDiff{
 		shouldExist: shouldExist,
 		currentMap:  currentMap,
-		toAdd:       missingAddressEntries(shouldExist, currentMap, commentPrefix),
+		toAdd:       missingAddressEntries(shouldExist, currentMap, foreign, commentPrefix),
 		toRemove:    staleAddressEntries(shouldExist, currentMap),
 	}
+}
+
+// splitForeignAddresses separates the bouncer's entries, whose comment carries
+// the prefix (rosClient.OwnedComment), from foreign ones in the same list. A foreign entry is never
+// compared, removed or cached, and its address is not added again: the router
+// refuses the duplicate, and AddAddress leaves a foreign entry as it is
+// (ErrForeignEntry). Whether the address is blocked is then up to that entry.
+func splitForeignAddresses(listed []rosClient.AddressEntry, commentPrefix string) (owned []rosClient.AddressEntry, foreign map[string]struct{}) {
+	owned = make([]rosClient.AddressEntry, 0, len(listed))
+	foreign = make(map[string]struct{})
+	for _, entry := range listed {
+		if rosClient.OwnedComment(entry.Comment, commentPrefix) {
+			owned = append(owned, entry)
+			continue
+		}
+		foreign[entry.Address] = struct{}{}
+	}
+	return owned, foreign
 }
 
 // desiredAddressMap indexes active decisions by normalized RouterOS address.
@@ -1399,10 +1452,13 @@ func currentAddressMap(existing []rosClient.AddressEntry) map[string]rosClient.A
 }
 
 // missingAddressEntries builds RouterOS bulk-add entries for decisions not yet present.
-func missingAddressEntries(shouldExist map[string]*crowdsec.Decision, currentMap map[string]rosClient.AddressEntry, commentPrefix string) []rosClient.BulkEntry {
+func missingAddressEntries(shouldExist map[string]*crowdsec.Decision, currentMap map[string]rosClient.AddressEntry, foreign map[string]struct{}, commentPrefix string) []rosClient.BulkEntry {
 	var toAdd []rosClient.BulkEntry
 	for addr, decision := range shouldExist {
 		if _, exists := currentMap[addr]; exists {
+			continue
+		}
+		if _, isForeign := foreign[addr]; isForeign {
 			continue
 		}
 		toAdd = append(toAdd, rosClient.BulkEntry{
@@ -1463,17 +1519,65 @@ func (m *Manager) addMissingAddresses(proto, listName, metricsProto string, toAd
 		return 0
 	}
 	addStart := time.Now()
-	added, addErr := m.ros.BulkAddAddresses(proto, listName, toAdd)
+	added, failed, addErr := m.bulkAdd(proto, listName, toAdd)
 	if addErr != nil {
-		m.logger.Warn().Err(addErr).Msg("some addresses failed to add during reconciliation")
+		m.logger.Warn().Err(addErr).Int("unconfirmed", len(failed)).Msg("some addresses failed to add during reconciliation")
 	}
-	m.addEntriesToCache(proto, toAdd)
+	m.addEntriesToCache(proto, confirmedEntries(toAdd, failed))
 	for range added {
 		metrics.RecordDecision("ban", metricsProto, "reconcile")
 	}
 	metrics.ObserveOperationDuration("bulk_add", time.Since(addStart))
-	m.logger.Info().Int("added", added).Dur("elapsed", time.Since(addStart)).Msg("bulk add complete")
+	m.logger.Info().Str("method", m.bulkAddMethod()).Int("added", added).Dur("elapsed", time.Since(addStart)).Msg("bulk add complete")
 	return added
+}
+
+// bulkAdd adds the missing entries with mikrotik.bulk_add_method: one
+// RouterOS script per chunk ("script"), or one API call per entry ("api"),
+// spread over the connection pool when there is one. failed holds the entries
+// whose add failed.
+func (m *Manager) bulkAdd(proto, listName string, toAdd []rosClient.BulkEntry) (added int, failed []rosClient.BulkEntry, err error) {
+	if m.bulkAddMethod() != config.BulkAddAPI {
+		return m.ros.BulkAddAddresses(proto, listName, toAdd)
+	}
+	if m.pool == nil {
+		return m.ros.AddAddressesEach(proto, listName, toAdd)
+	}
+	added, failed, errs := m.pool.AddAddresses(proto, listName, toAdd)
+	if len(errs) > 0 {
+		return added, failed, fmt.Errorf("%d add errors (last: %w)", len(errs), errs[len(errs)-1])
+	}
+	return added, nil, nil
+}
+
+// confirmedEntries is toAdd without the entries reported failed, and those go
+// into the address cache. A cached address is skipped by a live ban and an
+// uncached one by a live unban; with crowdsec.reconciliation_interval 0 no
+// later pass corrects either.
+func confirmedEntries(toAdd, failed []rosClient.BulkEntry) []rosClient.BulkEntry {
+	if len(failed) == 0 {
+		return toAdd
+	}
+	skip := make(map[string]struct{}, len(failed))
+	for _, entry := range failed {
+		skip[entry.Address] = struct{}{}
+	}
+	confirmed := make([]rosClient.BulkEntry, 0, len(toAdd)-len(failed))
+	for _, entry := range toAdd {
+		if _, isFailed := skip[entry.Address]; !isFailed {
+			confirmed = append(confirmed, entry)
+		}
+	}
+	return confirmed
+}
+
+// bulkAddMethod is the method bulkAdd uses: "api" when configured, "script"
+// otherwise.
+func (m *Manager) bulkAddMethod() string {
+	if m.cfg.MikroTik.BulkAddMethod == config.BulkAddAPI {
+		return config.BulkAddAPI
+	}
+	return config.BulkAddScript
 }
 
 // addEntriesToCache records newly added address-list entries in the fast-path cache.
@@ -1482,10 +1586,10 @@ func (m *Manager) addEntriesToCache(proto string, entries []rosClient.BulkEntry)
 	defer m.cacheMu.Unlock()
 	for _, entry := range entries {
 		addr := rosClient.NormalizeAddress(entry.Address, proto)
-		// The bulk script reports a count, not per-entry ids, so these keys
-		// carry no id until the next reconcile pass fills them in. An empty id
-		// simply means handleUnban takes the lookup path for them.
-		m.addressCache[addr] = ""
+		// The per-entry adds of "api" set ID. The bulk script reports a count,
+		// not per-entry ids, so its keys carry none until the next reconcile
+		// pass fills them in; an empty id means handleUnban looks it up.
+		m.addressCache[addr] = entry.ID
 	}
 }
 

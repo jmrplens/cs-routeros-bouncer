@@ -328,6 +328,19 @@
       "doc": "",
       "needsProse": null
     },
+    "mikrotik.bulk_add_method": {
+      "path": "mikrotik.bulk_add_method",
+      "type": "string",
+      "section": false,
+      "env": "MIKROTIK_BULK_ADD_METHOD",
+      "envAliases": [],
+      "requirement": "optional",
+      "requirementCondition": null,
+      "default": "script",
+      "defaultSource": "explicit",
+      "doc": "BulkAddMethod is how reconciliation adds missing address-list entries: \"script\" builds a temporary /system/script per chunk of 100 entries and runs it on the router; \"api\" adds each entry with its own API call, spread over the connection pool, and never creates a script. Empty is \"script\".",
+      "needsProse": null
+    },
     "firewall": {
       "path": "firewall",
       "type": "object",

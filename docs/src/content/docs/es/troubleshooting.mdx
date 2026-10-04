@@ -248,7 +248,7 @@ Los mensajes de duplicado repetidos cada pocos segundos suelen indicar que la ca
 
 ### Avisos de fallback de scripts masivos
 
-Durante la reconciliación, las adiciones se envían en scripts de RouterOS de hasta 100 entradas. Si un script falla, el bouncer recurre a adiciones individuales para ese bloque y continúa.
+Durante la reconciliación, las adiciones se envían en scripts de RouterOS de hasta 100 entradas (con el valor por defecto `bulk_add_method: script`). Si un script falla, el bouncer recurre a adiciones individuales para ese bloque y continúa.
 
 Si el fallback ocurre con frecuencia:
 

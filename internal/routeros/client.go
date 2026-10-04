@@ -27,6 +27,10 @@ type Client struct {
 	// real routeros.Dial / routeros.DialTLS. Tests can replace it to inject
 	// a mock RouterConn without touching the network.
 	dialFunc func(cfg config.MikroTikConfig) (RouterConn, error)
+
+	// ownerPrefix is the comment prefix of the bouncer's own address-list
+	// entries; empty means every entry counts as its own.
+	ownerPrefix string
 }
 
 // ErrNotFound reports that a RouterOS query completed successfully but did not
@@ -40,6 +44,22 @@ var ErrDuplicateReportedButNotFound = errors.New("routeros reported duplicate en
 // ErrAddressDuplicate reports that RouterOS rejected an address-list add
 // because the address already exists.
 var ErrAddressDuplicate = errors.New("routeros address already exists")
+
+// ErrForeignEntry reports that an address-list add hit an existing entry whose
+// comment lacks the owner prefix: the entry is left as it is.
+var ErrForeignEntry = errors.New("routeros address held by a foreign entry")
+
+// SetOwnerPrefix sets the comment prefix that marks the bouncer's own
+// address-list entries (OwnedComment). AddAddress refreshes a duplicate only
+// when its comment carries it. Call it before the client is used.
+func (c *Client) SetOwnerPrefix(prefix string) {
+	c.ownerPrefix = prefix
+}
+
+// OwnerPrefix returns the prefix set with SetOwnerPrefix.
+func (c *Client) OwnerPrefix() string {
+	return c.ownerPrefix
+}
 
 // NewClient creates a new RouterOS API client.
 func NewClient(cfg config.MikroTikConfig) *Client {

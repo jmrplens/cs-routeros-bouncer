@@ -3,6 +3,7 @@ package routeros
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -18,6 +19,19 @@ type Pool struct {
 	logger    zerolog.Logger
 	once      sync.Once
 	newClient func(config.MikroTikConfig) *Client // injectable for testing
+
+	ownerPrefix string // handed to every client, see Client.SetOwnerPrefix
+}
+
+// SetOwnerPrefix sets the owner prefix of the clients Connect opens. Call it
+// before Connect.
+func (p *Pool) SetOwnerPrefix(prefix string) {
+	p.ownerPrefix = prefix
+}
+
+// OwnerPrefix returns the prefix set with SetOwnerPrefix.
+func (p *Pool) OwnerPrefix() string {
+	return p.ownerPrefix
 }
 
 // NewPool creates a pool of n RouterOS client connections.
@@ -45,6 +59,7 @@ func (p *Pool) Connect() error {
 			p.Close()
 			return fmt.Errorf("pool connection %d: newClient returned nil client", i)
 		}
+		c.SetOwnerPrefix(p.ownerPrefix)
 		if err := c.Connect(); err != nil {
 			p.Close()
 			return fmt.Errorf("pool connection %d: %w", i, err)
@@ -115,6 +130,37 @@ func ParallelExec[T any](pool *Pool, items []T, fn func(c *Client, item T) error
 
 	wg.Wait()
 	return errs
+}
+
+// AddAddresses adds address-list entries concurrently through the pool, one
+// API call each, never through a script. It counts every entry AddAddress
+// accepts, including one the router already had, whose timeout and comment
+// AddAddress refreshes, as AddAddressesEach does, and returns the entries whose
+// add failed. It sets ID on every entry it adds.
+func (p *Pool) AddAddresses(proto, list string, entries []BulkEntry) (added int, failed []BulkEntry, errs []error) {
+	var count atomic.Int64
+	var mu sync.Mutex
+	idx := make([]int, len(entries))
+	for i := range idx {
+		idx[i] = i
+	}
+	errs = ParallelExec(p, idx, func(c *Client, i int) error {
+		entry := &entries[i]
+		id, err := c.AddAddress(proto, list, entry.Address, entry.Timeout, entry.Comment)
+		if err != nil {
+			if isDuplicateEntryError(err) {
+				return nil
+			}
+			mu.Lock()
+			failed = append(failed, *entry)
+			mu.Unlock()
+			return err
+		}
+		entry.ID = id // each worker writes only the index it took
+		count.Add(1)
+		return nil
+	})
+	return int(count.Load()), failed, errs
 }
 
 // RemoveAddresses removes address-list entries concurrently through the pool.

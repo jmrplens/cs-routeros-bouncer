@@ -248,7 +248,7 @@ Repeated duplicate messages every few seconds usually mean the in-memory cache i
 
 ### Bulk script fallback warnings
 
-During reconciliation, additions are sent in RouterOS scripts of up to 100 entries. If a script fails, the bouncer falls back to individual adds for that chunk and keeps going.
+During reconciliation, additions are sent in RouterOS scripts of up to 100 entries (with the default `bulk_add_method: script`). If a script fails, the bouncer falls back to individual adds for that chunk and keeps going.
 
 If fallback happens often:
 

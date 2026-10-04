@@ -1678,3 +1678,30 @@ func TestValidateMikroTikTimeoutsAllowZero(t *testing.T) {
 		t.Errorf("zero should be valid for both timeouts: %v", err)
 	}
 }
+
+// TestBulkAddMethod verifies the default "script", the environment override
+// and the validation of mikrotik.bulk_add_method.
+func TestBulkAddMethod(t *testing.T) {
+	setMinimalEnv(t)
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.MikroTik.BulkAddMethod != BulkAddScript {
+		t.Errorf("expected default bulk_add_method=script, got %q", cfg.MikroTik.BulkAddMethod)
+	}
+
+	t.Setenv("MIKROTIK_BULK_ADD_METHOD", "api")
+	cfg, err = Load("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.MikroTik.BulkAddMethod != BulkAddAPI {
+		t.Errorf("expected bulk_add_method=api from the environment, got %q", cfg.MikroTik.BulkAddMethod)
+	}
+
+	t.Setenv("MIKROTIK_BULK_ADD_METHOD", "fast")
+	if _, err = Load(""); err == nil || !strings.Contains(err.Error(), "mikrotik.bulk_add_method") {
+		t.Errorf("expected a bulk_add_method validation error, got %v", err)
+	}
+}

@@ -873,3 +873,160 @@ func TestPoolRemoveAddresses(t *testing.T) {
 		t.Fatalf("unexpected last remove args: %v", args)
 	}
 }
+
+// TestPoolConnect_OwnerPrefix verifies that the pool hands its owner prefix
+// to every client it opens.
+func TestPoolConnect_OwnerPrefix(t *testing.T) {
+	mc := newMockConn()
+	p := NewPool(config.MikroTikConfig{}, 2)
+	p.SetOwnerPrefix("crowdsec-bouncer")
+	p.newClient = func(_ config.MikroTikConfig) *Client {
+		return &Client{dialFunc: func(_ config.MikroTikConfig) (RouterConn, error) { return mc, nil }}
+	}
+	if err := p.Connect(); err != nil {
+		t.Fatalf("Connect() error: %v", err)
+	}
+	t.Cleanup(p.Close)
+	for range 2 {
+		c := p.Get()
+		if c.OwnerPrefix() != "crowdsec-bouncer" {
+			t.Fatalf("expected the owner prefix on the pooled client, got %q", c.OwnerPrefix())
+		}
+		defer p.Put(c)
+	}
+}
+
+// TestPoolAddAddresses_Concurrent runs the pooled adds over four connections
+// that are all busy at once: every entry ends as added or as an error, and the
+// counter and the error list hold up under the race detector.
+func TestPoolAddAddresses_Concurrent(t *testing.T) {
+	mc := newMockConn()
+	conns := newBarrierConns(mc, 4)
+	p := NewPool(config.MikroTikConfig{}, 4)
+	next := 0
+	p.newClient = func(_ config.MikroTikConfig) *Client {
+		conn := conns[next]
+		next++
+		return &Client{dialFunc: func(_ config.MikroTikConfig) (RouterConn, error) { return conn, nil }}
+	}
+	if err := p.Connect(); err != nil {
+		t.Fatalf("Connect() error: %v", err)
+	}
+	t.Cleanup(p.Close)
+	entries := make([]BulkEntry, 50)
+	for i := range entries {
+		entries[i] = BulkEntry{Address: fmt.Sprintf("10.0.0.%d", i+1), Timeout: "1h", Comment: "c"}
+		if i%5 == 4 {
+			// a device error is not retried, so it takes exactly one reply
+			mc.pushError(newDeviceError("failure: invalid value"))
+			continue
+		}
+		mc.pushReply(doneReply(map[string]string{"ret": fmt.Sprintf("*%X", i+1)}))
+	}
+
+	added, failed, errs := p.AddAddresses("ip", "list", entries)
+	if added != 40 || len(errs) != 10 || len(failed) != 10 {
+		t.Fatalf("expected 40 added and 10 errors and failed entries, got %d, %d and %d", added, len(errs), len(failed))
+	}
+	// Which entry meets a refused reply depends on the scheduling; every
+	// entry is either counted or failed, and none is both or twice.
+	seen := make(map[string]int, len(entries))
+	for _, entry := range failed {
+		seen[entry.Address]++
+	}
+	for address, n := range seen {
+		if n != 1 {
+			t.Fatalf("expected %s once among the failed entries, got %d", address, n)
+		}
+	}
+	if got := mc.callCount(); got != 50 {
+		t.Fatalf("expected 50 adds, got %d calls", got)
+	}
+	if !overlapped(conns) {
+		t.Fatal("expected all four pool connections to add at the same time")
+	}
+}
+
+// TestPoolAddAddresses_DuplicateRefreshedAndCounted verifies that a pooled add
+// of an entry the router already has, added between the reconcile diff and the
+// add, refreshes it and counts it, as AddAddressesEach does.
+func TestPoolAddAddresses_DuplicateRefreshedAndCounted(t *testing.T) {
+	mc := newMockConn()
+	p := NewPool(config.MikroTikConfig{}, 1)
+	p.newClient = func(_ config.MikroTikConfig) *Client {
+		return &Client{dialFunc: func(_ config.MikroTikConfig) (RouterConn, error) { return mc, nil }}
+	}
+	if err := p.Connect(); err != nil {
+		t.Fatalf("Connect() error: %v", err)
+	}
+	t.Cleanup(p.Close)
+	mc.pushError(newDuplicateDeviceError())
+	mc.pushReply(reReply(map[string]string{".id": "*A1", "address": "1.1.1.1", "list": "list", "timeout": "1h", "comment": "a"}))
+	mc.pushReply(emptyReply())
+
+	added, _, errs := p.AddAddresses("ip", "list", []BulkEntry{{Address: "1.1.1.1", Timeout: "2h", Comment: "a"}})
+	if added != 1 || len(errs) != 0 {
+		t.Fatalf("expected 1 added and no error, got %d and %v", added, errs)
+	}
+	if got := mc.callCount(); got != 3 {
+		t.Fatalf("expected add, find and set, got %d calls", got)
+	}
+}
+
+// TestPoolAddAddresses verifies pooled adds use one address-list add per
+// entry, never a script, and report real failures.
+func TestPoolAddAddresses(t *testing.T) {
+	mc := newMockConn()
+	p := NewPool(config.MikroTikConfig{}, 1)
+	p.newClient = func(_ config.MikroTikConfig) *Client {
+		return &Client{dialFunc: func(_ config.MikroTikConfig) (RouterConn, error) { return mc, nil }}
+	}
+	if err := p.Connect(); err != nil {
+		t.Fatalf("Connect() error: %v", err)
+	}
+	t.Cleanup(p.Close)
+	mc.pushReply(doneReply(map[string]string{"ret": "*A1"}))
+	mc.pushError(fmt.Errorf("add failed"))
+	mc.pushError(fmt.Errorf("add failed")) // reconnect retry fails
+
+	added, failed, errs := p.AddAddresses("ip", "list", []BulkEntry{
+		{Address: "1.1.1.1", Timeout: "1h", Comment: "a"},
+		{Address: "2.2.2.2", Timeout: "1h", Comment: "b"},
+	})
+	if added != 1 || len(errs) != 1 {
+		t.Fatalf("expected 1 added and 1 error, got %d and %v", added, errs)
+	}
+	if len(failed) != 1 || failed[0].Address != "2.2.2.2" {
+		t.Fatalf("expected 2.2.2.2 as failed, got %+v", failed)
+	}
+	for _, call := range mc.calls {
+		if call[0] != "/ip/firewall/address-list/add" {
+			t.Fatalf("expected only address-list adds, got %v", call)
+		}
+	}
+}
+
+// TestPoolAddAddresses_SetsIDs verifies that a pooled add records the RouterOS
+// id of each entry it added, and none for the entry whose add failed.
+func TestPoolAddAddresses_SetsIDs(t *testing.T) {
+	mc := newMockConn()
+	p := NewPool(config.MikroTikConfig{}, 1)
+	p.newClient = func(_ config.MikroTikConfig) *Client {
+		return &Client{dialFunc: func(_ config.MikroTikConfig) (RouterConn, error) { return mc, nil }}
+	}
+	if err := p.Connect(); err != nil {
+		t.Fatalf("Connect() error: %v", err)
+	}
+	t.Cleanup(p.Close)
+	mc.pushReply(doneReply(map[string]string{"ret": "*A1"}))
+	mc.pushError(fmt.Errorf("add failed"))
+	mc.pushError(fmt.Errorf("add failed")) // reconnect retry fails
+
+	entries := []BulkEntry{{Address: "1.1.1.1", Timeout: "1h"}, {Address: "2.2.2.2", Timeout: "1h"}}
+	if added, failed, _ := p.AddAddresses("ip", "list", entries); added != 1 || len(failed) != 1 {
+		t.Fatalf("expected 1 added and 1 failed, got %d and %d", added, len(failed))
+	}
+	if entries[0].ID != "*A1" || entries[1].ID != "" {
+		t.Fatalf("expected ids *A1 and none, got %q and %q", entries[0].ID, entries[1].ID)
+	}
+}

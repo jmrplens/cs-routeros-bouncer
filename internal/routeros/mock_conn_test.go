@@ -7,6 +7,7 @@ package routeros
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/jmrplens/cs-routeros-bouncer/internal/config"
 	routeros "github.com/jmrplens/cs-routeros-bouncer/internal/rosapi"
@@ -131,10 +132,72 @@ func newTestClient(mc *mockConn) *Client {
 // newDuplicateDeviceError returns a DeviceError simulating the RouterOS
 // "already have such entry" trap, used across multiple tests.
 func newDuplicateDeviceError() *routeros.DeviceError {
+	return newDeviceError("failure: already have such entry")
+}
+
+// newDeviceError returns a RouterOS trap with the given message.
+func newDeviceError(message string) *routeros.DeviceError {
 	return &routeros.DeviceError{
 		Sentence: &proto.Sentence{
 			Word: "!trap",
-			Map:  map[string]string{"message": "failure: already have such entry"},
+			Map:  map[string]string{"message": message},
 		},
 	}
+}
+
+// barrierConn holds its first command until every connection of the barrier
+// has one in flight, or five seconds have passed: a pool test sees whether its
+// workers really overlap.
+type barrierConn struct {
+	*mockConn
+	once    sync.Once
+	barrier *barrier
+}
+
+// barrier is shared by the connections of one test.
+type barrier struct {
+	mu       sync.Mutex
+	left     int
+	all      chan struct{} // closed when the last connection arrives
+	timedOut bool
+}
+
+// newBarrierConns returns n connections over one shared mock.
+func newBarrierConns(mc *mockConn, n int) []*barrierConn {
+	b := &barrier{left: n, all: make(chan struct{})}
+	conns := make([]*barrierConn, n)
+	for i := range conns {
+		conns[i] = &barrierConn{mockConn: mc, barrier: b}
+	}
+	return conns
+}
+
+// RunArgs waits at the barrier on the first call, then answers from the mock.
+func (c *barrierConn) RunArgs(args []string) (*routeros.Reply, error) {
+	c.once.Do(func() {
+		b := c.barrier
+		b.mu.Lock()
+		b.left--
+		if b.left == 0 {
+			close(b.all)
+		}
+		b.mu.Unlock()
+		select {
+		case <-b.all:
+		case <-time.After(5 * time.Second):
+			b.mu.Lock()
+			b.timedOut = true
+			b.mu.Unlock()
+		}
+	})
+	return c.mockConn.RunArgs(args)
+}
+
+// overlapped reports whether every connection arrived and none gave up
+// waiting for the others.
+func overlapped(conns []*barrierConn) bool {
+	b := conns[0].barrier
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.left == 0 && !b.timedOut
 }

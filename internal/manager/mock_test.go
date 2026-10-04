@@ -22,6 +22,7 @@ package manager
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -62,6 +63,7 @@ type mockROS struct {
 	listAddressesErr error
 	bulkAddCount     int
 	bulkAddErr       error
+	bulkAddFailN     int // the first n entries of a bulk add fail
 
 	addRuleID         string
 	addRuleIDs        []string
@@ -86,20 +88,22 @@ type mockROS struct {
 	pollCount          atomic.Int32 // tracks GetSystemResources calls
 
 	// Call tracking — inspected in assertions after calling the method under test.
-	connectCalls       int
-	closeCalls         int
-	identityCalls      int
-	addAddressCalls    []addAddressCall
-	findAddressCalls   []findAddressCall
-	updateTimeoutCalls []updateTimeoutCall
-	removeAddressCalls []removeAddressCall
-	listAddressesCalls int
-	bulkAddCalls       []bulkAddCall
-	addRuleCalls       []addRuleCall
-	moveRuleCalls      []moveRuleCall
-	removeRuleCalls    []removeRuleCall
-	findRuleCalls      []findRuleCall
-	getCountersCalls   int
+	connectCalls        int
+	closeCalls          int
+	identityCalls       int
+	addAddressCalls     []addAddressCall
+	findAddressCalls    []findAddressCall
+	updateTimeoutCalls  []updateTimeoutCall
+	removeAddressCalls  []removeAddressCall
+	listAddressesCalls  int
+	listAddressesPrefix string
+	bulkAddCalls        []bulkAddCall
+	addEachCalls        []bulkAddCall
+	addRuleCalls        []addRuleCall
+	moveRuleCalls       []moveRuleCall
+	removeRuleCalls     []removeRuleCall
+	findRuleCalls       []findRuleCall
+	getCountersCalls    int
 }
 
 // addAddressCall captures the arguments to a single AddAddress invocation.
@@ -228,16 +232,26 @@ func (m *mockROS) ListAddresses(proto, list, commentPrefix string) ([]ros.Addres
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.listAddressesCalls++
+	m.listAddressesPrefix = commentPrefix
 	return m.listAddresses, m.listAddressesErr
 }
 
 // BulkAddAddresses implements RouterOSClient.BulkAddAddresses and records the
 // call arguments including the batch of entries.
-func (m *mockROS) BulkAddAddresses(proto, list string, entries []ros.BulkEntry) (int, error) {
+func (m *mockROS) BulkAddAddresses(proto, list string, entries []ros.BulkEntry) (added int, failed []ros.BulkEntry, err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.bulkAddCalls = append(m.bulkAddCalls, bulkAddCall{proto, list, entries})
-	return m.bulkAddCount, m.bulkAddErr
+	return m.bulkAddCount, entries[:min(m.bulkAddFailN, len(entries))], m.bulkAddErr
+}
+
+// AddAddressesEach implements RouterOSClient.AddAddressesEach and records the
+// call arguments including the batch of entries.
+func (m *mockROS) AddAddressesEach(proto, list string, entries []ros.BulkEntry) (added int, failed []ros.BulkEntry, err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.addEachCalls = append(m.addEachCalls, bulkAddCall{proto, list, entries})
+	return len(entries), nil, nil
 }
 
 // AddFirewallRule implements RouterOSClient.AddFirewallRule and records the call
@@ -541,6 +555,60 @@ func TestHandleBan_AddAddressSuccessCachesEntry(t *testing.T) {
 	}
 }
 
+// TestHandleBan_ForeignEntryNotCached verifies that a live ban for an address
+// a foreign entry already holds leaves it alone and does not cache it, so a
+// later unban cannot remove the foreign entry.
+func TestHandleBan_ForeignEntryNotCached(t *testing.T) {
+	mock := &mockROS{addAddressErr: fmt.Errorf("add address 10.0.0.1 to list: %w", ros.ErrForeignEntry)}
+	mgr := newTestManager(mock, baseConfig())
+
+	mgr.handleBan(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1", Duration: time.Hour})
+
+	mgr.cacheMu.RLock()
+	_, inCache := mgr.addressCache["10.0.0.1"]
+	mgr.cacheMu.RUnlock()
+	if inCache {
+		t.Error("expected the foreign address to stay out of the cache")
+	}
+}
+
+// TestNewManager_ClientOwnerPrefix verifies that the manager's client knows
+// the comment prefix, so it can tell its own entries from foreign ones.
+func TestNewManager_ClientOwnerPrefix(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Firewall.CommentPrefix = "my-bouncer"
+	mgr := NewManager(cfg, "test")
+	client, ok := mgr.ros.(*ros.Client)
+	if !ok {
+		t.Fatalf("expected a *ros.Client, got %T", mgr.ros)
+	}
+	if client.OwnerPrefix() != "my-bouncer" {
+		t.Fatalf("expected owner prefix my-bouncer, got %q", client.OwnerPrefix())
+	}
+}
+
+// TestNewManager_ClientDefaultOwnerPrefix verifies that without a configured
+// comment prefix the client owns the default one.
+func TestNewManager_ClientDefaultOwnerPrefix(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Firewall.CommentPrefix = ""
+	mgr := NewManager(cfg, "test")
+	if got := mgr.ros.(*ros.Client).OwnerPrefix(); got != defaultCommentPrefix {
+		t.Fatalf("expected owner prefix %q, got %q", defaultCommentPrefix, got)
+	}
+}
+
+// TestNewConnectionPool_OwnerPrefix verifies that the manager's pool hands the
+// comment prefix to its clients.
+func TestNewConnectionPool_OwnerPrefix(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Firewall.CommentPrefix = "my-bouncer"
+	mgr := newTestManager(&mockROS{}, cfg)
+	if got := mgr.newConnectionPool(2).OwnerPrefix(); got != "my-bouncer" {
+		t.Fatalf("expected owner prefix my-bouncer, got %q", got)
+	}
+}
+
 // TestHandleBan_AlreadyExists_ZeroDuration verifies that when an address
 // already exists and the decision has duration 0 (permanent), AddAddress
 // is still called and succeeds (duplicate handled internally).
@@ -647,7 +715,7 @@ func TestHandleUnban_NotInCache(t *testing.T) {
 // → cache entry is cleared.
 func TestHandleUnban_InCache_FoundAndRemoved(t *testing.T) {
 	mock := &mockROS{
-		findAddressEntry: &ros.AddressEntry{ID: "*7", Address: "10.0.0.1"},
+		findAddressEntry: &ros.AddressEntry{ID: "*7", Address: "10.0.0.1", Comment: "crowdsec-bouncer|cscli"},
 	}
 	mgr := newTestManager(mock, baseConfig())
 	mgr.cacheMu.Lock()
@@ -722,7 +790,7 @@ func TestHandleUnban_FindError(t *testing.T) {
 // the cache entry (the address may still be on the router).
 func TestHandleUnban_RemoveError(t *testing.T) {
 	mock := &mockROS{
-		findAddressEntry: &ros.AddressEntry{ID: "*7", Address: "10.0.0.1"},
+		findAddressEntry: &ros.AddressEntry{ID: "*7", Address: "10.0.0.1", Comment: "crowdsec-bouncer|cscli"},
 		removeAddressErr: errors.New("connection reset"),
 	}
 	mgr := newTestManager(mock, baseConfig())
@@ -1538,6 +1606,47 @@ func TestReconcileAddresses_PopulatesCache(t *testing.T) {
 	}
 	if !has2 {
 		t.Error("expected newly added address 10.0.0.2 in cache")
+	}
+}
+
+// TestReconcileAddresses_LeavesForeignEntries verifies that an address held by
+// an entry with a foreign comment is neither added again (AddAddress would
+// rewrite the entry's comment and timeout and so take it over), nor removed,
+// nor cached, and that the listing asks for every entry of the list.
+func TestReconcileAddresses_LeavesForeignEntries(t *testing.T) {
+	mock := &mockROS{
+		listAddresses: []ros.AddressEntry{
+			{ID: "*1", Address: "10.0.0.1", Comment: "crowdsec-bouncer|existing"},
+			{ID: "*2", Address: "10.0.0.2", Comment: "blocked by hand"},
+			// another bouncer whose prefix merely starts with ours
+			{ID: "*4", Address: "10.0.0.4", Comment: "crowdsec-bouncer-site2|cscli"},
+		},
+		bulkAddCount: 1,
+	}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	mgr := newTestManager(mock, cfg)
+
+	mgr.reconcileAddresses(context.Background(), []*crowdsec.Decision{
+		{Proto: "ip", Value: "10.0.0.1", Origin: "cscli"},
+		{Proto: "ip", Value: "10.0.0.2", Origin: "cscli"},
+		{Proto: "ip", Value: "10.0.0.3", Origin: "cscli"},
+	})
+
+	if mock.listAddressesPrefix != "" {
+		t.Errorf("expected the whole list, got prefix %q", mock.listAddressesPrefix)
+	}
+	if len(mock.bulkAddCalls) != 1 || len(mock.bulkAddCalls[0].Entries) != 1 || mock.bulkAddCalls[0].Entries[0].Address != "10.0.0.3" {
+		t.Fatalf("expected only 10.0.0.3 to be added, got %+v", mock.bulkAddCalls)
+	}
+	if len(mock.removeAddressCalls) != 0 {
+		t.Errorf("expected no removal, got %+v", mock.removeAddressCalls)
+	}
+	mgr.cacheMu.RLock()
+	_, hasForeign := mgr.addressCache["10.0.0.2"]
+	mgr.cacheMu.RUnlock()
+	if hasForeign {
+		t.Error("expected the foreign address to stay out of the cache")
 	}
 }
 

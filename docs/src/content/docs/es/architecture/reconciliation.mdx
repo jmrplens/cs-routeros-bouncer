@@ -36,7 +36,7 @@ Por defecto, la reconciliación se ejecuta al arrancar y después cada `15m`. Co
 
 4. **Aplicar**
 
-   Ejecutar las adiciones (mediante scripts masivos, 100 IPs por lote) y las eliminaciones (llamadas paralelas a la API a través del pool de conexiones cuando este llegó a abrirse, y una a una por la conexión principal cuando no). Cada una de las dos actualiza la caché con lo que ha intentado escribir.
+   Ejecutar las adiciones (mediante scripts masivos, 100 IPs por lote, o con `bulk_add_method: api` una llamada a la API por entrada, por el pool cuando este llegó a abrirse y una a una por la conexión principal cuando no) y las eliminaciones (llamadas paralelas a la API a través del pool de conexiones cuando este llegó a abrirse, y una a una por la conexión principal cuando no). Las adiciones actualizan la caché con las entradas que no se notificaron como fallidas, las eliminaciones con lo que han intentado.
 
 5. **Verificar**
 
@@ -49,16 +49,16 @@ La comparación se hace por familia de protocolo y por address-list. Entran dos 
 ```mermaid
 flowchart TB
     accTitle: La comparación de reconciliación: entra la instantánea, entra el estado del router, salen adiciones y eliminaciones
-    accDescr: Una instantánea de decisiones activas se convierte en el conjunto deseado, una entrada por decisión de esta familia de protocolo, indexada por dirección normalizada. La address-list del router se convierte en el conjunto presente, pero solo con las entradas cuyo comentario empieza por el prefijo configurado; las entradas con cualquier otro comentario se traen del router y se descartan en el cliente, así que no se comparan ni se eliminan, pero sí cuestan transferencia en cada pasada. Comparar ambos conjuntos dirección a dirección da las entradas que hay que añadir y las que hay que eliminar. La caché de direcciones en memoria se sustituye a partir de ese mismo listado antes de que salga ninguna escritura. Las adiciones pasan después por un script de RouterOS de hasta cien entradas, y si un script falla se recurre a una llamada a la API por entrada; las eliminaciones pasan por el pool de conexiones cuando se pudo abrir, y una a una por la conexión principal cuando no. Cada adición y cada eliminación vuelve a actualizar la caché con lo que ha escrito, y las métricas de reconciliación se registran cuando ya han corrido las dos.
+    accDescr: Una instantánea de decisiones activas se convierte en el conjunto deseado, una entrada por decisión de esta familia de protocolo, indexada por dirección normalizada. La address-list del router se convierte en el conjunto presente, pero solo con las entradas cuyo comentario empieza por el prefijo configurado; las entradas con cualquier otro comentario se traen del router y se descartan en el cliente, así que no se comparan, no se eliminan y sus direcciones no se vuelven a añadir, pero sí cuestan transferencia en cada pasada. Comparar ambos conjuntos dirección a dirección da las entradas que hay que añadir y las que hay que eliminar. La caché de direcciones en memoria se sustituye a partir de ese mismo listado antes de que salga ninguna escritura. Las adiciones pasan después por un script de RouterOS de hasta cien entradas, y si un script falla se recurre a una llamada a la API por entrada, o, con bulk_add_method api, con una llamada a la API por entrada repartida en el pool; las eliminaciones pasan por el pool de conexiones cuando se pudo abrir, y una a una por la conexión principal cuando no. Cada adición vuelve a actualizar la caché con las entradas que no se notificaron como fallidas y cada eliminación con lo que ha escrito, y las métricas de reconciliación se registran cuando ya han corrido las dos.
     SNAP["Decisiones activas: la ráfaga de arranque, o una instantánea nueva"] -.-> WANT["Deseado: una entrada por decisión de esta familia"]
     LIST["La address-list del router"] -.-> HAVE["Presente: entradas cuyo comentario empieza por comment_prefix"]
-    LIST -. "cualquier otro comentario" .-> FOREIGN["Se traen y se descartan: no se comparan, no se eliminan"]
+    LIST -. "cualquier otro comentario" .-> FOREIGN["Se traen y se descartan: no se comparan, no se eliminan, no se vuelven a añadir"]
     HAVE -. "antes de ninguna escritura" .-> CACHE["Caché de direcciones sustituida a partir de este listado"]
     WANT -.-> DIFF{"comparar dirección a dirección"}
     HAVE -.-> DIFF
     DIFF -. "deseada y no presente" .-> TOADD["Para añadir"]
     DIFF -. "presente y no deseada" .-> TOREM["Para eliminar"]
-    TOADD -.-> BULK["Adición masiva: un script por cada 100 entradas"]
+    TOADD -.-> BULK["Adición masiva: un script por cada 100 entradas (api: una llamada por entrada)"]
     BULK -. "el script falla" .-> ONEBY["Una llamada por entrada en su lugar"]
     TOREM -.-> DELE["Eliminación: por el pool, o una a una"]
     BULK --> ADDED["Entradas añadidas"]
@@ -77,7 +77,7 @@ flowchart TB
     end
 ```
 
-El filtro por prefijo sobre el conjunto _presente_ es lo que hace seguro apuntar la reconciliación a una lista compartida. El bouncer pide a RouterOS la lista por su nombre y después se queda solo con las entradas cuyo comentario empieza por el `comment_prefix` configurado, así que una dirección que añadiste a mano —o que mantiene otra herramienta— ni siquiera entra en la comparación, y la rama de «presente y no deseada» no puede alcanzarla.
+El filtro por prefijo sobre el conjunto _presente_ es lo que hace seguro apuntar la reconciliación a una lista compartida. El bouncer pide a RouterOS la lista por su nombre y después se queda solo con las entradas cuyo comentario lleva el `comment_prefix` configurado —el prefijo en sí, seguido de `|`, un espacio o nada, así que un prefijo más largo como el `crowdsec-bouncer-site2` de otro bouncer no cuenta como suyo—, así que una dirección que añadiste a mano —o que mantiene otra herramienta— ni siquiera entra en la comparación, y la rama de «presente y no deseada» no puede alcanzarla. Tampoco se vuelve a añadir su dirección cuando una decisión la pide, ni en la reconciliación ni en un ban en vivo: el bouncer deja tal cual una entrada con un comentario ajeno y nunca guarda su dirección en la caché, así que ningún unban la elimina. Que la dirección quede bloqueada depende entonces de esa entrada.
 
 La comparación es por dirección normalizada, no por decisión: varias decisiones sobre la misma IP se colapsan en una sola entrada deseada, y solo la última leída aporta el timeout y el comentario con los que se escribe.
 
