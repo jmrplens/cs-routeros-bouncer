@@ -95,7 +95,7 @@ Súbelo si ves errores de tiempo de espera en un dispositivo lento o con una lis
 
 <ConfigOption path="mikrotik.pool_size" />
 
-Número de sesiones de la API de RouterOS que el bouncer puede usar para el trabajo en paralelo, como las eliminaciones de la reconciliación. Un valor más alto aumenta el rendimiento cuando la reconciliación tiene que borrar muchas entradas obsoletas del address-list, y con `bulk_add_method: api` también cuando tiene muchas que añadir; las decisiones en vivo siempre usan la conexión principal, así que no se ven afectadas.
+Número de sesiones de la API de RouterOS que el bouncer puede usar para el trabajo en paralelo, como las eliminaciones de la reconciliación. Un valor más alto aumenta el rendimiento cuando la reconciliación tiene que borrar muchas entradas obsoletas del address-list, y con `bulk_add_method: api` también cuando tiene muchas que añadir por un enlace con latencia; en la LAN del router una sola sesión añade más rápido, y cada sesión extra ocupa unos 1,7 MiB de RAM del router. Las decisiones en vivo siempre usan la conexión principal, así que no se ven afectadas.
 
 - **Rango válido:** 1–20
 - **Limitación automática:** al arrancar, el bouncer consulta el límite `max-sessions` del servicio API del router y reduce automáticamente el tamaño efectivo del pool para que nunca supere `max-sessions − 2` (reservando conexiones para el cliente principal y herramientas externas como WinBox).
@@ -138,7 +138,7 @@ Cada conexión del pool es una sesión completa de la API de RouterOS. En router
 
 Cómo añade la reconciliación (al arrancar y cada `crowdsec.reconciliation_interval`) las entradas del address-list que le faltan al router. Las decisiones en vivo no se ven afectadas: siempre se añaden con una llamada a la API cada una.
 
-- **`script`** (por defecto): el bouncer crea un `/system/script` temporal con hasta 100 adiciones, lo ejecuta y lo vuelve a eliminar. Es la forma más rápida de cargar una lista grande, como la lista comunitaria de CAPI al arrancar. Si un script falla, ese bloque se reintenta con una llamada por entrada.
+- **`script`** (por defecto): el bouncer crea un `/system/script` temporal con hasta 100 adiciones, lo ejecuta y lo vuelve a eliminar. Son cuatro llamadas a la API por bloque, tenga las entradas que tenga, así que la latencia hasta el router apenas importa: por una VPN o hasta un sitio remoto es la forma más rápida de cargar una lista grande, como la lista comunitaria de CAPI al arrancar. Si un script falla, ese bloque se reintenta con una llamada por entrada.
 - **`api`**: cada entrada se añade con su propia llamada a la API, y las llamadas se reparten entre las conexiones del pool (`pool_size`), o van una tras otra por la conexión principal cuando el pool no se pudo abrir. Nunca se crea un script, y la configuración del router no se toca.
 
 Elige `api` cuando no se quieren scripts en el router. RouterOS registra cada alta de un script con su código completo, así que cada pasada de reconciliación que añade entradas escribe todas sus adiciones en el log del router, y una auditoría de `/system/script` muestra los scripts del bouncer apareciendo y desapareciendo; cada alta y baja de un script es además un cambio de configuración que RouterOS guarda. Una adición al address-list con timeout por la API no deja ninguna línea en el log. Las entradas del address-list con timeout, que es en lo que se convierten las decisiones, son dinámicas y se quedan en memoria en ambos casos.
@@ -146,9 +146,14 @@ Elige `api` cuando no se quieren scripts en el router. RouterOS registra cada al
 ```yaml
 mikrotik:
   bulk_add_method: api
-  pool_size: 4 # las adiciones se ejecutan en paralelo sobre el pool
+  pool_size: 4 # las adiciones se reparten por el pool: ayuda con un enlace con latencia, no en la LAN del router
 ```
 
 :::tip
-Con `api`, una primera carga grande tarda bastante más: un viaje de ida y vuelta por entrada en lugar de uno por cada 100 entradas. Los scripts son unas 97 veces más rápidos que una llamada a la API tras otra (consulta [Arquitectura](/cs-routeros-bouncer/es/architecture/#adición-masiva-basada-en-scripts)), y el pool lo divide como mucho entre `pool_size`, así que cargar la lista comunitaria de CAPI lleva minutos en lugar de segundos, y con `pool_size: 1`, como se recomienda arriba para routers pequeños, cerca de una hora. Las decisiones en vivo solo se procesan cuando ha terminado la primera reconciliación, y entre las pasadas siguientes. Tras la primera carga, la reconciliación suele añadir solo unas pocas entradas, donde ambos métodos tardan más o menos lo mismo.
+Qué método carga más rápido depende del viaje de ida y vuelta hasta el router. Medido en un RB5009 (RouterOS 7.24.4):
+
+- **En la LAN del router** (0,2 ms), `api` es el más rápido. Con `pool_size: 1` el bouncer cargó 24.452 decisiones en unos 22 s, frente a unos 33 s con scripts, con la mitad de CPU del router. Con el `pool_size: 4` por defecto tardó más o menos lo mismo que los scripts, porque aquí las sesiones extra solo compiten entre sí. Una pasada que añade unas pocas entradas tarda milisegundos con cualquiera de los dos.
+- **Con un enlace con latencia**, cada adición por la API paga un viaje de ida y vuelta, mientras que un script paga cuatro por cada 100 entradas. A 33 ms, el bouncer cargó 24.452 decisiones en unos 66 s con scripts, 74 s con `api` y `pool_size: 16`, 3,7 min con 4 y 13 min con 1.
+
+Las decisiones en vivo solo se procesan cuando ha terminado la primera reconciliación, y entre las pasadas siguientes.
 :::
