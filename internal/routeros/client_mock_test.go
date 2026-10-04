@@ -695,6 +695,23 @@ func TestAddAddress_DuplicateUpdatesTimeout(t *testing.T) {
 	}
 }
 
+// TestAddAddress_RefusedIsErrAddRefused verifies that a trap other than a
+// duplicate is reported as ErrAddRefused, and a transport error is not.
+func TestAddAddress_RefusedIsErrAddRefused(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+	mc.pushError(newDeviceError("failure: invalid value"))
+	_, err := c.AddAddress("ip", "crowdsec", "1.2.3.4", "4h", "c")
+	if !errors.Is(err, ErrAddRefused) || !isDeviceError(err) {
+		t.Fatalf("expected ErrAddRefused wrapping the DeviceError, got %v", err)
+	}
+	mc.pushError(errors.New("i/o timeout"))
+	mc.pushError(errors.New("i/o timeout")) // reconnect retry
+	if _, err = c.AddAddress("ip", "crowdsec", "1.2.3.4", "4h", "c"); err == nil || errors.Is(err, ErrAddRefused) {
+		t.Fatalf("expected a transport error that is not ErrAddRefused, got %v", err)
+	}
+}
+
 // TestAddAddress_DuplicateForeignLeftAlone verifies that with an owner prefix
 // a duplicate whose existing entry has a foreign comment is not rewritten: the
 // entry belongs to the operator or another tool, and taking it over would let
@@ -1772,12 +1789,8 @@ func TestRunBulkScript_CleansUpExistingScript(t *testing.T) {
 	mc.pushReply(emptyReply())
 
 	script := buildBulkAddScript("ip", "list", []BulkEntry{{Address: "1.1.1.1", Timeout: "1h", Comment: "test"}})
-	n, err := c.runBulkScript(script)
-	if err != nil {
+	if err := c.runBulkScript(script); err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-	if n != 1 {
-		t.Fatalf("expected 1, got %d", n)
 	}
 }
 
@@ -1788,7 +1801,7 @@ func TestRunBulkScript_FindExistingError(t *testing.T) {
 	mc.pushError(errors.New("find failed"))
 	mc.pushError(errors.New("find failed"))
 
-	_, err := c.runBulkScript("test-script")
+	err := c.runBulkScript("test-script")
 	if err == nil || !strings.Contains(err.Error(), "find existing bulk script") {
 		t.Fatalf("expected find existing error, got %v", err)
 	}
@@ -1802,7 +1815,7 @@ func TestRunBulkScript_RemoveExistingError(t *testing.T) {
 	mc.pushError(errors.New("remove failed"))
 	mc.pushError(errors.New("remove failed"))
 
-	_, err := c.runBulkScript("test-script")
+	err := c.runBulkScript("test-script")
 	if err == nil || !strings.Contains(err.Error(), "remove existing bulk script") {
 		t.Fatalf("expected remove existing error, got %v", err)
 	}
@@ -1823,7 +1836,7 @@ func TestRunBulkScript_RunError(t *testing.T) {
 	// Remove script (cleanup)
 	mc.pushReply(emptyReply())
 
-	_, err := c.runBulkScript("test-script")
+	err := c.runBulkScript("test-script")
 	if err == nil || !strings.Contains(err.Error(), "run bulk script") {
 		t.Fatalf("expected run error, got: %v", err)
 	}

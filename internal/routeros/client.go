@@ -52,6 +52,11 @@ var ErrDuplicateReportedButNotFound = errors.New("routeros reported duplicate en
 // because the address already exists.
 var ErrAddressDuplicate = errors.New("routeros address already exists")
 
+// ErrAddRefused reports that RouterOS refused an address-list add with a trap
+// other than a duplicate: the entry is not on the router. A transport error
+// leaves that open and does not carry it.
+var ErrAddRefused = errors.New("routeros refused the address-list add")
+
 // ErrForeignEntry reports that an address-list add hit an existing entry whose
 // comment lacks the owner prefix: the entry is left as it is.
 var ErrForeignEntry = errors.New("routeros address held by a foreign entry")

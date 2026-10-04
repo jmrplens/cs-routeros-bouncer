@@ -1213,6 +1213,81 @@ func TestReconcileAddresses_PassesContextToAdds(t *testing.T) {
 	}
 }
 
+// TestReconcileAddresses_FailedAddStaysUnbannable verifies that an entry whose
+// add failed, and so may or may not be on the router, is not cached but still
+// unbanned: the unban looks it up instead of skipping it. Without this an add
+// that reached the router despite the error would stay until its timeout, or
+// forever without one, when no later pass runs.
+func TestReconcileAddresses_FailedAddStaysUnbannable(t *testing.T) {
+	mock := &mockROS{bulkAddFailN: 1, bulkAddErr: errors.New("reply timed out")}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	mgr := newTestManager(mock, cfg)
+
+	mgr.reconcileAddresses(context.Background(), []*crowdsec.Decision{{Proto: "ip", Value: "10.0.0.1", Origin: "test"}})
+
+	mock.findAddressEntry = &ros.AddressEntry{ID: "*9", Address: "10.0.0.1", Comment: "crowdsec-bouncer|test"}
+	mgr.handleUnban(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1"})
+
+	if len(mock.findAddressCalls) != 1 || len(mock.removeAddressCalls) != 1 || mock.removeAddressCalls[0].ID != "*9" {
+		t.Fatalf("expected a lookup and the removal of *9, got finds %v, removals %+v", mock.findAddressCalls, mock.removeAddressCalls)
+	}
+}
+
+// TestReconcileAddresses_ListingSettlesUncertainEntries verifies that the next
+// pass's listing settles an uncertain entry: absent from the router, its unban
+// is skipped again without a lookup.
+func TestReconcileAddresses_ListingSettlesUncertainEntries(t *testing.T) {
+	mock := &mockROS{bulkAddFailN: 1, bulkAddErr: errors.New("reply timed out")}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	mgr := newTestManager(mock, cfg)
+
+	mgr.reconcileAddresses(context.Background(), []*crowdsec.Decision{{Proto: "ip", Value: "10.0.0.1", Origin: "test"}})
+	mgr.reconcileAddresses(context.Background(), nil)
+	mgr.handleUnban(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1"})
+
+	if len(mock.findAddressCalls) != 0 {
+		t.Fatalf("expected no lookup after the listing settled it, got %v", mock.findAddressCalls)
+	}
+}
+
+// TestHandleBan_RefusedSettlesUncertainEntry verifies that a live ban the
+// router refuses (a trap, such as an invalid value) settles an uncertain
+// address: it is not on the router, so an unban need not look it up.
+func TestHandleBan_RefusedSettlesUncertainEntry(t *testing.T) {
+	mock := &mockROS{bulkAddFailN: 1, bulkAddErr: errors.New("reply timed out")}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	mgr := newTestManager(mock, cfg)
+
+	mgr.reconcileAddresses(context.Background(), []*crowdsec.Decision{{Proto: "ip", Value: "10.0.0.1", Origin: "test"}})
+	mock.addAddressErr = fmt.Errorf("add address 10.0.0.1: %w", ros.ErrAddRefused)
+	mgr.handleBan(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1", Duration: time.Hour})
+	mgr.handleUnban(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1"})
+
+	if len(mock.findAddressCalls) != 0 {
+		t.Fatalf("expected no lookup for a refused address, got %v", mock.findAddressCalls)
+	}
+}
+
+// TestHandleBan_SettlesUncertainEntry verifies that a successful live ban of
+// an uncertain address caches it with its id and settles it.
+func TestHandleBan_SettlesUncertainEntry(t *testing.T) {
+	mock := &mockROS{bulkAddFailN: 1, bulkAddErr: errors.New("reply timed out"), addAddressID: "*5"}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	mgr := newTestManager(mock, cfg)
+
+	mgr.reconcileAddresses(context.Background(), []*crowdsec.Decision{{Proto: "ip", Value: "10.0.0.1", Origin: "test"}})
+	mgr.handleBan(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1", Duration: time.Hour})
+	mgr.handleUnban(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1"})
+
+	if len(mock.findAddressCalls) != 0 || len(mock.removeAddressCalls) != 1 || mock.removeAddressCalls[0].ID != "*5" {
+		t.Fatalf("expected the unban by the cached id *5, got finds %v, removals %+v", mock.findAddressCalls, mock.removeAddressCalls)
+	}
+}
+
 func TestReconcileAddresses_BulkAddPartialError(t *testing.T) {
 	mock := &mockROS{
 		bulkAddCount: 5, // 5 of 10 succeeded

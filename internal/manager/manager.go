@@ -65,7 +65,12 @@ type Manager struct {
 	// is what lets handleUnban delete by id instead of paying a full table
 	// traversal to look one up. See handleUnban for why a stale id is safe.
 	addressCache map[string]string
-	cacheMu      sync.RWMutex
+	// uncertain holds addresses whose reconcile add failed: the add may still
+	// have reached the router. They are not cached, so a live ban adds them,
+	// and an unban looks them up instead of skipping them. The next listing
+	// settles them. Same keys as addressCache, protected by cacheMu.
+	uncertain map[string]struct{}
+	cacheMu   sync.RWMutex
 }
 
 type firewallRuleRef struct {
@@ -666,6 +671,12 @@ func (m *Manager) handleBan(d *crowdsec.Decision) {
 		return
 	}
 	if err != nil {
+		if errors.Is(err, rosClient.ErrAddRefused) {
+			// The router refused the add: the address is not on it.
+			m.cacheMu.Lock()
+			delete(m.uncertain, addr)
+			m.cacheMu.Unlock()
+		}
 		m.logger.Error().Err(err).Str("address", d.Value).Str("list", listName).Msg("error adding address to MikroTik")
 		metrics.RecordError("add")
 		return
@@ -674,6 +685,7 @@ func (m *Manager) handleBan(d *crowdsec.Decision) {
 	// Update address cache, keeping the id AddAddress just returned.
 	m.cacheMu.Lock()
 	m.addressCache[addr] = entryID
+	delete(m.uncertain, addr)
 	m.cacheMu.Unlock()
 
 	metrics.RecordDecision("ban", metricsProto, d.Origin)
@@ -698,6 +710,7 @@ func (m *Manager) handleBan(d *crowdsec.Decision) {
 func (m *Manager) finishUnban(d *crowdsec.Decision, addr, metricsProto, listName string, start time.Time, alreadyGone bool) {
 	m.cacheMu.Lock()
 	delete(m.addressCache, addr)
+	delete(m.uncertain, addr)
 	m.cacheMu.Unlock()
 
 	metrics.RecordDecision("unban", metricsProto, d.Origin)
@@ -742,9 +755,10 @@ func (m *Manager) handleUnban(d *crowdsec.Decision) {
 	// Fast-path: check address cache — skip API call if address is not on router
 	m.cacheMu.RLock()
 	cachedID, inCache := m.addressCache[addr]
+	_, isUncertain := m.uncertain[addr]
 	m.cacheMu.RUnlock()
 
-	if !inCache {
+	if !inCache && !isUncertain {
 		m.logger.Debug().
 			Str("address", d.Value).
 			Msg("address not in cache, skipping unban (already expired or never added)")
@@ -798,6 +812,7 @@ func (m *Manager) handleUnban(d *crowdsec.Decision) {
 		// Remove from cache — it expired on MikroTik
 		m.cacheMu.Lock()
 		delete(m.addressCache, addr)
+		delete(m.uncertain, addr)
 		m.cacheMu.Unlock()
 
 		m.logger.Debug().
@@ -817,6 +832,7 @@ func (m *Manager) handleUnban(d *crowdsec.Decision) {
 		// FindAddress contract and return (nil, nil).
 		m.cacheMu.Lock()
 		delete(m.addressCache, addr)
+		delete(m.uncertain, addr)
 		m.cacheMu.Unlock()
 
 		m.logger.Debug().
@@ -829,6 +845,7 @@ func (m *Manager) handleUnban(d *crowdsec.Decision) {
 		// A foreign entry holds the address: not the bouncer's to remove.
 		m.cacheMu.Lock()
 		delete(m.addressCache, addr)
+		delete(m.uncertain, addr)
 		m.cacheMu.Unlock()
 
 		m.logger.Info().
@@ -1577,6 +1594,13 @@ func (m *Manager) refreshAddressCache(proto string, currentMap map[string]rosCli
 			delete(m.addressCache, addr)
 		}
 	}
+	// The listing is the router's state: no address of this protocol is
+	// uncertain any more.
+	for addr := range m.uncertain {
+		if strings.Contains(addr, ":") == (proto == "ipv6") {
+			delete(m.uncertain, addr)
+		}
+	}
 	for addr, entry := range currentMap {
 		// The id comes free here: currentMap is the print this reconcile pass
 		// already paid for. Throwing it away is what forced handleUnban to
@@ -1596,6 +1620,7 @@ func (m *Manager) addMissingAddresses(ctx context.Context, proto, listName, metr
 		m.logger.Warn().Err(addErr).Int("unconfirmed", len(failed)).Msg("some addresses failed to add during reconciliation")
 	}
 	m.addEntriesToCache(proto, confirmedEntries(toAdd, failed))
+	m.markUncertain(proto, failed)
 	for range added {
 		metrics.RecordDecision("ban", metricsProto, "reconcile")
 	}
@@ -1663,6 +1688,22 @@ func (m *Manager) addEntriesToCache(proto string, entries []rosClient.BulkEntry)
 		// not per-entry ids, so its keys carry none until the next reconcile
 		// pass fills them in; an empty id means handleUnban looks it up.
 		m.addressCache[addr] = entry.ID
+	}
+}
+
+// markUncertain records entries whose add failed and that may still be on the
+// router (see the uncertain field).
+func (m *Manager) markUncertain(proto string, entries []rosClient.BulkEntry) {
+	if len(entries) == 0 {
+		return
+	}
+	m.cacheMu.Lock()
+	defer m.cacheMu.Unlock()
+	if m.uncertain == nil {
+		m.uncertain = make(map[string]struct{})
+	}
+	for _, entry := range entries {
+		m.uncertain[rosClient.NormalizeAddress(entry.Address, proto)] = struct{}{}
 	}
 }
 
