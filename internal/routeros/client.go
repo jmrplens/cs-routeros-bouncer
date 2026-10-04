@@ -91,13 +91,22 @@ func defaultDial(cfg config.MikroTikConfig) (RouterConn, error) {
 	return conn, nil
 }
 
+// dialRaw connects and logs in. mikrotik.connection_timeout bounds both, so a
+// router that accepts the connection and never answers fails the dial instead
+// of holding it; 0 means no bound.
 func dialRaw(cfg config.MikroTikConfig) (*routeros.Client, error) {
 	if cfg.TLS {
 		tlsConfig := &tls.Config{
 			// #nosec G402 -- user-configurable option; RouterOS ships a self-signed cert by default.
 			InsecureSkipVerify: cfg.TLSInsecure,
 		}
+		if cfg.ConnectionTimeout > 0 {
+			return routeros.DialTLSTimeout(cfg.Address, cfg.Username, cfg.Password, tlsConfig, cfg.ConnectionTimeout)
+		}
 		return routeros.DialTLS(cfg.Address, cfg.Username, cfg.Password, tlsConfig)
+	}
+	if cfg.ConnectionTimeout > 0 {
+		return routeros.DialTimeout(cfg.Address, cfg.Username, cfg.Password, cfg.ConnectionTimeout)
 	}
 	return routeros.Dial(cfg.Address, cfg.Username, cfg.Password)
 }

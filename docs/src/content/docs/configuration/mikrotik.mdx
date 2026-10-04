@@ -75,7 +75,7 @@ Keep `tls_insecure: false` whenever possible: the recommended production setup i
 
 <ConfigOption path="mikrotik.connection_timeout" />
 
-Maximum time to wait for the initial API connection. Uses Go duration format.
+Maximum time to connect and log in to the API, at startup and on every reconnect; `0` means no limit. Uses Go duration format.
 
 ### `mikrotik.command_timeout` <Badge text="Optional" variant="note" />
 

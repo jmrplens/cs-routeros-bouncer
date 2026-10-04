@@ -4,6 +4,10 @@
 
 - **A `linux/arm/v5` image, and armv5 release archives** — RouterOS asks for arm/v5 on ARM routers that run no VFP code, such as the hEX S (2025, E60iUGS), where armv6 and armv7 binaries end with `Illegal instruction`; the image had no variant for them. The release image is now built on `busybox:1.38-uclibc`, which exists for every platform the release ships, with the CA bundle and the time zones taken from Alpine on the build platform, so building it runs no code of the target platform. The user, its ids, the healthcheck's `wget` and the entrypoint are unchanged. Verified on a hEX S (2025, RouterOS 7.24.5): RouterOS pulls a multi-arch image there with `archVariant=v5`, and the arm/v5 image started and passed its healthcheck
 
+### Fixed
+
+- **`mikrotik.connection_timeout` bounds the dial and the login** — it was parsed and documented but read by nothing, so a router that accepted the connection and never answered the login held the startup dial, and every reconnect, forever. The dial now uses it for the TCP connect and puts its deadline on the connection for the login; `0` keeps no bound
+
 ## [1.7.2] - 2026-10-06
 
 ### Changed
