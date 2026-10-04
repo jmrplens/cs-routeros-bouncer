@@ -71,7 +71,35 @@ type Manager struct {
 	// settles them. Same keys as addressCache, protected by cacheMu.
 	uncertain map[string]struct{}
 	cacheMu   sync.RWMutex
+
+	// lastBoot is when the router booted, as of the last reboot check; zero
+	// before the first. Read and written only by watchReboots.
+	lastBoot time.Time
+	// clock returns the current time; nil means time.Now.
+	clock func() time.Time
+
+	// retryDelay is the wait before the reconcile retry owed, 0 when none is.
+	// Only Start and the decision loop, run one after the other, use it.
+	retryDelay time.Duration
 }
+
+// rebootCheckInterval is how often watchReboots reads the router uptime to
+// notice a reboot, which empties the router of every dynamic entry.
+var rebootCheckInterval = time.Minute
+
+// reconcileRetryInterval is how long the decision loop waits before it retries
+// a failed initial reconcile, or one after a reboot. Each further failure
+// doubles the wait, up to reconcileRetryMax.
+var reconcileRetryInterval = time.Minute
+
+// reconcileRetryMax bounds the wait between reconcile retries, so an add the
+// router refuses every time costs a full pass at most once an hour.
+var reconcileRetryMax = time.Hour
+
+// rebootSlack is how far the computed boot time may move forward without
+// counting as a reboot: uptime has a resolution of a second, and the read
+// takes its time.
+const rebootSlack = 30 * time.Second
 
 type firewallRuleRef struct {
 	Comment string
@@ -191,13 +219,27 @@ func (m *Manager) Start(ctx context.Context) error {
 	}
 
 	m.logInitialDecisions(initialBans, initialDeletes)
-	m.reconcileAddresses(ctx, m.filterInitialBans(initialBans, initialDeletes))
+	err = m.reconcileAddresses(ctx, m.filterInitialBans(initialBans, initialDeletes))
+	if ctx.Err() != nil {
+		return nil
+	}
+	var retryC <-chan time.Time
+	if err != nil {
+		retryC = m.scheduleReconcileRetry(err)
+	} else {
+		m.logger.Info().Msg("reconciliation complete, processing live decisions")
+	}
 
 	reconcileC, stopReconcile := m.reconciliationChannel()
 	defer stopReconcile()
+	var watcher sync.WaitGroup
+	defer watcher.Wait() // after stopWatch: no reboot check outlives Start
+	watchCtx, stopWatch := context.WithCancel(ctx)
+	defer stopWatch()
+	rebootC := make(chan struct{}, 1)
+	watcher.Go(func() { m.watchReboots(watchCtx, rebootC) })
 
-	m.logger.Info().Msg("reconciliation complete, processing live decisions")
-	return m.processLiveDecisions(ctx, banCh, deleteCh, errCh, reconcileC)
+	return m.processLiveDecisions(ctx, banCh, deleteCh, errCh, reconcileC, rebootC, retryC)
 }
 
 // configureConnectionPool creates the optional RouterOS connection pool used by
@@ -487,8 +529,12 @@ func (m *Manager) reconciliationChannel() (reconcileC <-chan time.Time, stop fun
 	return reconcileTicker.C, reconcileTicker.Stop
 }
 
-// processLiveDecisions handles live ban/unban events, stream errors, and reconciliation ticks.
-func (m *Manager) processLiveDecisions(ctx context.Context, banCh, deleteCh <-chan *crowdsec.Decision, errCh <-chan error, reconcileC <-chan time.Time) error {
+// processLiveDecisions handles live ban/unban events, stream errors,
+// reconciliation ticks and reboots. A reboot reconciles at once. A reconcile
+// owed, from a reboot or on retryC, runs again (scheduleReconcileRetry) until
+// a pass succeeds: active decisions send no live ban again, so with
+// crowdsec.reconciliation_interval 0 no other pass adds what is missing.
+func (m *Manager) processLiveDecisions(ctx context.Context, banCh, deleteCh <-chan *crowdsec.Decision, errCh <-chan error, reconcileC <-chan time.Time, rebootC <-chan struct{}, retryC <-chan time.Time) error {
 	for {
 		select {
 		case <-ctx.Done():
@@ -505,27 +551,97 @@ func (m *Manager) processLiveDecisions(ctx context.Context, banCh, deleteCh <-ch
 			m.handleUnban(d)
 
 		case <-reconcileC:
-			m.reconcileActiveDecisions(ctx)
+			// Errors are logged inside; the next tick retries.
+			_ = m.reconcileActiveDecisions(ctx)
+
+		case <-rebootC:
+			m.logger.Warn().Msg("router rebooted, reconciling the address lists")
+			retryC = m.reconcileAfterReboot(ctx)
+
+		case <-retryC:
+			retryC = m.reconcileAfterReboot(ctx)
 		}
 	}
 }
 
+// reconcileAfterReboot reconciles and returns the channel of the retry still
+// owed, nil once a pass succeeded or ctx is done.
+func (m *Manager) reconcileAfterReboot(ctx context.Context) <-chan time.Time {
+	if err := m.reconcileActiveDecisions(ctx); err != nil && ctx.Err() == nil {
+		return m.scheduleReconcileRetry(err)
+	}
+	m.retryDelay = 0
+	return nil
+}
+
+// scheduleReconcileRetry logs the failed reconcile and returns the channel of
+// its retry: after reconcileRetryInterval, and twice the last wait for each
+// further failure, at most reconcileRetryMax.
+func (m *Manager) scheduleReconcileRetry(err error) <-chan time.Time {
+	m.retryDelay = min(max(2*m.retryDelay, reconcileRetryInterval), reconcileRetryMax)
+	m.logger.Warn().Err(err).Dur("retry_in", m.retryDelay).Msg("reconcile failed")
+	return time.After(m.retryDelay)
+}
+
+// watchReboots reads the router uptime every rebootCheckInterval and reports a
+// reboot on rebootC. The read shares the primary client with live bans and
+// unbans, which wait while it runs.
+func (m *Manager) watchReboots(ctx context.Context, rebootC chan<- struct{}) {
+	m.routerRebooted() // the boot time the checks compare against
+	ticker := time.NewTicker(rebootCheckInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if m.routerRebooted() {
+				select {
+				case rebootC <- struct{}{}:
+				default: // a reboot is already pending
+				}
+			}
+		}
+	}
+}
+
+// routerRebooted reads the router uptime and reports whether the router booted
+// since the last read: its boot time, now minus uptime, moved forward by more
+// than rebootSlack. Comparing boot times also catches a second reboot whose
+// uptime is already past the last read's. The first read, and one that fails,
+// report no reboot.
+func (m *Manager) routerRebooted() bool {
+	sr, err := m.ros.GetSystemResources()
+	if err != nil || sr == nil || sr.Uptime == "" {
+		return false
+	}
+	now := time.Now
+	if m.clock != nil {
+		now = m.clock
+	}
+	uptime := time.Duration(rosClient.ParseMikroTikUptime(sr.Uptime) * float64(time.Second))
+	boot := now().Add(-uptime)
+	previous := m.lastBoot
+	m.lastBoot = boot
+	return !previous.IsZero() && boot.Sub(previous) > rebootSlack
+}
+
 // reconcileActiveDecisions fetches a fresh active-decision snapshot from
 // CrowdSec and applies the normal address-list diff against RouterOS.
-func (m *Manager) reconcileActiveDecisions(ctx context.Context) {
-	if ctx.Err() != nil {
-		return
+func (m *Manager) reconcileActiveDecisions(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 
 	start := time.Now()
 	decisions, err := m.stream.ActiveDecisions(ctx)
 	if err != nil {
-		if ctx.Err() != nil {
-			return
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
 		}
 		m.logger.Error().Err(err).Msg("periodic reconciliation snapshot failed")
 		metrics.RecordError("reconcile")
-		return
+		return fmt.Errorf("reconciliation snapshot: %w", err)
 	}
 
 	// The snapshot has its own timer because it is not part of the "reconcile"
@@ -539,8 +655,9 @@ func (m *Manager) reconcileActiveDecisions(ctx context.Context) {
 		Int("decisions", len(decisions)).
 		Dur("elapsed", time.Since(start)).
 		Msg("periodic reconciliation snapshot fetched")
-	m.reconcileAddresses(ctx, decisions)
+	err = m.reconcileAddresses(ctx, decisions)
 	m.logger.Info().Dur("elapsed", time.Since(start)).Msg("periodic reconciliation complete")
+	return err
 }
 
 // Shutdown removes all firewall rules created by this bouncer.
@@ -1409,9 +1526,10 @@ func (m *Manager) removeFirewallRules() {
 // and adds/removes entries as needed.
 // Adds through mikrotik.bulk_add_method, removes through the pool.
 // reconcileAddresses synchronizes RouterOS address lists with the active CrowdSec decisions.
-func (m *Manager) reconcileAddresses(ctx context.Context, decisions []*crowdsec.Decision) {
-	if ctx.Err() != nil {
-		return
+// It reports ctx's error, or the protocols whose listing failed.
+func (m *Manager) reconcileAddresses(ctx context.Context, decisions []*crowdsec.Decision) error {
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	m.logger.Info().Int("decisions", len(decisions)).Msg("reconciling addresses with MikroTik")
 
@@ -1419,12 +1537,18 @@ func (m *Manager) reconcileAddresses(ctx context.Context, decisions []*crowdsec.
 	globalOriginCounts := map[string]int64{}
 	complete := true
 
+	var errs []error
 	for _, proto := range m.enabledProtos() {
-		if ctx.Err() != nil {
-			return
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 		result, err := m.reconcileProtocolAddresses(ctx, proto, decisions, start)
 		if err != nil {
+			errs = append(errs, fmt.Errorf("reconcile %s: %w", proto, err))
+		}
+		// A protocol whose list could not be read has no counts; one whose
+		// adds failed still counts what it read.
+		if result.originCounts == nil {
 			complete = false
 			continue
 		}
@@ -1438,11 +1562,12 @@ func (m *Manager) reconcileAddresses(ctx context.Context, decisions []*crowdsec.
 	// the origins of the list it skipped.
 	if complete {
 		metrics.ReplaceActiveDecisionsByOrigin(globalOriginCounts)
-		return
+	} else {
+		for origin, count := range globalOriginCounts {
+			metrics.SetActiveDecisionsByOrigin(origin, count)
+		}
 	}
-	for origin, count := range globalOriginCounts {
-		metrics.SetActiveDecisionsByOrigin(origin, count)
-	}
+	return errors.Join(errs...)
 }
 
 // reconcileDiff groups the desired, current, missing, and stale address state for one protocol.
@@ -1472,7 +1597,7 @@ func (m *Manager) reconcileProtocolAddresses(ctx context.Context, proto string, 
 	diff := buildReconcileDiff(proto, decisions, existing, foreign, m.commentPrefix())
 	m.refreshAddressCache(proto, diff.currentMap)
 	metricsProto := metricsProtoName(proto)
-	added := m.addMissingAddresses(ctx, proto, listName, metricsProto, diff.toAdd)
+	added, addErr := m.addMissingAddresses(ctx, proto, listName, metricsProto, diff.toAdd)
 	removed := m.removeStaleAddresses(proto, metricsProto, diff.toRemove)
 	m.recordReconciliationMetrics(metricsProto, len(diff.shouldExist), added, removed)
 
@@ -1485,7 +1610,7 @@ func (m *Manager) reconcileProtocolAddresses(ctx context.Context, proto string, 
 		Dur("elapsed", time.Since(start)).
 		Msg("address reconciliation complete")
 
-	return reconcileResult{originCounts: originCounts(diff.shouldExist)}, nil
+	return reconcileResult{originCounts: originCounts(diff.shouldExist)}, addErr
 }
 
 // buildReconcileDiff computes additions and removals from desired and current address state.
@@ -1609,10 +1734,11 @@ func (m *Manager) refreshAddressCache(proto string, currentMap map[string]rosCli
 	}
 }
 
-// addMissingAddresses bulk-adds missing entries and records reconciliation metrics.
-func (m *Manager) addMissingAddresses(ctx context.Context, proto, listName, metricsProto string, toAdd []rosClient.BulkEntry) int {
+// addMissingAddresses bulk-adds missing entries and records reconciliation
+// metrics. It returns the add error unless ctx is done.
+func (m *Manager) addMissingAddresses(ctx context.Context, proto, listName, metricsProto string, toAdd []rosClient.BulkEntry) (int, error) {
 	if len(toAdd) == 0 {
-		return 0
+		return 0, nil
 	}
 	addStart := time.Now()
 	added, failed, addErr := m.bulkAdd(ctx, proto, listName, toAdd)
@@ -1626,7 +1752,10 @@ func (m *Manager) addMissingAddresses(ctx context.Context, proto, listName, metr
 	}
 	metrics.ObserveOperationDuration("bulk_add", time.Since(addStart))
 	m.logger.Info().Str("method", m.bulkAddMethod()).Int("added", added).Dur("elapsed", time.Since(addStart)).Msg("bulk add complete")
-	return added
+	if addErr != nil && ctx.Err() == nil {
+		return added, addErr
+	}
+	return added, nil
 }
 
 // bulkAdd adds the missing entries with mikrotik.bulk_add_method: one

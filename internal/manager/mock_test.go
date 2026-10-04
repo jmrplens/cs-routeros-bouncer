@@ -48,23 +48,24 @@ type mockROS struct {
 	mu sync.RWMutex
 
 	// Return values — set these before calling the method under test.
-	connectErr       error
-	connectFunc      func() error // if set, takes priority over connectErr
-	identityName     string
-	identityErr      error
-	maxSessions      int
-	addAddressID     string
-	addAddressErr    error
-	findAddressEntry *ros.AddressEntry
-	findAddressErr   error
-	updateTimeoutErr error
-	removeAddressErr error
-	listAddresses    []ros.AddressEntry
-	listAddressesErr error
-	bulkAddCount     int
-	bulkAddErr       error
-	bulkAddFailN     int             // the first n entries of a bulk add fail
-	bulkAddCtx       context.Context // the context of the last bulk add
+	connectErr        error
+	connectFunc       func() error // if set, takes priority over connectErr
+	identityName      string
+	identityErr       error
+	maxSessions       int
+	addAddressID      string
+	addAddressErr     error
+	findAddressEntry  *ros.AddressEntry
+	findAddressErr    error
+	updateTimeoutErr  error
+	removeAddressErr  error
+	listAddresses     []ros.AddressEntry
+	listAddressesErr  error
+	listAddressesFunc func() error // per-call error (takes priority), called under mu
+	bulkAddCount      int
+	bulkAddErr        error
+	bulkAddFailN      int             // the first n entries of a bulk add fail
+	bulkAddCtx        context.Context // the context of the last bulk add
 
 	addRuleID         string
 	addRuleIDs        []string
@@ -82,11 +83,12 @@ type mockROS struct {
 	getCountersResult *ros.FirewallCounters
 	getCountersErr    error
 
-	systemResources    *ros.SystemResources
-	systemResourcesErr error
-	systemHealth       *ros.SystemHealth
-	systemHealthErr    error
-	pollCount          atomic.Int32 // tracks GetSystemResources calls
+	systemResources     *ros.SystemResources
+	systemResourcesErr  error
+	systemHealth        *ros.SystemHealth
+	systemHealthErr     error
+	pollCount           atomic.Int32     // tracks GetSystemResources calls
+	systemResourcesFunc func(call int32) // called first, without mu held
 
 	// Call tracking — inspected in assertions after calling the method under test.
 	connectCalls        int
@@ -234,6 +236,9 @@ func (m *mockROS) ListAddresses(proto, list, commentPrefix string) ([]ros.Addres
 	defer m.mu.Unlock()
 	m.listAddressesCalls++
 	m.listAddressesPrefix = commentPrefix
+	if m.listAddressesFunc != nil {
+		return m.listAddresses, m.listAddressesFunc()
+	}
 	return m.listAddresses, m.listAddressesErr
 }
 
@@ -343,7 +348,10 @@ func (m *mockROS) GetFirewallCounters(commentPrefix string) (*ros.FirewallCounte
 // GetSystemResources implements RouterOSClient.GetSystemResources and returns
 // the pre-configured resources or sensible defaults (5% CPU, ~75% memory).
 func (m *mockROS) GetSystemResources() (*ros.SystemResources, error) {
-	m.pollCount.Add(1)
+	call := m.pollCount.Add(1)
+	if m.systemResourcesFunc != nil {
+		m.systemResourcesFunc(call)
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.systemResources != nil {
