@@ -1415,7 +1415,7 @@ func TestBulkAddAddresses_EmptyInput(t *testing.T) {
 	mc := newMockConn()
 	c := newTestClient(mc)
 
-	added, err := c.BulkAddAddresses("ip", "list", nil)
+	added, _, err := c.BulkAddAddresses("ip", "list", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1443,7 +1443,7 @@ func TestBulkAddAddresses_SingleChunk(t *testing.T) {
 	mc.pushReply(emptyReply())                                    // Run script
 	mc.pushReply(emptyReply())                                    // Remove script
 
-	added, err := c.BulkAddAddresses("ip", "list", entries)
+	added, _, err := c.BulkAddAddresses("ip", "list", entries)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1474,7 +1474,7 @@ func TestBulkAddAddresses_MultipleChunks(t *testing.T) {
 	mc.pushReply(emptyReply())
 	mc.pushReply(emptyReply())
 
-	added, err := c.BulkAddAddresses("ip", "list", entries)
+	added, _, err := c.BulkAddAddresses("ip", "list", entries)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1500,7 +1500,7 @@ func TestBulkAddAddresses_ScriptFailsFallsBack(t *testing.T) {
 	// Fallback to individual AddAddress
 	mc.pushReply(doneReply(map[string]string{"ret": "*A1"})) // AddAddress succeeds
 
-	added, err := c.BulkAddAddresses("ip", "list", entries)
+	added, _, err := c.BulkAddAddresses("ip", "list", entries)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1538,13 +1538,51 @@ func TestBulkAddAddresses_FallbackAlreadyHaveIgnored(t *testing.T) {
 	// Set updates timeout and comment.
 	mc.pushReply(emptyReply())
 
-	added, err := c.BulkAddAddresses("ip", "list", entries)
+	added, _, err := c.BulkAddAddresses("ip", "list", entries)
 	// No error because "already have" is handled gracefully.
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if added != 1 {
 		t.Fatalf("expected 1 added (existing updated), got %d", added)
+	}
+}
+
+// TestBulkAddAddresses_FailedOnlyFromFailedChunk verifies that when the first
+// chunk's script runs and the second chunk's script fails, only the entry its
+// per-entry retry could not add is reported as failed: the first chunk's
+// entries are on the router and must be cached, or a live unban skips them.
+func TestBulkAddAddresses_FailedOnlyFromFailedChunk(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+
+	entries := make([]BulkEntry, bulkChunkSize+2)
+	for i := range entries {
+		entries[i] = BulkEntry{Address: fmt.Sprintf("10.0.%d.%d", i/250, i%250+1), Timeout: "1h", Comment: "test"}
+	}
+
+	// chunk 1: find, add, run and remove the script
+	mc.pushReply(emptyReply())
+	mc.pushReply(doneReply(map[string]string{"ret": "*S1"}))
+	mc.pushReply(emptyReply())
+	mc.pushReply(emptyReply())
+	// chunk 2: find, then the script add fails twice (reconnect retry)
+	mc.pushReply(emptyReply())
+	mc.pushError(errors.New("script add"))
+	mc.pushError(errors.New("script add"))
+	// per-entry retry: the first entry is added, the second refused
+	mc.pushReply(doneReply(map[string]string{"ret": "*A1"}))
+	mc.pushError(newDeviceError("failure: invalid value"))
+
+	added, failed, err := c.BulkAddAddresses("ip", "list", entries)
+	if err == nil {
+		t.Fatal("expected the retry's error")
+	}
+	if added != bulkChunkSize+1 {
+		t.Fatalf("expected %d added, got %d", bulkChunkSize+1, added)
+	}
+	if len(failed) != 1 || failed[0].Address != entries[bulkChunkSize+1].Address {
+		t.Fatalf("expected only %s as failed, got %+v", entries[bulkChunkSize+1].Address, failed)
 	}
 }
 
@@ -1563,7 +1601,7 @@ func TestBulkAddAddresses_FallbackRealErrorReturned(t *testing.T) {
 	mc.pushError(errors.New("add failed")) // fallback AddAddress fails
 	mc.pushError(errors.New("add failed")) // reconnect retry fails
 
-	added, err := c.BulkAddAddresses("ip", "list", entries)
+	added, _, err := c.BulkAddAddresses("ip", "list", entries)
 	if err == nil || !strings.Contains(err.Error(), "1 add errors") {
 		t.Fatalf("expected fallback error, got %v", err)
 	}
@@ -2327,6 +2365,23 @@ func TestGetSystemHealth_EmptyResults(t *testing.T) {
 	}
 }
 
+// TestAddAddressesEach_ReportsFailed verifies that an entry whose add fails is
+// returned as failed, so the manager keeps it out of the address cache.
+func TestAddAddressesEach_ReportsFailed(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+	mc.pushReply(doneReply(map[string]string{"ret": "*A1"}))
+	mc.pushError(newDeviceError("failure: invalid value"))
+
+	added, failed, err := c.AddAddressesEach("ip", "list", []BulkEntry{
+		{Address: "1.1.1.1", Timeout: "1h", Comment: "a"},
+		{Address: "2.2.2.2", Timeout: "1h", Comment: "b"},
+	})
+	if err == nil || added != 1 || len(failed) != 1 || failed[0].Address != "2.2.2.2" {
+		t.Fatalf("expected 1 added and 2.2.2.2 failed with an error, got %d, %+v, %v", added, failed, err)
+	}
+}
+
 // TestAddAddressesEach_NoScript verifies the per-entry path adds each entry
 // with its own address-list add and never touches /system/script.
 func TestAddAddressesEach_NoScript(t *testing.T) {
@@ -2335,14 +2390,14 @@ func TestAddAddressesEach_NoScript(t *testing.T) {
 	mc.pushReply(doneReply(map[string]string{"ret": "*A1"}))
 	mc.pushReply(doneReply(map[string]string{"ret": "*A2"}))
 
-	added, err := c.AddAddressesEach("ip", "list", []BulkEntry{
+	added, failed, err := c.AddAddressesEach("ip", "list", []BulkEntry{
 		{Address: "1.1.1.1", Timeout: "1h", Comment: "a"},
 		{Address: "2.2.2.2", Timeout: "2h", Comment: "b"},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if added != 2 {
+	if added != 2 || len(failed) != 0 {
 		t.Fatalf("expected 2 added, got %d", added)
 	}
 	for _, call := range mc.calls {

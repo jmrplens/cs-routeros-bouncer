@@ -902,9 +902,20 @@ func TestPoolAddAddresses_Concurrent(t *testing.T) {
 		mc.pushReply(doneReply(map[string]string{"ret": fmt.Sprintf("*%X", i+1)}))
 	}
 
-	added, errs := p.AddAddresses("ip", "list", entries)
-	if added != 40 || len(errs) != 10 {
-		t.Fatalf("expected 40 added and 10 errors, got %d and %d", added, len(errs))
+	added, failed, errs := p.AddAddresses("ip", "list", entries)
+	if added != 40 || len(errs) != 10 || len(failed) != 10 {
+		t.Fatalf("expected 40 added and 10 errors and failed entries, got %d, %d and %d", added, len(errs), len(failed))
+	}
+	// Which entry meets a refused reply depends on the scheduling; every
+	// entry is either counted or failed, and none is both or twice.
+	seen := make(map[string]int, len(entries))
+	for _, entry := range failed {
+		seen[entry.Address]++
+	}
+	for address, n := range seen {
+		if n != 1 {
+			t.Fatalf("expected %s once among the failed entries, got %d", address, n)
+		}
 	}
 	if got := mc.callCount(); got != 50 {
 		t.Fatalf("expected 50 adds, got %d calls", got)
@@ -931,7 +942,7 @@ func TestPoolAddAddresses_DuplicateRefreshedAndCounted(t *testing.T) {
 	mc.pushReply(reReply(map[string]string{".id": "*A1", "address": "1.1.1.1", "list": "list", "timeout": "1h", "comment": "a"}))
 	mc.pushReply(emptyReply())
 
-	added, errs := p.AddAddresses("ip", "list", []BulkEntry{{Address: "1.1.1.1", Timeout: "2h", Comment: "a"}})
+	added, _, errs := p.AddAddresses("ip", "list", []BulkEntry{{Address: "1.1.1.1", Timeout: "2h", Comment: "a"}})
 	if added != 1 || len(errs) != 0 {
 		t.Fatalf("expected 1 added and no error, got %d and %v", added, errs)
 	}
@@ -956,12 +967,15 @@ func TestPoolAddAddresses(t *testing.T) {
 	mc.pushError(fmt.Errorf("add failed"))
 	mc.pushError(fmt.Errorf("add failed")) // reconnect retry fails
 
-	added, errs := p.AddAddresses("ip", "list", []BulkEntry{
+	added, failed, errs := p.AddAddresses("ip", "list", []BulkEntry{
 		{Address: "1.1.1.1", Timeout: "1h", Comment: "a"},
 		{Address: "2.2.2.2", Timeout: "1h", Comment: "b"},
 	})
 	if added != 1 || len(errs) != 1 {
 		t.Fatalf("expected 1 added and 1 error, got %d and %v", added, errs)
+	}
+	if len(failed) != 1 || failed[0].Address != "2.2.2.2" {
+		t.Fatalf("expected 2.2.2.2 as failed, got %+v", failed)
 	}
 	for _, call := range mc.calls {
 		if call[0] != "/ip/firewall/address-list/add" {

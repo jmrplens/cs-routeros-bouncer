@@ -52,9 +52,12 @@ const bulkChunkSize = 100
 // BulkAddAddresses adds many addresses at once using a RouterOS script.
 // This is dramatically faster than individual API calls because the script
 // executes locally on the router without per-command network round-trips.
-func (c *Client) BulkAddAddresses(proto, list string, entries []BulkEntry) (added int, err error) {
+// failed holds the entries of failed chunks that the per-entry retry could not
+// add either. A chunk whose script ran counts all its entries as added: the
+// script skips an entry it cannot add without saying so.
+func (c *Client) BulkAddAddresses(proto, list string, entries []BulkEntry) (added int, failed []BulkEntry, err error) {
 	if len(entries) == 0 {
-		return 0, nil
+		return 0, nil, nil
 	}
 
 	total := 0
@@ -67,8 +70,9 @@ func (c *Client) BulkAddAddresses(proto, list string, entries []BulkEntry) (adde
 		n, scriptErr := c.runBulkScript(script)
 		if scriptErr != nil {
 			log.Warn().Err(scriptErr).Int("chunk_size", len(chunk)).Msg("bulk script failed, falling back to individual adds")
-			fallbackAdded, fallbackErr := c.AddAddressesEach(proto, list, chunk)
+			fallbackAdded, fallbackFailed, fallbackErr := c.AddAddressesEach(proto, list, chunk)
 			total += fallbackAdded
+			failed = append(failed, fallbackFailed...)
 			if fallbackErr != nil {
 				err = fallbackErr
 			}
@@ -77,29 +81,30 @@ func (c *Client) BulkAddAddresses(proto, list string, entries []BulkEntry) (adde
 		total += n
 	}
 
-	return total, err
+	return total, failed, err
 }
 
 // AddAddressesEach adds entries with one AddAddress call each, never through a
 // script: the bulk_add_method "api" without a connection pool, and the retry
 // of a failed script chunk. It counts every entry AddAddress accepts, including
-// one the router already had, whose timeout and comment AddAddress refreshes.
-func (c *Client) AddAddressesEach(proto, list string, chunk []BulkEntry) (int, error) {
-	added := 0
+// one the router already had, whose timeout and comment AddAddress refreshes,
+// and returns the entries whose add failed.
+func (c *Client) AddAddressesEach(proto, list string, chunk []BulkEntry) (added int, failed []BulkEntry, err error) {
 	var fallbackErrs []error
 	for _, entry := range chunk {
 		if _, addErr := c.AddAddress(proto, list, entry.Address, entry.Timeout, entry.Comment); addErr != nil {
 			if !isDuplicateEntryError(addErr) {
 				fallbackErrs = append(fallbackErrs, addErr)
+				failed = append(failed, entry)
 			}
 			continue
 		}
 		added++
 	}
 	if len(fallbackErrs) == 0 {
-		return added, nil
+		return added, nil, nil
 	}
-	return added, fmt.Errorf("%d add errors (last: %w)", len(fallbackErrs), fallbackErrs[len(fallbackErrs)-1])
+	return added, failed, fmt.Errorf("%d add errors (last: %w)", len(fallbackErrs), fallbackErrs[len(fallbackErrs)-1])
 }
 
 // BulkEntry represents an address to add in bulk.

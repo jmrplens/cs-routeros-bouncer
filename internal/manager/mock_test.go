@@ -62,6 +62,7 @@ type mockROS struct {
 	listAddressesErr error
 	bulkAddCount     int
 	bulkAddErr       error
+	bulkAddFailN     int // the first n entries of a bulk add fail
 
 	addRuleID         string
 	addRuleIDs        []string
@@ -236,20 +237,20 @@ func (m *mockROS) ListAddresses(proto, list, commentPrefix string) ([]ros.Addres
 
 // BulkAddAddresses implements RouterOSClient.BulkAddAddresses and records the
 // call arguments including the batch of entries.
-func (m *mockROS) BulkAddAddresses(proto, list string, entries []ros.BulkEntry) (int, error) {
+func (m *mockROS) BulkAddAddresses(proto, list string, entries []ros.BulkEntry) (added int, failed []ros.BulkEntry, err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.bulkAddCalls = append(m.bulkAddCalls, bulkAddCall{proto, list, entries})
-	return m.bulkAddCount, m.bulkAddErr
+	return m.bulkAddCount, entries[:min(m.bulkAddFailN, len(entries))], m.bulkAddErr
 }
 
 // AddAddressesEach implements RouterOSClient.AddAddressesEach and records the
 // call arguments including the batch of entries.
-func (m *mockROS) AddAddressesEach(proto, list string, entries []ros.BulkEntry) (int, error) {
+func (m *mockROS) AddAddressesEach(proto, list string, entries []ros.BulkEntry) (added int, failed []ros.BulkEntry, err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.addEachCalls = append(m.addEachCalls, bulkAddCall{proto, list, entries})
-	return len(entries), nil
+	return len(entries), nil, nil
 }
 
 // AddFirewallRule implements RouterOSClient.AddFirewallRule and records the call

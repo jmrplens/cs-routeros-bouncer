@@ -40,12 +40,13 @@ type RouterOSClient interface {
 	// returning network, timeout, permission, or RouterOS API errors.
 	ListAddresses(proto, list, commentPrefix string) ([]ros.AddressEntry, error)
 	// BulkAddAddresses adds multiple address-list entries efficiently, returning
-	// validation, partial-add, network, timeout, or RouterOS API errors.
-	BulkAddAddresses(proto, list string, entries []ros.BulkEntry) (int, error)
+	// the entries whose add failed and validation, partial-add, network,
+	// timeout, or RouterOS API errors.
+	BulkAddAddresses(proto, list string, entries []ros.BulkEntry) (added int, failed []ros.BulkEntry, err error)
 	// AddAddressesEach adds multiple address-list entries with one API call
-	// each, never through a script, returning validation, partial-add,
-	// network, timeout, or RouterOS API errors.
-	AddAddressesEach(proto, list string, entries []ros.BulkEntry) (int, error)
+	// each, never through a script, returning the entries whose add failed
+	// and validation, partial-add, network, timeout, or RouterOS API errors.
+	AddAddressesEach(proto, list string, entries []ros.BulkEntry) (added int, failed []ros.BulkEntry, err error)
 
 	// Firewall operations
 	// AddFirewallRule creates a firewall rule, returning validation, permission,
