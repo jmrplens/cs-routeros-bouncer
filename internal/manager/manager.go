@@ -76,8 +76,8 @@ type firewallRuleRef struct {
 type routerOSPool interface {
 	Connect() error
 	Close()
-	RemoveAddresses(proto string, entries []rosClient.AddressEntry) []error
-	AddAddresses(proto, list string, entries []rosClient.BulkEntry) (added int, failed []rosClient.BulkEntry, errs []error)
+	RemoveAddresses(ctx context.Context, proto string, entries []rosClient.AddressEntry) []error
+	AddAddresses(ctx context.Context, proto, list string, entries []rosClient.BulkEntry) (added int, failed []rosClient.BulkEntry, errs []error)
 }
 
 // NewManager creates a new bouncer manager.
@@ -1406,7 +1406,7 @@ func (m *Manager) reconcileAddresses(ctx context.Context, decisions []*crowdsec.
 		if ctx.Err() != nil {
 			return
 		}
-		result, err := m.reconcileProtocolAddresses(proto, decisions, start)
+		result, err := m.reconcileProtocolAddresses(ctx, proto, decisions, start)
 		if err != nil {
 			complete = false
 			continue
@@ -1442,7 +1442,7 @@ type reconcileResult struct {
 }
 
 // reconcileProtocolAddresses applies the address-list diff for one RouterOS protocol.
-func (m *Manager) reconcileProtocolAddresses(proto string, decisions []*crowdsec.Decision, start time.Time) (reconcileResult, error) {
+func (m *Manager) reconcileProtocolAddresses(ctx context.Context, proto string, decisions []*crowdsec.Decision, start time.Time) (reconcileResult, error) {
 	listName := m.getAddressListName(proto)
 	listed, err := m.ros.ListAddresses(proto, listName, "")
 	if err != nil {
@@ -1455,8 +1455,8 @@ func (m *Manager) reconcileProtocolAddresses(proto string, decisions []*crowdsec
 	diff := buildReconcileDiff(proto, decisions, existing, foreign, m.commentPrefix())
 	m.refreshAddressCache(proto, diff.currentMap)
 	metricsProto := metricsProtoName(proto)
-	added := m.addMissingAddresses(proto, listName, metricsProto, diff.toAdd)
-	removed := m.removeStaleAddresses(proto, metricsProto, diff.toRemove)
+	added := m.addMissingAddresses(ctx, proto, listName, metricsProto, diff.toAdd)
+	removed := m.removeStaleAddresses(ctx, proto, metricsProto, diff.toRemove)
 	m.recordReconciliationMetrics(metricsProto, len(diff.shouldExist), added, removed)
 
 	m.logger.Info().
@@ -1586,12 +1586,12 @@ func (m *Manager) refreshAddressCache(proto string, currentMap map[string]rosCli
 }
 
 // addMissingAddresses bulk-adds missing entries and records reconciliation metrics.
-func (m *Manager) addMissingAddresses(proto, listName, metricsProto string, toAdd []rosClient.BulkEntry) int {
+func (m *Manager) addMissingAddresses(ctx context.Context, proto, listName, metricsProto string, toAdd []rosClient.BulkEntry) int {
 	if len(toAdd) == 0 {
 		return 0
 	}
 	addStart := time.Now()
-	added, failed, addErr := m.bulkAdd(proto, listName, toAdd)
+	added, failed, addErr := m.bulkAdd(ctx, proto, listName, toAdd)
 	if addErr != nil {
 		m.logger.Warn().Err(addErr).Int("unconfirmed", len(failed)).Msg("some addresses failed to add during reconciliation")
 	}
@@ -1607,15 +1607,16 @@ func (m *Manager) addMissingAddresses(proto, listName, metricsProto string, toAd
 // bulkAdd adds the missing entries with mikrotik.bulk_add_method: one
 // RouterOS script per chunk ("script"), or one API call per entry ("api"),
 // spread over the connection pool when there is one. failed holds the entries
-// whose add failed.
-func (m *Manager) bulkAdd(proto, listName string, toAdd []rosClient.BulkEntry) (added int, failed []rosClient.BulkEntry, err error) {
+// whose add failed; once ctx is done the adds stop and the entries left count
+// as failed.
+func (m *Manager) bulkAdd(ctx context.Context, proto, listName string, toAdd []rosClient.BulkEntry) (added int, failed []rosClient.BulkEntry, err error) {
 	if m.bulkAddMethod() != config.BulkAddAPI {
-		return m.ros.BulkAddAddresses(proto, listName, toAdd)
+		return m.ros.BulkAddAddresses(ctx, proto, listName, toAdd)
 	}
 	if m.pool == nil {
-		return m.ros.AddAddressesEach(proto, listName, toAdd)
+		return m.ros.AddAddressesEach(ctx, proto, listName, toAdd)
 	}
-	added, failed, errs := m.pool.AddAddresses(proto, listName, toAdd)
+	added, failed, errs := m.pool.AddAddresses(ctx, proto, listName, toAdd)
 	if len(errs) > 0 {
 		return added, failed, fmt.Errorf("%d add errors (last: %w)", len(errs), errs[len(errs)-1])
 	}
@@ -1666,12 +1667,12 @@ func (m *Manager) addEntriesToCache(proto string, entries []rosClient.BulkEntry)
 }
 
 // removeStaleAddresses removes obsolete RouterOS entries and records reconciliation metrics.
-func (m *Manager) removeStaleAddresses(proto, metricsProto string, toRemove []rosClient.AddressEntry) int {
-	if len(toRemove) == 0 {
+func (m *Manager) removeStaleAddresses(ctx context.Context, proto, metricsProto string, toRemove []rosClient.AddressEntry) int {
+	if len(toRemove) == 0 || ctx.Err() != nil {
 		return 0
 	}
 	removeStart := time.Now()
-	removed := m.removeAddresses(proto, toRemove)
+	removed := m.removeAddresses(ctx, proto, toRemove)
 	m.removeEntriesFromCache(toRemove)
 	for range removed {
 		metrics.RecordDecision("unban", metricsProto, "reconcile")
@@ -1681,21 +1682,25 @@ func (m *Manager) removeStaleAddresses(proto, metricsProto string, toRemove []ro
 	return removed
 }
 
-// removeAddresses selects parallel or sequential removal depending on pool availability.
-func (m *Manager) removeAddresses(proto string, entries []rosClient.AddressEntry) int {
+// removeAddresses selects parallel or sequential removal depending on pool
+// availability. Once ctx is done no further entry is removed.
+func (m *Manager) removeAddresses(ctx context.Context, proto string, entries []rosClient.AddressEntry) int {
 	if m.pool != nil {
-		return m.removeAddressesParallel(proto, entries)
+		return m.removeAddressesParallel(ctx, proto, entries)
 	}
-	return m.removeAddressesSequential(proto, entries)
+	return m.removeAddressesSequential(ctx, proto, entries)
 }
 
 // removeAddressesParallel removes address-list entries through the RouterOS connection pool.
-func (m *Manager) removeAddressesParallel(proto string, entries []rosClient.AddressEntry) int {
-	errs := m.pool.RemoveAddresses(proto, entries)
+func (m *Manager) removeAddressesParallel(ctx context.Context, proto string, entries []rosClient.AddressEntry) int {
+	errs := m.pool.RemoveAddresses(ctx, proto, entries)
 	removed := len(entries) - len(errs)
 	for _, err := range errs {
 		if errors.Is(err, rosClient.ErrNotFound) {
 			removed++
+			continue
+		}
+		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
 			continue
 		}
 		m.logger.Error().Err(err).Msg("reconcile: error removing address")
@@ -1705,9 +1710,12 @@ func (m *Manager) removeAddressesParallel(proto string, entries []rosClient.Addr
 }
 
 // removeAddressesSequential removes address-list entries through the primary RouterOS client.
-func (m *Manager) removeAddressesSequential(proto string, entries []rosClient.AddressEntry) int {
+func (m *Manager) removeAddressesSequential(ctx context.Context, proto string, entries []rosClient.AddressEntry) int {
 	removed := 0
 	for _, entry := range entries {
+		if ctx.Err() != nil {
+			break
+		}
 		removeErr := m.ros.RemoveAddress(proto, entry.ID)
 		switch {
 		case removeErr == nil:

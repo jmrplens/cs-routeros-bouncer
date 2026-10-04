@@ -4,6 +4,8 @@
 package routeros
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -851,6 +853,30 @@ func TestPoolConnect_PartialFailure(t *testing.T) {
 	}
 }
 
+// TestPoolRemoveAddresses_Canceled verifies that removals stop once ctx is
+// done: the entries left are reported with ctx's error and none is sent.
+func TestPoolRemoveAddresses_Canceled(t *testing.T) {
+	mc := newMockConn()
+	p := NewPool(config.MikroTikConfig{}, 1)
+	p.newClient = func(_ config.MikroTikConfig) *Client {
+		return &Client{dialFunc: func(_ config.MikroTikConfig) (RouterConn, error) { return mc, nil }}
+	}
+	if err := p.Connect(); err != nil {
+		t.Fatalf("Connect() error: %v", err)
+	}
+	t.Cleanup(p.Close)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	errs := p.RemoveAddresses(ctx, "ip", []AddressEntry{{ID: "*1"}, {ID: "*2"}})
+	if len(errs) != 2 || !errors.Is(errs[0], context.Canceled) {
+		t.Fatalf("expected both removals reported canceled, got %v", errs)
+	}
+	if got := mc.callCount(); got != 0 {
+		t.Fatalf("expected no remove call, got %d", got)
+	}
+}
+
 // TestPoolRemoveAddresses verifies pooled address removal delegates to pool clients.
 func TestPoolRemoveAddresses(t *testing.T) {
 	mc := newMockConn()
@@ -865,7 +891,7 @@ func TestPoolRemoveAddresses(t *testing.T) {
 	mc.pushReply(emptyReply())
 	mc.pushReply(emptyReply())
 
-	errs := p.RemoveAddresses("ip", []AddressEntry{{ID: "*1"}, {ID: "*2"}})
+	errs := p.RemoveAddresses(context.Background(), "ip", []AddressEntry{{ID: "*1"}, {ID: "*2"}})
 	if len(errs) != 0 {
 		t.Fatalf("unexpected remove errors: %v", errs)
 	}
@@ -927,7 +953,7 @@ func TestPoolAddAddresses_Concurrent(t *testing.T) {
 		mc.pushReply(doneReply(map[string]string{"ret": fmt.Sprintf("*%X", i+1)}))
 	}
 
-	added, failed, errs := p.AddAddresses("ip", "list", entries)
+	added, failed, errs := p.AddAddresses(context.Background(), "ip", "list", entries)
 	if added != 40 || len(errs) != 10 || len(failed) != 10 {
 		t.Fatalf("expected 40 added and 10 errors and failed entries, got %d, %d and %d", added, len(errs), len(failed))
 	}
@@ -950,6 +976,27 @@ func TestPoolAddAddresses_Concurrent(t *testing.T) {
 	}
 }
 
+// TestPoolAddAddresses_Canceled verifies that a canceled context adds nothing
+// over the pool and reports every entry as failed.
+func TestPoolAddAddresses_Canceled(t *testing.T) {
+	mc := newMockConn()
+	p := NewPool(config.MikroTikConfig{}, 2)
+	p.newClient = func(_ config.MikroTikConfig) *Client {
+		return &Client{dialFunc: func(_ config.MikroTikConfig) (RouterConn, error) { return mc, nil }}
+	}
+	if err := p.Connect(); err != nil {
+		t.Fatalf("Connect() error: %v", err)
+	}
+	t.Cleanup(p.Close)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	added, failed, errs := p.AddAddresses(ctx, "ip", "list", []BulkEntry{{Address: "1.1.1.1"}, {Address: "2.2.2.2"}})
+	if added != 0 || len(failed) != 2 || len(errs) != 2 || mc.callCount() != 0 {
+		t.Fatalf("expected nothing added and both failed, got %d, %+v, %v, %d calls", added, failed, errs, mc.callCount())
+	}
+}
+
 // TestPoolAddAddresses_DuplicateRefreshedAndCounted verifies that a pooled add
 // of an entry the router already has, added between the reconcile diff and the
 // add, refreshes it and counts it, as AddAddressesEach does.
@@ -967,7 +1014,7 @@ func TestPoolAddAddresses_DuplicateRefreshedAndCounted(t *testing.T) {
 	mc.pushReply(reReply(map[string]string{".id": "*A1", "address": "1.1.1.1", "list": "list", "timeout": "1h", "comment": "a"}))
 	mc.pushReply(emptyReply())
 
-	added, _, errs := p.AddAddresses("ip", "list", []BulkEntry{{Address: "1.1.1.1", Timeout: "2h", Comment: "a"}})
+	added, _, errs := p.AddAddresses(context.Background(), "ip", "list", []BulkEntry{{Address: "1.1.1.1", Timeout: "2h", Comment: "a"}})
 	if added != 1 || len(errs) != 0 {
 		t.Fatalf("expected 1 added and no error, got %d and %v", added, errs)
 	}
@@ -992,7 +1039,7 @@ func TestPoolAddAddresses(t *testing.T) {
 	mc.pushError(fmt.Errorf("add failed"))
 	mc.pushError(fmt.Errorf("add failed")) // reconnect retry fails
 
-	added, failed, errs := p.AddAddresses("ip", "list", []BulkEntry{
+	added, failed, errs := p.AddAddresses(context.Background(), "ip", "list", []BulkEntry{
 		{Address: "1.1.1.1", Timeout: "1h", Comment: "a"},
 		{Address: "2.2.2.2", Timeout: "1h", Comment: "b"},
 	})
@@ -1026,7 +1073,7 @@ func TestPoolAddAddresses_SetsIDs(t *testing.T) {
 	mc.pushError(fmt.Errorf("add failed")) // reconnect retry fails
 
 	entries := []BulkEntry{{Address: "1.1.1.1", Timeout: "1h"}, {Address: "2.2.2.2", Timeout: "1h"}}
-	if added, failed, _ := p.AddAddresses("ip", "list", entries); added != 1 || len(failed) != 1 {
+	if added, failed, _ := p.AddAddresses(context.Background(), "ip", "list", entries); added != 1 || len(failed) != 1 {
 		t.Fatalf("expected 1 added and 1 failed, got %d and %d", added, len(failed))
 	}
 	if entries[0].ID != "*A1" || entries[1].ID != "" {

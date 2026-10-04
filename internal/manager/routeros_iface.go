@@ -1,6 +1,8 @@
 package manager
 
 import (
+	"context"
+
 	ros "github.com/jmrplens/cs-routeros-bouncer/internal/routeros"
 )
 
@@ -42,11 +44,11 @@ type RouterOSClient interface {
 	// BulkAddAddresses adds multiple address-list entries efficiently, returning
 	// the entries whose add failed and validation, partial-add, network,
 	// timeout, or RouterOS API errors.
-	BulkAddAddresses(proto, list string, entries []ros.BulkEntry) (added int, failed []ros.BulkEntry, err error)
+	BulkAddAddresses(ctx context.Context, proto, list string, entries []ros.BulkEntry) (added int, failed []ros.BulkEntry, err error)
 	// AddAddressesEach adds multiple address-list entries with one API call
 	// each, never through a script, returning the entries whose add failed
 	// and validation, partial-add, network, timeout, or RouterOS API errors.
-	AddAddressesEach(proto, list string, entries []ros.BulkEntry) (added int, failed []ros.BulkEntry, err error)
+	AddAddressesEach(ctx context.Context, proto, list string, entries []ros.BulkEntry) (added int, failed []ros.BulkEntry, err error)
 
 	// Firewall operations
 	// AddFirewallRule creates a firewall rule, returning validation, permission,

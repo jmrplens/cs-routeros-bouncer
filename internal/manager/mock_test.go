@@ -48,22 +48,25 @@ type mockROS struct {
 	mu sync.RWMutex
 
 	// Return values — set these before calling the method under test.
-	connectErr       error
-	connectFunc      func() error // if set, takes priority over connectErr
-	identityName     string
-	identityErr      error
-	maxSessions      int
-	addAddressID     string
-	addAddressErr    error
-	findAddressEntry *ros.AddressEntry
-	findAddressErr   error
-	updateTimeoutErr error
-	removeAddressErr error
-	listAddresses    []ros.AddressEntry
-	listAddressesErr error
-	bulkAddCount     int
-	bulkAddErr       error
-	bulkAddFailN     int // the first n entries of a bulk add fail
+	connectErr        error
+	connectFunc       func() error // if set, takes priority over connectErr
+	identityName      string
+	identityErr       error
+	maxSessions       int
+	addAddressID      string
+	addAddressErr     error
+	findAddressEntry  *ros.AddressEntry
+	findAddressErr    error
+	updateTimeoutErr  error
+	removeAddressErr  error
+	removeAddressFunc func() // called after each RemoveAddress, inside the lock
+	listAddresses     []ros.AddressEntry
+	listAddressesErr  error
+	listAddressesFunc func() error // per-call error (takes priority), called under mu
+	bulkAddCount      int
+	bulkAddErr        error
+	bulkAddFailN      int             // the first n entries of a bulk add fail
+	bulkAddCtx        context.Context // the context of the last bulk add
 
 	addRuleID         string
 	addRuleIDs        []string
@@ -223,6 +226,9 @@ func (m *mockROS) RemoveAddress(proto, id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.removeAddressCalls = append(m.removeAddressCalls, removeAddressCall{proto, id})
+	if m.removeAddressFunc != nil {
+		m.removeAddressFunc()
+	}
 	return m.removeAddressErr
 }
 
@@ -233,21 +239,25 @@ func (m *mockROS) ListAddresses(proto, list, commentPrefix string) ([]ros.Addres
 	defer m.mu.Unlock()
 	m.listAddressesCalls++
 	m.listAddressesPrefix = commentPrefix
+	if m.listAddressesFunc != nil {
+		return m.listAddresses, m.listAddressesFunc()
+	}
 	return m.listAddresses, m.listAddressesErr
 }
 
 // BulkAddAddresses implements RouterOSClient.BulkAddAddresses and records the
 // call arguments including the batch of entries.
-func (m *mockROS) BulkAddAddresses(proto, list string, entries []ros.BulkEntry) (added int, failed []ros.BulkEntry, err error) {
+func (m *mockROS) BulkAddAddresses(ctx context.Context, proto, list string, entries []ros.BulkEntry) (added int, failed []ros.BulkEntry, err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.bulkAddCtx = ctx
 	m.bulkAddCalls = append(m.bulkAddCalls, bulkAddCall{proto, list, entries})
 	return m.bulkAddCount, entries[:min(m.bulkAddFailN, len(entries))], m.bulkAddErr
 }
 
 // AddAddressesEach implements RouterOSClient.AddAddressesEach and records the
 // call arguments including the batch of entries.
-func (m *mockROS) AddAddressesEach(proto, list string, entries []ros.BulkEntry) (added int, failed []ros.BulkEntry, err error) {
+func (m *mockROS) AddAddressesEach(ctx context.Context, proto, list string, entries []ros.BulkEntry) (added int, failed []ros.BulkEntry, err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.addEachCalls = append(m.addEachCalls, bulkAddCall{proto, list, entries})
