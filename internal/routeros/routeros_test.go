@@ -1005,3 +1005,28 @@ func TestPoolAddAddresses(t *testing.T) {
 		}
 	}
 }
+
+// TestPoolAddAddresses_SetsIDs verifies that a pooled add records the RouterOS
+// id of each entry it added, and none for the entry whose add failed.
+func TestPoolAddAddresses_SetsIDs(t *testing.T) {
+	mc := newMockConn()
+	p := NewPool(config.MikroTikConfig{}, 1)
+	p.newClient = func(_ config.MikroTikConfig) *Client {
+		return &Client{dialFunc: func(_ config.MikroTikConfig) (RouterConn, error) { return mc, nil }}
+	}
+	if err := p.Connect(); err != nil {
+		t.Fatalf("Connect() error: %v", err)
+	}
+	t.Cleanup(p.Close)
+	mc.pushReply(doneReply(map[string]string{"ret": "*A1"}))
+	mc.pushError(fmt.Errorf("add failed"))
+	mc.pushError(fmt.Errorf("add failed")) // reconnect retry fails
+
+	entries := []BulkEntry{{Address: "1.1.1.1", Timeout: "1h"}, {Address: "2.2.2.2", Timeout: "1h"}}
+	if added, failed, _ := p.AddAddresses("ip", "list", entries); added != 1 || len(failed) != 1 {
+		t.Fatalf("expected 1 added and 1 failed, got %d and %d", added, len(failed))
+	}
+	if entries[0].ID != "*A1" || entries[1].ID != "" {
+		t.Fatalf("expected ids *A1 and none, got %q and %q", entries[0].ID, entries[1].ID)
+	}
+}

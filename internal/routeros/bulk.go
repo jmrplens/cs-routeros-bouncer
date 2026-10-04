@@ -88,17 +88,20 @@ func (c *Client) BulkAddAddresses(proto, list string, entries []BulkEntry) (adde
 // script: the bulk_add_method "api" without a connection pool, and the retry
 // of a failed script chunk. It counts every entry AddAddress accepts, including
 // one the router already had, whose timeout and comment AddAddress refreshes,
-// and returns the entries whose add failed.
+// and returns the entries whose add failed. It sets ID on every entry it adds.
 func (c *Client) AddAddressesEach(proto, list string, chunk []BulkEntry) (added int, failed []BulkEntry, err error) {
 	var fallbackErrs []error
-	for _, entry := range chunk {
-		if _, addErr := c.AddAddress(proto, list, entry.Address, entry.Timeout, entry.Comment); addErr != nil {
+	for i := range chunk {
+		entry := &chunk[i]
+		id, addErr := c.AddAddress(proto, list, entry.Address, entry.Timeout, entry.Comment)
+		if addErr != nil {
 			if !isDuplicateEntryError(addErr) {
 				fallbackErrs = append(fallbackErrs, addErr)
-				failed = append(failed, entry)
+				failed = append(failed, *entry)
 			}
 			continue
 		}
+		entry.ID = id
 		added++
 	}
 	if len(fallbackErrs) == 0 {
@@ -112,6 +115,9 @@ type BulkEntry struct {
 	Address string
 	Timeout string
 	Comment string
+	// ID is the RouterOS id of the entry, set by the per-entry adds
+	// (AddAddressesEach, Pool.AddAddresses); a script cannot report it.
+	ID string
 }
 
 // quoteScript escapes a value for interpolation into a double-quoted RouterOS

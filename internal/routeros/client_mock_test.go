@@ -2483,3 +2483,20 @@ func TestAddAddressesEach_NoScript(t *testing.T) {
 		}
 	}
 }
+
+// TestAddAddressesEach_SetsIDs verifies that the per-entry path records the
+// RouterOS id of every entry it adds.
+func TestAddAddressesEach_SetsIDs(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+	mc.pushReply(doneReply(map[string]string{"ret": "*A1"}))
+	mc.pushReply(doneReply(map[string]string{"ret": "*A2"}))
+
+	entries := []BulkEntry{{Address: "1.1.1.1", Timeout: "1h"}, {Address: "2.2.2.2", Timeout: "1h"}}
+	if _, _, err := c.AddAddressesEach("ip", "list", entries); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if entries[0].ID != "*A1" || entries[1].ID != "*A2" {
+		t.Fatalf("expected ids *A1 and *A2, got %q and %q", entries[0].ID, entries[1].ID)
+	}
+}

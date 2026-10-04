@@ -136,20 +136,27 @@ func ParallelExec[T any](pool *Pool, items []T, fn func(c *Client, item T) error
 // API call each, never through a script. It counts every entry AddAddress
 // accepts, including one the router already had, whose timeout and comment
 // AddAddress refreshes, as AddAddressesEach does, and returns the entries whose
-// add failed.
+// add failed. It sets ID on every entry it adds.
 func (p *Pool) AddAddresses(proto, list string, entries []BulkEntry) (added int, failed []BulkEntry, errs []error) {
 	var count atomic.Int64
 	var mu sync.Mutex
-	errs = ParallelExec(p, entries, func(c *Client, entry BulkEntry) error {
-		if _, err := c.AddAddress(proto, list, entry.Address, entry.Timeout, entry.Comment); err != nil {
+	idx := make([]int, len(entries))
+	for i := range idx {
+		idx[i] = i
+	}
+	errs = ParallelExec(p, idx, func(c *Client, i int) error {
+		entry := &entries[i]
+		id, err := c.AddAddress(proto, list, entry.Address, entry.Timeout, entry.Comment)
+		if err != nil {
 			if isDuplicateEntryError(err) {
 				return nil
 			}
 			mu.Lock()
-			failed = append(failed, entry)
+			failed = append(failed, *entry)
 			mu.Unlock()
 			return err
 		}
+		entry.ID = id // each worker writes only the index it took
 		count.Add(1)
 		return nil
 	})

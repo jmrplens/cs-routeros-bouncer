@@ -2205,3 +2205,16 @@ func TestBulkAddMethod(t *testing.T) {
 		t.Fatalf("api with pool: expected the pool to add both entries, got %v", pool.addEntries)
 	}
 }
+
+// TestAddEntriesToCacheKeepsIDs verifies that reconciled adds keep the id the
+// per-entry path reported, so a live unban removes them without a lookup.
+func TestAddEntriesToCacheKeepsIDs(t *testing.T) {
+	mgr := newTestManager(&mockROS{}, baseConfig())
+	mgr.addEntriesToCache("ip", []ros.BulkEntry{{Address: "1.1.1.1", ID: "*A1"}, {Address: "2.2.2.2"}})
+	if got := mgr.addressCache["1.1.1.1"]; got != "*A1" {
+		t.Fatalf("expected the cached id *A1, got %q", got)
+	}
+	if got, ok := mgr.addressCache["2.2.2.2"]; !ok || got != "" {
+		t.Fatalf("expected 2.2.2.2 cached without an id, got %q (present %v)", got, ok)
+	}
+}

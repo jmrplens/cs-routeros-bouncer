@@ -1586,10 +1586,10 @@ func (m *Manager) addEntriesToCache(proto string, entries []rosClient.BulkEntry)
 	defer m.cacheMu.Unlock()
 	for _, entry := range entries {
 		addr := rosClient.NormalizeAddress(entry.Address, proto)
-		// The bulk script reports a count, not per-entry ids, so these keys
-		// carry no id until the next reconcile pass fills them in. An empty id
-		// simply means handleUnban takes the lookup path for them.
-		m.addressCache[addr] = ""
+		// The per-entry adds of "api" set ID. The bulk script reports a count,
+		// not per-entry ids, so its keys carry none until the next reconcile
+		// pass fills them in; an empty id means handleUnban looks it up.
+		m.addressCache[addr] = entry.ID
 	}
 }
 
