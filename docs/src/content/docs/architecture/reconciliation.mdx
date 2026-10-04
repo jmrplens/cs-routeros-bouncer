@@ -77,7 +77,7 @@ flowchart TB
     end
 ```
 
-The prefix filter on the _present_ set is what makes reconciliation safe to point at a shared list. The bouncer asks RouterOS for the list by name and then keeps only the entries whose comment starts with the configured `comment_prefix`, so an address you added by hand — or one another tool maintains — is not in the comparison at all, and the "present, not wanted" branch can never reach it. Nor is its address added again when a decision wants it: the router would refuse the duplicate, and a per-entry add would take the entry over by rewriting its comment and timeout. The address stays blocked by that entry.
+The prefix filter on the _present_ set is what makes reconciliation safe to point at a shared list. The bouncer asks RouterOS for the list by name and then keeps only the entries whose comment carries the configured `comment_prefix` — the prefix itself, followed by `|`, a space or nothing, so a longer prefix such as another bouncer's `crowdsec-bouncer-site2` is not taken for it — so an address you added by hand — or one another tool maintains — is not in the comparison at all, and the "present, not wanted" branch can never reach it. Nor is its address added again when a decision wants it, by reconciliation or by a live ban: the bouncer leaves an entry with a foreign comment as it is and never caches its address, so no unban removes it either. Whether the address is blocked is then up to that entry.
 
 The comparison is by normalised address, not by decision: several decisions for the same IP collapse to one wanted entry, and only the last one read supplies the timeout and comment written with it.
 

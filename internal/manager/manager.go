@@ -81,9 +81,11 @@ type routerOSPool interface {
 
 // NewManager creates a new bouncer manager.
 func NewManager(cfg config.Config, version string) *Manager {
+	client := rosClient.NewClient(cfg.MikroTik)
+	client.SetOwnerPrefix(commentPrefixOf(cfg))
 	return &Manager{
 		cfg:          cfg,
-		ros:          rosClient.NewClient(cfg.MikroTik),
+		ros:          client,
 		stream:       crowdsec.NewStream(cfg.CrowdSec, version),
 		logger:       log.With().Str("component", "manager").Logger(),
 		version:      version,
@@ -95,8 +97,13 @@ func NewManager(cfg config.Config, version string) *Manager {
 // commentPrefix returns the effective comment prefix from config,
 // falling back to defaultCommentPrefix if not set.
 func (m *Manager) commentPrefix() string {
-	if m.cfg.Firewall.CommentPrefix != "" {
-		return m.cfg.Firewall.CommentPrefix
+	return commentPrefixOf(m.cfg)
+}
+
+// commentPrefixOf is the comment prefix of cfg, or the default.
+func commentPrefixOf(cfg config.Config) string {
+	if cfg.Firewall.CommentPrefix != "" {
+		return cfg.Firewall.CommentPrefix
 	}
 	return defaultCommentPrefix
 }
@@ -202,11 +209,19 @@ func (m *Manager) configureConnectionPool() {
 			poolSize = limit
 		}
 	}
-	m.pool = rosClient.NewPool(m.cfg.MikroTik, poolSize)
+	m.pool = m.newConnectionPool(poolSize)
 	if err := m.pool.Connect(); err != nil {
 		m.logger.Warn().Err(err).Msg("could not create connection pool, falling back to single connection")
 		m.pool = nil
 	}
+}
+
+// newConnectionPool returns an unconnected pool whose clients know the comment
+// prefix.
+func (m *Manager) newConnectionPool(size int) *rosClient.Pool {
+	pool := rosClient.NewPool(m.cfg.MikroTik, size)
+	pool.SetOwnerPrefix(m.commentPrefix())
+	return pool
 }
 
 // recordRouterIdentity stores RouterOS identity labels for Prometheus metrics.
@@ -583,8 +598,13 @@ func (m *Manager) handleBan(d *crowdsec.Decision) {
 
 	// AddAddress handles duplicates internally: if the address already exists
 	// on the router it finds the existing entry and updates its attributes,
-	// returning the existing ID with nil error.
+	// returning the existing ID with nil error. An entry with a foreign comment
+	// is left alone and not cached, so no unban removes it.
 	entryID, err := m.ros.AddAddress(d.Proto, listName, d.Value, timeout, comment)
+	if errors.Is(err, rosClient.ErrForeignEntry) {
+		m.logger.Info().Str("address", d.Value).Str("list", listName).Msg("address already held by a foreign entry, left alone")
+		return
+	}
 	if err != nil {
 		m.logger.Error().Err(err).Str("address", d.Value).Str("list", listName).Msg("error adding address to MikroTik")
 		metrics.RecordError("add")
@@ -742,6 +762,18 @@ func (m *Manager) handleUnban(d *crowdsec.Decision) {
 		m.logger.Debug().
 			Str("address", d.Value).
 			Msg("address not found in MikroTik (already expired?)")
+		return
+	}
+
+	if !rosClient.OwnedComment(entry.Comment, m.commentPrefix()) {
+		// A foreign entry holds the address: not the bouncer's to remove.
+		m.cacheMu.Lock()
+		delete(m.addressCache, addr)
+		m.cacheMu.Unlock()
+
+		m.logger.Info().
+			Str("address", d.Value).
+			Msg("address held by a foreign entry, not removed")
 		return
 	}
 
@@ -1296,7 +1328,7 @@ func (m *Manager) removeFirewallRules() {
 // reconcileAddresses performs initial state reconciliation on startup.
 // Compares CrowdSec active decisions with MikroTik address lists
 // and adds/removes entries as needed.
-// Uses script-based bulk add and parallel workers for maximum speed.
+// Adds through mikrotik.bulk_add_method, removes through the pool.
 // reconcileAddresses synchronizes RouterOS address lists with the active CrowdSec decisions.
 func (m *Manager) reconcileAddresses(ctx context.Context, decisions []*crowdsec.Decision) {
 	if ctx.Err() != nil {
@@ -1379,16 +1411,16 @@ func buildReconcileDiff(proto string, decisions []*crowdsec.Decision, existing [
 	}
 }
 
-// splitForeignAddresses separates the bouncer's entries, whose comment starts
-// with the prefix, from foreign ones in the same list. A foreign entry is never
+// splitForeignAddresses separates the bouncer's entries, whose comment carries
+// the prefix (rosClient.OwnedComment), from foreign ones in the same list. A foreign entry is never
 // compared, removed or cached, and its address is not added again: the router
-// refuses the duplicate, and AddAddress would take the entry over by rewriting
-// its comment and timeout. The address stays blocked by the foreign entry.
+// refuses the duplicate, and AddAddress leaves a foreign entry as it is
+// (ErrForeignEntry). Whether the address is blocked is then up to that entry.
 func splitForeignAddresses(listed []rosClient.AddressEntry, commentPrefix string) (owned []rosClient.AddressEntry, foreign map[string]struct{}) {
 	owned = make([]rosClient.AddressEntry, 0, len(listed))
 	foreign = make(map[string]struct{})
 	for _, entry := range listed {
-		if strings.HasPrefix(entry.Comment, commentPrefix) {
+		if rosClient.OwnedComment(entry.Comment, commentPrefix) {
 			owned = append(owned, entry)
 			continue
 		}

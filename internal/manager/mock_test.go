@@ -22,6 +22,7 @@ package manager
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -554,6 +555,60 @@ func TestHandleBan_AddAddressSuccessCachesEntry(t *testing.T) {
 	}
 }
 
+// TestHandleBan_ForeignEntryNotCached verifies that a live ban for an address
+// a foreign entry already holds leaves it alone and does not cache it, so a
+// later unban cannot remove the foreign entry.
+func TestHandleBan_ForeignEntryNotCached(t *testing.T) {
+	mock := &mockROS{addAddressErr: fmt.Errorf("add address 10.0.0.1 to list: %w", ros.ErrForeignEntry)}
+	mgr := newTestManager(mock, baseConfig())
+
+	mgr.handleBan(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1", Duration: time.Hour})
+
+	mgr.cacheMu.RLock()
+	_, inCache := mgr.addressCache["10.0.0.1"]
+	mgr.cacheMu.RUnlock()
+	if inCache {
+		t.Error("expected the foreign address to stay out of the cache")
+	}
+}
+
+// TestNewManager_ClientOwnerPrefix verifies that the manager's client knows
+// the comment prefix, so it can tell its own entries from foreign ones.
+func TestNewManager_ClientOwnerPrefix(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Firewall.CommentPrefix = "my-bouncer"
+	mgr := NewManager(cfg, "test")
+	client, ok := mgr.ros.(*ros.Client)
+	if !ok {
+		t.Fatalf("expected a *ros.Client, got %T", mgr.ros)
+	}
+	if client.OwnerPrefix() != "my-bouncer" {
+		t.Fatalf("expected owner prefix my-bouncer, got %q", client.OwnerPrefix())
+	}
+}
+
+// TestNewManager_ClientDefaultOwnerPrefix verifies that without a configured
+// comment prefix the client owns the default one.
+func TestNewManager_ClientDefaultOwnerPrefix(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Firewall.CommentPrefix = ""
+	mgr := NewManager(cfg, "test")
+	if got := mgr.ros.(*ros.Client).OwnerPrefix(); got != defaultCommentPrefix {
+		t.Fatalf("expected owner prefix %q, got %q", defaultCommentPrefix, got)
+	}
+}
+
+// TestNewConnectionPool_OwnerPrefix verifies that the manager's pool hands the
+// comment prefix to its clients.
+func TestNewConnectionPool_OwnerPrefix(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Firewall.CommentPrefix = "my-bouncer"
+	mgr := newTestManager(&mockROS{}, cfg)
+	if got := mgr.newConnectionPool(2).OwnerPrefix(); got != "my-bouncer" {
+		t.Fatalf("expected owner prefix my-bouncer, got %q", got)
+	}
+}
+
 // TestHandleBan_AlreadyExists_ZeroDuration verifies that when an address
 // already exists and the decision has duration 0 (permanent), AddAddress
 // is still called and succeeds (duplicate handled internally).
@@ -660,7 +715,7 @@ func TestHandleUnban_NotInCache(t *testing.T) {
 // → cache entry is cleared.
 func TestHandleUnban_InCache_FoundAndRemoved(t *testing.T) {
 	mock := &mockROS{
-		findAddressEntry: &ros.AddressEntry{ID: "*7", Address: "10.0.0.1"},
+		findAddressEntry: &ros.AddressEntry{ID: "*7", Address: "10.0.0.1", Comment: "crowdsec-bouncer|cscli"},
 	}
 	mgr := newTestManager(mock, baseConfig())
 	mgr.cacheMu.Lock()
@@ -735,7 +790,7 @@ func TestHandleUnban_FindError(t *testing.T) {
 // the cache entry (the address may still be on the router).
 func TestHandleUnban_RemoveError(t *testing.T) {
 	mock := &mockROS{
-		findAddressEntry: &ros.AddressEntry{ID: "*7", Address: "10.0.0.1"},
+		findAddressEntry: &ros.AddressEntry{ID: "*7", Address: "10.0.0.1", Comment: "crowdsec-bouncer|cscli"},
 		removeAddressErr: errors.New("connection reset"),
 	}
 	mgr := newTestManager(mock, baseConfig())
@@ -1563,6 +1618,8 @@ func TestReconcileAddresses_LeavesForeignEntries(t *testing.T) {
 		listAddresses: []ros.AddressEntry{
 			{ID: "*1", Address: "10.0.0.1", Comment: "crowdsec-bouncer|existing"},
 			{ID: "*2", Address: "10.0.0.2", Comment: "blocked by hand"},
+			// another bouncer whose prefix merely starts with ours
+			{ID: "*4", Address: "10.0.0.4", Comment: "crowdsec-bouncer-site2|cscli"},
 		},
 		bulkAddCount: 1,
 	}

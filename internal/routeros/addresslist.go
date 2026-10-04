@@ -87,6 +87,17 @@ func (c *Client) AddAddress(proto, list, address, timeout, comment string) (stri
 	return id, nil
 }
 
+// OwnedComment reports whether an address-list comment belongs to the owner
+// prefix: the comment is the prefix, or continues it with "|" or a space, as
+// the comments the bouncer writes do. A longer prefix is someone else's. An
+// empty prefix owns every comment.
+func OwnedComment(comment, prefix string) bool {
+	if prefix == "" || comment == prefix {
+		return true
+	}
+	return strings.HasPrefix(comment, prefix+"|") || strings.HasPrefix(comment, prefix+" ")
+}
+
 // updateDuplicateAddress refreshes timeout/comment on an existing RouterOS entry.
 func (c *Client) updateDuplicateAddress(path, proto, list, address, timeout, comment string) (string, error) {
 	existing, findErr := c.FindAddress(proto, list, address)
@@ -95,6 +106,9 @@ func (c *Client) updateDuplicateAddress(path, proto, list, address, timeout, com
 	}
 	if findErr != nil {
 		return "", fmt.Errorf("add address %s to %s: duplicate entry and lookup failed: %w", address, list, findErr)
+	}
+	if !OwnedComment(existing.Comment, c.ownerPrefix) {
+		return "", fmt.Errorf("add address %s to %s: %w", address, list, ErrForeignEntry)
 	}
 
 	updateAttrs := duplicateAddressUpdateAttrs(timeout, comment)
@@ -135,6 +149,7 @@ func (c *Client) RemoveAddress(proto, id string) error {
 }
 
 // ListAddresses returns all address-list entries matching the given list name and comment prefix.
+// An empty prefix returns every entry of the list.
 func (c *Client) ListAddresses(proto, list, commentPrefix string) ([]AddressEntry, error) {
 	path := addressListPath(proto)
 

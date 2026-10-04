@@ -874,6 +874,28 @@ func TestPoolRemoveAddresses(t *testing.T) {
 	}
 }
 
+// TestPoolConnect_OwnerPrefix verifies that the pool hands its owner prefix
+// to every client it opens.
+func TestPoolConnect_OwnerPrefix(t *testing.T) {
+	mc := newMockConn()
+	p := NewPool(config.MikroTikConfig{}, 2)
+	p.SetOwnerPrefix("crowdsec-bouncer")
+	p.newClient = func(_ config.MikroTikConfig) *Client {
+		return &Client{dialFunc: func(_ config.MikroTikConfig) (RouterConn, error) { return mc, nil }}
+	}
+	if err := p.Connect(); err != nil {
+		t.Fatalf("Connect() error: %v", err)
+	}
+	t.Cleanup(p.Close)
+	for range 2 {
+		c := p.Get()
+		if c.OwnerPrefix() != "crowdsec-bouncer" {
+			t.Fatalf("expected the owner prefix on the pooled client, got %q", c.OwnerPrefix())
+		}
+		defer p.Put(c)
+	}
+}
+
 // TestPoolAddAddresses_Concurrent runs the pooled adds over four connections
 // that are all busy at once: every entry ends as added or as an error, and the
 // counter and the error list hold up under the race detector.

@@ -693,6 +693,83 @@ func TestAddAddress_DuplicateUpdatesTimeout(t *testing.T) {
 	}
 }
 
+// TestAddAddress_DuplicateForeignLeftAlone verifies that with an owner prefix
+// a duplicate whose existing entry has a foreign comment is not rewritten: the
+// entry belongs to the operator or another tool, and taking it over would let
+// the bouncer remove it later.
+func TestAddAddress_DuplicateForeignLeftAlone(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+	c.SetOwnerPrefix("crowdsec-bouncer")
+
+	mc.pushError(newDuplicateDeviceError())
+	mc.pushReply(reReply(map[string]string{".id": "*AB", "address": "1.2.3.4", "list": "crowdsec", "comment": "blocked by hand"}))
+
+	_, err := c.AddAddress("ip", "crowdsec", "1.2.3.4", "4h", "crowdsec-bouncer|cscli")
+	if !errors.Is(err, ErrForeignEntry) {
+		t.Fatalf("expected ErrForeignEntry, got %v", err)
+	}
+	if got := mc.callCount(); got != 2 {
+		t.Fatalf("expected add and find only, no set, got %d calls", got)
+	}
+}
+
+// TestOwnedComment pins where the owner prefix ends: at the end of the comment,
+// at "|" or at a space, so a longer prefix is not ours.
+func TestOwnedComment(t *testing.T) {
+	for _, c := range []struct {
+		comment, prefix string
+		owned           bool
+	}{
+		{"crowdsec-bouncer|cscli|ssh-bf|2026-10-04T10:00:00Z @cs-routeros-bouncer", "crowdsec-bouncer", true},
+		{"crowdsec-bouncer @cs-routeros-bouncer", "crowdsec-bouncer", true},
+		{"crowdsec-bouncer", "crowdsec-bouncer", true},
+		{"crowdsec-bouncer-site2|cscli", "crowdsec-bouncer", false},
+		{"blocked by hand", "crowdsec-bouncer", false},
+		{"", "crowdsec-bouncer", false},
+		{"anything", "", true},
+	} {
+		if got := OwnedComment(c.comment, c.prefix); got != c.owned {
+			t.Errorf("OwnedComment(%q, %q) = %v, want %v", c.comment, c.prefix, got, c.owned)
+		}
+	}
+}
+
+// TestAddAddress_DuplicateLongerPrefixForeign verifies that an entry whose
+// prefix only starts with the owner prefix counts as foreign.
+func TestAddAddress_DuplicateLongerPrefixForeign(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+	c.SetOwnerPrefix("crowdsec-bouncer")
+
+	mc.pushError(newDuplicateDeviceError())
+	mc.pushReply(reReply(map[string]string{".id": "*AB", "address": "1.2.3.4", "list": "crowdsec", "comment": "crowdsec-bouncer-site2|cscli"}))
+
+	if _, err := c.AddAddress("ip", "crowdsec", "1.2.3.4", "4h", "crowdsec-bouncer|cscli"); !errors.Is(err, ErrForeignEntry) {
+		t.Fatalf("expected ErrForeignEntry, got %v", err)
+	}
+}
+
+// TestAddAddress_DuplicateOwnedRefreshed verifies that with an owner prefix a
+// duplicate of the bouncer's own entry is still refreshed.
+func TestAddAddress_DuplicateOwnedRefreshed(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+	c.SetOwnerPrefix("crowdsec-bouncer")
+
+	mc.pushError(newDuplicateDeviceError())
+	mc.pushReply(reReply(map[string]string{".id": "*AB", "address": "1.2.3.4", "list": "crowdsec", "comment": "crowdsec-bouncer|cscli|old"}))
+	mc.pushReply(emptyReply())
+
+	id, err := c.AddAddress("ip", "crowdsec", "1.2.3.4", "4h", "crowdsec-bouncer|cscli")
+	if err != nil || id != "*AB" {
+		t.Fatalf("expected the owned entry refreshed, got %q, %v", id, err)
+	}
+	if got := mc.callCount(); got != 3 {
+		t.Fatalf("expected add, find and set, got %d calls", got)
+	}
+}
+
 // TestAddAddress_DuplicateNoTimeout verifies that when a duplicate exists and
 // no timeout or comment is provided, the existing entry is returned without updating.
 func TestAddAddress_DuplicateNoTimeout(t *testing.T) {

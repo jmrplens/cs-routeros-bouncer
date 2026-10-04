@@ -19,6 +19,19 @@ type Pool struct {
 	logger    zerolog.Logger
 	once      sync.Once
 	newClient func(config.MikroTikConfig) *Client // injectable for testing
+
+	ownerPrefix string // handed to every client, see Client.SetOwnerPrefix
+}
+
+// SetOwnerPrefix sets the owner prefix of the clients Connect opens. Call it
+// before Connect.
+func (p *Pool) SetOwnerPrefix(prefix string) {
+	p.ownerPrefix = prefix
+}
+
+// OwnerPrefix returns the prefix set with SetOwnerPrefix.
+func (p *Pool) OwnerPrefix() string {
+	return p.ownerPrefix
 }
 
 // NewPool creates a pool of n RouterOS client connections.
@@ -46,6 +59,7 @@ func (p *Pool) Connect() error {
 			p.Close()
 			return fmt.Errorf("pool connection %d: newClient returned nil client", i)
 		}
+		c.SetOwnerPrefix(p.ownerPrefix)
 		if err := c.Connect(); err != nil {
 			p.Close()
 			return fmt.Errorf("pool connection %d: %w", i, err)

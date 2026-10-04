@@ -124,10 +124,10 @@ type BulkEntry struct {
 // `cs$bouncer|crowdsec|sshd-bf` arrives as `cs|crowdsec|sshd-bf`.
 //
 // That is not cosmetic where the destroyed text is the operator's
-// `firewall.comment_prefix`: entries then fail the HasPrefix filter in
-// ListAddresses, never appear in the reconcile diff's present set, and are
-// re-added on every single cycle — an address list that grows without bound,
-// with nothing in any log to say why.
+// `firewall.comment_prefix`: entries then count as foreign, so reconciliation
+// neither removes them nor adds their addresses again, and no unban removes
+// them either — they stay until their timeout, with nothing in any log to say
+// why.
 //
 // Order is load-bearing: backslashes first, so the escapes added below are not
 // doubled by it.

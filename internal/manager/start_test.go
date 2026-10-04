@@ -1817,6 +1817,28 @@ func TestReconcileAddresses_ZeroDurationNoTimeout(t *testing.T) {
 // handleUnban additional coverage
 // ===========================================================================
 
+// TestHandleUnban_ForeignEntryNotRemoved verifies that an unban that has to
+// look the address up does not remove an entry with a foreign comment.
+func TestHandleUnban_ForeignEntryNotRemoved(t *testing.T) {
+	mock := &mockROS{findAddressEntry: &ros.AddressEntry{ID: "*F1", Address: "5.5.5.5", Comment: "blocked by hand"}}
+	mgr := newTestManager(mock, baseConfig())
+	mgr.cacheMu.Lock()
+	mgr.addressCache["5.5.5.5"] = ""
+	mgr.cacheMu.Unlock()
+
+	mgr.handleUnban(&crowdsec.Decision{Value: "5.5.5.5", Proto: "ip"})
+
+	if len(mock.removeAddressCalls) != 0 {
+		t.Fatalf("expected the foreign entry to stay, got removals %+v", mock.removeAddressCalls)
+	}
+	mgr.cacheMu.RLock()
+	_, inCache := mgr.addressCache["5.5.5.5"]
+	mgr.cacheMu.RUnlock()
+	if inCache {
+		t.Error("expected the address out of the cache")
+	}
+}
+
 // TestHandleUnban_UsesCachedIDAndSkipsLookup pins the fast path this cache
 // exists for: when the cache carries an id, the unban deletes by it and never
 // calls FindAddress — the traversal that measured ~1.15 s against 22,000
@@ -1880,7 +1902,7 @@ func TestHandleUnban_StaleCachedIDSettlesQuietly(t *testing.T) {
 func TestHandleUnban_TransportErrorFallsBackToLookup(t *testing.T) {
 	mock := &mockROS{
 		removeAddressErr: errors.New("connection reset"),
-		findAddressEntry: &ros.AddressEntry{ID: "*99", Address: "5.5.5.5"},
+		findAddressEntry: &ros.AddressEntry{ID: "*99", Address: "5.5.5.5", Comment: "crowdsec-bouncer|cscli"},
 	}
 	cfg := baseConfig()
 	cfg.Firewall.IPv6.Enabled = false
@@ -1905,7 +1927,7 @@ func TestHandleUnban_TransportErrorFallsBackToLookup(t *testing.T) {
 // found in cache, found on router, successfully removed.
 func TestHandleUnban_SuccessfulRemove(t *testing.T) {
 	mock := &mockROS{
-		findAddressEntry: &ros.AddressEntry{ID: "*99", Address: "5.5.5.5"},
+		findAddressEntry: &ros.AddressEntry{ID: "*99", Address: "5.5.5.5", Comment: "crowdsec-bouncer|cscli"},
 	}
 	cfg := baseConfig()
 	cfg.Firewall.IPv6.Enabled = false
