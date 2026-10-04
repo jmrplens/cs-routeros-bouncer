@@ -128,7 +128,7 @@ La reconciliación periódica suele ser ligera: cuando no hay deriva, lista las 
 
 ### Adición masiva basada en scripts
 
-En lugar de llamadas individuales a la API (~97× más lentas), el bouncer sube un script temporal de RouterOS llamado `crowdsec-bulk-import` y lo ejecuta por su id interno:
+En lugar de una llamada a la API por entrada, cada una con su viaje de ida y vuelta al router, el bouncer sube un script temporal de RouterOS llamado `crowdsec-bulk-import` y lo ejecuta por su id interno:
 
 ```routeros
 /system/script/run =number=<script-id>
