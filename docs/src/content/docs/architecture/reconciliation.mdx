@@ -127,7 +127,7 @@ Periodic reconciliation is usually light: when there is no drift, it lists curre
 
 ### Script-based bulk add
 
-Instead of individual API calls (~97× slower), the bouncer uploads a temporary RouterOS script named `crowdsec-bulk-import` and runs it by its internal id:
+Instead of one API call per entry, each paying a round trip to the router, the bouncer uploads a temporary RouterOS script named `crowdsec-bulk-import` and runs it by its internal id:
 
 ```routeros
 /system/script/run =number=<script-id>

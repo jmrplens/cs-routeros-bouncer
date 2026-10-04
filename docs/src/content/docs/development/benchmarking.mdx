@@ -58,12 +58,15 @@ For real bouncer startup performance, prefer the functional CAPI tests because r
 
 These figures come from the functional CAPI test suite (`tests/functional/`) run against a MikroTik RB5009, not from the single-operation `cmd/benchmark` tool above. See [Architecture: Connection pool](/cs-routeros-bouncer/architecture/#connection-pool) and [Script-based bulk add](/cs-routeros-bouncer/architecture/#script-based-bulk-add) for the mechanisms behind these numbers.
 
-| Scenario                                                       | Result                        |
-| -------------------------------------------------------------- | ----------------------------- |
-| Cache-first optimistic add (address not yet on the router)     | ~1–3 ms per operation         |
-| Check-first add (list entries before adding, avoided by cache) | ~400 ms per IP                |
-| Script-based bulk add vs. sequential API calls                 | ~97× faster for large batches |
-| Full RB5009 bulk-add, ~22,000 CAPI-origin entries              | ~29 s bulk, ~34 s from start  |
+| Scenario                                                                      | Result                       |
+| ----------------------------------------------------------------------------- | ---------------------------- |
+| Cache-first optimistic add (address not yet on the router)                    | ~1–3 ms per operation        |
+| Check-first add (list entries before adding, avoided by cache)                | ~400 ms per IP               |
+| Bulk add, 24,452 entries, router's LAN: script vs. one API call per entry     | 33.4 s vs. 22.2 s            |
+| Bulk add, 24,452 entries, 33 ms round trip: script vs. one API call per entry | 65.5 s vs. 13 min            |
+| Full RB5009 bulk-add, ~22,000 CAPI-origin entries                             | ~29 s bulk, ~34 s from start |
+
+The two bulk-add comparison rows are newer and come from the bouncer itself: cold starts on RouterOS 7.24.4, measured on 2026-10-04, three rounds on the LAN and two at 33 ms (one for the per-entry arm, which takes 13 minutes there). One API add costs about 1 ms on the LAN, which is why the per-entry path wins there; but every one of them pays the full round trip, and a script, at four round trips per 100 entries, does not.
 
 The gap between cache-first (~1-3 ms) and check-first (~400 ms) is why the in-memory address cache described in [Architecture](/cs-routeros-bouncer/architecture/#in-memory-address-cache) exists: it lets the bouncer skip the RouterOS list-then-add round trip for addresses it already knows about.
 
