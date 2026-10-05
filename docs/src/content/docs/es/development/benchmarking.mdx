@@ -93,7 +93,8 @@ comparten ejes, y cada punto es la media de cinco muestras de 100 ms.
 - **`/system/script` guardado** ejecutó la release 1.6.0, cuyo método script
   siempre guarda un script. Construye el mismo script y lo ejecuta con el mismo
   código que la 1.7.0 conserva para RouterOS anterior a 7.8rc1, así que esto es
-  lo que cuesta la 1.7.0 en un router más antiguo.
+  lo que cuesta ese camino, medido en 7.24.4; un RouterOS más antiguo puede
+  ejecutarlo más rápido o más despacio.
 
 <ThemeImage
   src="perf-first-reconcile-execute-light.svg"
@@ -104,7 +105,7 @@ comparten ejes, y cada punto es la media de cinco muestras de 100 ms.
 <ThemeImage
   src="perf-first-reconcile-stored-light.svg"
   alt="Gráfica de líneas con los mismos ejes: CPU cerca del 8% antes, alrededor del 33% entre el marcador de inicio de escritura a los 4,9 segundos y el de reconciliación completa a los 29,0 segundos, y de vuelta cerca del 9%; la RAM sube cuando el bouncer se conecta y se mantiene plana durante la importación."
-  caption="Un /system/script guardado por bloque, lo que recibe RouterOS anterior a 7.8: las mismas entradas en 24,1 s."
+  caption="Un /system/script guardado por bloque, el camino que recibe RouterOS anterior a 7.8, medido en 7.24.4: las mismas entradas en 24,1 s."
 />
 
 <ThemeImage
@@ -129,9 +130,9 @@ ocupa alrededor de un tercio de los cuatro núcleos de este router. Lo que cambi
 es cuánto dura. `/execute` termina en 13,7 segundos frente a 24,1 de un script
 guardado, así que el router le dedica más o menos la mitad de tiempo de CPU, y
 además un script guardado escribe en el log del router el código completo de
-cada bloque, mientras que `/execute` no escribe nada. `api` es el más lento y el
-más caro aquí: en la propia LAN del router, diez sesiones compiten en vez de
-solaparse, y es el único método cuya RAM se mueve durante la importación, hasta
+cada bloque, mientras que `/execute` no escribe nada. `api` queda entre ambos
+en tiempo, 22,8 segundos, y es el más caro en CPU: en la propia LAN del router,
+diez sesiones compiten en vez de solaparse, y es el único método cuya RAM se mueve durante la importación, hasta
 34 MiB mientras las sesiones están ocupadas.
 
 Los primeros cinco segundos son iguales en las tres: el bouncer conecta su pool,

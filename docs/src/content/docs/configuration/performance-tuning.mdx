@@ -63,8 +63,9 @@ later pass that finds nothing missing still reads both lists back, about
 1.5 seconds of router work at this size every `reconciliation_interval` (see
 [below](#reconciliation-interval)).
 
-On RouterOS before 7.8rc1 the same entries take 24.1 seconds through stored
-scripts, at about twice the CPU time, and `bulk_add_method: api` takes
+Through the stored scripts RouterOS before 7.8rc1 gets, the same entries took
+24.1 seconds on this router, at about twice the CPU time, and
+`bulk_add_method: api` took
 22.8 seconds over ten sessions. [Benchmarking](/cs-routeros-bouncer/development/benchmarking/#the-first-reconciliation-by-bulk-add-method)
 has the three side by side and how they were measured.
 

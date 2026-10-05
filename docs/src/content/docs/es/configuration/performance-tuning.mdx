@@ -64,9 +64,9 @@ lista; una pasada posterior que no encuentra nada que falte sigue leyendo las
 dos listas, alrededor de 1,5 segundos de trabajo del router a este tamaño en
 cada `reconciliation_interval` (ver [más abajo](#intervalo-de-reconciliación)).
 
-En RouterOS anterior a 7.8rc1 las mismas entradas tardan 24,1 segundos con
-scripts guardados, con aproximadamente el doble de tiempo de CPU, y
-`bulk_add_method: api` tarda 22,8 segundos con diez sesiones.
+Con los scripts guardados que recibe RouterOS anterior a 7.8rc1, las mismas
+entradas tardaron 24,1 segundos en este router, con aproximadamente el doble de
+tiempo de CPU, y `bulk_add_method: api` tardó 22,8 segundos con diez sesiones.
 [Benchmarking](/cs-routeros-bouncer/es/development/benchmarking/#la-primera-reconciliación-según-el-método-de-adición-masiva)
 muestra las tres juntas y cómo se midieron.
 

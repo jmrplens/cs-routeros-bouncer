@@ -91,8 +91,8 @@ axes, and each point is the mean of five 100 ms samples.
 - **`api`** ran the same release and configuration with `bulk_add_method: api`.
 - **Stored `/system/script`** ran the 1.6.0 release, whose script method always
   stores a script. It builds the same script and runs it with the same code
-  1.7.0 keeps for RouterOS before 7.8rc1, so this is what 1.7.0 costs on an
-  older router.
+  1.7.0 keeps for RouterOS before 7.8rc1, so this is that path's cost,
+  measured on 7.24.4; an older RouterOS may itself run it faster or slower.
 
 <ThemeImage
   src="perf-first-reconcile-execute-light.svg"
@@ -103,7 +103,7 @@ axes, and each point is the mean of five 100 ms samples.
 <ThemeImage
   src="perf-first-reconcile-stored-light.svg"
   alt="Line chart on the same axes: CPU near 8% before, about 33% between the writes-begin marker at 4.9 seconds and the reconciliation-complete marker at 29.0 seconds, then back near 9%; RAM steps up when the bouncer connects and stays flat through the import."
-  caption="A stored /system/script per chunk, what RouterOS before 7.8 gets: the same entries in 24.1 s."
+  caption="A stored /system/script per chunk, the path RouterOS before 7.8 gets, measured on 7.24.4: the same entries in 24.1 s."
 />
 
 <ThemeImage
@@ -127,8 +127,9 @@ import holds about a third of this router's four cores. What changes is how
 long. `/execute` is done in 13.7 seconds against 24.1 for a stored script, so
 the router spends about half the CPU time on it, and a stored script also
 writes each chunk's whole source to the router log, where `/execute` writes
-nothing. `api` is the slowest and the most expensive here: on the router's own
-LAN ten sessions compete rather than overlap, and it is the only method whose
+nothing. `api` lands between them in time, 22.8 seconds, and is the most
+expensive in CPU: on the router's own LAN ten sessions compete rather than
+overlap, and it is the only method whose
 RAM moves during the import, by up to 34 MiB while the sessions are busy.
 
 The first five seconds are the same in all three: the bouncer connects its

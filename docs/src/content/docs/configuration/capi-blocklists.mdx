@@ -38,7 +38,7 @@ Leaving `origins` empty accepts all origins, including `CAPI` and `lists`.
 
 ## Expected scale
 
-On an RB5009UG+S+ with RouterOS 7.24.4 and the defaults, the community blocklist plus local decisions, 17,361 entries on 2026-10-05, went into empty lists in 13.7 seconds of writing, at about 31% of the router's CPU with 100 ms peaks of 45%. RouterOS before 7.8rc1 takes about 24 seconds for the same load. [Performance Tuning](/cs-routeros-bouncer/configuration/performance-tuning/#what-the-first-reconciliation-costs-the-router) has the chart.
+On an RB5009UG+S+ with RouterOS 7.24.4 and the defaults, the community blocklist plus local decisions, 17,361 entries on 2026-10-05, went into empty lists in 13.7 seconds of writing, at about 31% of the router's CPU with 100 ms peaks of 45%. The stored-script path RouterOS before 7.8rc1 uses took about 24 seconds for the same load on this router. [Performance Tuning](/cs-routeros-bouncer/configuration/performance-tuning/#what-the-first-reconciliation-costs-the-router) has the chart.
 
 Your result depends on RouterOS version, model, traffic load, API latency, and address-list size. The cost is concentrated during startup reconciliation or large list changes; normal streaming ban/unban work is much lighter.
 
