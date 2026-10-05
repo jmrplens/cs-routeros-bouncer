@@ -1340,6 +1340,7 @@ func (m *Manager) reconcileAddresses(ctx context.Context, decisions []*crowdsec.
 
 	start := time.Now()
 	globalOriginCounts := map[string]int64{}
+	complete := true
 
 	for _, proto := range m.enabledProtos() {
 		if ctx.Err() != nil {
@@ -1347,12 +1348,21 @@ func (m *Manager) reconcileAddresses(ctx context.Context, decisions []*crowdsec.
 		}
 		result, err := m.reconcileProtocolAddresses(proto, decisions, start)
 		if err != nil {
+			complete = false
 			continue
 		}
 		mergeOriginCounts(globalOriginCounts, result.originCounts)
 	}
 
 	metrics.ObserveOperationDuration("reconcile", time.Since(start))
+	// A pass that read every list knows every origin, so an origin missing
+	// from it has no decisions left and is zeroed. A pass that could not read
+	// one list only refreshes the origins it saw: zeroing on it would retire
+	// the origins of the list it skipped.
+	if complete {
+		metrics.ReplaceActiveDecisionsByOrigin(globalOriginCounts)
+		return
+	}
 	for origin, count := range globalOriginCounts {
 		metrics.SetActiveDecisionsByOrigin(origin, count)
 	}

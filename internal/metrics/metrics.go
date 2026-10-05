@@ -244,6 +244,27 @@ func SetActiveDecisionsByOrigin(origin string, count int64) {
 	}
 }
 
+// ReplaceActiveDecisionsByOrigin makes counts the whole per-origin picture:
+// every origin in it is stored, and every other origin is zeroed. Setting
+// origins one at a time cannot retire one whose decisions have all gone, so its
+// last count stayed on the gauge, and in the LAPI usage report, until restart.
+func ReplaceActiveDecisionsByOrigin(counts map[string]int64) {
+	originDecisionsMu.Lock()
+	defer originDecisionsMu.Unlock()
+	for origin := range originDecisions {
+		if counts[origin] <= 0 {
+			delete(originDecisions, origin)
+			activeDecisionsByOrigin.WithLabelValues(origin).Set(0)
+		}
+	}
+	for origin, count := range counts {
+		if count > 0 {
+			originDecisions[origin] = count
+			activeDecisionsByOrigin.WithLabelValues(origin).Set(float64(count))
+		}
+	}
+}
+
 // GetActiveDecisionsByOrigin returns a snapshot of active decisions per origin.
 func GetActiveDecisionsByOrigin() map[string]int64 {
 	originDecisionsMu.RLock()
