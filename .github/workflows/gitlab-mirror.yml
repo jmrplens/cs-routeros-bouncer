@@ -5,8 +5,11 @@ name: GitLab Mirror
 
 on:
   push:
+    # Dependabot's runs get no Actions secrets, so a mirror run on its
+    # branches could only fail; the next run from any other ref pushes them.
     branches:
       - "**"
+      - "!dependabot/**"
     tags:
       - "**"
   workflow_run:
@@ -35,7 +38,11 @@ jobs:
   repository:
     name: Mirror repository
     runs-on: ubuntu-latest
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    # Also skipped for anything else Dependabot triggers, such as a merge it
+    # pushes to main: without secrets it would fail. The schedule catches up.
+    if: >-
+      github.actor != 'dependabot[bot]' &&
+      (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
     steps:
       - name: Configure GitLab SSH key
         env:
