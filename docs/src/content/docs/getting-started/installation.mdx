@@ -70,7 +70,7 @@ All configuration options can be set via environment variables. See the [Configu
    VERSION=$(curl -fsSL https://api.github.com/repos/jmrplens/cs-routeros-bouncer/releases/latest | sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p' | head -n1)
    [ -n "$VERSION" ] || { echo "could not resolve the latest version; pick a tag from the Releases page" >&2; exit 1; }
 
-   # Replace architecture as needed, e.g. x86_64, i386, arm64, armv6, armv7
+   # Replace architecture as needed, e.g. x86_64, i386, arm64, armv5, armv6, armv7
    ARCH=x86_64
 
    wget "https://github.com/jmrplens/cs-routeros-bouncer/releases/download/v${VERSION}/cs-routeros-bouncer_${VERSION}_linux_${ARCH}.tar.gz"
@@ -109,7 +109,7 @@ The generated config is `/etc/cs-routeros-bouncer/cs-routeros-bouncer.yaml` unle
 <summary>Manual installation steps (click to expand)</summary>
 
 ```bash
-# Download (e.g. x86_64, i386, arm64, armv6, armv7 — see the release assets for the full list)
+# Download (e.g. x86_64, i386, arm64, armv5, armv6, armv7 — see the release assets for the full list)
 VERSION=$(curl -fsSL https://api.github.com/repos/jmrplens/cs-routeros-bouncer/releases/latest | sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p' | head -n1)
 [ -n "$VERSION" ] || { echo "could not resolve the latest version; pick a tag from the Releases page" >&2; exit 1; }
 ARCH=x86_64
