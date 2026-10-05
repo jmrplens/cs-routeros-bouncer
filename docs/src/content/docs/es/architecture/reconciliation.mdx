@@ -134,7 +134,7 @@ En lugar de una llamada a la API por entrada, cada una con su viaje de ida y vue
 /execute =script=<source> =as-string=
 ```
 
-`as-string` hace que la llamada espere al script y devuelva lo que imprimió: el número de entradas que añadió. No se guarda nada y nada llega al log del router. En versiones anteriores, o cuando el router rechaza `/execute`, el bouncer sube un script temporal llamado `crowdsec-bulk-import`, lo ejecuta por su id interno y lo elimina:
+`as-string` hace que la llamada espere al script y devuelva lo que imprimió: el número de entradas que añadió. No se guarda nada y nada llega al log del router. En versiones anteriores, para un bloque por encima del límite de 64 kB de `/execute`, o cuando el router resulta no tener `/execute` con `as-string`, el bouncer sube un script temporal llamado `crowdsec-bulk-import`, lo ejecuta por su id interno y lo elimina:
 
 ```routeros
 /system/script/run =number=<script-id>

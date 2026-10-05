@@ -43,7 +43,7 @@ Crea un [usuario de RouterOS](https://help.mikrotik.com/docs/spaces/ROS/pages/89
 1. **Crea un grupo solo con las políticas requeridas**
 
    ```routeros
-   /user/group/add name=crowdsec policy=read,write,api,sensitive,!ftp,!local,!ssh,!reboot,!policy,!test,!password,!sniff,!romon,!rest-api
+   /user/group/add name=crowdsec policy=read,write,api,!sensitive,!ftp,!local,!ssh,!reboot,!policy,!test,!password,!sniff,!romon,!rest-api
    ```
 
 2. **Crea el usuario de la API**
@@ -56,20 +56,21 @@ Crea un [usuario de RouterOS](https://help.mikrotik.com/docs/spaces/ROS/pages/89
 
 ### Políticas requeridas
 
-| Política    | Motivo                                                              |
-| ----------- | ------------------------------------------------------------------- |
-| `read`      | Leer las reglas de firewall y las listas de direcciones             |
-| `write`     | Crear/modificar/eliminar reglas de firewall y listas de direcciones |
-| `api`       | Acceder a la API de RouterOS                                        |
-| `sensitive` | Necesaria para algunas operaciones de la API                        |
+| Política | Motivo                                                              |
+| -------- | ------------------------------------------------------------------- |
+| `read`   | Leer las reglas de firewall y las listas de direcciones             |
+| `write`  | Crear/modificar/eliminar reglas de firewall y listas de direcciones |
+| `api`    | Acceder a la API de RouterOS                                        |
 
 ### Políticas denegadas
 
 Todas las demás políticas se deniegan explícitamente para seguir el principio de mínimo privilegio:
 
-`!ftp`, `!local`, `!ssh`, `!reboot`, `!policy`, `!test`, `!password`, `!sniff`, `!romon`, `!rest-api`
+`!sensitive`, `!ftp`, `!local`, `!ssh`, `!reboot`, `!policy`, `!test`, `!password`, `!sniff`, `!romon`, `!rest-api`
 
 Denegar `!policy` es seguro aunque el bouncer ejecute un script por cada lote: mediante `/execute` en RouterOS 7.8rc1 y posteriores, y como un `/system/script` temporal antes. RouterOS solo exige el permiso `policy` para ejecutar un script cuyo conjunto de políticas supere al de quien lo llama; `/execute` se ejecuta con las políticas de quien lo llama, y un script creado por la API las hereda: con `read,write,api` basta. Verificado con grupos que no llevan más que estas políticas, en RouterOS 7.24.1 para el script guardado y en 7.24.4 para `/execute`: las adiciones masivas funcionan y no se degradan a escrituras dirección a dirección.
+
+Tampoco hace falta `sensitive`: sirve para ver contraseñas, claves y otros secretos, y el bouncer no lee ninguno. Verificado en RouterOS 7.24.4 con un grupo que lleva solo `read,write,api`: reglas de filter y raw para IPv4 e IPv6 (input, output, whitelist, `reject`) creadas y eliminadas, todos los caminos de adición masiva (`/execute`, el script guardado, `api`), bans y unbans en vivo, y las métricas del router.
 
 ## Acceso a través del firewall
 

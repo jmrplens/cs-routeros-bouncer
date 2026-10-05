@@ -102,7 +102,7 @@ Save the API key shown in the output.
 Connect to your MikroTik router and create a dedicated user:
 
 ```routeros
-/user group add name=crowdsec policy=read,write,api,sensitive,!ftp,!local,!ssh,!reboot,!policy,!test,!password,!sniff,!romon,!rest-api
+/user group add name=crowdsec policy=read,write,api,!sensitive,!ftp,!local,!ssh,!reboot,!policy,!test,!password,!sniff,!romon,!rest-api
 /user add name=crowdsec group=crowdsec password=YOUR_SECURE_PASSWORD
 ```
 

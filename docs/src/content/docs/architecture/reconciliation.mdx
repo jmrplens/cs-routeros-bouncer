@@ -133,7 +133,7 @@ Instead of one API call per entry, each paying a round trip to the router, the b
 /execute =script=<source> =as-string=
 ```
 
-`as-string` makes the call wait for the script and return what it printed: the number of entries it added. Nothing is stored and nothing reaches the router log. On older versions, or when the router refuses `/execute`, the bouncer uploads a temporary script named `crowdsec-bulk-import`, runs it by its internal id and removes it:
+`as-string` makes the call wait for the script and return what it printed: the number of entries it added. Nothing is stored and nothing reaches the router log. On older versions, for a chunk over the 64 kB `/execute` limit, or when the router turns out to lack `/execute` with `as-string`, the bouncer uploads a temporary script named `crowdsec-bulk-import`, runs it by its internal id and removes it:
 
 ```routeros
 /system/script/run =number=<script-id>

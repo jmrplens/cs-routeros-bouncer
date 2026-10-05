@@ -43,7 +43,7 @@ Create a dedicated [RouterOS user](https://help.mikrotik.com/docs/spaces/ROS/pag
 1. **Create a group with only the required policies**
 
    ```routeros
-   /user/group/add name=crowdsec policy=read,write,api,sensitive,!ftp,!local,!ssh,!reboot,!policy,!test,!password,!sniff,!romon,!rest-api
+   /user/group/add name=crowdsec policy=read,write,api,!sensitive,!ftp,!local,!ssh,!reboot,!policy,!test,!password,!sniff,!romon,!rest-api
    ```
 
 2. **Create the API user**
@@ -56,20 +56,21 @@ Create a dedicated [RouterOS user](https://help.mikrotik.com/docs/spaces/ROS/pag
 
 ### Required policies
 
-| Policy      | Why                                                   |
-| ----------- | ----------------------------------------------------- |
-| `read`      | Read firewall rules and address lists                 |
-| `write`     | Create/modify/delete firewall rules and address lists |
-| `api`       | Access the RouterOS API                               |
-| `sensitive` | Required for some API operations                      |
+| Policy  | Why                                                   |
+| ------- | ----------------------------------------------------- |
+| `read`  | Read firewall rules and address lists                 |
+| `write` | Create/modify/delete firewall rules and address lists |
+| `api`   | Access the RouterOS API                               |
 
 ### Denied policies
 
 All other policies are explicitly denied to follow the principle of least privilege:
 
-`!ftp`, `!local`, `!ssh`, `!reboot`, `!policy`, `!test`, `!password`, `!sniff`, `!romon`, `!rest-api`
+`!sensitive`, `!ftp`, `!local`, `!ssh`, `!reboot`, `!policy`, `!test`, `!password`, `!sniff`, `!romon`, `!rest-api`
 
 Denying `!policy` is safe even though the bouncer runs a script for each bulk chunk: through `/execute` on RouterOS 7.8rc1 and later, and as a temporary `/system/script` before that. RouterOS only requires the `policy` permission to run a script whose own policy set exceeds the caller's; `/execute` runs with the caller's policies, and a script created over the API inherits them — so `read,write,api` is sufficient. Verified with groups carrying no more than these policies, against RouterOS 7.24.1 for the stored script and 7.24.4 for `/execute`: bulk adds go through and are not degraded to per-address writes.
+
+`sensitive` is not needed either: it reveals passwords, keys and other secrets, and the bouncer reads none. Verified against RouterOS 7.24.4 with a group carrying only `read,write,api`: filter and raw rules for IPv4 and IPv6 (input, output, whitelist, `reject`) created and removed, every bulk-add path (`/execute`, the stored script, `api`), live bans and unbans, and the router metrics.
 
 ## Firewall access
 
