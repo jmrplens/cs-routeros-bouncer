@@ -20,6 +20,12 @@
  *   - a MISSING twin. Better a failed build than a page that renders a broken
  *     image for half its readers.
  *
+ * Each variant links to its own file. A chart or a dashboard drawn 960 px
+ * wide is scaled to the column, which on a 390 px phone puts its 11 px labels
+ * near 4 px; the file opens alone, where it can be zoomed, and an SVG stays
+ * sharp at any zoom. The theme class sits on the link, so the hidden variant's
+ * link is out of the tab order as well as out of sight.
+ *
  * Both variants are marked `loading="lazy"`, and that is load-bearing rather
  * than habit: `display: none` suppresses a LAZY fetch, but not an eager one.
  * An eager pair downloads both palettes on every visit and throws one away —
@@ -89,19 +95,11 @@ const dark = asset(darkSrc);
 ---
 
 <figure class="theme-image">
-	<Image
-		class="theme-image__light"
-		src={light}
-		alt={alt}
-		loading="lazy"
-		decoding="async"
-	/>
-	<Image
-		class="theme-image__dark"
-		src={dark}
-		alt={alt}
-		loading="lazy"
-		decoding="async"
-	/>
+	<a class="theme-image__light" href={light.src}>
+		<Image src={light} alt={alt} loading="lazy" decoding="async" />
+	</a>
+	<a class="theme-image__dark" href={dark.src}>
+		<Image src={dark} alt={alt} loading="lazy" decoding="async" />
+	</a>
 	{caption && <figcaption>{caption}</figcaption>}
 </figure>

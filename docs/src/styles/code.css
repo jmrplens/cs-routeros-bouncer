@@ -30,6 +30,11 @@ pre {
 .expressive-code {
 	margin-block: 1.5rem;
 	border-radius: var(--rb-radius);
+	/* Expressive Code insets every line by these itself, so the `pre`
+	   below carries no padding of its own: with both, code started twice
+	   as far from the frame's edge as intended, which a phone feels. */
+	--ec-codePadBlk: 0.875rem;
+	--ec-codePadInl: 1rem;
 }
 
 .expressive-code .frame {
@@ -61,9 +66,14 @@ pre {
 .expressive-code .frame .header .title:empty {
 	display: none;
 }
+/* Expressive Code's own base styles draw the same three dots, grey, on a
+   terminal header's `::before`. They stand for nothing here either. */
+.expressive-code .frame.is-terminal .header::before {
+	content: none;
+}
 
 .expressive-code pre {
-	padding: 0.875rem 1rem;
+	padding: 0;
 	margin: 0;
 	border-radius: 0;
 	background-color: var(--rb-code-bg);

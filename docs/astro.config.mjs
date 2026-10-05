@@ -495,8 +495,14 @@ export default defineConfig({
 				"./src/styles/brand.css",
 				"./src/styles/a11y.css",
 			],
+			// Expressive Code's base styles go out as their own stylesheet. Inline
+			// they no longer arrive at all: since Astro 7.3 renders Markdown with
+			// Sätteri, the first code block carried them as a literal
+			// `<style set:html="…">` attribute, an empty style element to the
+			// browser, so the copy button lost its position and its glyph. CSP
+			// allows the extra request ('self').
 			expressiveCode: {
-				emitExternalStylesheet: false,
+				emitExternalStylesheet: true,
 			},
 			components: {
 				Header: "./src/components/overrides/Header.astro",

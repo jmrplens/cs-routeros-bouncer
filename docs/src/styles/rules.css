@@ -98,6 +98,15 @@
 	gap: 0.5rem var(--rb-rule-pad);
 }
 
+/* On a phone two 9rem columns still fit, and `/ipv6/firewall/filter`
+   does not fit in one of them: it broke mid-word. Below this width the
+   facts stack, one per row. */
+@media (max-width: 36rem) {
+	.rule-card__meta {
+		grid-template-columns: 1fr;
+	}
+}
+
 .rule-card__meta dt {
 	color: var(--sl-color-gray-3);
 	font-size: 0.7rem;
