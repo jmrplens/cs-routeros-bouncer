@@ -1497,7 +1497,7 @@ func TestCreateFirewallRules_RejectWithAction(t *testing.T) {
 	cfg.Firewall.Filter.Enabled = true
 	cfg.Firewall.Filter.Chains = []string{"input"}
 	cfg.Firewall.DenyAction = "reject"
-	cfg.Firewall.RejectWith = "tcp-reset"
+	cfg.Firewall.RejectWith = "icmp-port-unreachable"
 	cfg.Firewall.IPv6.Enabled = false
 	mgr := newTestManager(mock, cfg)
 
@@ -1508,13 +1508,13 @@ func TestCreateFirewallRules_RejectWithAction(t *testing.T) {
 	// Verify at least one rule was created with RejectWith set.
 	found := false
 	for _, c := range mock.addRuleCalls {
-		if c.Rule.RejectWith == "tcp-reset" {
+		if c.Rule.RejectWith == "icmp-port-unreachable" {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Error("expected at least one rule with RejectWith='tcp-reset'")
+		t.Error("expected at least one rule with RejectWith='icmp-port-unreachable'")
 	}
 }
 
@@ -1526,7 +1526,7 @@ func TestCreateFirewallRules_DropActionNoRejectWith(t *testing.T) {
 	cfg.Firewall.Filter.Enabled = true
 	cfg.Firewall.Filter.Chains = []string{"input"}
 	cfg.Firewall.DenyAction = "drop"
-	cfg.Firewall.RejectWith = "tcp-reset" // Should be ignored for "drop"
+	cfg.Firewall.RejectWith = "icmp-port-unreachable" // Should be ignored for "drop"
 	cfg.Firewall.IPv6.Enabled = false
 	mgr := newTestManager(mock, cfg)
 

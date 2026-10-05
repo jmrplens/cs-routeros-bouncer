@@ -2045,25 +2045,36 @@ func TestCreateFirewallRules_InputWhitelistWithRaw(t *testing.T) {
 // ===========================================================================
 
 // TestCreateFirewallRules_RejectWith verifies that when deny_action is "reject"
-// and reject_with is set, all reject rules include the configured reject-with
-// parameter (e.g., tcp-reset).
+// and reject_with is set, every reject rule carries it in its family's own
+// vocabulary: the configured value on IPv4, the IPv6 equivalent on IPv6.
 func TestCreateFirewallRules_RejectWith(t *testing.T) {
 	mock := &mockROS{addRuleID: "*R1"}
 	cfg := baseConfig()
 	cfg.Firewall.DenyAction = "reject"
-	cfg.Firewall.RejectWith = "tcp-reset"
+	cfg.Firewall.RejectWith = "icmp-host-unreachable"
 	cfg.Firewall.Filter.Enabled = true
 	cfg.Firewall.Filter.Chains = []string{"input"}
+	cfg.Firewall.BlockOutput.Enabled = true
+	cfg.Firewall.BlockOutput.InterfaceList = "WAN"
 	mgr := newTestManager(mock, cfg)
 
 	if err := mgr.createFirewallRules(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
+	want := map[string]string{"ip": "icmp-host-unreachable", "ipv6": "icmp-address-unreachable"}
+	seen := map[string]int{}
 	for _, c := range mock.addRuleCalls {
-		if c.Rule.Action == "reject" && c.Rule.RejectWith != "tcp-reset" {
-			t.Errorf("expected reject-with=tcp-reset on reject rules, got %q", c.Rule.RejectWith)
+		if c.Rule.Action != "reject" {
+			continue
 		}
+		seen[c.Proto]++
+		if c.Rule.RejectWith != want[c.Proto] {
+			t.Errorf("%s %s rule: expected reject-with=%s, got %q", c.Proto, c.Rule.Chain, want[c.Proto], c.Rule.RejectWith)
+		}
+	}
+	if seen["ip"] != 2 || seen["ipv6"] != 2 {
+		t.Fatalf("expected an input and an output reject rule per family, got %v", seen)
 	}
 }
 
@@ -2074,7 +2085,7 @@ func TestCreateFirewallRules_RejectWithNotOnAccept(t *testing.T) {
 	mock := &mockROS{addRuleID: "*R1"}
 	cfg := baseConfig()
 	cfg.Firewall.DenyAction = "reject"
-	cfg.Firewall.RejectWith = "tcp-reset"
+	cfg.Firewall.RejectWith = "icmp-admin-prohibited"
 	cfg.Firewall.Filter.Enabled = true
 	cfg.Firewall.Filter.Chains = []string{"input"}
 	cfg.Firewall.BlockInput.Whitelist = "trusted"
@@ -2098,7 +2109,7 @@ func TestCreateFirewallRules_RawForcesDropOnReject(t *testing.T) { // NOSONAR: s
 	mock := &mockROS{addRuleID: "*R1"}
 	cfg := baseConfig()
 	cfg.Firewall.DenyAction = "reject"
-	cfg.Firewall.RejectWith = "tcp-reset"
+	cfg.Firewall.RejectWith = "icmp-admin-prohibited"
 	cfg.Firewall.Filter.Enabled = false
 	cfg.Firewall.Raw.Enabled = true
 	cfg.Firewall.Raw.Chains = []string{"prerouting"}
@@ -2133,7 +2144,7 @@ func TestCreateFirewallRules_FilterRejectRawDrop(t *testing.T) { // NOSONAR: sce
 	mock := &mockROS{addRuleID: "*R1"}
 	cfg := baseConfig()
 	cfg.Firewall.DenyAction = "reject"
-	cfg.Firewall.RejectWith = "tcp-reset"
+	cfg.Firewall.RejectWith = "icmp-admin-prohibited"
 	cfg.Firewall.Filter.Enabled = true
 	cfg.Firewall.Filter.Chains = []string{"input"}
 	cfg.Firewall.Raw.Enabled = true
@@ -2146,7 +2157,7 @@ func TestCreateFirewallRules_FilterRejectRawDrop(t *testing.T) { // NOSONAR: sce
 
 	var filterReject, rawDrop bool
 	for _, c := range mock.addRuleCalls {
-		if c.Mode == "filter" && c.Rule.Action == "reject" && c.Rule.RejectWith == "tcp-reset" {
+		if c.Mode == "filter" && c.Rule.Action == "reject" && c.Rule.RejectWith == "icmp-admin-prohibited" {
 			filterReject = true
 		}
 		if c.Mode == "raw" && c.Rule.Action == "drop" {
@@ -2160,7 +2171,7 @@ func TestCreateFirewallRules_FilterRejectRawDrop(t *testing.T) { // NOSONAR: sce
 		}
 	}
 	if !filterReject {
-		t.Error("expected filter rules to use action=reject with reject-with=tcp-reset")
+		t.Error("expected filter rules to use action=reject with reject-with=icmp-admin-prohibited")
 	}
 	if !rawDrop {
 		t.Error("expected raw rules to use action=drop")

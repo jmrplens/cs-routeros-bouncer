@@ -44,13 +44,13 @@ export const RULE_GLOSSES = {
 			name: "Filter deny",
 			purpose:
 				"Drops inbound traffic whose source address is on the banned list, after connection tracking has run.",
-			note: "Set firewall.deny_action to reject and this rule rejects instead, carrying reject-with when one is configured.",
+			note: "Set firewall.deny_action to reject and this rule rejects instead, carrying reject-with when one is configured; the IPv6 rule carries its ICMPv6 equivalent.",
 		},
 		es: {
 			name: "Denegación de filter",
 			purpose:
 				"Descarta el tráfico entrante cuya dirección de origen está en la address-list de baneados, después de que se haya ejecutado el connection tracking.",
-			note: "Si firewall.deny_action se establece en reject, esta regla rechaza en lugar de descartar, e incluye reject-with cuando hay uno configurado.",
+			note: "Si firewall.deny_action se establece en reject, esta regla rechaza en lugar de descartar, e incluye reject-with cuando hay uno configurado; la regla IPv6 lleva su equivalente ICMPv6.",
 		},
 	},
 	"raw-whitelist": {
