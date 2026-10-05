@@ -263,7 +263,8 @@ formatters:
   settings:
     gofumpt:
       module-path: github.com/jmrplens/cs-routeros-bouncer
-      extra-rules: true
+      extra:
+        group-params: true
     gci:
       sections:
         - standard
