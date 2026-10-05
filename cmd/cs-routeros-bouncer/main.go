@@ -20,6 +20,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/jmrplens/cs-routeros-bouncer/internal/config"
+	"github.com/jmrplens/cs-routeros-bouncer/internal/crowdsec"
 	"github.com/jmrplens/cs-routeros-bouncer/internal/manager"
 	"github.com/jmrplens/cs-routeros-bouncer/internal/metrics"
 )
@@ -162,6 +163,7 @@ func runBouncer(args []string) {
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to configure logging")
 	}
+	crowdsec.RouteStandardLogger(log.With().Str("component", "go-cs-bouncer").Logger())
 
 	log.Info().
 		Str("version", config.Version).
