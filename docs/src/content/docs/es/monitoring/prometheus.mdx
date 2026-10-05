@@ -35,7 +35,7 @@ crowdsec_bouncer_active_decisions{proto="ipv6"}
 <Badge text="Gauge" variant="note" />
 <Badge text="Etiquetas: origin" variant="default" />
 
-Decisiones activas desglosadas por su fuente. Se incrementa/decrementa en tiempo real durante el streaming y se reinicia durante la reconciliación completa.
+Decisiones activas desglosadas por su fuente. Se incrementa y decrementa en tiempo real durante el streaming, y la reescribe cada pasada de reconciliación que lee todas las listas: un origen al que no le quedan decisiones baja a 0.
 
 | Etiqueta | Valores                                           | Descripción                                                                                                                                                                                                                                                          |
 | -------- | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

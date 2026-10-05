@@ -35,7 +35,7 @@ crowdsec_bouncer_active_decisions{proto="ipv6"}
 <Badge text="Gauge" variant="note" />
 <Badge text="Labels: origin" variant="default" />
 
-Active decisions broken down by their source. Incremented/decremented in real time during streaming and reset during full reconciliation.
+Active decisions broken down by their source. Incremented and decremented in real time during streaming, and rewritten by every reconciliation pass that reads all the lists: an origin whose decisions have all gone drops to 0.
 
 | Label    | Values                                            | Description                                                                                                                                                                                                                               |
 | -------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

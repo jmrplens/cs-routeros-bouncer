@@ -1490,3 +1490,30 @@ func TestProcessedConcurrency(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// TestReplaceActiveDecisionsByOrigin verifies that replacing the per-origin
+// counts zeroes an origin absent from the new picture, in the map the LAPI
+// usage report reads and on the Prometheus gauge.
+func TestReplaceActiveDecisionsByOrigin(t *testing.T) {
+	resetOriginAndDropped()
+	SetActiveDecisionsByOrigin("CAPI", 9823)
+	SetActiveDecisionsByOrigin("crowdsec", 70)
+
+	ReplaceActiveDecisionsByOrigin(map[string]int64{"crowdsec": 2553})
+
+	got := GetActiveDecisionsByOrigin()
+	if len(got) != 1 || got["crowdsec"] != 2553 {
+		t.Fatalf("want only crowdsec=2553, got %v", got)
+	}
+	if v := testutil.ToFloat64(activeDecisionsByOrigin.WithLabelValues("CAPI")); v != 0 {
+		t.Errorf("prometheus gauge CAPI: want 0, got %v", v)
+	}
+	if v := testutil.ToFloat64(activeDecisionsByOrigin.WithLabelValues("crowdsec")); v != 2553 {
+		t.Errorf("prometheus gauge crowdsec: want 2553, got %v", v)
+	}
+
+	ReplaceActiveDecisionsByOrigin(map[string]int64{})
+	if left := GetActiveDecisionsByOrigin(); len(left) != 0 {
+		t.Errorf("an empty picture should leave no origins, got %v", left)
+	}
+}

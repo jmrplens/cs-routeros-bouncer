@@ -1738,6 +1738,43 @@ func TestReconcileAddresses_OriginTracking(t *testing.T) {
 	}
 }
 
+// TestReconcileAddresses_RetiresVanishedOrigin verifies that a complete pass
+// zeroes an origin with no decisions left: CAPI's count stayed on the gauge
+// after its decisions were deleted, because only the origins still present
+// were ever written.
+func TestReconcileAddresses_RetiresVanishedOrigin(t *testing.T) {
+	metrics.ReplaceActiveDecisionsByOrigin(map[string]int64{"CAPI": 9823, "crowdsec": 1})
+	mock := &mockROS{bulkAddCount: 1}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	mgr := newTestManager(mock, cfg)
+
+	mgr.reconcileAddresses(context.Background(), []*crowdsec.Decision{
+		{Value: "1.1.1.1", Proto: "ip", Duration: time.Hour, Origin: "crowdsec", Scenario: "ssh-bf"},
+	})
+
+	got := metrics.GetActiveDecisionsByOrigin()
+	if len(got) != 1 || got["crowdsec"] != 1 {
+		t.Fatalf("want only crowdsec=1 after the pass, got %v", got)
+	}
+}
+
+// TestReconcileAddresses_FailedPassKeepsOrigins verifies that a pass that could
+// not read a list does not zero origins: it does not know their counts.
+func TestReconcileAddresses_FailedPassKeepsOrigins(t *testing.T) {
+	metrics.ReplaceActiveDecisionsByOrigin(map[string]int64{"CAPI": 5})
+	mock := &mockROS{listAddressesErr: errors.New("connection reset")}
+	mgr := newTestManager(mock, baseConfig())
+
+	mgr.reconcileAddresses(context.Background(), []*crowdsec.Decision{
+		{Value: "1.1.1.1", Proto: "ip", Duration: time.Hour, Origin: "crowdsec"},
+	})
+
+	if got := metrics.GetActiveDecisionsByOrigin(); got["CAPI"] != 5 {
+		t.Fatalf("a failed pass must leave CAPI at 5, got %v", got)
+	}
+}
+
 // TestReconcileAddresses_ExistingAddressesUnchanged verifies that addresses
 // already on the router are not re-added.
 func TestReconcileAddresses_ExistingAddressesUnchanged(t *testing.T) {
