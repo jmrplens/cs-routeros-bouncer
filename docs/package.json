@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "astro dev",
     "start": "astro dev",
-    "analyze": "pnpm run config:check && pnpm run brand:check && pnpm run i18n:check && pnpm run contrast:check && pnpm run check && pnpm run lint && pnpm run format:check && pnpm run build && pnpm run html:validate && pnpm run cards:check",
+    "analyze": "pnpm run config:check && pnpm run brand:check && pnpm run charts:check && pnpm run i18n:check && pnpm run contrast:check && pnpm run check && pnpm run lint && pnpm run format:check && pnpm run build && pnpm run html:validate && pnpm run cards:check",
     "brand:rasters": "node scripts/render-brand-rasters.mjs",
     "brand:check": "node scripts/render-brand-rasters.mjs --check",
     "config:extract": "node scripts/extract-config-schema.mjs",
@@ -25,7 +25,8 @@
     "preview": "astro preview",
     "astro": "astro",
     "playwright:install": "playwright install --with-deps chromium",
-    "cards:check": "node scripts/check-social-cards.mjs"
+    "cards:check": "node scripts/check-social-cards.mjs",
+    "charts:check": "node scripts/render-perf-charts.mjs --check"
   },
   "dependencies": {
     "@astrojs/markdown-remark": "^7.3.1",

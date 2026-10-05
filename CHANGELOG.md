@@ -1,3 +1,16 @@
+## [Unreleased]
+
+### Added
+
+- **The first reconciliation, charted for each bulk-add method** — the benchmarking page shows three captures from the production RB5009UG+S+ (RouterOS 7.24.4), each loading the same 17,361 decisions (the CrowdSec community blocklist plus local ones) into empty lists: `/execute`, the default, in 13.7 s at about 31% of the router's CPU; a stored `/system/script`, what RouterOS before 7.8rc1 gets, in 24.1 s; and `bulk_add_method: api` over ten sessions in 22.8 s. CPU and RAM are the mikroscope collector's 10 Hz series read from InfluxDB afterwards, and the stored-script capture ran the 1.6.0 release, which builds the same script and runs it with the same code 1.7.0 keeps for older RouterOS. Performance Tuning shows the default one, where a reader chooses the method, and CAPI Blocklists quotes it instead of an older stored-script run. Two periodic jobs of the router's own, every 30 s on its clock and present with the bouncer stopped, are smoothed out of the charts and the table; the stretches are listed in `-background.csv` next to each raw capture
+- **`docs/scripts/render-perf-charts.mjs`** — draws those charts in both themes from the committed CSVs, with the palette read out of `theme.css`, so a palette change reaches them; `pnpm run charts:check`, now part of `analyze`, fails when a committed chart no longer matches its data or the palette
+
+### Fixed
+
+- **The copy button on code blocks** — since Astro 7.3 renders Markdown with Sätteri, Expressive Code's inline styles arrived as a literal `<style set:html="…">` attribute, an empty style element to the browser, so the button lost its position and its glyph and sat as an empty square at the bottom left of every block (1,336 buttons on the published site, across both themes, desktop and mobile). The styles now go out as Expressive Code's own stylesheet, as in the mikroscope site; the site's code CSS hides the window dots that came back with them and lets Expressive Code alone inset the code, which had been padded twice
+- **Charts and screenshots open full size** — every theme-paired image links to its own file, so a 960 px chart scaled to a phone, its labels near 4 px, can be opened and zoomed
+- **Rule cards on a phone** — the facts grid stacks below 36rem instead of breaking `/ipv6/firewall/filter` mid-word, and the landing page's first "How it works" card no longer sits 4 px above the other three
+
 ## [1.7.0] - 2026-10-05
 
 ### Added

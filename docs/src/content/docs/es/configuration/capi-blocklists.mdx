@@ -38,7 +38,7 @@ Dejar `origins` vacío acepta todos los orígenes, incluidos `CAPI` y `lists`.
 
 ## Escala esperada
 
-En el entorno de pruebas de rendimiento con un RB5009, la sincronización completa de CAPI sincronizó unas 28.700 decisiones en unos 58 segundos de reloj, con aproximadamente 35-36 segundos de trabajo de adición masiva en RouterOS y un pico de CPU observado de en torno al 39 %.
+En un RB5009UG+S+ con RouterOS 7.24.4 y la configuración por defecto, la lista comunitaria más las decisiones locales, 17.361 entradas el 2026-10-05, entraron en listas vacías en 13,7 segundos de escritura, con alrededor del 31 % de la CPU del router y picos de 100 ms del 45 %. RouterOS anterior a 7.8rc1 tarda unos 24 segundos con la misma carga. [Ajuste de rendimiento](/cs-routeros-bouncer/es/configuration/performance-tuning/#lo-que-le-cuesta-al-router-la-primera-reconciliación) tiene la gráfica.
 
 Tu resultado depende de la versión de RouterOS, el modelo, la carga de tráfico, la latencia de la API y el tamaño de la address-list. El coste se concentra durante la reconciliación de arranque o los cambios grandes de lista; el trabajo normal de ban/unban en streaming es mucho más ligero.
 

@@ -72,9 +72,96 @@ La diferencia entre cache-first (~1-3 ms) y check-first (~400 ms) es la razón p
 
 Para despliegues a escala de CAPI (decenas de miles de entradas), consulta también [Blocklists de CAPI](/cs-routeros-bouncer/es/configuration/capi-blocklists/) y [Ajuste de rendimiento](/cs-routeros-bouncer/es/configuration/performance-tuning/) para orientación sobre el dimensionado de `pool_size`.
 
-## El ciclo de vida completo, muestreado cada 100 ms
+## La primera reconciliación, según el método de adición masiva
 
-La gráfica siguiente es una única captura continua de 70 segundos del RB5009 de
+Tres capturas del RB5009UG+S+ de producción (RouterOS 7.24.4), tomadas el
+2026-10-05 con pocos minutos de diferencia, una por cada forma en que el
+bouncer puede cargar una lista de direcciones. Cada una carga las mismas 17.361
+decisiones —16.861 IPv4 y 500 IPv6, la lista comunitaria de CrowdSec más las
+decisiones locales— en listas vacías: el bouncer parado, las dos listas
+borradas, 60 segundos para estabilizarse y 30 más sin tocar nada, y entonces
+se arrancó el servicio. La CPU y la RAM son la serie de 10 Hz del colector de
+[mikroscope](https://github.com/jmrplens/mikroscope), leída de InfluxDB después
+([cómo](#leer-la-serie-de-10-hz-sin-tocar-el-router)), así que nada tocó el
+router durante una ventana. Los marcadores son las propias líneas del log del
+bouncer, con la marca de tiempo de cuando se escribieron. Las tres gráficas
+comparten ejes, y cada punto es la media de cinco muestras de 100 ms.
+
+- **`/execute`** ejecutó la release 1.7.0 tal como funciona en producción: el
+  `bulk_add_method: script` por defecto y `pool_size: 10`.
+- **`api`** ejecutó la misma release y configuración con `bulk_add_method: api`.
+- **`/system/script` guardado** ejecutó la release 1.6.0, cuyo método script
+  siempre guarda un script. Construye el mismo script y lo ejecuta con el mismo
+  código que la 1.7.0 conserva para RouterOS anterior a 7.8rc1, así que esto es
+  lo que cuesta la 1.7.0 en un router más antiguo.
+
+<ThemeImage
+  src="perf-first-reconcile-execute-light.svg"
+  alt="Gráfica de líneas del porcentaje de CPU y los megabytes de RAM del router desde 20 segundos antes de arrancar el bouncer hasta 59 segundos después: CPU cerca del 8% antes, alrededor del 31% entre el marcador de inicio de escritura a los 4,8 segundos y el de reconciliación completa a los 18,5 segundos, y de vuelta cerca del 8%; la RAM sube unos 18 MiB cuando el bouncer se conecta y termina unos 15 MiB por encima de donde empezó."
+  caption="Lo predeterminado en RouterOS 7.8rc1 y posterior: 17.361 entradas escritas mediante /execute en 13,7 s."
+/>
+
+<ThemeImage
+  src="perf-first-reconcile-stored-light.svg"
+  alt="Gráfica de líneas con los mismos ejes: CPU cerca del 8% antes, alrededor del 33% entre el marcador de inicio de escritura a los 4,9 segundos y el de reconciliación completa a los 29,0 segundos, y de vuelta cerca del 9%; la RAM sube cuando el bouncer se conecta y se mantiene plana durante la importación."
+  caption="Un /system/script guardado por bloque, lo que recibe RouterOS anterior a 7.8: las mismas entradas en 24,1 s."
+/>
+
+<ThemeImage
+  src="perf-first-reconcile-api-light.svg"
+  alt="Gráfica de líneas con los mismos ejes: CPU cerca del 6% antes, alrededor del 35% entre el marcador de inicio de escritura a los 4,9 segundos y el de reconciliación completa a los 27,7 segundos, y de vuelta cerca del 7%; la RAM sube y oscila hasta 34 MiB durante la importación y se asienta unos 16 MiB por encima de donde empezó."
+  caption="bulk_add_method: api con diez sesiones: una llamada a la API por entrada, 22,8 s."
+/>
+
+| Método                                   | Escritura | Arranque a listo | CPU media al escribir | Pico de 100 ms | CPU sobre reposo | RAM pico / después |
+| ---------------------------------------- | --------: | ---------------: | --------------------: | -------------: | ---------------: | -----------------: |
+| `/execute` (por defecto, 7.8rc1+)        |    13,7 s |           18,5 s |                 30,6% |          45,1% |    12,8 núcleo·s |  +23,0 / +15,7 MiB |
+| `/system/script` guardado (antes de 7.8) |    24,1 s |           29,0 s |                 33,2% |          52,7% |    24,3 núcleo·s |  +18,4 / +14,3 MiB |
+| `api`, `pool_size: 10`                   |    22,8 s |           27,7 s |                 35,3% |          47,4% |    26,5 núcleo·s |  +34,2 / +15,9 MiB |
+
+"Escritura" va de la primera entrada a la última. "CPU sobre reposo" es el
+tiempo de los cuatro núcleos por encima de su media en los 20 segundos previos
+al arranque, sumado a lo largo de la escritura, y las columnas de RAM se miden
+contra esos mismos 20 segundos.
+
+Lo que tienen en común las tres es la altura: entre como entre, una importación
+ocupa alrededor de un tercio de los cuatro núcleos de este router. Lo que cambia
+es cuánto dura. `/execute` termina en 13,7 segundos frente a 24,1 de un script
+guardado, así que el router le dedica más o menos la mitad de tiempo de CPU, y
+además un script guardado escribe en el log del router el código completo de
+cada bloque, mientras que `/execute` no escribe nada. `api` es el más lento y el
+más caro aquí: en la propia LAN del router, diez sesiones compiten en vez de
+solaparse, y es el único método cuya RAM se mueve durante la importación, hasta
+34 MiB mientras las sesiones están ocupadas.
+
+Los primeros cinco segundos son iguales en las tres: el bouncer conecta su pool,
+crea sus reglas de firewall y recoge las decisiones de la LAPI antes de escribir
+nada, y la mayor parte del escalón de RAM cae ahí, antes de que exista una sola
+entrada. Después, el router guarda unos 15 MiB más que con el bouncer parado,
+sea cual sea el método que llenó la lista.
+
+El router además ejecuta dos tareas periódicas propias, cada una cada 30
+segundos según su reloj. Suben la CPU entre 20 y 40 puntos durante 0,3 a 1,2
+segundos, hasta unos 3 segundos con la lista llena, y se ejecutan esté o no el
+bouncer: su calendario se leyó de los 90 segundos previos a cada arranque, con
+el bouncer parado. Las gráficas y la tabla las suavizan para que no se lean
+como trabajo del bouncer: dentro de cada uno de esos tramos, cada muestra se
+sustituye por la media del segundo anterior y el posterior, en CPU y en RAM.
+Mientras el bouncer arranca o escribe, el tramo conserva la duración que tenía
+la tarea con el bouncer parado, así que no se suaviza nada de la importación.
+
+Los datos de cada gráfica están en el repositorio junto a ella:
+`docs/src/data/perf-first-reconcile-<método>.csv` (`rel_s,cpu_pct,ram_used_mib`,
+una fila cada 100 ms, la serie sin tocar), su `-markers.csv` y su
+`-background.csv`, los tramos suavizados. `docs/scripts/render-perf-charts.mjs`
+dibuja con ellos los dos temas, con la paleta leída de `theme.css`, y
+`pnpm run charts:check` hace fallar el build de la documentación cuando una
+gráfica del repositorio ya no coincide con sus datos o con la paleta.
+
+## La captura de 2026-08, 22.000 entradas
+
+Antes de las tres anteriores, esta página tenía una sola captura, tomada con el
+script guardado, el único método que tenía entonces el bouncer. La gráfica siguiente es una única captura continua de 70 segundos del RB5009 de
 producción, tomada con un muestreador a 10 Hz que lee `/proc/stat` en el propio
 router (la sección siguiente dice con qué instrumento, y qué lo ha sustituido).
 Cubre los tres estados con los que un operador se encuentra de verdad: el
