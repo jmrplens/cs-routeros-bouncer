@@ -130,8 +130,9 @@ firewall:
   # ────────────────────────────────────────────────────────────────────────────
   # When deny_action is "reject", customize the reject response type.
   # Valid values: icmp-network-unreachable, icmp-host-unreachable,
-  # icmp-port-unreachable, icmp-protocol-unreachable, icmp-network-prohibited,
-  # icmp-host-prohibited, icmp-admin-prohibited, tcp-reset.
+  # icmp-port-unreachable, icmp-protocol-unreachable, icmp-net-prohibited,
+  # icmp-host-prohibited, icmp-admin-prohibited. IPv6 rules get the ICMPv6
+  # equivalent (e.g. icmp-host-unreachable -> icmp-address-unreachable).
   # Empty = RouterOS default behavior.
   # reject_with: ""
   block_output:

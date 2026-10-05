@@ -899,7 +899,7 @@ func (m *Manager) createFilterChainRules(proto, listName, chain string) error {
 	if countingRule, ok := m.processedCountingRule(proto, "filter", chain); ok {
 		rules = append(rules, countingRule)
 	}
-	rules = append(rules, m.filterInputRule(listName, chain, comment))
+	rules = append(rules, m.filterInputRule(proto, listName, chain, comment))
 	return m.ensureFirewallBlock(proto, "filter", chain, rules)
 }
 
@@ -960,7 +960,7 @@ func (m *Manager) inputWhitelistRule(proto, mode, chain string) (rosClient.Firew
 }
 
 // filterInputRule builds the filter-table rule that blocks inbound source addresses.
-func (m *Manager) filterInputRule(listName, chain, comment string) rosClient.FirewallRule {
+func (m *Manager) filterInputRule(proto, listName, chain, comment string) rosClient.FirewallRule {
 	rule := rosClient.FirewallRule{
 		Chain:          chain,
 		Action:         m.cfg.Firewall.DenyAction,
@@ -972,7 +972,7 @@ func (m *Manager) filterInputRule(listName, chain, comment string) rosClient.Fir
 	if m.cfg.Firewall.Filter.ConnectionState != "" {
 		rule.ConnectionState = m.cfg.Firewall.Filter.ConnectionState
 	}
-	m.applyRejectOptions(&rule)
+	m.applyRejectOptions(&rule, proto)
 	m.applyInputRuleOptions(&rule)
 	return rule
 }
@@ -987,7 +987,7 @@ func (m *Manager) outputRule(proto, listName string) rosClient.FirewallRule {
 		Log:            m.cfg.Firewall.Log,
 		LogPrefix:      m.resolveLogPrefix("output"),
 	}
-	m.applyRejectOptions(&rule)
+	m.applyRejectOptions(&rule, proto)
 	m.applyOutputPassthrough(&rule, proto)
 	if m.cfg.Firewall.BlockOutput.Interface != "" {
 		rule.OutInterface = m.cfg.Firewall.BlockOutput.Interface
@@ -998,10 +998,12 @@ func (m *Manager) outputRule(proto, listName string) rosClient.FirewallRule {
 	return rule
 }
 
-// applyRejectOptions adds RouterOS reject-with settings when deny_action is reject.
-func (m *Manager) applyRejectOptions(rule *rosClient.FirewallRule) {
+// applyRejectOptions adds RouterOS reject-with settings when deny_action is
+// reject, in the protocol family's own vocabulary: RouterOS refuses most IPv4
+// values on an IPv6 rule ("does not match any value of reject-with").
+func (m *Manager) applyRejectOptions(rule *rosClient.FirewallRule, proto string) {
 	if m.cfg.Firewall.DenyAction == "reject" && m.cfg.Firewall.RejectWith != "" {
-		rule.RejectWith = m.cfg.Firewall.RejectWith
+		rule.RejectWith = config.RejectWithFor(m.cfg.Firewall.RejectWith, proto)
 	}
 }
 

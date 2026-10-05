@@ -475,7 +475,7 @@ func TestRouterOSCommandValuesAreTrimmedFromEnv(t *testing.T) {
 	t.Setenv("FIREWALL_IPV4_ADDRESS_LIST", " crowdsec ")
 	t.Setenv("FIREWALL_IPV6_ADDRESS_LIST", " crowdsec6 ")
 	t.Setenv("FIREWALL_DENY_ACTION", " reject ")
-	t.Setenv("FIREWALL_REJECT_WITH", " tcp-reset ")
+	t.Setenv("FIREWALL_REJECT_WITH", " icmp-host-unreachable ")
 	t.Setenv("FIREWALL_BLOCK_INPUT_INTERFACE", " ether1-WAN ")
 	t.Setenv("FIREWALL_BLOCK_INPUT_INTERFACE_LIST", " WAN-IN ")
 	t.Setenv("FIREWALL_BLOCK_INPUT_WHITELIST", " trusted-input ")
@@ -510,7 +510,7 @@ func TestRouterOSCommandValuesAreTrimmedFromEnv(t *testing.T) {
 	if cfg.Firewall.DenyAction != "reject" {
 		t.Fatalf("expected trimmed deny action, got %q", cfg.Firewall.DenyAction)
 	}
-	if cfg.Firewall.RejectWith != "tcp-reset" {
+	if cfg.Firewall.RejectWith != "icmp-host-unreachable" {
 		t.Fatalf("expected trimmed reject-with value, got %q", cfg.Firewall.RejectWith)
 	}
 	if cfg.Firewall.BlockInput.Interface != "ether1-WAN" {
@@ -1436,19 +1436,20 @@ func TestBlockInputEmptyIsValid(t *testing.T) {
 func TestRejectWithRequiresRejectAction(t *testing.T) {
 	cfg := validCfg()
 	cfg.Firewall.DenyAction = "drop"
-	cfg.Firewall.RejectWith = "tcp-reset"
+	cfg.Firewall.RejectWith = "icmp-admin-prohibited"
 	if err := cfg.Validate(); err == nil {
 		t.Error("expected error: reject_with requires deny_action=reject")
 	}
 }
 
-// TestRejectWithValidValues verifies that all supported ICMP reject types and
-// tcp-reset are accepted by validation when deny_action is "reject".
+// TestRejectWithValidValues verifies that every RouterOS IPv4 reject-with
+// value, and the old "icmp-network-prohibited" spelling, is accepted by
+// validation when deny_action is "reject".
 func TestRejectWithValidValues(t *testing.T) {
 	valid := []string{
 		"icmp-network-unreachable", "icmp-host-unreachable", "icmp-port-unreachable",
-		"icmp-protocol-unreachable", "icmp-network-prohibited", "icmp-host-prohibited",
-		"icmp-admin-prohibited", "tcp-reset",
+		"icmp-protocol-unreachable", "icmp-net-prohibited", "icmp-network-prohibited",
+		"icmp-host-prohibited", "icmp-admin-prohibited",
 	}
 	for _, v := range valid {
 		t.Run(v, func(t *testing.T) {
@@ -1703,5 +1704,57 @@ func TestBulkAddMethod(t *testing.T) {
 	t.Setenv("MIKROTIK_BULK_ADD_METHOD", "fast")
 	if _, err = Load(""); err == nil || !strings.Contains(err.Error(), "mikrotik.bulk_add_method") {
 		t.Errorf("expected a bulk_add_method validation error, got %v", err)
+	}
+}
+
+// TestRejectWithTCPResetRejected verifies that tcp-reset fails validation with
+// the reason: RouterOS takes it only on a rule with protocol=tcp, and the
+// bouncer's deny rules match every protocol.
+func TestRejectWithTCPResetRejected(t *testing.T) {
+	cfg := validCfg()
+	cfg.Firewall.DenyAction = "reject"
+	cfg.Firewall.RejectWith = "tcp-reset"
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "protocol=tcp") {
+		t.Fatalf("expected tcp-reset to be rejected with its reason, got %v", err)
+	}
+}
+
+// TestRejectWithNetworkProhibitedAlias verifies that the old
+// "icmp-network-prohibited" spelling loads as RouterOS's "icmp-net-prohibited".
+func TestRejectWithNetworkProhibitedAlias(t *testing.T) {
+	setMinimalEnv(t)
+	t.Setenv("FIREWALL_DENY_ACTION", "reject")
+	t.Setenv("FIREWALL_REJECT_WITH", "icmp-network-prohibited")
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Firewall.RejectWith != "icmp-net-prohibited" {
+		t.Fatalf("expected icmp-net-prohibited, got %q", cfg.Firewall.RejectWith)
+	}
+}
+
+// TestRejectWithFor verifies the per-family value: unchanged on IPv4, the
+// RFC 4443 equivalent that RouterOS's IPv6 filter takes on IPv6.
+func TestRejectWithFor(t *testing.T) {
+	cases := []struct{ value, v4, v6 string }{
+		{"icmp-network-unreachable", "icmp-network-unreachable", "icmp-no-route"},
+		{"icmp-host-unreachable", "icmp-host-unreachable", "icmp-address-unreachable"},
+		{"icmp-port-unreachable", "icmp-port-unreachable", "icmp-port-unreachable"},
+		{"icmp-protocol-unreachable", "icmp-protocol-unreachable", "icmp-port-unreachable"},
+		{"icmp-net-prohibited", "icmp-net-prohibited", "icmp-admin-prohibited"},
+		{"icmp-network-prohibited", "icmp-net-prohibited", "icmp-admin-prohibited"},
+		{"icmp-host-prohibited", "icmp-host-prohibited", "icmp-admin-prohibited"},
+		{"icmp-admin-prohibited", "icmp-admin-prohibited", "icmp-admin-prohibited"},
+		{"", "", ""},
+	}
+	for _, c := range cases {
+		if got := RejectWithFor(c.value, "ip"); got != c.v4 {
+			t.Errorf("RejectWithFor(%q, ip) = %q, want %q", c.value, got, c.v4)
+		}
+		if got := RejectWithFor(c.value, "ipv6"); got != c.v6 {
+			t.Errorf("RejectWithFor(%q, ipv6) = %q, want %q", c.value, got, c.v6)
+		}
 	}
 }
