@@ -1,4 +1,4 @@
-## [Unreleased]
+## [1.7.1] - 2026-10-05
 
 ### Added
 
@@ -7,6 +7,7 @@
 
 ### Fixed
 
+- **`crowdsec_bouncer_active_decisions_by_origin` drops an origin whose decisions have all gone** — reconciliation wrote only the origins it still found, so an origin with no decisions left kept its last count on the gauge, and in the per-origin figures the LAPI usage report sends, until the bouncer restarted: after the community blocklist was turned off on the reference router it went on reporting 9,823 CAPI decisions with none on the router. A reconciliation pass that reads every list now replaces the whole per-origin picture (`metrics.ReplaceActiveDecisionsByOrigin`) and zeroes the origins missing from it; a pass that could not read a list still refreshes only the origins it saw, since zeroing on a partial view would retire the origins of the list it skipped
 - **The copy button on code blocks** — since Astro 7.3 renders Markdown with Sätteri, Expressive Code's inline styles arrived as a literal `<style set:html="…">` attribute, an empty style element to the browser, so the button lost its position and its glyph and sat as an empty square at the bottom left of every block (1,336 buttons on the published site, across both themes, desktop and mobile). The styles now go out as Expressive Code's own stylesheet, as in the mikroscope site; the site's code CSS hides the window dots that came back with them and lets Expressive Code alone inset the code, which had been padded twice
 - **Charts and screenshots open full size** — every theme-paired image links to its own file, so a 960 px chart scaled to a phone, its labels near 4 px, can be opened and zoomed
 - **Rule cards on a phone** — the facts grid stacks below 36rem instead of breaking `/ipv6/firewall/filter` mid-word, and the landing page's first "How it works" card no longer sits 4 px above the other three
