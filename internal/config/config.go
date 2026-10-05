@@ -773,7 +773,7 @@ func normalizeRouterOSCommandValues(firewall *FirewallConfig) {
 	firewall.Filter.ConnectionState = normalizeCommaSeparatedValue(firewall.Filter.ConnectionState)
 	firewall.Raw.Chains = trimStringSlice(firewall.Raw.Chains)
 	firewall.DenyAction = strings.TrimSpace(firewall.DenyAction)
-	firewall.RejectWith = strings.TrimSpace(firewall.RejectWith)
+	firewall.RejectWith = normalizeRejectWith(strings.TrimSpace(firewall.RejectWith))
 	firewall.BlockInput.Interface = strings.TrimSpace(firewall.BlockInput.Interface)
 	firewall.BlockInput.InterfaceList = strings.TrimSpace(firewall.BlockInput.InterfaceList)
 	firewall.BlockInput.Whitelist = strings.TrimSpace(firewall.BlockInput.Whitelist)
@@ -1036,22 +1036,52 @@ func (c *Config) validateRejectOptions() error {
 	if c.Firewall.RejectWith != "" && c.Firewall.DenyAction != "reject" {
 		return errors.New("firewall.reject_with requires deny_action='reject'")
 	}
-	if c.Firewall.RejectWith != "" {
-		valid := map[string]bool{
-			"icmp-network-unreachable":  true,
-			"icmp-host-unreachable":     true,
-			"icmp-port-unreachable":     true,
-			"icmp-protocol-unreachable": true,
-			"icmp-network-prohibited":   true,
-			"icmp-host-prohibited":      true,
-			"icmp-admin-prohibited":     true,
-			"tcp-reset":                 true,
-		}
-		if !valid[c.Firewall.RejectWith] {
-			return fmt.Errorf("firewall.reject_with invalid value '%s'", c.Firewall.RejectWith)
-		}
+	rejectWith := normalizeRejectWith(c.Firewall.RejectWith)
+	if rejectWith == "tcp-reset" {
+		return errors.New("firewall.reject_with 'tcp-reset' needs protocol=tcp on the rule, and the bouncer's deny rules match every protocol; use an ICMP value such as 'icmp-admin-prohibited'")
+	}
+	if _, ok := rejectWithIPv6[rejectWith]; rejectWith != "" && !ok {
+		return fmt.Errorf("firewall.reject_with invalid value '%s'", c.Firewall.RejectWith)
 	}
 	return nil
+}
+
+// rejectWithIPv6 maps every accepted firewall.reject_with value, which are the
+// RouterOS IPv4 filter's reject-with values, to the IPv6 filter's value with
+// the same meaning. RouterOS 7.24.4 takes only icmp-admin-prohibited and
+// icmp-port-unreachable in both families; the rest follow the ICMPv6
+// Destination Unreachable codes of RFC 4443 — no route (0), administratively
+// prohibited (1), address unreachable (3), port unreachable (4). ICMPv6 has no
+// "protocol unreachable" code, so that one becomes port unreachable.
+var rejectWithIPv6 = map[string]string{
+	"icmp-network-unreachable":  "icmp-no-route",
+	"icmp-host-unreachable":     "icmp-address-unreachable",
+	"icmp-port-unreachable":     "icmp-port-unreachable",
+	"icmp-protocol-unreachable": "icmp-port-unreachable",
+	"icmp-net-prohibited":       "icmp-admin-prohibited",
+	"icmp-host-prohibited":      "icmp-admin-prohibited",
+	"icmp-admin-prohibited":     "icmp-admin-prohibited",
+}
+
+// normalizeRejectWith maps "icmp-network-prohibited", which this project
+// documented and validated but RouterOS never accepted, to RouterOS's own
+// name for it, "icmp-net-prohibited".
+func normalizeRejectWith(value string) string {
+	if value == "icmp-network-prohibited" {
+		return "icmp-net-prohibited"
+	}
+	return value
+}
+
+// RejectWithFor returns the reject-with value a rule of proto ("ip" or "ipv6")
+// takes for the configured firewall.reject_with: the value itself for IPv4,
+// its IPv6 equivalent for IPv6. An empty value stays empty.
+func RejectWithFor(value, proto string) string {
+	value = normalizeRejectWith(value)
+	if proto == "ipv6" {
+		return rejectWithIPv6[value]
+	}
+	return value
 }
 
 // validateFilterOptions checks optional filter-table match settings.

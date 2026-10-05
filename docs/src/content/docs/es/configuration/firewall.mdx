@@ -351,16 +351,19 @@ Cada opción a continuación muestra la configuración YAML del bouncer y el com
 
 Personaliza el tipo de respuesta ICMP cuando `deny_action` es `reject`. Solo es válido cuando `deny_action: "reject"`.
 
-| Valor                       | Descripción                                                 |
-| --------------------------- | ----------------------------------------------------------- |
-| `icmp-network-unreachable`  | La red es inalcanzable                                      |
-| `icmp-host-unreachable`     | El host es inalcanzable                                     |
-| `icmp-port-unreachable`     | El puerto es inalcanzable                                   |
-| `icmp-protocol-unreachable` | El protocolo es inalcanzable                                |
-| `icmp-network-prohibited`   | Red prohibida administrativamente                           |
-| `icmp-host-prohibited`      | Host prohibido administrativamente                          |
-| `icmp-admin-prohibited`     | Comunicación prohibida administrativamente                  |
-| `tcp-reset`                 | Envía un TCP RST (recomendado para servicios con mucho TCP) |
+Escribe el valor tal como lo llama RouterOS para IPv4. El filtro IPv6 de RouterOS acepta otro conjunto de valores, así que las reglas IPv6 reciben en su lugar el código ICMPv6 con el mismo significado (RFC 4443):
+
+| Valor                       | Las reglas IPv6 reciben    | Descripción                                |
+| --------------------------- | -------------------------- | ------------------------------------------ |
+| `icmp-network-unreachable`  | `icmp-no-route`            | La red es inalcanzable                     |
+| `icmp-host-unreachable`     | `icmp-address-unreachable` | El host es inalcanzable                    |
+| `icmp-port-unreachable`     | `icmp-port-unreachable`    | El puerto es inalcanzable                  |
+| `icmp-protocol-unreachable` | `icmp-port-unreachable`    | El protocolo es inalcanzable               |
+| `icmp-net-prohibited`       | `icmp-admin-prohibited`    | Red prohibida administrativamente          |
+| `icmp-host-prohibited`      | `icmp-admin-prohibited`    | Host prohibido administrativamente         |
+| `icmp-admin-prohibited`     | `icmp-admin-prohibited`    | Comunicación prohibida administrativamente |
+
+`icmp-network-prohibited`, la grafía que listaba antes esta documentación, se sigue cargando como `icmp-net-prohibited`. `tcp-reset` no se acepta: RouterOS solo lo permite en una regla con `protocol=tcp`, y las reglas de denegación del bouncer coinciden con todos los protocolos.
 
 **Configuración del bouncer:**
 
@@ -379,12 +382,13 @@ firewall:
 # Con reject_with="icmp-admin-prohibited":
 /ip/firewall/filter add chain=input action=reject reject-with=icmp-admin-prohibited src-address-list=crowdsec-banned comment="crowdsec-bouncer:filter-input-input-v4 @cs-routeros-bouncer"
 
-# Con reject_with="tcp-reset":
-/ip/firewall/filter add chain=input action=reject reject-with=tcp-reset src-address-list=crowdsec-banned comment="crowdsec-bouncer:filter-input-input-v4 @cs-routeros-bouncer"
+# Con reject_with="icmp-host-unreachable", cada familia recibe su propio valor:
+/ip/firewall/filter add chain=input action=reject reject-with=icmp-host-unreachable src-address-list=crowdsec-banned comment="crowdsec-bouncer:filter-input-input-v4 @cs-routeros-bouncer"
+/ipv6/firewall/filter add chain=input action=reject reject-with=icmp-address-unreachable src-address-list=crowdsec6-banned comment="crowdsec-bouncer:filter-input-input-v6 @cs-routeros-bouncer"
 ```
 
 :::tip
-Usa `tcp-reset` si principalmente quieres rechazar conexiones TCP (fuerza bruta SSH, escáneres web). Usa `icmp-admin-prohibited` para una respuesta genérica de "acceso denegado" que funciona con cualquier protocolo.
+Usa `icmp-admin-prohibited` para una respuesta genérica de "acceso denegado" que funciona con cualquier protocolo. Es uno de los dos valores, junto con `icmp-port-unreachable`, que se escriben igual en las dos familias.
 :::
 
 ---
@@ -653,7 +657,7 @@ Aquí tienes una configuración completa que combina varias opciones de personal
 ```yaml
 firewall:
   deny_action: "reject"
-  reject_with: "tcp-reset"
+  reject_with: "icmp-admin-prohibited"
   log: true
   log_prefix: "crowdsec"
   rule_placement: "top"
@@ -686,18 +690,18 @@ Es un ejemplo trabajado con whitelist, `forward`, `output` y logging activados �
 ```routeros
 # Filter — cadena input (whitelist + reject con connection-state):
 /ip/firewall/filter add chain=input action=accept src-address-list=crowdsec-whitelist in-interface=ether1 connection-state=new log=yes log-prefix="cs-filter" comment="crowdsec-bouncer:filter-input-whitelist-v4 @cs-routeros-bouncer"
-/ip/firewall/filter add chain=input action=reject reject-with=tcp-reset src-address-list=crowdsec-banned in-interface=ether1 connection-state=new log=yes log-prefix="cs-filter" comment="crowdsec-bouncer:filter-input-input-v4 @cs-routeros-bouncer"
+/ip/firewall/filter add chain=input action=reject reject-with=icmp-admin-prohibited src-address-list=crowdsec-banned in-interface=ether1 connection-state=new log=yes log-prefix="cs-filter" comment="crowdsec-bouncer:filter-input-input-v4 @cs-routeros-bouncer"
 
 # Filter — cadena forward (mismo patrón):
 /ip/firewall/filter add chain=forward action=accept src-address-list=crowdsec-whitelist in-interface=ether1 connection-state=new log=yes log-prefix="cs-filter" comment="crowdsec-bouncer:filter-forward-whitelist-v4 @cs-routeros-bouncer"
-/ip/firewall/filter add chain=forward action=reject reject-with=tcp-reset src-address-list=crowdsec-banned in-interface=ether1 connection-state=new log=yes log-prefix="cs-filter" comment="crowdsec-bouncer:filter-forward-input-v4 @cs-routeros-bouncer"
+/ip/firewall/filter add chain=forward action=reject reject-with=icmp-admin-prohibited src-address-list=crowdsec-banned in-interface=ether1 connection-state=new log=yes log-prefix="cs-filter" comment="crowdsec-bouncer:filter-forward-input-v4 @cs-routeros-bouncer"
 
 # Raw — cadena prerouting (sin connection-state, sin reject-with):
 /ip/firewall/raw add chain=prerouting action=accept src-address-list=crowdsec-whitelist in-interface=ether1 log=yes log-prefix="cs-raw" comment="crowdsec-bouncer:raw-prerouting-whitelist-v4 @cs-routeros-bouncer"
 /ip/firewall/raw add chain=prerouting action=drop src-address-list=crowdsec-banned in-interface=ether1 log=yes log-prefix="cs-raw" comment="crowdsec-bouncer:raw-prerouting-input-v4 @cs-routeros-bouncer"
 
 # Filter — cadena output (con lista de passthrough):
-/ip/firewall/filter add chain=output action=reject reject-with=tcp-reset dst-address-list=crowdsec-banned out-interface=ether1 src-address-list=!trusted-clients-v4 log=yes log-prefix="cs-output" comment="crowdsec-bouncer:filter-output-output-v4 @cs-routeros-bouncer"
+/ip/firewall/filter add chain=output action=reject reject-with=icmp-admin-prohibited dst-address-list=crowdsec-banned out-interface=ether1 src-address-list=!trusted-clients-v4 log=yes log-prefix="cs-output" comment="crowdsec-bouncer:filter-output-output-v4 @cs-routeros-bouncer"
 ```
 
 </details>
