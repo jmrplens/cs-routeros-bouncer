@@ -97,12 +97,12 @@ func TestBulkAddAddresses_ExecuteErrorRetriesEntryByEntry(t *testing.T) {
 }
 
 // TestBulkAddAddresses_ExecuteRefusedUsesStoredScript verifies that a router
-// refusing /execute gets the stored /system/script for that chunk and for every
+// without as-string gets the stored /system/script for that chunk and for every
 // later one.
 func TestBulkAddAddresses_ExecuteRefusedUsesStoredScript(t *testing.T) {
 	mc := newMockConn()
 	c := newExecuteTestClient(mc)
-	mc.pushError(newDeviceError("unknown parameter"))
+	mc.pushError(newDeviceError("unknown parameter as-string"))
 	mc.pushReply(emptyReply())                                    // find existing script
 	mc.pushReply(doneReply(map[string]string{"ret": "*SCRIPT1"})) // add script
 	mc.pushReply(emptyReply())                                    // run script
@@ -122,7 +122,7 @@ func TestBulkAddAddresses_ExecuteRefusedUsesStoredScript(t *testing.T) {
 	if _, _, err := c.BulkAddAddresses("ip", "list", bulkEntries(1)); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got := mc.calls[5][0]; got != "/system/script/print" {
+	if mc.calls[5][0] != "/system/script/print" {
 		t.Fatalf("expected the next chunk to skip /execute, got %v", mc.calls[5])
 	}
 }
@@ -215,5 +215,46 @@ func TestBulkAddAddresses_ExecuteOverSizeUsesStoredScript(t *testing.T) {
 	}
 	if !c.useExecute {
 		t.Fatal("an oversized chunk must not switch /execute off")
+	}
+}
+
+// TestBulkAddAddresses_ExecuteOtherTrapKeepsExecute verifies that a trap other
+// than "the router lacks /execute" fails only that chunk, which is retried
+// entry by entry, and that the next chunk still goes through /execute.
+func TestBulkAddAddresses_ExecuteOtherTrapKeepsExecute(t *testing.T) {
+	mc := newMockConn()
+	c := newExecuteTestClient(mc)
+	mc.pushError(newDeviceError("not enough permissions (9)"))
+	mc.pushReply(doneReply(map[string]string{"ret": "*A1"}))
+
+	if added, _, err := c.BulkAddAddresses("ip", "list", bulkEntries(1)); err != nil || added != 1 {
+		t.Fatalf("expected the retry to add the entry, got %d, %v", added, err)
+	}
+	if !c.useExecute || mc.calls[1][0] != "/ip/firewall/address-list/add" {
+		t.Fatalf("expected an entry-by-entry retry with /execute kept, got %v", mc.calls)
+	}
+
+	mc.pushReply(doneReply(map[string]string{"ret": "1"}))
+	if _, _, err := c.BulkAddAddresses("ip", "list", bulkEntries(1)); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if mc.calls[2][0] != "/execute" {
+		t.Fatalf("expected the next chunk to use /execute again, got %v", mc.calls[2])
+	}
+}
+
+// TestExecuteUnsupported verifies which RouterOS traps mean the router lacks
+// /execute as-string.
+func TestExecuteUnsupported(t *testing.T) {
+	cases := map[string]bool{
+		"unknown parameter as-string": true,
+		"no such command":             true,
+		"not enough permissions (9)":  false,
+		"failure: busy":               false,
+	}
+	for message, want := range cases {
+		if got := executeUnsupported(newDeviceError(message)); got != want {
+			t.Errorf("executeUnsupported(%q) = %v, want %v", message, got, want)
+		}
 	}
 }

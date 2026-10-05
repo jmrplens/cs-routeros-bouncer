@@ -182,28 +182,28 @@ func buildBulkAddScript(proto, list string, entries []BulkEntry) string {
 	return sb.String()
 }
 
-// errExecuteRejected marks a device error from /execute itself, as opposed to
-// an error inside the script: the router does not take the command.
-var errExecuteRejected = errors.New("routeros rejected /execute as-string")
+// errExecuteUnsupported marks a router without /execute or its as-string
+// parameter, as opposed to an error inside the script or any other trap.
+var errExecuteUnsupported = errors.New("routeros does not support /execute as-string")
 
 // runChunk runs one bulk-add script. On RouterOS 7.8rc1 and later it goes
 // through /execute with as-string: a single API call that runs the script
 // synchronously and hands back its :put output, so the count is exact and no
 // script is stored — nothing reaches the configuration or the router log,
 // where a stored script's creation is logged with its whole source. Older
-// routers, a script over the /execute size limit, and a router that refuses
-// /execute get the stored /system/script of runBulkScript; a refusal is
-// remembered for the rest of the client's life.
+// routers, a script over the /execute size limit, and a router that turns out
+// to lack /execute as-string get the stored /system/script of runBulkScript;
+// the last is remembered for the rest of the client's life.
 func (c *Client) runChunk(source string) (int, error) {
 	if len(source) <= executeMaxScriptBytes && c.executeSupported() {
 		n, err := c.runExecuteScript(source)
-		if !errors.Is(err, errExecuteRejected) {
+		if !errors.Is(err, errExecuteUnsupported) {
 			return n, err
 		}
 		c.runnerMu.Lock()
 		c.useExecute = false
 		c.runnerMu.Unlock()
-		log.Warn().Err(err).Msg("RouterOS refused /execute as-string; bulk adds use a stored /system/script from now on")
+		log.Warn().Err(err).Msg("RouterOS lacks /execute as-string; bulk adds use a stored /system/script from now on")
 	}
 	return c.runBulkScript(source)
 }
@@ -257,16 +257,17 @@ func executeAsStringSupported(version string) bool {
 }
 
 // runExecuteScript runs source through /execute with as-string and returns
-// the count its final :put printed. A device error on the command itself is
-// errExecuteRejected; anything but a number in the output is an error inside
-// the script — an :error comes back there as text, not as an API error — and
-// fails the chunk so BulkAddAddresses retries it entry by entry.
+// the count its final :put printed. A device error saying the router lacks
+// the command or its parameter is errExecuteUnsupported; any other error, and
+// anything but a number in the output, fails only this chunk, which
+// BulkAddAddresses then retries entry by entry. An :error or a syntax error
+// inside the script comes back as output text, not as an API error.
 func (c *Client) runExecuteScript(source string) (int, error) {
 	start := time.Now()
 	reply, err := c.Run("/execute", "=script="+source, "=as-string=")
 	if err != nil {
-		if isDeviceError(err) {
-			return 0, fmt.Errorf("%w: %w", errExecuteRejected, err)
+		if isDeviceError(err) && executeUnsupported(err) {
+			return 0, fmt.Errorf("%w: %w", errExecuteUnsupported, err)
 		}
 		return 0, fmt.Errorf("execute bulk script: %w", err)
 	}
@@ -283,6 +284,16 @@ func (c *Client) runExecuteScript(source string) (int, error) {
 	}
 	log.Debug().Dur("elapsed", time.Since(start)).Int("added", n).Msg("bulk script executed")
 	return n, nil
+}
+
+// executeUnsupported reports whether a device error from /execute says the
+// router does not have it. RouterOS 7.24.4 answers an unknown parameter with
+// "unknown parameter <name>" and an unknown command with "no such command";
+// any other trap, "not enough permissions (9)" among them, is about this call
+// and leaves /execute in use.
+func executeUnsupported(err error) bool {
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "unknown parameter") || strings.Contains(msg, "no such command")
 }
 
 // runBulkScript creates, executes, and cleans up a temporary RouterOS script.
