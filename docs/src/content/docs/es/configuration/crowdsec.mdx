@@ -35,7 +35,7 @@ sudo cscli bouncers add cs-routeros-bouncer
 
 <ConfigOption path="crowdsec.retry_initial_connect" />
 
-Cuando está habilitado, el bouncer reintenta la conexión a la LAPI en el arranque si la conexión inicial falla. Útil cuando el bouncer arranca antes de que CrowdSec esté listo.
+Cuando está habilitado, el bouncer reintenta la conexión a la LAPI en el arranque si la conexión inicial falla, cada 10 s, y registra por qué falló cada intento. Útil cuando el bouncer arranca antes de que CrowdSec esté listo. Hasta que la LAPI responde, la primera reconciliación espera y las address-lists del router se dejan como están, así que las entradas de la ejecución anterior siguen bloqueando. Cuando está deshabilitado, una primera conexión fallida hace que el bouncer termine, y al salir retira sus reglas de firewall.
 
 ## Sondeo
 

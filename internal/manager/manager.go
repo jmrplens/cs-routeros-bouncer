@@ -41,6 +41,7 @@ var (
 	connectRetryTimeout              = 3 * time.Minute
 	initialDecisionCollectionTimeout = 10 * time.Second
 	initialDecisionIdleTimeout       = 3 * time.Second
+	initialDecisionWaitLogInterval   = 30 * time.Second
 )
 
 // Manager orchestrates the CrowdSec stream and MikroTik firewall operations.
@@ -176,7 +177,7 @@ func (m *Manager) Start(ctx context.Context) error {
 	m.startRouterOSMetrics(ctx)
 
 	banCh, deleteCh, errCh := m.startCrowdSecStream(ctx)
-	initialBans, initialDeletes, err := m.collectInitialDecisions(ctx, banCh, deleteCh, errCh)
+	initialBans, initialDeletes, err := m.collectInitialDecisions(ctx, banCh, deleteCh, errCh, m.stream.Synced())
 	if err != nil {
 		return err
 	}
@@ -342,12 +343,22 @@ func (m *Manager) startCrowdSecStream(ctx context.Context) (banCh, deleteCh chan
 }
 
 // collectInitialDecisions drains the startup decision burst before reconciliation.
-func (m *Manager) collectInitialDecisions(ctx context.Context, banCh, deleteCh <-chan *crowdsec.Decision, errCh <-chan error) ([]*crowdsec.Decision, map[string]struct{}, error) {
+//
+// The burst ends when no decision has arrived for a while, but only once the
+// LAPI has answered (synced). Until then an empty set means "no answer", not
+// "no decisions": with retry_initial_connect the stream retries an unreachable
+// LAPI silently, and reconciling on that empty set would remove every entry the
+// bouncer owns, leaving the router unprotected until the LAPI came back. So it
+// waits, logs, and leaves the address lists as they are.
+func (m *Manager) collectInitialDecisions(ctx context.Context, banCh, deleteCh <-chan *crowdsec.Decision, errCh <-chan error, synced <-chan struct{}) ([]*crowdsec.Decision, map[string]struct{}, error) {
 	m.logger.Info().Msg("bouncer started, collecting initial decisions for reconciliation")
-	var initialBans []*crowdsec.Decision
-	initialDeletes := make(map[string]struct{})
+	start := time.Now()
+	burst := initialBurst{deletes: make(map[string]struct{})}
 	idleTimeout := time.NewTimer(initialDecisionCollectionTimeout)
 	defer idleTimeout.Stop()
+	// waitingSynced is non-nil only while waiting for a late first answer, so
+	// the select below wakes on it then and ignores it otherwise.
+	var waitingSynced <-chan struct{}
 
 	resetIdleTimer := func() {
 		if !idleTimeout.Stop() {
@@ -359,7 +370,6 @@ func (m *Manager) collectInitialDecisions(ctx context.Context, banCh, deleteCh <
 		idleTimeout.Reset(initialDecisionIdleTimeout)
 	}
 
-collectLoop:
 	for {
 		select {
 		case <-ctx.Done():
@@ -367,19 +377,69 @@ collectLoop:
 		case streamErr := <-errCh:
 			return nil, nil, fmt.Errorf("CrowdSec stream error: %w", streamErr)
 		case d := <-banCh:
-			initialBans = append(initialBans, d)
+			burst.ban(d)
 			resetIdleTimer()
 		case d := <-deleteCh:
-			if d != nil {
-				addr := rosClient.NormalizeAddress(d.Value, d.Proto)
-				initialDeletes[addr] = struct{}{}
-			}
+			burst.unban(d)
 			resetIdleTimer()
 		case <-idleTimeout.C:
-			break collectLoop
+			if isClosed(synced) {
+				// The stream closes synced after queueing the whole answer, so
+				// whatever the timer won the race against is still buffered.
+				burst.drain(banCh, deleteCh)
+				return burst.bans, burst.deletes, nil
+			}
+			m.logger.Warn().
+				Dur("waited", time.Since(start)).
+				Msg("no first answer from the CrowdSec LAPI yet (unreachable, or refusing the API key or certificate: the go-cs-bouncer 'failed to connect to LAPI' error says which): the first reconciliation waits for it, and the address lists on the router are left as they are")
+			waitingSynced = synced
+			idleTimeout.Reset(initialDecisionWaitLogInterval)
+		case <-waitingSynced:
+			m.logger.Info().Dur("waited", time.Since(start)).Msg("the CrowdSec LAPI answered, collecting its decisions")
+			waitingSynced = nil
+			resetIdleTimer()
 		}
 	}
-	return initialBans, initialDeletes, nil
+}
+
+// initialBurst accumulates the startup decisions.
+type initialBurst struct {
+	bans    []*crowdsec.Decision
+	deletes map[string]struct{}
+}
+
+func (b *initialBurst) ban(d *crowdsec.Decision) {
+	b.bans = append(b.bans, d)
+}
+
+func (b *initialBurst) unban(d *crowdsec.Decision) {
+	if d != nil {
+		b.deletes[rosClient.NormalizeAddress(d.Value, d.Proto)] = struct{}{}
+	}
+}
+
+// drain takes whatever is already queued on either channel, without waiting.
+func (b *initialBurst) drain(banCh, deleteCh <-chan *crowdsec.Decision) {
+	for {
+		select {
+		case d := <-banCh:
+			b.ban(d)
+		case d := <-deleteCh:
+			b.unban(d)
+		default:
+			return
+		}
+	}
+}
+
+// isClosed reports whether ch is closed, without blocking.
+func isClosed(ch <-chan struct{}) bool {
+	select {
+	case <-ch:
+		return true
+	default:
+		return false
+	}
 }
 
 // logInitialDecisions records the startup reconciliation input sizes.

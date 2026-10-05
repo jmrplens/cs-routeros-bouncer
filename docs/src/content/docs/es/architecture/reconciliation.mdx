@@ -26,6 +26,8 @@ Por defecto, la reconciliación se ejecuta al arrancar y después cada `15m`. Co
 
    Obtener todas las decisiones activas de CrowdSec y todas las entradas de la address-list de MikroTik.
 
+   Al arrancar, las decisiones son la primera respuesta del stream de CrowdSec, así que la primera reconciliación espera a que la LAPI haya respondido. Una LAPI inalcanzable no produce ninguna decisión, y reconciliar sobre ese conjunto vacío eliminaría todas las entradas del bouncer; en su lugar, el bouncer registra un aviso cada 30 s y deja las listas del router como están. Una pasada periódica cuya petición de snapshot falla se omite por el mismo motivo.
+
 2. **Comparar**
 
    Comparar ambos conjuntos para determinar qué IPs hay que añadir y cuáles eliminar.

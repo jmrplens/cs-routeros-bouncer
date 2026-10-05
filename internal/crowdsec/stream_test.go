@@ -818,3 +818,49 @@ func TestRunDeleteDuringContextCancel(t *testing.T) {
 		t.Fatal("timed out")
 	}
 }
+
+// TestRunSyncedAfterFirstAnswer verifies that Synced stays open until the LAPI
+// has answered, closes on the first answer even when it carries no decisions,
+// and is closed only after that answer's decisions have been forwarded.
+func TestRunSyncedAfterFirstAnswer(t *testing.T) {
+	mb := NewMockBouncer()
+	s := newTestStream(mb)
+	banCh := make(chan *Decision, 10)
+	deleteCh := make(chan *Decision, 10)
+	go func() { _ = s.Run(t.Context(), banCh, deleteCh) }()
+
+	select {
+	case <-s.Synced():
+		t.Fatal("Synced closed before the LAPI answered")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	mb.DecisionCh <- &models.DecisionsStreamResponse{
+		New: models.GetDecisionsResponse{
+			{Value: new("1.2.3.4"), Type: new("ban"), Duration: new("4h"), Origin: new("crowdsec"), Scenario: new("ssh-bf")},
+		},
+	}
+	select {
+	case <-s.Synced():
+	case <-time.After(2 * time.Second):
+		t.Fatal("Synced not closed after the first answer")
+	}
+	if len(banCh) != 1 {
+		t.Fatalf("the first answer's decision should be forwarded before Synced closes, %d queued", len(banCh))
+	}
+}
+
+// TestRunSyncedOnEmptyAnswer verifies that an answer with no decisions still
+// counts as the LAPI having answered.
+func TestRunSyncedOnEmptyAnswer(t *testing.T) {
+	mb := NewMockBouncer()
+	s := newTestStream(mb)
+	go func() { _ = s.Run(t.Context(), make(chan *Decision, 1), make(chan *Decision, 1)) }()
+
+	mb.DecisionCh <- &models.DecisionsStreamResponse{}
+	select {
+	case <-s.Synced():
+	case <-time.After(2 * time.Second):
+		t.Fatal("Synced not closed after an empty answer")
+	}
+}

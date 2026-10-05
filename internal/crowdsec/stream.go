@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/crowdsecurity/crowdsec/pkg/apiclient"
@@ -41,6 +42,13 @@ type Stream struct {
 	// enforcedTypes is resolved once at construction; parseDecision consults it
 	// for every decision on both the live stream and the snapshot path.
 	enforcedTypes map[string]struct{}
+
+	// synced is closed once the first answer from the LAPI, empty or not, has
+	// been forwarded in full. It is created on first use, so a Stream built as a
+	// literal works too.
+	synced     chan struct{}
+	syncedInit sync.Once
+	syncedOnce sync.Once
 }
 
 // defaultDecisionType is the only type CrowdSec defines as a constant, and the
@@ -228,8 +236,28 @@ func (s *Stream) Run(ctx context.Context, banCh, deleteCh chan<- *Decision) erro
 			if !s.forwardBatch(ctx, decisions.Deleted, false, deleteCh) {
 				return nil
 			}
+			s.markSynced()
 		}
 	}
+}
+
+// Synced returns a channel that is closed once the first answer from the LAPI
+// has been forwarded in full, even when it carried no decisions. Until then the
+// bouncer cannot tell "the LAPI has no decisions" from "the LAPI has not
+// answered": with retry_initial_connect, go-cs-bouncer retries an unreachable
+// LAPI silently and sends nothing.
+func (s *Stream) Synced() <-chan struct{} {
+	return s.syncedChan()
+}
+
+func (s *Stream) syncedChan() chan struct{} {
+	s.syncedInit.Do(func() { s.synced = make(chan struct{}) })
+	return s.synced
+}
+
+func (s *Stream) markSynced() {
+	ch := s.syncedChan()
+	s.syncedOnce.Do(func() { close(ch) })
 }
 
 // forwardBatch parses a decision batch, logs every entry, and forwards it to ch.

@@ -101,6 +101,10 @@ El bouncer no puede alcanzar la Local API de CrowdSec.
 
 </Steps>
 
+:::note[La LAPI no responde cuando arranca el bouncer]
+Con `crowdsec.retry_initial_connect: true`, el valor por defecto, el bouncer sigue reintentando cada 10 s, registra por qué falló cada intento (`failed to connect to LAPI, retrying in 10s: …`: una dirección inalcanzable, o una clave de API o un certificado rechazados) y cada 30 s registra que la primera reconciliación sigue esperando. Sus reglas de firewall ya están puestas, así que las entradas que quedaron de la ejecución anterior siguen bloqueando hasta que la LAPI responde. Con `retry_initial_connect: false`, en cambio, termina y al salir retira sus reglas de firewall: las entradas dejan de bloquear hasta que un reinicio encuentre la LAPI disponible.
+:::
+
 ### ¿Por qué el bouncer no recibe decisiones de CrowdSec?
 
 :::caution[El bouncer arranca pero no se banea ninguna IP]
