@@ -3,6 +3,8 @@ title: Performance Tuning
 description: "Tune cs-routeros-bouncer for your router: connection pool sizing, bulk-add behavior, timeouts, reconciliation cadence, and a baseline example."
 ---
 
+import ThemeImage from "components/ThemeImage.astro";
+
 Most deployments work well with the defaults. Tune these settings when startup reconciliation handles large CAPI lists, a slow router times out, or you need predictable restart windows.
 
 ## Connection pool
@@ -42,6 +44,30 @@ Sweeping it against an RB5009 with the stored script — five interleaved rounds
 What is stable is the shape: inserting a row costs ~1.2–1.3 ms and dominates everything else, so a 22,000-entry import spends roughly 27 s inserting against somewhere between 0.2 s and 2.3 s of chunk scaffolding. There is no reason to change this value, and no measurement here that would tell you what to change it to.
 
 If a bulk script fails, the bouncer logs a warning and falls back to individual adds for that chunk. Duplicate entries are skipped or refreshed without reconnecting the API session.
+
+### What the first reconciliation costs the router
+
+<ThemeImage
+  src="perf-first-reconcile-execute-light.svg"
+  alt="Line chart of router CPU percentage and RAM megabytes from 20 seconds before the bouncer starts to 59 seconds after: CPU near 7% before, about 31% between the writes-begin marker at 4.8 seconds and the reconciliation-complete marker at 18.5 seconds, then back near 8%; RAM steps up about 18 MiB when the bouncer connects and ends about 16 MiB above where it started."
+  caption="The defaults on an RB5009UG+S+ with RouterOS 7.24.4, loading 17,361 entries, the CrowdSec community blocklist included."
+/>
+
+With the defaults, filling empty lists with 17,361 entries holds about 31% of
+this router's four cores for 13.7 seconds, with a 100 ms peak of 45%, and the
+bouncer is handling live decisions 18.5 seconds after it starts. Most of the
+RAM step comes when it connects, before the first entry; afterwards the router
+holds about 16 MiB more than without the bouncer. That is the cost of a start
+with empty lists, or of a pass that has to write much of the list again; a
+later pass that finds nothing missing still reads both lists back, about
+1.5 seconds of router work at this size every `reconciliation_interval` (see
+[below](#reconciliation-interval)).
+
+Through the stored scripts RouterOS before 7.8rc1 gets, the same entries took
+24.1 seconds on this router, at about twice the CPU time, and
+`bulk_add_method: api` took
+22.8 seconds over ten sessions. [Benchmarking](/cs-routeros-bouncer/development/benchmarking/#the-first-reconciliation-by-bulk-add-method)
+has the three side by side and how they were measured.
 
 ## Timeouts
 

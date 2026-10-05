@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 440" role="img" aria-label="/execute, the default on RouterOS 7.8 and later">
+<rect width="960" height="440" fill="#ffffff"/>
+<text x="64" y="24" font-family="ui-sans-serif,system-ui,sans-serif" font-size="16" font-weight="600" fill="#14191d">/execute, the default on RouterOS 7.8 and later</text>
+<line x1="64" y1="382.0" x2="888" y2="382.0" stroke="#dce4e7" stroke-width="1"/>
+<text x="56" y="386.0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="end" fill="#4d4a98">0</text>
+<line x1="64" y1="320.4" x2="888" y2="320.4" stroke="#dce4e7" stroke-width="1"/>
+<text x="56" y="324.4" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="end" fill="#4d4a98">10</text>
+<line x1="64" y1="258.8" x2="888" y2="258.8" stroke="#dce4e7" stroke-width="1"/>
+<text x="56" y="262.8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="end" fill="#4d4a98">20</text>
+<line x1="64" y1="197.2" x2="888" y2="197.2" stroke="#dce4e7" stroke-width="1"/>
+<text x="56" y="201.2" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="end" fill="#4d4a98">30</text>
+<line x1="64" y1="135.6" x2="888" y2="135.6" stroke="#dce4e7" stroke-width="1"/>
+<text x="56" y="139.6" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="end" fill="#4d4a98">40</text>
+<line x1="64" y1="74.0" x2="888" y2="74.0" stroke="#dce4e7" stroke-width="1"/>
+<text x="56" y="78.0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="end" fill="#4d4a98">50</text>
+<text x="896" y="386.0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#906004">280</text>
+<text x="896" y="342.0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#906004">285</text>
+<text x="896" y="298.0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#906004">290</text>
+<text x="896" y="254.0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#906004">295</text>
+<text x="896" y="210.0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#906004">300</text>
+<text x="896" y="166.0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#906004">305</text>
+<text x="896" y="122.0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#906004">310</text>
+<text x="896" y="78.0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" fill="#906004">315</text>
+<text x="64.0" y="400" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#556069">-20</text>
+<text x="168.3" y="400" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#556069">-10</text>
+<text x="272.6" y="400" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#556069">0</text>
+<text x="376.9" y="400" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#556069">10</text>
+<text x="481.2" y="400" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#556069">20</text>
+<text x="585.5" y="400" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#556069">30</text>
+<text x="689.8" y="400" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#556069">40</text>
+<text x="794.1" y="400" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#556069">50</text>
+<text x="16" y="228.0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12" transform="rotate(-90 16 228.0)" text-anchor="middle" fill="#4d4a98">CPU %</text>
+<text x="942" y="228.0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12" transform="rotate(90 942 228.0)" text-anchor="middle" fill="#906004">RAM used, MiB</text>
+<text x="476.0" y="424" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12" text-anchor="middle" fill="#556069">seconds since the bouncer started</text>
+<line x1="272.6" y1="74" x2="272.6" y2="382" stroke="#556069" stroke-width="1.5" stroke-dasharray="5 4"/>
+<rect x="223.2" y="54" width="98.8" height="16" rx="4" fill="#556069"/>
+<text x="272.6" y="66" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#ffffff">bouncer starts</text>
+<line x1="322.7" y1="74" x2="322.7" y2="382" stroke="#b3352f" stroke-width="1.5" stroke-dasharray="5 4"/>
+<rect x="279.5" y="34" width="86.4" height="16" rx="4" fill="#b3352f"/>
+<text x="322.7" y="46" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#ffffff">writes begin</text>
+<line x1="465.6" y1="74" x2="465.6" y2="382" stroke="#257a38" stroke-width="1.5" stroke-dasharray="5 4"/>
+<rect x="388.3" y="54" width="154.6" height="16" rx="4" fill="#257a38"/>
+<text x="465.6" y="66" font-family="ui-sans-serif,system-ui,sans-serif" font-size="11" text-anchor="middle" fill="#ffffff">reconciliation complete</text>
+<path d="M67.1,365.2L72.3,364.6L77.6,364.6L82.8,364.6L88.0,364.3L93.2,364.4L98.4,364.4L103.6,364.4L108.9,364.4L114.1,364.4L119.3,364.4L124.5,364.4L129.7,364.4L134.9,364.4L140.1,365.5L145.4,366.2L150.6,366.2L155.8,366.2L161.0,366.2L166.2,366.2L171.4,366.2L176.6,366.2L181.9,366.2L187.1,366.2L192.3,366.2L197.5,366.2L202.7,366.2L207.9,366.2L213.2,366.2L218.4,366.2L223.6,366.2L228.8,366.2L234.0,366.2L239.2,366.2L244.4,366.5L249.7,367.0L254.9,367.0L260.1,367.0L265.3,367.0L270.5,363.5L275.7,308.8L281.0,220.1L286.2,201.8L291.4,201.4L296.6,200.6L301.8,200.6L307.0,200.6L312.2,198.6L317.5,198.1L322.7,188.0L327.9,177.8L333.1,177.3L338.3,177.3L343.5,177.0L348.7,194.9L354.0,200.7L359.2,200.7L364.4,200.7L369.6,204.2L374.8,197.2L380.0,197.0L385.3,192.1L390.5,176.7L395.7,185.8L400.9,199.7L406.1,199.8L411.3,199.7L416.5,196.8L421.8,203.4L427.0,203.2L432.2,199.1L437.4,199.8L442.6,200.5L447.8,200.7L453.1,200.7L458.3,201.1L463.5,211.3L468.7,221.8L473.9,221.8L479.1,221.8L484.3,221.8L489.6,221.8L494.8,221.8L500.0,221.8L505.2,221.8L510.4,221.8L515.6,221.8L520.9,221.8L526.1,222.0L531.3,222.7L536.5,222.7L541.7,222.7L546.9,222.7L552.1,222.7L557.4,222.7L562.6,222.7L567.8,222.7L573.0,222.7L578.2,222.7L583.4,222.7L588.6,222.7L593.9,222.7L599.1,222.7L604.3,223.3L609.5,223.7L614.7,223.7L619.9,223.7L625.2,223.7L630.4,223.7L635.6,223.7L640.8,224.9L646.0,224.5L651.2,224.5L656.4,224.5L661.7,224.8L666.9,226.2L672.1,226.4L677.3,227.1L682.5,227.1L687.7,227.1L693.0,226.3L698.2,225.8L703.4,225.8L708.6,225.8L713.8,224.5L719.0,224.5L724.2,224.5L729.5,224.5L734.7,224.5L739.9,224.5L745.1,224.5L750.3,224.5L755.5,224.5L760.7,224.5L766.0,226.1L771.2,227.1L776.4,227.1L781.6,227.1L786.8,227.1L792.0,227.1L797.3,227.1L802.5,227.1L807.7,227.1L812.9,227.1L818.1,227.1L823.3,227.1L828.5,227.1L833.8,227.1L839.0,227.1L844.2,227.1L849.4,227.1L854.6,227.1L859.8,227.1L865.1,227.1L870.3,227.1L875.5,227.1L880.7,227.1L885.9,227.1" fill="none" stroke="#906004" stroke-width="2.0" stroke-linejoin="round"/>
+<path d="M67.1,341.2L72.3,329.3L77.6,329.3L82.8,329.3L88.0,328.3L93.2,314.1L98.4,342.0L103.6,323.6L108.9,357.4L114.1,308.0L119.3,326.4L124.5,320.0L129.7,348.1L134.9,348.0L140.1,332.8L145.4,345.2L150.6,344.9L155.8,348.2L161.0,329.8L166.2,357.2L171.4,332.8L176.6,345.0L181.9,341.8L187.1,345.2L192.3,295.9L197.5,348.0L202.7,329.4L207.9,338.9L213.2,363.5L218.4,335.7L223.6,369.7L228.8,332.7L234.0,360.4L239.2,329.6L244.4,360.4L249.7,310.9L254.9,357.2L260.1,320.4L265.3,360.4L270.5,326.6L275.7,292.8L281.0,246.1L286.2,304.6L291.4,317.7L296.6,321.1L301.8,321.1L307.0,321.1L312.2,338.9L317.5,332.8L322.7,280.5L327.9,181.9L333.1,206.2L338.3,194.4L343.5,194.0L348.7,182.0L354.0,188.0L359.2,193.8L364.4,200.5L369.6,190.9L374.8,197.6L380.0,185.9L385.3,188.9L390.5,191.2L395.7,194.1L400.9,166.5L406.1,200.0L411.3,197.3L416.5,206.4L421.8,215.8L427.0,179.1L432.2,193.9L437.4,200.5L442.6,206.4L447.8,197.4L453.1,197.0L458.3,175.9L463.5,212.5L468.7,341.8L473.9,320.3L479.1,344.9L484.3,329.5L489.6,354.3L494.8,342.0L500.0,348.2L505.2,289.6L510.4,335.7L515.6,344.9L520.9,335.6L526.1,348.0L531.3,323.5L536.5,341.8L541.7,317.2L546.9,369.7L552.1,317.3L557.4,348.1L562.6,314.4L567.8,347.9L573.0,320.5L578.2,348.1L583.4,341.8L588.6,332.8L593.9,360.3L599.1,335.8L604.3,316.5L609.5,334.3L614.7,334.3L619.9,334.3L625.2,334.3L630.4,334.3L635.6,334.3L640.8,347.8L646.0,326.6L651.2,344.9L656.4,310.9L661.7,360.4L666.9,317.3L672.1,354.0L677.3,301.9L682.5,366.6L687.7,314.4L693.0,340.0L698.2,327.4L703.4,327.4L708.6,327.4L713.8,286.6L719.0,341.8L724.2,317.2L729.5,354.3L734.7,326.6L739.9,357.4L745.1,332.8L750.3,348.1L755.5,348.2L760.7,351.2L766.0,348.1L771.2,342.1L776.4,354.3L781.6,296.0L786.8,332.7L792.0,301.8L797.3,344.9L802.5,326.4L807.7,354.3L812.9,320.4L818.1,335.9L823.3,326.7L828.5,348.1L833.8,311.2L839.0,348.1L844.2,344.9L849.4,348.1L854.6,351.2L859.8,317.1L865.1,351.1L870.3,329.4L875.5,338.9L880.7,332.7L885.9,329.5" fill="none" stroke="#4d4a98" stroke-width="2.5" stroke-linejoin="round"/>
+</svg>

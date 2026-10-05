@@ -52,6 +52,9 @@
 .flow-step {
 	position: relative;
 	display: flex;
+	/* Starlight's prose spacing gives every list item after the first a top
+	   margin, which set the first card 4 px above the other three. */
+	margin: 0;
 	box-sizing: border-box;
 	min-height: var(--rb-flow-card-min-height);
 	flex-direction: column;

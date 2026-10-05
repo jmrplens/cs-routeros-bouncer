@@ -72,9 +72,94 @@ The gap between cache-first (~1-3 ms) and check-first (~400 ms) is why the in-me
 
 For CAPI-scale deployments (tens of thousands of entries), also see [CAPI Blocklists](/cs-routeros-bouncer/configuration/capi-blocklists/) and [Performance Tuning](/cs-routeros-bouncer/configuration/performance-tuning/) for `pool_size` sizing guidance.
 
-## The full lifecycle, sampled every 100 ms
+## The first reconciliation, by bulk-add method
 
-The chart below is a single continuous 70-second capture from the production
+Three captures from the production RB5009UG+S+ (RouterOS 7.24.4), taken on
+2026-10-05 a few minutes apart, one for each way the bouncer can load an
+address list. Each loads the same 17,361 decisions — 16,861 IPv4 and 500 IPv6,
+the CrowdSec community blocklist plus local decisions — into empty lists: the
+bouncer stopped, both lists deleted, 60 seconds to settle and 30 more
+hands-off, then the service started. CPU and RAM are the
+[mikroscope](https://github.com/jmrplens/mikroscope) collector's 10 Hz series,
+read out of InfluxDB afterwards ([how](#reading-the-10-hz-series-without-touching-the-router)),
+so nothing touched the router during a window. The markers are the bouncer's
+own log lines, timestamped as they were written. The three charts share their
+axes, and each point is the mean of five 100 ms samples.
+
+- **`/execute`** ran the 1.7.0 release as production runs it: the default
+  `bulk_add_method: script`, `pool_size: 10`.
+- **`api`** ran the same release and configuration with `bulk_add_method: api`.
+- **Stored `/system/script`** ran the 1.6.0 release, whose script method always
+  stores a script. It builds the same script and runs it with the same code
+  1.7.0 keeps for RouterOS before 7.8rc1, so this is that path's cost,
+  measured on 7.24.4; an older RouterOS may itself run it faster or slower.
+
+<ThemeImage
+  src="perf-first-reconcile-execute-light.svg"
+  alt="Line chart of router CPU percentage and RAM megabytes from 20 seconds before the bouncer starts to 59 seconds after: CPU near 8% before, about 31% between the writes-begin marker at 4.8 seconds and the reconciliation-complete marker at 18.5 seconds, then back near 8%; RAM steps up about 18 MiB when the bouncer connects and ends about 15 MiB above where it started."
+  caption="The default on RouterOS 7.8rc1 and later: 17,361 entries written through /execute in 13.7 s."
+/>
+
+<ThemeImage
+  src="perf-first-reconcile-stored-light.svg"
+  alt="Line chart on the same axes: CPU near 8% before, about 33% between the writes-begin marker at 4.9 seconds and the reconciliation-complete marker at 29.0 seconds, then back near 9%; RAM steps up when the bouncer connects and stays flat through the import."
+  caption="A stored /system/script per chunk, the path RouterOS before 7.8 gets, measured on 7.24.4: the same entries in 24.1 s."
+/>
+
+<ThemeImage
+  src="perf-first-reconcile-api-light.svg"
+  alt="Line chart on the same axes: CPU near 6% before, about 35% between the writes-begin marker at 4.9 seconds and the reconciliation-complete marker at 27.7 seconds, then back near 7%; RAM climbs and jitters by up to 34 MiB during the import and settles about 16 MiB above where it started."
+  caption="bulk_add_method: api over ten sessions: one API call per entry, 22.8 s."
+/>
+
+| Method                               | Writing | Start to ready | Mean CPU while writing | 100 ms peak | CPU above idle |  RAM peak / after |
+| ------------------------------------ | ------: | -------------: | ---------------------: | ----------: | -------------: | ----------------: |
+| `/execute` (default, 7.8rc1+)        |  13.7 s |         18.5 s |                  30.6% |       45.1% |    12.8 core·s | +23.0 / +15.7 MiB |
+| Stored `/system/script` (before 7.8) |  24.1 s |         29.0 s |                  33.2% |       52.7% |    24.3 core·s | +18.4 / +14.3 MiB |
+| `api`, `pool_size: 10`               |  22.8 s |         27.7 s |                  35.3% |       47.4% |    26.5 core·s | +34.2 / +15.9 MiB |
+
+"Writing" runs from the first entry to the last. "CPU above idle" is the
+four cores' time above their mean over the 20 seconds before the start, summed
+across the writing, and the RAM columns are against the same 20 seconds.
+
+What the three have in common is the height: whichever way it goes in, an
+import holds about a third of this router's four cores. What changes is how
+long. `/execute` is done in 13.7 seconds against 24.1 for a stored script, so
+the router spends about half the CPU time on it, and a stored script also
+writes each chunk's whole source to the router log, where `/execute` writes
+nothing. `api` lands between them in time, 22.8 seconds, and is the most
+expensive in CPU: on the router's own LAN ten sessions compete rather than
+overlap, and it is the only method whose
+RAM moves during the import, by up to 34 MiB while the sessions are busy.
+
+The first five seconds are the same in all three: the bouncer connects its
+pool, creates its firewall rules and collects the decisions from the LAPI
+before it writes anything, and most of the RAM step lands there, before an
+entry exists. Afterwards the router holds about 15 MiB more than with the
+bouncer stopped, whichever method filled the list.
+
+The router also runs two periodic jobs of its own, each every 30 seconds on its
+clock. They lift CPU by 20 to 40 points for 0.3 to 1.2 seconds, up to about 3
+seconds once the list is full, and they run whether the bouncer does or not:
+their timing was read from the 90 seconds before each start, with the bouncer
+stopped. The charts and the table smooth them so they are not read as the
+bouncer's work: inside each of those stretches, every sample is replaced by the
+mean of the second on either side of it, CPU and RAM alike. While the bouncer
+is starting or writing, a stretch keeps the length the job had with the bouncer
+stopped, so none of the import is smoothed away.
+
+The data behind each chart is committed next to it:
+`docs/src/data/perf-first-reconcile-<method>.csv` (`rel_s,cpu_pct,ram_used_mib`,
+one row per 100 ms, the raw series), `-markers.csv`, and `-background.csv`,
+the stretches smoothed. `docs/scripts/render-perf-charts.mjs` draws both themes
+from them with the palette read out of `theme.css`, and
+`pnpm run charts:check` fails the documentation build when a committed chart no
+longer matches its data or the palette.
+
+## The 2026-08 capture, 22,000 entries
+
+Before the three above, this page carried one capture, taken with the stored
+script, the only method the bouncer had then. The chart below is a single continuous 70-second capture from the production
 RB5009, taken with a 10 Hz sampler reading `/proc/stat` on the router itself
 (the section after it names the instrument, and what has replaced it). It
 covers the three states an operator actually meets: the router idle with the

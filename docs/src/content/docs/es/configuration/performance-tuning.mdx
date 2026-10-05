@@ -3,6 +3,8 @@ title: Ajuste de rendimiento
 description: "Ajusta cs-routeros-bouncer a tu router: dimensionado del pool, adición masiva, tiempos de espera, cadencia de reconciliación y un ejemplo de referencia."
 ---
 
+import ThemeImage from "components/ThemeImage.astro";
+
 La mayoría de los despliegues funcionan bien con los valores por defecto. Ajusta estas opciones cuando la reconciliación de arranque gestione listas CAPI grandes, un router lento agote los tiempos de espera o necesites ventanas de reinicio predecibles.
 
 ## Pool de conexiones
@@ -42,6 +44,31 @@ Barriéndolo contra un RB5009 con el script guardado — cinco rondas intercalad
 Lo que sí es estable es la forma: insertar una fila cuesta ~1,2–1,3 ms y domina todo lo demás, así que importar 22.000 entradas gasta unos 27 s insertando frente a entre 0,2 s y 2,3 s de andamiaje de bloques. No hay motivo para cambiar este valor, ni ninguna medición aquí que te diga a qué cambiarlo.
 
 Si un script masivo falla, el bouncer registra un aviso y recurre a adiciones individuales para ese bloque. Las entradas duplicadas se omiten o se refrescan sin reconectar la sesión de la API.
+
+### Lo que le cuesta al router la primera reconciliación
+
+<ThemeImage
+  src="perf-first-reconcile-execute-light.svg"
+  alt="Gráfica de líneas del porcentaje de CPU y los megabytes de RAM del router desde 20 segundos antes de arrancar el bouncer hasta 59 segundos después: CPU cerca del 7% antes, alrededor del 31% entre el marcador de inicio de escritura a los 4,8 segundos y el de reconciliación completa a los 18,5 segundos, y de vuelta cerca del 8%; la RAM sube unos 18 MiB cuando el bouncer se conecta y termina unos 16 MiB por encima de donde empezó."
+  caption="La configuración por defecto en un RB5009UG+S+ con RouterOS 7.24.4, cargando 17.361 entradas, incluida la lista comunitaria de CrowdSec."
+/>
+
+Con la configuración por defecto, llenar listas vacías con 17.361 entradas
+ocupa alrededor del 31% de los cuatro núcleos de este router durante 13,7
+segundos, con un pico de 100 ms del 45%, y el bouncer ya atiende decisiones en
+vivo 18,5 segundos después de arrancar. La mayor parte del escalón de RAM llega
+al conectarse, antes de la primera entrada; después, el router guarda unos
+16 MiB más que sin el bouncer. Ese es el coste de un arranque con las listas
+vacías, o de una pasada que tiene que volver a escribir buena parte de la
+lista; una pasada posterior que no encuentra nada que falte sigue leyendo las
+dos listas, alrededor de 1,5 segundos de trabajo del router a este tamaño en
+cada `reconciliation_interval` (ver [más abajo](#intervalo-de-reconciliación)).
+
+Con los scripts guardados que recibe RouterOS anterior a 7.8rc1, las mismas
+entradas tardaron 24,1 segundos en este router, con aproximadamente el doble de
+tiempo de CPU, y `bulk_add_method: api` tardó 22,8 segundos con diez sesiones.
+[Benchmarking](/cs-routeros-bouncer/es/development/benchmarking/#la-primera-reconciliación-según-el-método-de-adición-masiva)
+muestra las tres juntas y cómo se midieron.
 
 ## Tiempos de espera
 
