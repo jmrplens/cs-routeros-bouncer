@@ -1,3 +1,9 @@
+## [Unreleased]
+
+### Changed
+
+- **The Grafana dashboard screenshots are current** — the pair on the architecture page dated from February: release 1.3.1 built from a dirty tree, RouterOS 7.21.3 and a 24,400-entry list. They are now the bundled `grafana/dashboard.json` as it runs on the reference RB5009 with 1.7.1 and RouterOS 7.24.4, over the last hour, in both themes
+
 ## [1.7.1] - 2026-10-05
 
 ### Added
