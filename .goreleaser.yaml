@@ -180,5 +180,5 @@ release:
     See [documentation](https://jmrp.io/docs/cs-routeros-bouncer/) for setup instructions.
   footer: |
     ---
-    **Docker:** `docker pull ghcr.io/jmrplens/cs-routeros-bouncer:{{ .Version }}`
+    **Docker:** `docker pull ghcr.io/jmrplens/cs-routeros-bouncer:v{{ .Version }}`
     **Full Changelog:** https://github.com/jmrplens/cs-routeros-bouncer/compare/{{ .PreviousTag }}...{{ .Tag }}

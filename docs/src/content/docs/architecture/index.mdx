@@ -189,7 +189,7 @@ For initial reconciliation, the bouncer generates RouterOS scripts that add entr
 
 ### In-memory address cache
 
-An in-memory map (`map[string]struct{}` with `sync.RWMutex`) tracks all addresses currently on the router. This provides:
+An in-memory map (`map[string]string`, address to RouterOS `.id`, with `sync.RWMutex`) tracks all addresses currently on the router. This provides:
 
 - **O(1) unban lookups**: When an IP is unbanned, the cache is checked first. If the IP is not in the cache (e.g., already expired on the router), the API call is skipped entirely.
 - **O(1) duplicate-ban fast path**: Repeated ban events for addresses already known to be on the router return immediately without creating RouterOS management/API churn.
