@@ -20,13 +20,13 @@ export GOTOOLCHAIN := $(GO_TOOLCHAIN)
 #
 # These pins are the single source of truth — CI installs from here too.
 # Bump deliberately, in their own commit.
-GOLANGCI_LINT_VERSION := v2.13.1
-GOSEC_VERSION         := v2.28.0
+GOLANGCI_LINT_VERSION := v2.14.0
+GOSEC_VERSION         := v2.29.0
 ACTIONLINT_VERSION    := v1.7.12
 STATICCHECK_VERSION   := v0.8.1
-GOVULNCHECK_VERSION   := v1.7.0
+GOVULNCHECK_VERSION   := v1.8.0
 # goimports and modernize both ship from golang.org/x/tools.
-GOTOOLS_VERSION       := v0.49.0
+GOTOOLS_VERSION       := v0.51.0
 
 # Tools resolve from PATH; `make install-tools` installs exactly these pinned
 # versions with the system Go, so the binaries are always built by the same
