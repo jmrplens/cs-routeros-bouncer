@@ -138,10 +138,10 @@ Each pool connection is a full RouterOS API session. On resource-constrained rou
 
 How reconciliation (at startup and every `crowdsec.reconciliation_interval`) adds the address-list entries the router is missing. Live decisions are not affected: they are always added one API call each.
 
-- **`script`** (default): the bouncer creates a temporary `/system/script` holding up to 100 adds, runs it and removes it again. That is four API calls per chunk however many entries it holds, so the latency to the router barely matters: over a VPN or to a remote site this is the fastest way to load a large list, such as the CAPI community blocklist at startup. If a script fails, that chunk is retried one call per entry.
+- **`script`** (default): the bouncer sends up to 100 adds as one RouterOS script. On RouterOS 7.8rc1 and later that is a single `/execute` call that runs the script synchronously: nothing is stored on the router and nothing reaches its log. On older versions, and for a chunk `/execute` cannot take (over its 64 kB limit, or on a router that turns out to lack it), the bouncer creates a temporary `/system/script`, runs it and removes it again. Either way the round trips a chunk costs do not depend on how many entries it holds: one through `/execute`, four as a stored script. Latency to the router therefore weighs far less than with `api`, which pays a round trip per entry. If a script fails, that chunk is retried one call per entry.
 - **`api`**: every entry is added with its own API call, spread over the connection pool (`pool_size`), or one after another on the main connection when the pool could not be opened. No script is ever created, and the router's configuration is left alone.
 
-Choose `api` when scripts are unwanted on the router. RouterOS logs every script add with the script's full source, so each reconciliation pass that adds entries writes all of its adds into the router log, and an audit of `/system/script` shows the bouncer's scripts coming and going; each script add and remove is also a configuration change RouterOS persists. An address-list add with a timeout over the API leaves no log line. Address-list entries with a timeout, which is what decisions become, are dynamic and stay in memory either way.
+On RouterOS older than 7.8rc1, RouterOS logs every stored script with its full source when it is created, an audit of `/system/script` shows the bouncer's scripts coming and going, and each add and remove is a configuration change RouterOS persists; `api` avoids all of that there. From 7.8rc1 on, `script` leaves none of it behind either, as long as `/execute` runs the chunk; the stored-script fallback above still does. `api` still runs no script at all, and it caches the id of every entry it adds, so a live unban right after a reconciliation pass removes the entry without looking it up first. Address-list entries with a timeout, which is what decisions become, are dynamic and stay in memory either way.
 
 ```yaml
 mikrotik:
@@ -150,10 +150,10 @@ mikrotik:
 ```
 
 :::tip
-Which method loads faster depends on the round trip to the router. Measured on an RB5009 (RouterOS 7.24.4):
+Measured on an RB5009 (RouterOS 7.24.4), loading about 24,400 decisions at startup:
 
-- **On the router's LAN** (0.2 ms), `api` is the faster one. With `pool_size: 1` the bouncer loaded 24,452 decisions in about 22 s, against about 33 s with scripts, at half the router CPU. With the default `pool_size: 4` it took about as long as scripts, because extra sessions only contend here. A pass that adds a few entries takes milliseconds either way.
-- **Over a link with latency**, every API add pays one round trip, where a script pays four per 100 entries. At 33 ms, the bouncer loaded 24,452 decisions in about 66 s with scripts, 74 s with `api` and `pool_size: 16`, 3.7 min with 4 and 13 min with 1.
+- **On the router's LAN** (0.2 ms), `script` through `/execute` took about 21 s and `api` with `pool_size: 1` about 23 s, each at roughly half the router CPU of a stored script, which took about 36 s. With the default `pool_size: 4`, `api` took as long as a stored script, because extra sessions only contend here. A pass that adds a few entries takes milliseconds either way.
+- **Over a link with latency**, every API add pays one round trip, where a script pays one per 100 entries through `/execute` and four as a stored script. At 36 ms, `script` took about 33 s through `/execute`, 70 s as a stored script, and `api` 76 s with `pool_size: 16`; at 33 ms it had taken 3.7 min with 4 and 13 min with 1.
 
 Live decisions are processed only once the first reconciliation has finished, and between later passes.
 :::

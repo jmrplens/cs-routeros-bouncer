@@ -33,11 +33,11 @@ Check or raise the RouterOS limit:
 
 ## Bulk add behavior
 
-During reconciliation, additions use temporary RouterOS scripts instead of one API call per IP. Each script carries up to 100 addresses.
+During reconciliation, additions with the default `bulk_add_method: script` go out as RouterOS scripts of up to 100 addresses each, instead of one API call per IP. On RouterOS 7.8rc1 and later each script is a single `/execute` call; on older versions it is a temporary `/system/script` that the bouncer creates, runs and removes.
 
-That chunk size is not about message size — the RouterOS API takes words far larger than these scripts, and a chunk of 1,000 entries transfers without complaint. It is the trade between amortizing the four round trips each chunk costs (find, add, run, remove) and how long a single non-interruptible script run holds the router.
+That chunk size is not about message size — the RouterOS API takes words far larger than these scripts, and a chunk of 1,000 entries transfers without complaint. It is the trade between amortizing the round trips each chunk costs (one with `/execute`; four with a stored script: find, add, run, remove) and how long a single non-interruptible script run holds the router. `/execute` adds a hard cap of its own: it takes no script over 64 kB, and a chunk of 100 entries is around 22 kB.
 
-Sweeping it against an RB5009 — five interleaved rounds of 4,000 entries at 50/100/250/500/1000 — the medians land between 4.36 s and 5.78 s across that whole 20× range. The useful result is that the sweep cannot resolve a winner: within one chunk size the interquartile range reaches 2.55 s, larger than the 1.43 s that separates the best size from the worst, and which size looks best depends on which estimator you use (median and minimum pick 1,000; the mean picks 100).
+Sweeping it against an RB5009 with the stored script — five interleaved rounds of 4,000 entries at 50/100/250/500/1000 — the medians land between 4.36 s and 5.78 s across that whole 20× range. The useful result is that the sweep cannot resolve a winner: within one chunk size the interquartile range reaches 2.55 s, larger than the 1.43 s that separates the best size from the worst, and which size looks best depends on which estimator you use (median and minimum pick 1,000; the mean picks 100).
 
 What is stable is the shape: inserting a row costs ~1.2–1.3 ms and dominates everything else, so a 22,000-entry import spends roughly 27 s inserting against somewhere between 0.2 s and 2.3 s of chunk scaffolding. There is no reason to change this value, and no measurement here that would tell you what to change it to.
 

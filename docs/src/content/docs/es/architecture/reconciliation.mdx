@@ -128,13 +128,19 @@ La reconciliación periódica suele ser ligera: cuando no hay deriva, lista las 
 
 ### Adición masiva basada en scripts
 
-En lugar de una llamada a la API por entrada, cada una con su viaje de ida y vuelta al router, el bouncer sube un script temporal de RouterOS llamado `crowdsec-bulk-import` y lo ejecuta por su id interno:
+En lugar de una llamada a la API por entrada, cada una con su viaje de ida y vuelta al router, el bouncer envía hasta 100 adiciones como un único script de RouterOS. En RouterOS 7.8rc1 y posteriores ejecuta el script con una sola llamada:
+
+```routeros
+/execute =script=<source> =as-string=
+```
+
+`as-string` hace que la llamada espere al script y devuelva lo que imprimió: el número de entradas que añadió. No se guarda nada y nada llega al log del router. En versiones anteriores, para un bloque por encima del límite de 64 kB de `/execute`, o cuando el router resulta no tener `/execute` con `as-string`, el bouncer sube un script temporal llamado `crowdsec-bulk-import`, lo ejecuta por su id interno y lo elimina:
 
 ```routeros
 /system/script/run =number=<script-id>
 ```
 
-Cada ejecución del script añade hasta 100 IPs usando `:do { ... } on-error={}` para gestionar los duplicados de forma controlada.
+Cada script añade hasta 100 IPs usando `:do { ... } on-error={}` para gestionar los duplicados de forma controlada.
 
 ### Eliminación en paralelo
 

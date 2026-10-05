@@ -138,10 +138,10 @@ Cada conexión del pool es una sesión completa de la API de RouterOS. En router
 
 Cómo añade la reconciliación (al arrancar y cada `crowdsec.reconciliation_interval`) las entradas del address-list que le faltan al router. Las decisiones en vivo no se ven afectadas: siempre se añaden con una llamada a la API cada una.
 
-- **`script`** (por defecto): el bouncer crea un `/system/script` temporal con hasta 100 adiciones, lo ejecuta y lo vuelve a eliminar. Son cuatro llamadas a la API por bloque, tenga las entradas que tenga, así que la latencia hasta el router apenas importa: por una VPN o hasta un sitio remoto es la forma más rápida de cargar una lista grande, como la lista comunitaria de CAPI al arrancar. Si un script falla, ese bloque se reintenta con una llamada por entrada.
+- **`script`** (por defecto): el bouncer envía hasta 100 adiciones como un único script de RouterOS. En RouterOS 7.8rc1 y posteriores es una sola llamada a `/execute` que ejecuta el script de forma síncrona: no se guarda nada en el router y nada llega a su log. En versiones anteriores, y para un bloque que `/execute` no puede ejecutar (por encima de su límite de 64 kB, o en un router que resulta no tenerlo), el bouncer crea un `/system/script` temporal, lo ejecuta y lo vuelve a eliminar. En ambos casos los viajes de ida y vuelta que cuesta un bloque no dependen de cuántas entradas tenga: uno mediante `/execute` y cuatro como script guardado. Por eso la latencia hasta el router pesa mucho menos que con `api`, que paga un viaje por entrada. Si un script falla, ese bloque se reintenta con una llamada por entrada.
 - **`api`**: cada entrada se añade con su propia llamada a la API, y las llamadas se reparten entre las conexiones del pool (`pool_size`), o van una tras otra por la conexión principal cuando el pool no se pudo abrir. Nunca se crea un script, y la configuración del router no se toca.
 
-Elige `api` cuando no se quieren scripts en el router. RouterOS registra cada alta de un script con su código completo, así que cada pasada de reconciliación que añade entradas escribe todas sus adiciones en el log del router, y una auditoría de `/system/script` muestra los scripts del bouncer apareciendo y desapareciendo; cada alta y baja de un script es además un cambio de configuración que RouterOS guarda. Una adición al address-list con timeout por la API no deja ninguna línea en el log. Las entradas del address-list con timeout, que es en lo que se convierten las decisiones, son dinámicas y se quedan en memoria en ambos casos.
+En RouterOS anterior a 7.8rc1, RouterOS registra cada script guardado con su código completo al crearlo, una auditoría de `/system/script` muestra los scripts del bouncer apareciendo y desapareciendo, y cada alta y baja es un cambio de configuración que RouterOS guarda; `api` evita todo eso. A partir de 7.8rc1, `script` tampoco deja nada de eso, siempre que `/execute` ejecute el bloque; la vuelta al script guardado descrita arriba sí lo deja. `api` sigue sin ejecutar ningún script, y guarda en caché el id de cada entrada que añade, así que un unban en vivo justo después de una pasada de reconciliación elimina la entrada sin buscarla antes. Las entradas del address-list con timeout, que es en lo que se convierten las decisiones, son dinámicas y se quedan en memoria en ambos casos.
 
 ```yaml
 mikrotik:
@@ -150,10 +150,10 @@ mikrotik:
 ```
 
 :::tip
-Qué método carga más rápido depende del viaje de ida y vuelta hasta el router. Medido en un RB5009 (RouterOS 7.24.4):
+Medido en un RB5009 (RouterOS 7.24.4), cargando unas 24.400 decisiones al arrancar:
 
-- **En la LAN del router** (0,2 ms), `api` es el más rápido. Con `pool_size: 1` el bouncer cargó 24.452 decisiones en unos 22 s, frente a unos 33 s con scripts, con la mitad de CPU del router. Con el `pool_size: 4` por defecto tardó más o menos lo mismo que los scripts, porque aquí las sesiones extra solo compiten entre sí. Una pasada que añade unas pocas entradas tarda milisegundos con cualquiera de los dos.
-- **Con un enlace con latencia**, cada adición por la API paga un viaje de ida y vuelta, mientras que un script paga cuatro por cada 100 entradas. A 33 ms, el bouncer cargó 24.452 decisiones en unos 66 s con scripts, 74 s con `api` y `pool_size: 16`, 3,7 min con 4 y 13 min con 1.
+- **En la LAN del router** (0,2 ms), `script` mediante `/execute` tardó unos 21 s y `api` con `pool_size: 1` unos 23 s, ambos con aproximadamente la mitad de CPU del router que un script guardado, que tardó unos 36 s. Con el `pool_size: 4` por defecto, `api` tardó lo mismo que un script guardado, porque aquí las sesiones extra solo compiten entre sí. Una pasada que añade unas pocas entradas tarda milisegundos con cualquiera de los dos.
+- **Con un enlace con latencia**, cada adición por la API paga un viaje de ida y vuelta, mientras que un script paga uno por cada 100 entradas mediante `/execute` y cuatro como script guardado. A 36 ms, `script` tardó unos 33 s mediante `/execute`, 70 s como script guardado, y `api` 76 s con `pool_size: 16`; a 33 ms había tardado 3,7 min con 4 y 13 min con 1.
 
 Las decisiones en vivo solo se procesan cuando ha terminado la primera reconciliación, y entre las pasadas siguientes.
 :::

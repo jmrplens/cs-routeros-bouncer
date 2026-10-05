@@ -31,6 +31,13 @@ type Client struct {
 	// ownerPrefix is the comment prefix of the bouncer's own address-list
 	// entries; empty means every entry counts as its own.
 	ownerPrefix string
+
+	// runnerMu guards how bulk-add scripts run (see runChunk): runnerKnown is
+	// set once the router's version has been read, useExecute when that
+	// version takes /execute with as-string and the router has not refused it.
+	runnerMu    sync.Mutex
+	runnerKnown bool
+	useExecute  bool
 }
 
 // ErrNotFound reports that a RouterOS query completed successfully but did not

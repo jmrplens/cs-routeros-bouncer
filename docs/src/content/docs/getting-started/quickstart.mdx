@@ -34,7 +34,7 @@ To install cs-routeros-bouncer, register the bouncer with CrowdSec (`cscli bounc
    Connect to your MikroTik router (via SSH, Winbox, or WebFig) and create a dedicated user:
 
    ```routeros
-   /user group add name=crowdsec policy=read,write,api,sensitive,!ftp,!local,!ssh,!reboot,!policy,!test,!password,!sniff,!romon,!rest-api
+   /user group add name=crowdsec policy=read,write,api,!sensitive,!ftp,!local,!ssh,!reboot,!policy,!test,!password,!sniff,!romon,!rest-api
    /user add name=crowdsec group=crowdsec password=YOUR_SECURE_PASSWORD
    ```
 

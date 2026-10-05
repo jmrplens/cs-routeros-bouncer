@@ -35,7 +35,7 @@ For machine consumption: [llms.txt](https://jmrp.io/docs/cs-routeros-bouncer/llm
 - **Zero manual router configuration** — auto-creates and auto-removes firewall filter/raw rules on start/stop
 - **Individual IP management** — adds on ban, removes on unban (no bulk re-upload, no duplicates)
 - **State reconciliation** — on start/restart and periodically, syncs CrowdSec decisions with MikroTik state (adds missing, removes stale)
-- **High-performance sync** — connection pool, script-based bulk add, in-memory cache (~22,000 IPs imported in ~29 s on an RB5009, measured at 100 ms resolution)
+- **High-performance sync** — connection pool, script-based bulk add, in-memory cache (~24,400 IPs loaded in ~21 s on an RB5009 with RouterOS 7.24.4, one `/execute` per 100 entries)
 - **Graceful shutdown** — removes firewall rules on stop (address list entries expire via MikroTik timeout)
 - **IPv4 + IPv6** — independently toggleable
 - **Input + Output blocking** — output blocking optional with configurable interface/interface-list
@@ -102,7 +102,7 @@ Save the API key shown in the output.
 Connect to your MikroTik router and create a dedicated user:
 
 ```routeros
-/user group add name=crowdsec policy=read,write,api,sensitive,!ftp,!local,!ssh,!reboot,!policy,!test,!password,!sniff,!romon,!rest-api
+/user group add name=crowdsec policy=read,write,api,!sensitive,!ftp,!local,!ssh,!reboot,!policy,!test,!password,!sniff,!romon,!rest-api
 /user add name=crowdsec group=crowdsec password=YOUR_SECURE_PASSWORD
 ```
 
@@ -288,7 +288,7 @@ logging:
 | `mikrotik.password` | `MIKROTIK_PASS` | _(required)_ | API password |
 | `mikrotik.tls` | `MIKROTIK_TLS` | `false` | Use TLS (port 8729) |
 | `mikrotik.pool_size` | `MIKROTIK_POOL_SIZE` | `4` | Parallel API sessions |
-| `mikrotik.bulk_add_method` | `MIKROTIK_BULK_ADD_METHOD` | `script` | Reconciliation adds: `script` (temporary `/system/script`) or `api` (one call per entry, no script) |
+| `mikrotik.bulk_add_method` | `MIKROTIK_BULK_ADD_METHOD` | `script` | Reconciliation adds: `script` (100 adds per RouterOS script, run with `/execute` on 7.8+ or as a temporary `/system/script` before) or `api` (one call per entry, no script) |
 | `firewall.ipv4.enabled` | `FIREWALL_IPV4_ENABLED` | `true` | Enable IPv4 blocking |
 | `firewall.ipv6.enabled` | `FIREWALL_IPV6_ENABLED` | `true` | Enable IPv6 blocking |
 | `firewall.deny_action` | `FIREWALL_DENY_ACTION` | `drop` | `drop` or `reject` |

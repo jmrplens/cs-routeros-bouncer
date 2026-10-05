@@ -45,7 +45,7 @@ Wrong username or password.
    /user/print where name=crowdsec
    ```
 
-3. **Verify the user's group** has required policies: `read`, `write`, `api`, `sensitive`
+3. **Verify the user's group** has required policies: `read`, `write`, `api`
 
 4. **Check allowed address** restrictions on the user account
 
@@ -248,13 +248,13 @@ Repeated duplicate messages every few seconds usually mean the in-memory cache i
 
 ### Bulk script fallback warnings
 
-During reconciliation, additions are sent in RouterOS scripts of up to 100 entries (with the default `bulk_add_method: script`). If a script fails, the bouncer falls back to individual adds for that chunk and keeps going.
+During reconciliation, additions are sent in RouterOS scripts of up to 100 entries (with the default `bulk_add_method: script`): one `/execute` call each on RouterOS 7.8rc1 and later, a temporary `/system/script` on older versions. The bouncer logs which one it uses once, as `bulk add script runner`. If a script fails, the bouncer falls back to individual adds for that chunk and keeps going. If the router lacks `/execute` with `as-string` (it answers `unknown parameter` or `no such command`), the bouncer logs `RouterOS lacks /execute as-string` and uses the stored script from then on; any other error fails only that chunk.
 
 If fallback happens often:
 
 1. Check `mikrotik.command_timeout`.
 2. Check RouterOS logs for script or policy errors.
-3. Verify the API user has `read`, `write`, `api`, and `sensitive` policies.
+3. Verify the API user has the `read`, `write`, and `api` policies.
 4. Test with local-only origins to reduce list size.
 
 ### IPv6 addresses appear with `/128`

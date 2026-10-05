@@ -45,7 +45,7 @@ Nombre de usuario o contraseña incorrectos.
    /user/print where name=crowdsec
    ```
 
-3. **Verifica que el grupo del usuario** tiene las políticas necesarias: `read`, `write`, `api`, `sensitive`
+3. **Verifica que el grupo del usuario** tiene las políticas necesarias: `read`, `write`, `api`
 
 4. **Comprueba las restricciones de allowed address** en la cuenta de usuario
 
@@ -248,13 +248,13 @@ Los mensajes de duplicado repetidos cada pocos segundos suelen indicar que la ca
 
 ### Avisos de fallback de scripts masivos
 
-Durante la reconciliación, las adiciones se envían en scripts de RouterOS de hasta 100 entradas (con el valor por defecto `bulk_add_method: script`). Si un script falla, el bouncer recurre a adiciones individuales para ese bloque y continúa.
+Durante la reconciliación, las adiciones se envían en scripts de RouterOS de hasta 100 entradas (con el valor por defecto `bulk_add_method: script`): una llamada a `/execute` por script en RouterOS 7.8rc1 y posteriores, y un `/system/script` temporal en versiones anteriores. El bouncer registra una vez cuál usa, como `bulk add script runner`. Si un script falla, el bouncer recurre a adiciones individuales para ese bloque y continúa. Si el router no tiene `/execute` con `as-string` (responde `unknown parameter` o `no such command`), el bouncer registra `RouterOS lacks /execute as-string` y usa el script guardado a partir de entonces; cualquier otro error solo hace fallar ese bloque.
 
 Si el fallback ocurre con frecuencia:
 
 1. Revisa `mikrotik.command_timeout`.
 2. Revisa los logs de RouterOS en busca de errores de script o de políticas.
-3. Verifica que el usuario de la API tiene las políticas `read`, `write`, `api` y `sensitive`.
+3. Verifica que el usuario de la API tiene las políticas `read`, `write` y `api`.
 4. Prueba con orígenes solo locales para reducir el tamaño de la lista.
 
 ### Las direcciones IPv6 aparecen con `/128`
