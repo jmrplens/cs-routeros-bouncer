@@ -143,27 +143,14 @@ func ParallelExecContext[T any](ctx context.Context, pool *Pool, items []T, fn f
 
 	var mu sync.Mutex
 	var errs []error
+	report := func(err error) {
+		mu.Lock()
+		errs = append(errs, err)
+		mu.Unlock()
+	}
 	var wg sync.WaitGroup
-
 	for range workers {
-		wg.Go(func() {
-			c := pool.Get()
-			if c == nil {
-				return
-			}
-			defer pool.Put(c)
-			for ctx.Err() == nil {
-				item, ok := <-work
-				if !ok {
-					return
-				}
-				if err := fn(c, item); err != nil {
-					mu.Lock()
-					errs = append(errs, err)
-					mu.Unlock()
-				}
-			}
-		})
+		wg.Go(func() { parallelWorker(ctx, pool, work, fn, report) })
 	}
 	wg.Wait()
 
@@ -175,6 +162,25 @@ func ParallelExecContext[T any](ctx context.Context, pool *Pool, items []T, fn f
 		errs = append(errs, cause)
 	}
 	return errs
+}
+
+// parallelWorker runs fn on the items of work with one pool client until work
+// is empty, ctx is done or the pool yields no client, and reports fn's errors.
+func parallelWorker[T any](ctx context.Context, pool *Pool, work <-chan T, fn func(c *Client, item T) error, report func(error)) {
+	c := pool.Get()
+	if c == nil {
+		return
+	}
+	defer pool.Put(c)
+	for ctx.Err() == nil {
+		item, ok := <-work
+		if !ok {
+			return
+		}
+		if err := fn(c, item); err != nil {
+			report(err)
+		}
+	}
 }
 
 // AddAddresses adds address-list entries concurrently through the pool, one
