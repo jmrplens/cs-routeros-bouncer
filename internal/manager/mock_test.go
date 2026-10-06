@@ -59,6 +59,7 @@ type mockROS struct {
 	findAddressErr    error
 	updateTimeoutErr  error
 	removeAddressErr  error
+	removeAddressFunc func() // called after each RemoveAddress, inside the lock
 	listAddresses     []ros.AddressEntry
 	listAddressesErr  error
 	listAddressesFunc func() error // per-call error (takes priority), called under mu
@@ -226,6 +227,9 @@ func (m *mockROS) RemoveAddress(proto, id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.removeAddressCalls = append(m.removeAddressCalls, removeAddressCall{proto, id})
+	if m.removeAddressFunc != nil {
+		m.removeAddressFunc()
+	}
 	return m.removeAddressErr
 }
 

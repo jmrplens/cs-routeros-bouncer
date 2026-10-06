@@ -5,6 +5,7 @@ package routeros
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -883,6 +884,30 @@ func TestPoolConnect_PartialFailure(t *testing.T) {
 	}
 }
 
+// TestPoolRemoveAddresses_Canceled verifies that removals stop once ctx is
+// done: the entries left are reported with ctx's error and none is sent.
+func TestPoolRemoveAddresses_Canceled(t *testing.T) {
+	mc := newMockConn()
+	p := NewPool(config.MikroTikConfig{}, 1)
+	p.newClient = func(_ config.MikroTikConfig) *Client {
+		return &Client{dialFunc: func(_ config.MikroTikConfig) (RouterConn, error) { return mc, nil }}
+	}
+	if err := p.Connect(); err != nil {
+		t.Fatalf("Connect() error: %v", err)
+	}
+	t.Cleanup(p.Close)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	errs := p.RemoveAddresses(ctx, "ip", []AddressEntry{{ID: "*1"}, {ID: "*2"}})
+	if len(errs) != 2 || !errors.Is(errs[0], context.Canceled) {
+		t.Fatalf("expected both removals reported canceled, got %v", errs)
+	}
+	if got := mc.callCount(); got != 0 {
+		t.Fatalf("expected no remove call, got %d", got)
+	}
+}
+
 // TestPoolRemoveAddresses verifies pooled address removal delegates to pool clients.
 func TestPoolRemoveAddresses(t *testing.T) {
 	mc := newMockConn()
@@ -897,7 +922,7 @@ func TestPoolRemoveAddresses(t *testing.T) {
 	mc.pushReply(emptyReply())
 	mc.pushReply(emptyReply())
 
-	errs := p.RemoveAddresses("ip", []AddressEntry{{ID: "*1"}, {ID: "*2"}})
+	errs := p.RemoveAddresses(context.Background(), "ip", []AddressEntry{{ID: "*1"}, {ID: "*2"}})
 	if len(errs) != 0 {
 		t.Fatalf("unexpected remove errors: %v", errs)
 	}

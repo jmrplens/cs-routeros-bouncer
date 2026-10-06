@@ -219,8 +219,10 @@ func (p *Pool) AddAddresses(ctx context.Context, proto, list string, entries []B
 }
 
 // RemoveAddresses removes address-list entries concurrently through the pool.
-func (p *Pool) RemoveAddresses(proto string, entries []AddressEntry) []error {
-	return ParallelExec(p, entries, func(c *Client, entry AddressEntry) error {
+// Once ctx is done no further entry is removed; each one left is reported
+// with ctx's error.
+func (p *Pool) RemoveAddresses(ctx context.Context, proto string, entries []AddressEntry) []error {
+	return ParallelExecContext(ctx, p, entries, func(c *Client, entry AddressEntry) error {
 		return c.RemoveAddress(proto, entry.ID)
 	})
 }

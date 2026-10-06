@@ -109,7 +109,7 @@ type firewallRuleRef struct {
 type routerOSPool interface {
 	Connect() error
 	Close()
-	RemoveAddresses(proto string, entries []rosClient.AddressEntry) []error
+	RemoveAddresses(ctx context.Context, proto string, entries []rosClient.AddressEntry) []error
 	AddAddresses(ctx context.Context, proto, list string, entries []rosClient.BulkEntry) (added int, failed []rosClient.BulkEntry, errs []error)
 }
 
@@ -1598,7 +1598,7 @@ func (m *Manager) reconcileProtocolAddresses(ctx context.Context, proto string, 
 	m.refreshAddressCache(proto, diff.currentMap)
 	metricsProto := metricsProtoName(proto)
 	added, addErr := m.addMissingAddresses(ctx, proto, listName, metricsProto, diff.toAdd)
-	removed := m.removeStaleAddresses(proto, metricsProto, diff.toRemove)
+	removed := m.removeStaleAddresses(ctx, proto, metricsProto, diff.toRemove)
 	m.recordReconciliationMetrics(metricsProto, len(diff.shouldExist), added, removed)
 
 	m.logger.Info().
@@ -1837,12 +1837,12 @@ func (m *Manager) markUncertain(proto string, entries []rosClient.BulkEntry) {
 }
 
 // removeStaleAddresses removes obsolete RouterOS entries and records reconciliation metrics.
-func (m *Manager) removeStaleAddresses(proto, metricsProto string, toRemove []rosClient.AddressEntry) int {
-	if len(toRemove) == 0 {
+func (m *Manager) removeStaleAddresses(ctx context.Context, proto, metricsProto string, toRemove []rosClient.AddressEntry) int {
+	if len(toRemove) == 0 || ctx.Err() != nil {
 		return 0
 	}
 	removeStart := time.Now()
-	removed := m.removeAddresses(proto, toRemove)
+	removed := m.removeAddresses(ctx, proto, toRemove)
 	m.removeEntriesFromCache(toRemove)
 	for range removed {
 		metrics.RecordDecision("unban", metricsProto, "reconcile")
@@ -1852,21 +1852,25 @@ func (m *Manager) removeStaleAddresses(proto, metricsProto string, toRemove []ro
 	return removed
 }
 
-// removeAddresses selects parallel or sequential removal depending on pool availability.
-func (m *Manager) removeAddresses(proto string, entries []rosClient.AddressEntry) int {
+// removeAddresses selects parallel or sequential removal depending on pool
+// availability. Once ctx is done no further entry is removed.
+func (m *Manager) removeAddresses(ctx context.Context, proto string, entries []rosClient.AddressEntry) int {
 	if m.pool != nil {
-		return m.removeAddressesParallel(proto, entries)
+		return m.removeAddressesParallel(ctx, proto, entries)
 	}
-	return m.removeAddressesSequential(proto, entries)
+	return m.removeAddressesSequential(ctx, proto, entries)
 }
 
 // removeAddressesParallel removes address-list entries through the RouterOS connection pool.
-func (m *Manager) removeAddressesParallel(proto string, entries []rosClient.AddressEntry) int {
-	errs := m.pool.RemoveAddresses(proto, entries)
+func (m *Manager) removeAddressesParallel(ctx context.Context, proto string, entries []rosClient.AddressEntry) int {
+	errs := m.pool.RemoveAddresses(ctx, proto, entries)
 	removed := len(entries) - len(errs)
 	for _, err := range errs {
 		if errors.Is(err, rosClient.ErrNotFound) {
 			removed++
+			continue
+		}
+		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
 			continue
 		}
 		m.logger.Error().Err(err).Msg("reconcile: error removing address")
@@ -1876,9 +1880,12 @@ func (m *Manager) removeAddressesParallel(proto string, entries []rosClient.Addr
 }
 
 // removeAddressesSequential removes address-list entries through the primary RouterOS client.
-func (m *Manager) removeAddressesSequential(proto string, entries []rosClient.AddressEntry) int {
+func (m *Manager) removeAddressesSequential(ctx context.Context, proto string, entries []rosClient.AddressEntry) int {
 	removed := 0
 	for _, entry := range entries {
+		if ctx.Err() != nil {
+			break
+		}
 		removeErr := m.ros.RemoveAddress(proto, entry.ID)
 		switch {
 		case removeErr == nil:

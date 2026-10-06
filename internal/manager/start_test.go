@@ -13,6 +13,7 @@
 package manager
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -1213,6 +1214,86 @@ func TestReconcileAddresses_PassesContextToAdds(t *testing.T) {
 	}
 }
 
+// TestReconcileAddresses_ShutdownSkipsRemovals verifies that a shutdown during
+// a pass stops its removals too, sequential and pooled: thousands of them would
+// hold Start past the container runtime's grace period, and Shutdown would
+// never remove the firewall rules.
+func TestReconcileAddresses_ShutdownSkipsRemovals(t *testing.T) {
+	stale := []ros.AddressEntry{
+		{ID: "*1", Address: "9.9.9.1", Comment: "crowdsec-bouncer|stale"},
+		{ID: "*2", Address: "9.9.9.2", Comment: "crowdsec-bouncer|stale"},
+	}
+	for _, pooled := range []bool{false, true} {
+		ctx, cancel := context.WithCancel(context.Background())
+		mock := &mockROS{listAddresses: stale}
+		mock.listAddressesFunc = func() error {
+			cancel()
+			return nil
+		}
+		cfg := baseConfig()
+		cfg.Firewall.IPv6.Enabled = false
+		mgr := newTestManager(mock, cfg)
+		pool := &fakeRouterOSPool{}
+		if pooled {
+			mgr.pool = pool
+		}
+
+		if _, err := mgr.reconcileProtocolAddresses(ctx, "ip", nil, time.Now()); err != nil {
+			t.Fatalf("pooled=%v: unexpected error %v", pooled, err)
+		}
+		if len(mock.removeAddressCalls) != 0 || pool.removeCtx != nil {
+			t.Fatalf("pooled=%v: removals ran after the shutdown", pooled)
+		}
+	}
+
+	// A shutdown in the middle of sequential removals stops the rest.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	mock := &mockROS{listAddresses: stale, removeAddressFunc: cancel}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	mgr := newTestManager(mock, cfg)
+	if _, err := mgr.reconcileProtocolAddresses(ctx, "ip", nil, time.Now()); err != nil {
+		t.Fatalf("unexpected error %v", err)
+	}
+	if len(mock.removeAddressCalls) != 1 {
+		t.Fatalf("expected the removals to stop after the shutdown, got %d", len(mock.removeAddressCalls))
+	}
+}
+
+// TestRemoveAddressesParallel_ShutdownIsNoError verifies that removals a
+// shutdown stopped are not logged as failures, one per entry left.
+func TestRemoveAddressesParallel_ShutdownIsNoError(t *testing.T) {
+	var logs bytes.Buffer
+	mgr := newTestManager(&mockROS{}, baseConfig())
+	mgr.logger = zerolog.New(&logs)
+	mgr.pool = &fakeRouterOSPool{errs: []error{context.Canceled, context.Canceled}}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	mgr.removeAddresses(ctx, "ip", []ros.AddressEntry{{ID: "*1"}, {ID: "*2"}})
+
+	if strings.Contains(logs.String(), "error removing address") {
+		t.Fatalf("expected no removal errors logged after a shutdown, got %s", logs.String())
+	}
+}
+
+// TestRemoveAddressesParallel_PassesContext verifies that pooled removals get
+// the pass's context, so a shutdown stops them.
+func TestRemoveAddressesParallel_PassesContext(t *testing.T) {
+	type key struct{}
+	mgr := newTestManager(&mockROS{}, baseConfig())
+	pool := &fakeRouterOSPool{}
+	mgr.pool = pool
+	ctx := context.WithValue(context.Background(), key{}, "reconcile")
+
+	mgr.removeAddresses(ctx, "ip", []ros.AddressEntry{{ID: "*1", Address: "9.9.9.1"}})
+
+	if pool.removeCtx == nil || pool.removeCtx.Value(key{}) != "reconcile" {
+		t.Fatalf("expected the pass's context at the pool, got %v", pool.removeCtx)
+	}
+}
+
 // TestReconcileAddresses_FailedAddStaysUnbannable verifies that an entry whose
 // add failed, and so may or may not be on the router, is not cached but still
 // unbanned: the unban looks it up instead of skipping it. Without this an add
@@ -1381,10 +1462,11 @@ func TestReconcileAddresses_SequentialRemoveFallback(t *testing.T) {
 }
 
 type fakeRouterOSPool struct {
-	proto   string
-	entries []ros.AddressEntry
-	errs    []error
-	closed  bool
+	proto     string
+	entries   []ros.AddressEntry
+	errs      []error
+	closed    bool
+	removeCtx context.Context
 
 	addList    string
 	addEntries []ros.BulkEntry
@@ -1403,7 +1485,8 @@ func (p *fakeRouterOSPool) Connect() error { return nil }
 
 func (p *fakeRouterOSPool) Close() { p.closed = true }
 
-func (p *fakeRouterOSPool) RemoveAddresses(proto string, entries []ros.AddressEntry) []error {
+func (p *fakeRouterOSPool) RemoveAddresses(ctx context.Context, proto string, entries []ros.AddressEntry) []error {
+	p.removeCtx = ctx
 	p.proto = proto
 	p.entries = append([]ros.AddressEntry(nil), entries...)
 	return p.errs
@@ -1423,7 +1506,7 @@ func TestRemoveAddressesParallelMixedErrors(t *testing.T) {
 		{ID: "*3", Address: "10.0.0.3"},
 	}
 
-	removed := mgr.removeAddresses("ip", entries)
+	removed := mgr.removeAddresses(context.Background(), "ip", entries)
 
 	if removed != 2 {
 		t.Fatalf("expected 2 removals counted, got %d", removed)
