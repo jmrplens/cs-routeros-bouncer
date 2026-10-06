@@ -2,7 +2,7 @@
 # linux/arm/v5 image, and the stage below runs no code of the target platform.
 FROM --platform=$BUILDPLATFORM alpine:3.24 AS rootfs
 
-COPY --from=busybox:1.37-uclibc /etc/passwd /etc/group /rootfs/etc/
+COPY --from=busybox:1.38-uclibc /etc/passwd /etc/group /rootfs/etc/
 
 RUN apk add --no-cache ca-certificates tzdata && \
     mkdir -p /rootfs/etc/ssl/certs /rootfs/usr/share /rootfs/etc/cs-routeros-bouncer /rootfs/home/bouncer && \
@@ -14,7 +14,7 @@ RUN apk add --no-cache ca-certificates tzdata && \
 
 # busybox (uClibc, static) runs on every platform the release ships,
 # linux/arm/v5 included, and brings the wget the healthcheck calls.
-FROM busybox:1.37-uclibc
+FROM busybox:1.38-uclibc
 
 COPY --from=rootfs /rootfs/ /
 
