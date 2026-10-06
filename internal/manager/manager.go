@@ -1592,7 +1592,10 @@ func (m *Manager) addMissingAddresses(ctx context.Context, proto, listName, metr
 	}
 	addStart := time.Now()
 	added, failed, addErr := m.bulkAdd(ctx, proto, listName, toAdd)
-	if addErr != nil {
+	switch {
+	case ctx.Err() != nil:
+		m.logger.Info().Str("proto", proto).Int("added", added).Int("left", len(failed)).Msg("shutdown stopped the adds of the reconciliation")
+	case addErr != nil:
 		m.logger.Warn().Err(addErr).Int("unconfirmed", len(failed)).Msg("some addresses failed to add during reconciliation")
 	}
 	m.addEntriesToCache(proto, confirmedEntries(toAdd, failed))

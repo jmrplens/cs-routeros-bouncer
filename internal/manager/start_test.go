@@ -1261,6 +1261,23 @@ func TestReconcileAddresses_ShutdownSkipsRemovals(t *testing.T) {
 	}
 }
 
+// TestAddMissingAddresses_ShutdownIsNoWarning verifies that adds a shutdown
+// stopped are not logged as failures but as one line with the counts.
+func TestAddMissingAddresses_ShutdownIsNoWarning(t *testing.T) {
+	var logs bytes.Buffer
+	mock := &mockROS{bulkAddCount: 1, bulkAddFailN: 1, bulkAddErr: context.Canceled}
+	mgr := newTestManager(mock, baseConfig())
+	mgr.logger = zerolog.New(&logs)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	mgr.addMissingAddresses(ctx, "ip", "list", "ipv4", []ros.BulkEntry{{Address: "1.1.1.1"}, {Address: "2.2.2.2"}})
+
+	if strings.Contains(logs.String(), "failed to add") || !strings.Contains(logs.String(), "shutdown stopped the adds") {
+		t.Fatalf("expected one shutdown line and no add failure, got %s", logs.String())
+	}
+}
+
 // TestRemoveAddressesParallel_ShutdownIsNoError verifies that removals a
 // shutdown stopped are not logged as failures, one per entry left.
 func TestRemoveAddressesParallel_ShutdownIsNoError(t *testing.T) {
