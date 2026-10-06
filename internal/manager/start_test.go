@@ -13,6 +13,7 @@
 package manager
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -1196,6 +1197,120 @@ func TestCreateFirewallRules_ExistingRuleSkipsAdd(t *testing.T) {
 // TestReconcileAddresses_BulkAddPartialError verifies that when BulkAdd
 // returns an error along with a partial count, the partial additions are
 // still reflected in the cache and metrics.
+// TestReconcileAddresses_PassesContextToAdds verifies that the reconcile
+// context reaches the add, so a shutdown stops a long first load.
+func TestReconcileAddresses_PassesContextToAdds(t *testing.T) {
+	type key struct{}
+	mock := &mockROS{bulkAddCount: 1}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	mgr := newTestManager(mock, cfg)
+	ctx := context.WithValue(context.Background(), key{}, "reconcile")
+
+	mgr.reconcileAddresses(ctx, []*crowdsec.Decision{{Proto: "ip", Value: "10.0.0.1", Origin: "test"}})
+
+	if mock.bulkAddCtx == nil || mock.bulkAddCtx.Value(key{}) != "reconcile" {
+		t.Fatalf("expected the reconcile context at the add, got %v", mock.bulkAddCtx)
+	}
+}
+
+// TestReconcileAddresses_ShutdownSkipsRemovals verifies that a shutdown during
+// a pass stops its removals too, sequential and pooled: thousands of them would
+// hold Start past the container runtime's grace period, and Shutdown would
+// never remove the firewall rules.
+func TestReconcileAddresses_ShutdownSkipsRemovals(t *testing.T) {
+	stale := []ros.AddressEntry{
+		{ID: "*1", Address: "9.9.9.1", Comment: "crowdsec-bouncer|stale"},
+		{ID: "*2", Address: "9.9.9.2", Comment: "crowdsec-bouncer|stale"},
+	}
+	for _, pooled := range []bool{false, true} {
+		ctx, cancel := context.WithCancel(context.Background())
+		mock := &mockROS{listAddresses: stale}
+		mock.listAddressesFunc = func() error {
+			cancel()
+			return nil
+		}
+		cfg := baseConfig()
+		cfg.Firewall.IPv6.Enabled = false
+		mgr := newTestManager(mock, cfg)
+		pool := &fakeRouterOSPool{}
+		if pooled {
+			mgr.pool = pool
+		}
+
+		if _, err := mgr.reconcileProtocolAddresses(ctx, "ip", nil, time.Now()); err != nil {
+			t.Fatalf("pooled=%v: unexpected error %v", pooled, err)
+		}
+		if len(mock.removeAddressCalls) != 0 || pool.removeCtx != nil {
+			t.Fatalf("pooled=%v: removals ran after the shutdown", pooled)
+		}
+	}
+
+	// A shutdown in the middle of sequential removals stops the rest.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	mock := &mockROS{listAddresses: stale, removeAddressFunc: cancel}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	mgr := newTestManager(mock, cfg)
+	if _, err := mgr.reconcileProtocolAddresses(ctx, "ip", nil, time.Now()); err != nil {
+		t.Fatalf("unexpected error %v", err)
+	}
+	if len(mock.removeAddressCalls) != 1 {
+		t.Fatalf("expected the removals to stop after the shutdown, got %d", len(mock.removeAddressCalls))
+	}
+}
+
+// TestAddMissingAddresses_ShutdownIsNoWarning verifies that adds a shutdown
+// stopped are not logged as failures but as one line with the counts.
+func TestAddMissingAddresses_ShutdownIsNoWarning(t *testing.T) {
+	var logs bytes.Buffer
+	mock := &mockROS{bulkAddCount: 1, bulkAddFailN: 1, bulkAddErr: context.Canceled}
+	mgr := newTestManager(mock, baseConfig())
+	mgr.logger = zerolog.New(&logs)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	mgr.addMissingAddresses(ctx, "ip", "list", "ipv4", []ros.BulkEntry{{Address: "1.1.1.1"}, {Address: "2.2.2.2"}})
+
+	if strings.Contains(logs.String(), "failed to add") || !strings.Contains(logs.String(), "shutdown stopped the adds") {
+		t.Fatalf("expected one shutdown line and no add failure, got %s", logs.String())
+	}
+}
+
+// TestRemoveAddressesParallel_ShutdownIsNoError verifies that removals a
+// shutdown stopped are not logged as failures, one per entry left.
+func TestRemoveAddressesParallel_ShutdownIsNoError(t *testing.T) {
+	var logs bytes.Buffer
+	mgr := newTestManager(&mockROS{}, baseConfig())
+	mgr.logger = zerolog.New(&logs)
+	mgr.pool = &fakeRouterOSPool{errs: []error{context.Canceled, context.Canceled}}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	mgr.removeAddresses(ctx, "ip", []ros.AddressEntry{{ID: "*1"}, {ID: "*2"}})
+
+	if strings.Contains(logs.String(), "error removing address") {
+		t.Fatalf("expected no removal errors logged after a shutdown, got %s", logs.String())
+	}
+}
+
+// TestRemoveAddressesParallel_PassesContext verifies that pooled removals get
+// the pass's context, so a shutdown stops them.
+func TestRemoveAddressesParallel_PassesContext(t *testing.T) {
+	type key struct{}
+	mgr := newTestManager(&mockROS{}, baseConfig())
+	pool := &fakeRouterOSPool{}
+	mgr.pool = pool
+	ctx := context.WithValue(context.Background(), key{}, "reconcile")
+
+	mgr.removeAddresses(ctx, "ip", []ros.AddressEntry{{ID: "*1", Address: "9.9.9.1"}})
+
+	if pool.removeCtx == nil || pool.removeCtx.Value(key{}) != "reconcile" {
+		t.Fatalf("expected the pass's context at the pool, got %v", pool.removeCtx)
+	}
+}
+
 func TestReconcileAddresses_BulkAddPartialError(t *testing.T) {
 	mock := &mockROS{
 		bulkAddCount: 5, // 5 of 10 succeeded
@@ -1289,17 +1404,18 @@ func TestReconcileAddresses_SequentialRemoveFallback(t *testing.T) {
 }
 
 type fakeRouterOSPool struct {
-	proto   string
-	entries []ros.AddressEntry
-	errs    []error
-	closed  bool
+	proto     string
+	entries   []ros.AddressEntry
+	errs      []error
+	closed    bool
+	removeCtx context.Context
 
 	addList    string
 	addEntries []ros.BulkEntry
 	addErrs    []error
 }
 
-func (p *fakeRouterOSPool) AddAddresses(proto, list string, entries []ros.BulkEntry) (added int, failed []ros.BulkEntry, errs []error) {
+func (p *fakeRouterOSPool) AddAddresses(_ context.Context, proto, list string, entries []ros.BulkEntry) (added int, failed []ros.BulkEntry, errs []error) {
 	p.proto = proto
 	p.addList = list
 	p.addEntries = append([]ros.BulkEntry(nil), entries...)
@@ -1311,7 +1427,8 @@ func (p *fakeRouterOSPool) Connect() error { return nil }
 
 func (p *fakeRouterOSPool) Close() { p.closed = true }
 
-func (p *fakeRouterOSPool) RemoveAddresses(proto string, entries []ros.AddressEntry) []error {
+func (p *fakeRouterOSPool) RemoveAddresses(ctx context.Context, proto string, entries []ros.AddressEntry) []error {
+	p.removeCtx = ctx
 	p.proto = proto
 	p.entries = append([]ros.AddressEntry(nil), entries...)
 	return p.errs
@@ -1331,7 +1448,7 @@ func TestRemoveAddressesParallelMixedErrors(t *testing.T) {
 		{ID: "*3", Address: "10.0.0.3"},
 	}
 
-	removed := mgr.removeAddresses("ip", entries)
+	removed := mgr.removeAddresses(context.Background(), "ip", entries)
 
 	if removed != 2 {
 		t.Fatalf("expected 2 removals counted, got %d", removed)
@@ -2335,7 +2452,7 @@ func TestBulkAddMethod(t *testing.T) {
 
 	mock := &mockROS{bulkAddCount: 2}
 	mgr := newTestManager(mock, baseConfig())
-	if added, failed, err := mgr.bulkAdd("ip", "list", entries); err != nil || added != 2 || len(failed) != 0 {
+	if added, failed, err := mgr.bulkAdd(context.Background(), "ip", "list", entries); err != nil || added != 2 || len(failed) != 0 {
 		t.Fatalf("script: got (%d, %v, %v)", added, failed, err)
 	}
 	if len(mock.bulkAddCalls) != 1 || len(mock.addEachCalls) != 0 {
@@ -2349,7 +2466,7 @@ func TestBulkAddMethod(t *testing.T) {
 	cfg.MikroTik.BulkAddMethod = config.BulkAddAPI
 	mock = &mockROS{}
 	mgr = newTestManager(mock, cfg)
-	if added, failed, err := mgr.bulkAdd("ip", "list", entries); err != nil || added != 2 || len(failed) != 0 {
+	if added, failed, err := mgr.bulkAdd(context.Background(), "ip", "list", entries); err != nil || added != 2 || len(failed) != 0 {
 		t.Fatalf("api without pool: got (%d, %v, %v)", added, failed, err)
 	}
 	if len(mock.bulkAddCalls) != 0 || len(mock.addEachCalls) != 1 {
@@ -2363,7 +2480,7 @@ func TestBulkAddMethod(t *testing.T) {
 	mgr = newTestManager(mock, cfg)
 	pool := &fakeRouterOSPool{addErrs: []error{errors.New("add timeout")}}
 	mgr.pool = pool
-	added, failed, err := mgr.bulkAdd("ip", "list", entries)
+	added, failed, err := mgr.bulkAdd(context.Background(), "ip", "list", entries)
 	if added != 1 || err == nil || !strings.Contains(err.Error(), "1 add errors") || len(failed) != 1 || failed[0].Address != "1.1.1.1" {
 		t.Fatalf("api with pool: got (%d, %v, %v)", added, failed, err)
 	}

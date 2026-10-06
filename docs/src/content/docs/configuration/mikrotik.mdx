@@ -155,5 +155,5 @@ Measured on an RB5009 (RouterOS 7.24.4), loading about 24,400 decisions at start
 - **On the router's LAN** (0.2 ms), `script` through `/execute` took about 21 s and `api` with `pool_size: 1` about 23 s, each at roughly half the router CPU of a stored script, which took about 36 s. With the default `pool_size: 4`, `api` took as long as a stored script, because extra sessions only contend here. A pass that adds a few entries takes milliseconds either way.
 - **Over a link with latency**, every API add pays one round trip, where a script pays one per 100 entries through `/execute` and four as a stored script. At 36 ms, `script` took about 33 s through `/execute`, 70 s as a stored script, and `api` 76 s with `pool_size: 16`; at 33 ms it had taken 3.7 min with 4 and 13 min with 1.
 
-Live decisions are processed only once the first reconciliation has finished, and between later passes.
+Live decisions are processed only once the first reconciliation has finished, and between later passes. A shutdown stops the adds and removals of a running pass; the next start finishes them.
 :::

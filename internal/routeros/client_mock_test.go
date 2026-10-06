@@ -4,12 +4,14 @@
 package routeros
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/jmrplens/cs-routeros-bouncer/internal/config"
 )
@@ -1492,7 +1494,7 @@ func TestBulkAddAddresses_EmptyInput(t *testing.T) {
 	mc := newMockConn()
 	c := newTestClient(mc)
 
-	added, _, err := c.BulkAddAddresses("ip", "list", nil)
+	added, _, err := c.BulkAddAddresses(context.Background(), "ip", "list", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1520,7 +1522,7 @@ func TestBulkAddAddresses_SingleChunk(t *testing.T) {
 	mc.pushReply(emptyReply())                                    // Run script
 	mc.pushReply(emptyReply())                                    // Remove script
 
-	added, _, err := c.BulkAddAddresses("ip", "list", entries)
+	added, _, err := c.BulkAddAddresses(context.Background(), "ip", "list", entries)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1551,7 +1553,7 @@ func TestBulkAddAddresses_MultipleChunks(t *testing.T) {
 	mc.pushReply(emptyReply())
 	mc.pushReply(emptyReply())
 
-	added, _, err := c.BulkAddAddresses("ip", "list", entries)
+	added, _, err := c.BulkAddAddresses(context.Background(), "ip", "list", entries)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1577,7 +1579,7 @@ func TestBulkAddAddresses_ScriptFailsFallsBack(t *testing.T) {
 	// Fallback to individual AddAddress
 	mc.pushReply(doneReply(map[string]string{"ret": "*A1"})) // AddAddress succeeds
 
-	added, _, err := c.BulkAddAddresses("ip", "list", entries)
+	added, _, err := c.BulkAddAddresses(context.Background(), "ip", "list", entries)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1615,7 +1617,7 @@ func TestBulkAddAddresses_FallbackAlreadyHaveIgnored(t *testing.T) {
 	// Set updates timeout and comment.
 	mc.pushReply(emptyReply())
 
-	added, _, err := c.BulkAddAddresses("ip", "list", entries)
+	added, _, err := c.BulkAddAddresses(context.Background(), "ip", "list", entries)
 	// No error because "already have" is handled gracefully.
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1651,7 +1653,7 @@ func TestBulkAddAddresses_FailedOnlyFromFailedChunk(t *testing.T) {
 	mc.pushReply(doneReply(map[string]string{"ret": "*A1"}))
 	mc.pushError(newDeviceError("failure: invalid value"))
 
-	added, failed, err := c.BulkAddAddresses("ip", "list", entries)
+	added, failed, err := c.BulkAddAddresses(context.Background(), "ip", "list", entries)
 	if err == nil {
 		t.Fatal("expected the retry's error")
 	}
@@ -1678,7 +1680,7 @@ func TestBulkAddAddresses_FallbackRealErrorReturned(t *testing.T) {
 	mc.pushError(errors.New("add failed")) // fallback AddAddress fails
 	mc.pushError(errors.New("add failed")) // reconnect retry fails
 
-	added, _, err := c.BulkAddAddresses("ip", "list", entries)
+	added, _, err := c.BulkAddAddresses(context.Background(), "ip", "list", entries)
 	if err == nil || !strings.Contains(err.Error(), "1 add errors") {
 		t.Fatalf("expected fallback error, got %v", err)
 	}
@@ -1890,8 +1892,8 @@ func TestPool_CloseIdempotent(t *testing.T) {
 	p.Close() // should not panic
 }
 
-// TestParallelExec_Success verifies parallel execution with all successes.
-func TestParallelExec_Success(t *testing.T) {
+// TestParallelExecContext_Success verifies parallel execution with all successes.
+func TestParallelExecContext_Success(t *testing.T) {
 	cfg := config.MikroTikConfig{Address: "127.0.0.1"}
 	p := NewPool(cfg, 2)
 
@@ -1904,7 +1906,7 @@ func TestParallelExec_Success(t *testing.T) {
 	var mu sync.Mutex
 	var processed []string
 
-	errs := ParallelExec(p, items, func(c *Client, item string) error {
+	errs := ParallelExecContext(context.Background(), p, items, func(c *Client, item string) error {
 		mu.Lock()
 		processed = append(processed, item)
 		mu.Unlock()
@@ -1919,14 +1921,164 @@ func TestParallelExec_Success(t *testing.T) {
 	}
 }
 
-// TestParallelExec_CollectsErrors verifies error collection.
-func TestParallelExec_CollectsErrors(t *testing.T) {
+// TestParallelExecContext_ClosedPool verifies that a closed pool yields no client and
+// no panic: every item is reported with ErrPoolClosed and fn is never called.
+func TestParallelExecContext_ClosedPool(t *testing.T) {
+	p := NewPool(config.MikroTikConfig{Address: "127.0.0.1"}, 2)
+	p.conns <- newTestClient(newMockConn())
+	p.conns <- newTestClient(newMockConn())
+	p.Close()
+
+	called := false
+	errs := ParallelExecContext(context.Background(), p, []string{"a", "b", "c"}, func(c *Client, item string) error {
+		called = true
+		return nil
+	})
+	if called {
+		t.Fatal("expected fn not to run without a client")
+	}
+	if len(errs) != 3 {
+		t.Fatalf("expected one error per item, got %v", errs)
+	}
+	for _, err := range errs {
+		if !errors.Is(err, ErrPoolClosed) {
+			t.Fatalf("expected ErrPoolClosed, got %v", err)
+		}
+	}
+}
+
+// TestParallelExecContext_Canceled verifies that a canceled context stops the
+// workers taking items: every item left is reported with the context's error.
+func TestParallelExecContext_Canceled(t *testing.T) {
+	p := NewPool(config.MikroTikConfig{Address: "127.0.0.1"}, 1)
+	p.conns <- newTestClient(newMockConn())
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	errs := ParallelExecContext(ctx, p, []int{1, 2, 3}, func(c *Client, item int) error {
+		t.Fatalf("expected no item to run, got %d", item)
+		return nil
+	})
+	if len(errs) != 3 || !errors.Is(errs[0], context.Canceled) {
+		t.Fatalf("expected 3 context.Canceled errors, got %v", errs)
+	}
+}
+
+// TestParallelExecContext_CanceledMidRun verifies that canceling while items
+// run loses none and runs none twice: every item either ran or is reported
+// with the context's error.
+func TestParallelExecContext_CanceledMidRun(t *testing.T) {
+	p := NewPool(config.MikroTikConfig{Address: "127.0.0.1"}, 1)
+	p.conns <- newTestClient(newMockConn())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	items := []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
+
+	ran := map[int]int{}
+	errs := ParallelExecContext(ctx, p, items, func(c *Client, item int) error {
+		ran[item]++
+		if len(ran) == 3 {
+			cancel()
+		}
+		return nil
+	})
+	if len(ran) != 3 || len(errs) != 7 {
+		t.Fatalf("expected 3 run and 7 reported, got %d run and %d errors", len(ran), len(errs))
+	}
+	for item, n := range ran {
+		if n != 1 {
+			t.Fatalf("expected item %d run once, got %d", item, n)
+		}
+	}
+	for _, err := range errs {
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("expected context.Canceled, got %v", err)
+		}
+	}
+}
+
+// TestPool_PutFullClosesClient verifies that a client given back to a full
+// pool is closed instead of blocking, which would hold the pool's lock and
+// leave Close waiting forever.
+func TestPool_PutFullClosesClient(t *testing.T) {
+	p := NewPool(config.MikroTikConfig{Address: "127.0.0.1"}, 1)
+	p.conns <- newTestClient(newMockConn())
+	mc := newMockConn()
+
+	done := make(chan struct{})
+	go func() {
+		p.Put(newTestClient(mc))
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Put blocked on a full pool")
+	}
+	mc.mu.Lock()
+	closed := mc.closed
+	mc.mu.Unlock()
+	if !closed {
+		t.Fatal("expected the client closed")
+	}
+}
+
+// TestPool_PutAfterClose verifies that a client given back after Close is
+// closed instead of panicking on the closed channel.
+func TestPool_PutAfterClose(t *testing.T) {
+	p := NewPool(config.MikroTikConfig{Address: "127.0.0.1"}, 1)
+	mc := newMockConn()
+	p.conns <- newTestClient(mc)
+	held := p.Get()
+	p.Close()
+
+	p.Put(held)
+	mc.mu.Lock()
+	closed := mc.closed
+	mc.mu.Unlock()
+	if !closed {
+		t.Fatal("expected the client closed")
+	}
+}
+
+// TestAddAddressesEach_Canceled verifies that a canceled context adds nothing
+// and reports every entry as failed, so none of them is cached.
+func TestAddAddressesEach_Canceled(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	entries := []BulkEntry{{Address: "1.1.1.1"}, {Address: "2.2.2.2"}}
+
+	added, failed, err := c.AddAddressesEach(ctx, "ip", "list", entries)
+	if !errors.Is(err, context.Canceled) || added != 0 || len(failed) != 2 || mc.callCount() != 0 {
+		t.Fatalf("expected nothing added and both failed, got %d, %+v, %v, %d calls", added, failed, err, mc.callCount())
+	}
+}
+
+// TestBulkAddAddresses_Canceled verifies that a canceled context runs no
+// script and reports every entry as failed.
+func TestBulkAddAddresses_Canceled(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	entries := []BulkEntry{{Address: "1.1.1.1"}, {Address: "2.2.2.2"}}
+
+	added, failed, err := c.BulkAddAddresses(ctx, "ip", "list", entries)
+	if !errors.Is(err, context.Canceled) || added != 0 || len(failed) != 2 || mc.callCount() != 0 {
+		t.Fatalf("expected nothing added and both failed, got %d, %+v, %v, %d calls", added, failed, err, mc.callCount())
+	}
+}
+
+// TestParallelExecContext_CollectsErrors verifies error collection.
+func TestParallelExecContext_CollectsErrors(t *testing.T) {
 	cfg := config.MikroTikConfig{Address: "127.0.0.1"}
 	p := NewPool(cfg, 1)
 	p.conns <- newTestClient(newMockConn())
 
 	items := []int{1, 2, 3}
-	errs := ParallelExec(p, items, func(c *Client, item int) error {
+	errs := ParallelExecContext(context.Background(), p, items, func(c *Client, item int) error {
 		if item == 2 {
 			return errors.New("fail on 2")
 		}
@@ -1938,12 +2090,12 @@ func TestParallelExec_CollectsErrors(t *testing.T) {
 	}
 }
 
-// TestParallelExec_EmptyItems verifies no-op with empty input.
-func TestParallelExec_EmptyItems(t *testing.T) {
+// TestParallelExecContext_EmptyItems verifies no-op with empty input.
+func TestParallelExecContext_EmptyItems(t *testing.T) {
 	cfg := config.MikroTikConfig{Address: "127.0.0.1"}
 	p := NewPool(cfg, 2)
 
-	errs := ParallelExec(p, []string{}, func(c *Client, item string) error {
+	errs := ParallelExecContext(context.Background(), p, []string{}, func(c *Client, item string) error {
 		t.Fatal("should not be called")
 		return nil
 	})
@@ -1953,8 +2105,8 @@ func TestParallelExec_EmptyItems(t *testing.T) {
 	}
 }
 
-// TestParallelExec_WorkersLimitedByItems verifies workers capped at item count.
-func TestParallelExec_WorkersLimitedByItems(t *testing.T) {
+// TestParallelExecContext_WorkersLimitedByItems verifies workers capped at item count.
+func TestParallelExecContext_WorkersLimitedByItems(t *testing.T) {
 	cfg := config.MikroTikConfig{Address: "127.0.0.1"}
 	p := NewPool(cfg, 10)
 
@@ -1962,7 +2114,7 @@ func TestParallelExec_WorkersLimitedByItems(t *testing.T) {
 	p.conns <- newTestClient(newMockConn())
 
 	called := false
-	errs := ParallelExec(p, []string{"only-one"}, func(c *Client, item string) error {
+	errs := ParallelExecContext(context.Background(), p, []string{"only-one"}, func(c *Client, item string) error {
 		called = true
 		return nil
 	})
@@ -2450,7 +2602,7 @@ func TestAddAddressesEach_ReportsFailed(t *testing.T) {
 	mc.pushReply(doneReply(map[string]string{"ret": "*A1"}))
 	mc.pushError(newDeviceError("failure: invalid value"))
 
-	added, failed, err := c.AddAddressesEach("ip", "list", []BulkEntry{
+	added, failed, err := c.AddAddressesEach(context.Background(), "ip", "list", []BulkEntry{
 		{Address: "1.1.1.1", Timeout: "1h", Comment: "a"},
 		{Address: "2.2.2.2", Timeout: "1h", Comment: "b"},
 	})
@@ -2467,7 +2619,7 @@ func TestAddAddressesEach_NoScript(t *testing.T) {
 	mc.pushReply(doneReply(map[string]string{"ret": "*A1"}))
 	mc.pushReply(doneReply(map[string]string{"ret": "*A2"}))
 
-	added, failed, err := c.AddAddressesEach("ip", "list", []BulkEntry{
+	added, failed, err := c.AddAddressesEach(context.Background(), "ip", "list", []BulkEntry{
 		{Address: "1.1.1.1", Timeout: "1h", Comment: "a"},
 		{Address: "2.2.2.2", Timeout: "2h", Comment: "b"},
 	})
@@ -2493,7 +2645,7 @@ func TestAddAddressesEach_SetsIDs(t *testing.T) {
 	mc.pushReply(doneReply(map[string]string{"ret": "*A2"}))
 
 	entries := []BulkEntry{{Address: "1.1.1.1", Timeout: "1h"}, {Address: "2.2.2.2", Timeout: "1h"}}
-	if _, _, err := c.AddAddressesEach("ip", "list", entries); err != nil {
+	if _, _, err := c.AddAddressesEach(context.Background(), "ip", "list", entries); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if entries[0].ID != "*A1" || entries[1].ID != "*A2" {

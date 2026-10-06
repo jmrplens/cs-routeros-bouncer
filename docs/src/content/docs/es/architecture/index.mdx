@@ -181,7 +181,7 @@ Esto es significativamente más rápido que el enfoque de "comprobar primero" (~
 
 ### Pool de conexiones
 
-El bouncer mantiene un pool configurable de conexiones persistentes a la API de RouterOS. El pool se usa para las eliminaciones de la reconciliación y, con `bulk_add_method: api`, también para sus adiciones: las entradas obsoletas se eliminan, y con `api` las que faltan se añaden, de forma concurrente por el pool mediante el helper genérico `ParallelExec`. En la prueba de CAPI con el RB5009, eliminar ~26.800 entradas exclusivas de CAPI llevó ~77 s de trabajo de eliminación en RouterOS. Si el pool no se puede abrir, las eliminaciones, y con `bulk_add_method: api` las adiciones, recurren a la conexión principal, una llamada tras otra.
+El bouncer mantiene un pool configurable de conexiones persistentes a la API de RouterOS. El pool se usa para las eliminaciones de la reconciliación y, con `bulk_add_method: api`, también para sus adiciones: las entradas obsoletas se eliminan, y con `api` las que faltan se añaden, de forma concurrente por el pool mediante el helper genérico `ParallelExecContext`. En la prueba de CAPI con el RB5009, eliminar ~26.800 entradas exclusivas de CAPI llevó ~77 s de trabajo de eliminación en RouterOS. Si el pool no se puede abrir, las eliminaciones, y con `bulk_add_method: api` las adiciones, recurren a la conexión principal, una llamada tras otra.
 
 ### Adición masiva basada en scripts
 
