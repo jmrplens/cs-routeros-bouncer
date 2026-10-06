@@ -7,12 +7,9 @@
 
 ### Fixed
 
-- **Pull requests from forks are assigned again** — the auto-assign workflow ran on `pull_request`, where a fork's pull request gets a read-only token whatever the workflow's `permissions` ask for, so assigning it failed with "Resource not accessible by integration" (403); since the job only runs for authors other than the owner, its pull-request half had never worked. It now runs on `pull_request_target`, safe here because the job checks out nothing and runs no code from the pull request: it calls the API with the number
-
-### Fixed
-
 - **`mikrotik.connection_timeout` bounds the dial and the login** — it was parsed and documented but read by nothing, so a router that accepted the connection and never answered the login held the startup dial, and every reconnect, forever. The dial now uses it for the TCP connect and puts its deadline on the connection for the login; `0` keeps no bound
 - **A decision longer than 248 days reaches the router** — RouterOS keeps an address-list timeout of at most `35w3d13h13m56s`: `/ip` refuses a longer one, so the entry was never added, and `/ipv6` wraps it, so a year became `0s`. Timeouts are now capped at that value; the next reconciliation after it adds the entry again while the decision lasts, so with `crowdsec.reconciliation_interval: 0` the entry ends early (verified on RouterOS 7.24.5)
+- **Pull requests from forks are assigned again** — the auto-assign workflow ran on `pull_request`, where a fork's pull request gets a read-only token whatever the workflow's `permissions` ask for, so assigning it failed with "Resource not accessible by integration" (403); since the job only runs for authors other than the owner, its pull-request half had never worked. It now runs on `pull_request_target`, safe here because the job checks out nothing and runs no code from the pull request: it calls the API with the number
 
 ## [1.7.2] - 2026-10-06
 
