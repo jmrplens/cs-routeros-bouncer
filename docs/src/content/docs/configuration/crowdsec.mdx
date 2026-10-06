@@ -57,7 +57,7 @@ How often to fetch a full active-decision snapshot from LAPI and reconcile it wi
 
 `crowdsec.reconciliation_interval` / `CROWDSEC_RECONCILIATION_INTERVAL` uses Go duration format, such as `1m`, `15m`, or `1h`.
 
-Set to `0` to disable periodic reconciliation. Any non-zero value must be at least `1m`.
+Set to `0` to disable periodic reconciliation. Any non-zero value must be at least `1m`. RouterOS keeps an address-list entry for at most `35w3d13h13m56s`; the entry of a longer decision ends then and is added again by the next pass, so with `0` it stays off the router for the rest of the decision.
 
 ```yaml
 crowdsec:
