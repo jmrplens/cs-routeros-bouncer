@@ -73,18 +73,24 @@ func pushRun(mc *mockConn, out string) {
 func TestBulkAddAddresses_ExecuteFailuresRetriedEach(t *testing.T) {
 	mc := newMockConn()
 	c := newExecuteTestClient(mc)
-	entries := []BulkEntry{{Address: "1.1.1.1"}, {Address: "2.2.2.2"}, {Address: "3.3.3.3"}}
+	entries := []BulkEntry{{Address: "1.1.1.1", Timeout: "1h"}, {Address: "2.2.2.2"}, {Address: "3.3.3.3"}}
 
 	pushRun(mc, "noise\r\n"+bulkDoneMarker+"1,0,1,9,")
-	mc.pushReply(doneReply(map[string]string{"ret": "*A1"})) // retry 1.1.1.1: added
-	mc.pushError(newDeviceError("failure: invalid value"))   // retry 2.2.2.2: refused
+	// retry 1.1.1.1: already on the router, found and refreshed
+	mc.pushError(newDuplicateDeviceError())
+	mc.pushReply(reReply(map[string]string{".id": "*A1", "address": "1.1.1.1", "list": "list", "comment": "old"}))
+	mc.pushReply(emptyReply())
+	mc.pushError(newDeviceError("failure: invalid value")) // retry 2.2.2.2: refused
 
 	added, failed, err := c.BulkAddAddresses(context.Background(), "ip", "list", entries)
 	if err == nil || added != 2 || len(failed) != 1 || failed[0].Address != "2.2.2.2" {
 		t.Fatalf("expected 2 added and 2.2.2.2 failed with an error, got %d, %+v, %v", added, failed, err)
 	}
-	if got := mc.callCount(); got != 3 {
-		t.Fatalf("expected two retries after the run, got %d calls", got)
+	if got := mc.callCount(); got != 5 {
+		t.Fatalf("expected the run, the duplicate's add, lookup and refresh, and one refused add, got %d calls", got)
+	}
+	if entries[0].ID != "*A1" {
+		t.Fatalf("expected the duplicate to keep the existing id *A1, got %q", entries[0].ID)
 	}
 }
 

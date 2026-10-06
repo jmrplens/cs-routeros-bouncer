@@ -672,9 +672,9 @@ func (m *Manager) handleBan(d *crowdsec.Decision) {
 		return
 	}
 	if err != nil {
-		if errors.Is(err, rosClient.ErrAddRefused) {
-			m.forgetAddress(addr) // the router said it is not there
-		} else {
+		// A refusal is about this add only: an earlier add that failed in
+		// transit may still be on the router, so the address stays as it was.
+		if !errors.Is(err, rosClient.ErrAddRefused) {
 			m.markUncertain(d.Proto, []rosClient.BulkEntry{{Address: d.Value}})
 		}
 		m.logger.Error().Err(err).Str("address", d.Value).Str("list", listName).Msg("error adding address to MikroTik")

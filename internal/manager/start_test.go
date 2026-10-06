@@ -1365,22 +1365,6 @@ func TestHandleBan_TransportErrorStaysUnbannable(t *testing.T) {
 	}
 }
 
-// TestHandleBan_RefusedIsSettled verifies that a live ban the router refused
-// settles an uncertain address: the router said it is not there, so a later
-// unban needs no lookup.
-func TestHandleBan_RefusedIsSettled(t *testing.T) {
-	mock := &mockROS{addAddressErr: fmt.Errorf("add: %w", ros.ErrAddRefused)}
-	mgr := newTestManager(mock, baseConfig())
-	mgr.markUncertain("ip", []ros.BulkEntry{{Address: "10.0.0.1"}})
-
-	mgr.handleBan(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1", Duration: time.Hour})
-	mgr.handleUnban(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1"})
-
-	if len(mock.findAddressCalls) != 0 {
-		t.Fatalf("expected no lookup after the refusal, got %d", len(mock.findAddressCalls))
-	}
-}
-
 // TestUncertain_IPv6 verifies the uncertain set for IPv6: the key is the
 // normalized address, so the unban finds it, and only an IPv6 listing settles
 // it, not an IPv4 one.
@@ -1393,6 +1377,9 @@ func TestUncertain_IPv6(t *testing.T) {
 
 	mgr.reconcileProtocolAddresses(context.Background(), "ipv6", decisions, time.Now())
 	mgr.reconcileProtocolAddresses(context.Background(), "ip", nil, time.Now())
+	if _, ok := mgr.uncertain["2001:db8::1/128"]; !ok {
+		t.Fatal("expected the IPv6 address still uncertain after the IPv4 listing")
+	}
 	mock.findAddressEntry = &ros.AddressEntry{ID: "*9", Address: "2001:db8::1/128", Comment: "crowdsec-bouncer|test"}
 	mgr.handleUnban(&crowdsec.Decision{Proto: "ipv6", Value: "2001:db8::1"})
 
@@ -1409,6 +1396,9 @@ func TestUncertain_IPv4MappedSettledByIPListing(t *testing.T) {
 	mgr := newTestManager(mock, baseConfig())
 
 	mgr.handleBan(&crowdsec.Decision{Proto: "ip", Value: "::ffff:10.0.0.1", Duration: time.Hour})
+	if _, ok := mgr.uncertain["::ffff:10.0.0.1"]; !ok {
+		t.Fatal("expected the failed ban uncertain before the listing")
+	}
 	if _, err := mgr.reconcileProtocolAddresses(context.Background(), "ip", nil, time.Now()); err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
@@ -1478,6 +1468,9 @@ func TestReconcileAddresses_ListingSettlesUncertainEntries(t *testing.T) {
 	mgr := newTestManager(mock, cfg)
 
 	mgr.reconcileAddresses(context.Background(), []*crowdsec.Decision{{Proto: "ip", Value: "10.0.0.1", Origin: "test"}})
+	if _, ok := mgr.uncertain["10.0.0.1"]; !ok {
+		t.Fatal("expected the failed add uncertain before the next listing")
+	}
 	mgr.reconcileAddresses(context.Background(), nil)
 	mgr.handleUnban(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1"})
 
@@ -1486,10 +1479,11 @@ func TestReconcileAddresses_ListingSettlesUncertainEntries(t *testing.T) {
 	}
 }
 
-// TestHandleBan_RefusedSettlesUncertainEntry verifies that a live ban the
-// router refuses (a trap, such as an invalid value) settles an uncertain
-// address: it is not on the router, so an unban need not look it up.
-func TestHandleBan_RefusedSettlesUncertainEntry(t *testing.T) {
+// TestHandleBan_RefusedKeepsUncertainty verifies that a live ban the router
+// refuses leaves an uncertain address uncertain: the refusal is about this
+// add, and an earlier add that failed in transit may still be on the router,
+// so the unban still looks the address up.
+func TestHandleBan_RefusedKeepsUncertainty(t *testing.T) {
 	mock := &mockROS{bulkAddFailN: 1, bulkAddErr: errors.New("reply timed out")}
 	cfg := baseConfig()
 	cfg.Firewall.IPv6.Enabled = false
@@ -1500,8 +1494,8 @@ func TestHandleBan_RefusedSettlesUncertainEntry(t *testing.T) {
 	mgr.handleBan(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1", Duration: time.Hour})
 	mgr.handleUnban(&crowdsec.Decision{Proto: "ip", Value: "10.0.0.1"})
 
-	if len(mock.findAddressCalls) != 0 {
-		t.Fatalf("expected no lookup for a refused address, got %v", mock.findAddressCalls)
+	if len(mock.findAddressCalls) != 1 {
+		t.Fatalf("expected the unban to look the address up, got %v", mock.findAddressCalls)
 	}
 }
 
