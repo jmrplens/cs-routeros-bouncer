@@ -5,7 +5,7 @@ description: Instala cs-routeros-bouncer con Docker Compose, como binario con el
 
 import { Steps, Tabs, TabItem, LinkCard } from "@astrojs/starlight/components";
 
-cs-routeros-bouncer se distribuye como imagen de contenedor multiarquitectura, binarios de Linux precompilados con instalador para systemd y código fuente Go compilable. Usa **Docker Compose** si ya ejecutas CrowdSec en contenedores; usa el **instalador de systemd** (`cs-routeros-bouncer setup`) en un host Linux sin contenedores; **compila desde el código fuente** solo si necesitas una plataforma sin release o quieres modificar el código.
+cs-routeros-bouncer se distribuye como imagen de contenedor multiarquitectura, binarios de Linux precompilados con instalador para systemd y código fuente Go compilable. Usa **Docker Compose** si ya ejecutas CrowdSec en contenedores; usa el **instalador de systemd** (`cs-routeros-bouncer setup`) en un host Linux sin contenedores; **compila desde el código fuente** solo si necesitas una plataforma sin release o quieres modificar el código. La imagen también puede ejecutarse como contenedor en el propio router, para cuando CrowdSec está en otro sitio y no hay un equipo Linux en la red del router: consulta [Ejecutarlo dentro de RouterOS](/cs-routeros-bouncer/es/getting-started/routeros-container/).
 
 <Tabs>
   <TabItem label="Docker Compose" icon="seti:docker">

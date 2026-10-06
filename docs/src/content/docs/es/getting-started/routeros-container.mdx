@@ -1,0 +1,131 @@
+---
+title: Ejecutarlo dentro de RouterOS
+description: Ejecuta cs-routeros-bouncer como contenedor en el propio router MikroTik que protege — cuándo tiene sentido, qué necesita, la veth y la regla de firewall que usa, y los comandos de RouterOS para montarlo y retirarlo.
+---
+
+import { Steps } from "@astrojs/starlight/components";
+
+El bouncer puede ejecutarse como contenedor en el router que gestiona. Sigue hablando con RouterOS por la API, ahora a través de la interfaz virtual del contenedor, y sigue necesitando una Local API (LAPI) de CrowdSec en otro sitio. Escribir y leer las address-lists le cuesta al router lo mismo esté donde esté el bouncer; lo que pasa al router es el propio proceso del bouncer.
+
+## Cuándo tiene sentido
+
+- Tu LAPI de CrowdSec está en un VPS, un NAS o una máquina fuera, y en la red del router no hay un equipo Linux siempre encendido para el bouncer.
+- El router ya ejecuta contenedores y le sobra RAM.
+
+CrowdSec en sí, el motor y la LAPI, es la parte pesada y no tiene sitio en el router. Si un equipo Linux de tu red ya lo ejecuta, pon también ahí el bouncer ([Instalación](/cs-routeros-bouncer/es/getting-started/installation/)): así el router trabaja menos.
+
+:::caution[Los contenedores cambian en qué confía el router]
+Los contenedores necesitan `device-mode container=yes`, que RouterOS solo acepta con acceso físico al router: pulsar un botón o cortar la alimentación pocos minutos después de pedirlo. La propia documentación de MikroTik dice claramente que un router con contenedores es tan seguro como lo que se ejecuta en ellos. Actívalo para el bouncer solo si lo aceptas, o en un router que ya ejecute contenedores.
+:::
+
+## Requisitos
+
+- **El paquete `container`** y **`device-mode container=yes`** en el router.
+- **Una arquitectura con contenedores y con imagen.** La imagen se publica para `linux/arm64` (RB5009, hAP ax³, CCR2004 y similares), `linux/arm/v7`, `linux/arm/v5` (desde 1.7.3; placas EN7562CT, como el hEX refresh y el hEX S (2025), que no ejecutan otra variante ARM) y `linux/amd64` (CHR en x86). RouterOS elige la que le corresponde del índice de la imagen. Las placas MIPS, PowerPC y TILE no tienen paquete de contenedores.
+- **RouterOS 7.23 o posterior** para los comandos de abajo: descargar de ghcr.io depende de dos cambios de 7.18 (redirecciones del registro y el registro indicado en `remote-image`), y `restart-policy` y `memory-max` llegaron en 7.23. La sintaxis es la de RouterOS 7.24.
+- **cs-routeros-bouncer 1.7.2 o posterior.** Las versiones anteriores vaciaban sus address-lists si arrancaban con la LAPI inalcanzable, que es lo que pasa justo después de reiniciar el router.
+- **Un disco para la raíz del contenedor**, unos 17 MB una vez extraída, 23 MB hasta 1.7.2. No un disco tmpfs: tras un reinicio está vacío y el contenedor no tiene de dónde arrancar.
+- **Una LAPI de CrowdSec que el router alcance**, y una clave de API de `cscli bouncers add` en el equipo de CrowdSec.
+- **Un usuario de RouterOS para el bouncer**, como en [Configuración del router](/cs-routeros-bouncer/es/getting-started/router-setup/): un grupo con solo `read,write,api`.
+
+## Montarlo
+
+Las direcciones de abajo ponen el contenedor en `172.30.20.0/30`; sirve cualquier /30 libre. Los nombres `veth-bouncer` y `bouncer-env` también son ejemplos.
+
+<Steps>
+
+1. **Dale al contenedor su propia interfaz**
+
+   El bouncer llega a la API del router por la dirección de gateway de la veth, `172.30.20.1`:
+
+   ```routeros
+   /interface/veth/add name="veth-bouncer" address=172.30.20.2/30 gateway=172.30.20.1
+   /ip/address/add address=172.30.20.1/30 interface="veth-bouncer"
+   ```
+
+2. **Deja entrar la API desde el contenedor**
+
+   Esa conexión llega a la cadena input desde `veth-bouncer`, y un firewall como la configuración por defecto de MikroTik descarta el input que no viene de la interface-list `LAN`. Acepta solo la API desde el contenedor, antes de tus reglas de descarte:
+
+   ```routeros
+   /ip/firewall/filter/add chain=input in-interface=veth-bouncer protocol=tcp dst-port=8728 action=accept place-before=0 comment="cs-routeros-bouncer container to the API"
+   ```
+
+   Añadir `veth-bouncer` a la lista `LAN` también funciona, pero le da al contenedor todo lo que la LAN puede alcanzar en el router. Si tu tabla raw descarta tráfico por interfaz o por rango de origen, deja pasar también ahí `veth-bouncer` y `172.30.20.0/30`. Si `/ip/service` restringe las direcciones del servicio `api`, incluye `172.30.20.0/30`, y puedes atar el usuario del bouncer al contenedor con `/user/set crowdsec address=172.30.20.2/32`.
+
+   El sentido contrario, el bouncer llegando a la LAPI, no necesita nada si la LAPI está en internet: sale por tu masquerade de siempre. Una LAPI en la LAN ve `172.30.20.2` como origen y responde a través del router, que en la mayoría de redes es su gateway por defecto.
+
+3. **Escribe la configuración**
+
+   El bouncer lee su configuración de variables de entorno, así que le basta con un envlist de RouterOS:
+
+   ```routeros
+   /container/envs/add list="bouncer-env" key=CROWDSEC_URL value="https://lapi.example.com:8080/"
+   /container/envs/add list="bouncer-env" key=CROWDSEC_BOUNCER_API_KEY value="la clave de cscli bouncers add"
+   /container/envs/add list="bouncer-env" key=MIKROTIK_HOST value="172.30.20.1:8728"
+   /container/envs/add list="bouncer-env" key=MIKROTIK_USER value="crowdsec"
+   /container/envs/add list="bouncer-env" key=MIKROTIK_PASS value="la contraseña de ese usuario"
+   /container/envs/add list="bouncer-env" key=LOG_LEVEL value="warn"
+   ```
+
+   Todo ajuste que necesita una instalación normal tiene variable de entorno ([Configuración](/cs-routeros-bouncer/es/configuration/)); la excepción son las sobrescrituras de `rule_placement` por tabla y por protocolo. `LOG_LEVEL=warn` mantiene tranquilo el log del router, porque la salida del contenedor va ahí.
+
+   :::note
+   Quien pueda leer la configuración del router puede leer un envlist, incluida la contraseña del usuario de la API y la clave de la LAPI. Mantén ese usuario limitado a `read,write,api`, y llega a una LAPI fuera de tu red por HTTPS.
+   :::
+
+4. **Crea y arranca el contenedor**
+
+   Sustituye `vX.Y.Z` por la release que quieras, 1.7.2 o posterior, 1.7.3 o posterior en arm/v5 (la [página de Releases](https://github.com/jmrplens/cs-routeros-bouncer/releases) las lista), y `disk1` por un disco que sobreviva a un reinicio:
+
+   ```routeros
+   /container/add remote-image="ghcr.io/jmrplens/cs-routeros-bouncer:vX.Y.Z" interface="veth-bouncer" root-dir="disk1/cs-routeros-bouncer" envlist="bouncer-env" logging=yes start-on-boot=yes restart-policy=on-failure memory-max=128M comment="cs-routeros-bouncer"
+   ```
+
+   RouterOS descarga y extrae primero la imagen. Arranca el contenedor cuando el log diga `download/extract done`; `/container/print` lo muestra entonces detenido, sin el flag `E` (descargando/extrayendo):
+
+   ```routeros
+   /container/start [find comment="cs-routeros-bouncer"]
+   ```
+
+   `memory-max` es un límite estricto: RouterOS detiene el contenedor cuando lo supera, y `restart-policy` lo vuelve a arrancar. En un equipo x86 el bouncer usa unos 30 MB con 2.600 decisiones y llegó a 56 MB con las 17.400 entradas de la lista comunitaria; no se ha medido en ARM, así que 128M deja margen.
+
+</Steps>
+
+## Comprobarlo
+
+```routeros
+/container/print
+/log/print where topics~"container"
+/ip/firewall/filter/print where comment~"@cs-routeros-bouncer"
+/ip/firewall/address-list/print count-only where list=crowdsec-banned
+```
+
+`reconciliation complete, processing live decisions` en el log significa que está funcionando. `no first answer from the CrowdSec LAPI yet` significa que no llega a la LAPI, o que la LAPI rechaza su clave o su certificado; la línea `failed to connect to LAPI` que va al lado dice cuál. Mientras tanto, las listas se quedan como estaban.
+
+## Actualizarlo y retirarlo
+
+Para pasar a otra release, elimina el contenedor, vuelve a añadirlo con la etiqueta nueva y arráncalo como en el paso 4; la interfaz, la regla de firewall y el envlist se quedan. Detenlo primero: en una parada limpia el bouncer retira sus propias reglas de firewall, y al arrancar de nuevo retira las que encuentre sobrantes.
+
+```routeros
+/container/stop [find comment="cs-routeros-bouncer"]
+/container/remove [find comment="cs-routeros-bouncer"]
+```
+
+Para retirarlo todo, después de esos dos comandos:
+
+```routeros
+/container/envs/remove [find list="bouncer-env"]
+/ip/firewall/filter/remove [find comment="cs-routeros-bouncer container to the API"]
+/ip/address/remove [find interface="veth-bouncer"]
+/interface/veth/remove [find name="veth-bouncer"]
+```
+
+Las entradas de las address-lists que añadió el bouncer caducan solas, con el timeout de cada ban. Si el contenedor no se detuvo de forma limpia (superó `memory-max`, o el router se quedó sin alimentación), sus reglas de firewall siguen ahí; todas llevan `@cs-routeros-bouncer` en el comentario:
+
+```routeros
+/ip/firewall/filter/remove [find comment~"@cs-routeros-bouncer"]
+/ip/firewall/raw/remove [find comment~"@cs-routeros-bouncer"]
+/ipv6/firewall/filter/remove [find comment~"@cs-routeros-bouncer"]
+/ipv6/firewall/raw/remove [find comment~"@cs-routeros-bouncer"]
+```
