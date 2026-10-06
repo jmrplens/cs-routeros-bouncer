@@ -21,10 +21,10 @@ Los contenedores necesitan `device-mode container=yes`, que RouterOS solo acepta
 ## Requisitos
 
 - **El paquete `container`** y **`device-mode container=yes`** en el router.
-- **Una arquitectura con contenedores y con imagen.** La imagen se publica para `linux/arm64` (RB5009, hAP ax³, CCR2004 y similares), `linux/arm/v7`, `linux/arm/v5` (placas EN7562CT, como el hEX refresh y el hEX S (2025), que no ejecutan otra variante ARM) y `linux/amd64` (CHR en x86). RouterOS elige la que le corresponde del índice de la imagen. Las placas MIPS, PowerPC y TILE no tienen paquete de contenedores.
+- **Una arquitectura con contenedores y con imagen.** La imagen se publica para `linux/arm64` (RB5009, hAP ax³, CCR2004 y similares), `linux/arm/v7`, `linux/arm/v5` (desde 1.7.3; placas EN7562CT, como el hEX refresh y el hEX S (2025), que no ejecutan otra variante ARM) y `linux/amd64` (CHR en x86). RouterOS elige la que le corresponde del índice de la imagen. Las placas MIPS, PowerPC y TILE no tienen paquete de contenedores.
 - **RouterOS 7.23 o posterior** para los comandos de abajo: descargar de ghcr.io depende de dos cambios de 7.18 (redirecciones del registro y el registro indicado en `remote-image`), y `restart-policy` y `memory-max` llegaron en 7.23. La sintaxis es la de RouterOS 7.24.
 - **cs-routeros-bouncer 1.7.2 o posterior.** Las versiones anteriores vaciaban sus address-lists si arrancaban con la LAPI inalcanzable, que es lo que pasa justo después de reiniciar el router.
-- **Un disco para la raíz del contenedor**, como mucho unos 25 MB una vez extraída. No un disco tmpfs: tras un reinicio está vacío y el contenedor no tiene de dónde arrancar.
+- **Un disco para la raíz del contenedor**, unos 17 MB una vez extraída, 23 MB hasta 1.7.2. No un disco tmpfs: tras un reinicio está vacío y el contenedor no tiene de dónde arrancar.
 - **Una LAPI de CrowdSec que el router alcance**, y una clave de API de `cscli bouncers add` en el equipo de CrowdSec.
 - **Un usuario de RouterOS para el bouncer**, como en [Configuración del router](/cs-routeros-bouncer/es/getting-started/router-setup/): un grupo con solo `read,write,api`.
 
@@ -76,7 +76,7 @@ Las direcciones de abajo ponen el contenedor en `172.30.20.0/30`; sirve cualquie
 
 4. **Crea y arranca el contenedor**
 
-   Sustituye `vX.Y.Z` por la release que quieras, 1.7.2 o posterior (la [página de Releases](https://github.com/jmrplens/cs-routeros-bouncer/releases) las lista), y `disk1` por un disco que sobreviva a un reinicio:
+   Sustituye `vX.Y.Z` por la release que quieras, 1.7.2 o posterior, 1.7.3 o posterior en arm/v5 (la [página de Releases](https://github.com/jmrplens/cs-routeros-bouncer/releases) las lista), y `disk1` por un disco que sobreviva a un reinicio:
 
    ```routeros
    /container/add remote-image="ghcr.io/jmrplens/cs-routeros-bouncer:vX.Y.Z" interface="veth-bouncer" root-dir="disk1/cs-routeros-bouncer" envlist="bouncer-env" logging=yes start-on-boot=yes restart-policy=on-failure memory-max=128M

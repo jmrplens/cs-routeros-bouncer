@@ -21,10 +21,10 @@ Containers need `device-mode container=yes`, which RouterOS only accepts with ph
 ## Requirements
 
 - **The `container` package** and **`device-mode container=yes`** on the router.
-- **An architecture with containers and an image.** The image is published for `linux/arm64` (RB5009, hAP ax³, CCR2004 and similar), `linux/arm/v7`, `linux/arm/v5` (EN7562CT boards, such as the hEX refresh and the hEX S (2025), which run no other ARM variant) and `linux/amd64` (CHR on x86). RouterOS picks the right one from the image index. MIPS, PowerPC and TILE boards have no container package.
+- **An architecture with containers and an image.** The image is published for `linux/arm64` (RB5009, hAP ax³, CCR2004 and similar), `linux/arm/v7`, `linux/arm/v5` (from 1.7.3; EN7562CT boards, such as the hEX refresh and the hEX S (2025), which run no other ARM variant) and `linux/amd64` (CHR on x86). RouterOS picks the right one from the image index. MIPS, PowerPC and TILE boards have no container package.
 - **RouterOS 7.23 or later** for the commands below: pulling from ghcr.io relies on two 7.18 changes (registry redirects, and the registry named in `remote-image`), and `restart-policy` and `memory-max` arrived in 7.23. The syntax is RouterOS 7.24's.
 - **cs-routeros-bouncer 1.7.2 or later.** Earlier versions emptied their address lists when they started while the LAPI was unreachable, which is what happens right after the router reboots.
-- **A disk for the container's root**, about 25 MB at most once extracted. Not a tmpfs disk: after a reboot it is empty and the container has nothing to start from.
+- **A disk for the container's root**, about 17 MB once extracted, 23 MB up to 1.7.2. Not a tmpfs disk: after a reboot it is empty and the container has nothing to start from.
 - **A CrowdSec LAPI the router can reach**, and an API key from `cscli bouncers add` on the CrowdSec host.
 - **A RouterOS user for the bouncer**, as in [Router Setup](/cs-routeros-bouncer/getting-started/router-setup/): a group with only `read,write,api`.
 
@@ -76,7 +76,7 @@ The addresses below put the container on `172.30.20.0/30`; any unused /30 works.
 
 4. **Create and start the container**
 
-   Replace `vX.Y.Z` with the release you want, 1.7.2 or later (the [Releases page](https://github.com/jmrplens/cs-routeros-bouncer/releases) lists them), and `disk1` with a disk that survives a reboot:
+   Replace `vX.Y.Z` with the release you want, 1.7.2 or later, 1.7.3 or later on arm/v5 (the [Releases page](https://github.com/jmrplens/cs-routeros-bouncer/releases) lists them), and `disk1` with a disk that survives a reboot:
 
    ```routeros
    /container/add remote-image="ghcr.io/jmrplens/cs-routeros-bouncer:vX.Y.Z" interface="veth-bouncer" root-dir="disk1/cs-routeros-bouncer" envlist="bouncer-env" logging=yes start-on-boot=yes restart-policy=on-failure memory-max=128M
