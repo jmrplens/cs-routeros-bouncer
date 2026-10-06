@@ -79,8 +79,13 @@ The addresses below put the container on `172.30.20.0/30`; any unused /30 works.
    Replace `vX.Y.Z` with the release you want, 1.7.2 or later, 1.7.3 or later on arm/v5 (the [Releases page](https://github.com/jmrplens/cs-routeros-bouncer/releases) lists them), and `disk1` with a disk that survives a reboot:
 
    ```routeros
-   /container/add remote-image="ghcr.io/jmrplens/cs-routeros-bouncer:vX.Y.Z" interface="veth-bouncer" root-dir="disk1/cs-routeros-bouncer" envlist="bouncer-env" logging=yes start-on-boot=yes restart-policy=on-failure memory-max=128M
-   /container/start [find interface="veth-bouncer"]
+   /container/add remote-image="ghcr.io/jmrplens/cs-routeros-bouncer:vX.Y.Z" interface="veth-bouncer" root-dir="disk1/cs-routeros-bouncer" envlist="bouncer-env" logging=yes start-on-boot=yes restart-policy=on-failure memory-max=128M comment="cs-routeros-bouncer"
+   ```
+
+   RouterOS downloads and extracts the image first. Start the container once the log says `download/extract done`; `/container/print` then shows it stopped, without the `E` (downloading/extracting) flag:
+
+   ```routeros
+   /container/start [find comment="cs-routeros-bouncer"]
    ```
 
    `memory-max` is a hard limit: RouterOS stops the container when it goes over, and `restart-policy` starts it again. On an x86 host the bouncer uses about 30 MB with 2,600 decisions and peaked at 56 MB with the 17,400-entry community blocklist; it has not been measured on ARM, so 128M leaves room.
@@ -100,11 +105,11 @@ The addresses below put the container on `172.30.20.0/30`; any unused /30 works.
 
 ## Updating and removing it
 
-To move to another release, remove the container and add it again with the new tag; the interface, the firewall rule and the envlist stay. Stop it first: on a clean stop the bouncer removes its own firewall rules, and on the next start it removes any it finds left over.
+To move to another release, remove the container and add it again with the new tag, then start it as in step 4; the interface, the firewall rule and the envlist stay. Stop it first: on a clean stop the bouncer removes its own firewall rules, and on the next start it removes any it finds left over.
 
 ```routeros
-/container/stop [find interface="veth-bouncer"]
-/container/remove [find interface="veth-bouncer"]
+/container/stop [find comment="cs-routeros-bouncer"]
+/container/remove [find comment="cs-routeros-bouncer"]
 ```
 
 To remove everything, after those two commands:

@@ -79,8 +79,13 @@ Las direcciones de abajo ponen el contenedor en `172.30.20.0/30`; sirve cualquie
    Sustituye `vX.Y.Z` por la release que quieras, 1.7.2 o posterior, 1.7.3 o posterior en arm/v5 (la [página de Releases](https://github.com/jmrplens/cs-routeros-bouncer/releases) las lista), y `disk1` por un disco que sobreviva a un reinicio:
 
    ```routeros
-   /container/add remote-image="ghcr.io/jmrplens/cs-routeros-bouncer:vX.Y.Z" interface="veth-bouncer" root-dir="disk1/cs-routeros-bouncer" envlist="bouncer-env" logging=yes start-on-boot=yes restart-policy=on-failure memory-max=128M
-   /container/start [find interface="veth-bouncer"]
+   /container/add remote-image="ghcr.io/jmrplens/cs-routeros-bouncer:vX.Y.Z" interface="veth-bouncer" root-dir="disk1/cs-routeros-bouncer" envlist="bouncer-env" logging=yes start-on-boot=yes restart-policy=on-failure memory-max=128M comment="cs-routeros-bouncer"
+   ```
+
+   RouterOS descarga y extrae primero la imagen. Arranca el contenedor cuando el log diga `download/extract done`; `/container/print` lo muestra entonces detenido, sin el flag `E` (descargando/extrayendo):
+
+   ```routeros
+   /container/start [find comment="cs-routeros-bouncer"]
    ```
 
    `memory-max` es un límite estricto: RouterOS detiene el contenedor cuando lo supera, y `restart-policy` lo vuelve a arrancar. En un equipo x86 el bouncer usa unos 30 MB con 2.600 decisiones y llegó a 56 MB con las 17.400 entradas de la lista comunitaria; no se ha medido en ARM, así que 128M deja margen.
@@ -100,11 +105,11 @@ Las direcciones de abajo ponen el contenedor en `172.30.20.0/30`; sirve cualquie
 
 ## Actualizarlo y retirarlo
 
-Para pasar a otra release, elimina el contenedor y vuelve a añadirlo con la etiqueta nueva; la interfaz, la regla de firewall y el envlist se quedan. Detenlo primero: en una parada limpia el bouncer retira sus propias reglas de firewall, y al arrancar de nuevo retira las que encuentre sobrantes.
+Para pasar a otra release, elimina el contenedor, vuelve a añadirlo con la etiqueta nueva y arráncalo como en el paso 4; la interfaz, la regla de firewall y el envlist se quedan. Detenlo primero: en una parada limpia el bouncer retira sus propias reglas de firewall, y al arrancar de nuevo retira las que encuentre sobrantes.
 
 ```routeros
-/container/stop [find interface="veth-bouncer"]
-/container/remove [find interface="veth-bouncer"]
+/container/stop [find comment="cs-routeros-bouncer"]
+/container/remove [find comment="cs-routeros-bouncer"]
 ```
 
 Para retirarlo todo, después de esos dos comandos:
