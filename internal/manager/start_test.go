@@ -17,6 +17,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1194,9 +1195,6 @@ func TestCreateFirewallRules_ExistingRuleSkipsAdd(t *testing.T) {
 // reconcileAddresses — additional uncovered branches
 // ===========================================================================
 
-// TestReconcileAddresses_BulkAddPartialError verifies that when BulkAdd
-// returns an error along with a partial count, the partial additions are
-// still reflected in the cache and metrics.
 // TestReconcileAddresses_PassesContextToAdds verifies that the reconcile
 // context reaches the add, so a shutdown stops a long first load.
 func TestReconcileAddresses_PassesContextToAdds(t *testing.T) {
@@ -1472,6 +1470,9 @@ func TestHandleBan_SettlesUncertainEntry(t *testing.T) {
 	}
 }
 
+// TestReconcileAddresses_BulkAddPartialError verifies that when BulkAdd
+// returns an error along with a partial count, the partial additions are
+// still reflected in the cache and metrics.
 func TestReconcileAddresses_BulkAddPartialError(t *testing.T) {
 	mock := &mockROS{
 		bulkAddCount: 5, // 5 of 10 succeeded
@@ -2641,6 +2642,128 @@ func TestRouterRebooted(t *testing.T) {
 	}
 }
 
+// TestRouterRebooted_Unreadable verifies that an uptime that does not parse
+// is no reading: it would put the boot time at the read, a reboot every check.
+func TestRouterRebooted_Unreadable(t *testing.T) {
+	now := time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)
+	mock := &mockROS{systemResources: &ros.SystemResources{Uptime: "1h"}}
+	mgr := newTestManager(mock, baseConfig())
+	mgr.clock = func() time.Time { return now }
+	mgr.routerRebooted()
+	boot := mgr.lastBoot
+
+	now = now.Add(time.Minute)
+	mock.systemResources = &ros.SystemResources{Uptime: "00:01:02"}
+	if mgr.routerRebooted() || !mgr.lastBoot.Equal(boot) {
+		t.Fatalf("an unreadable uptime is no reading, got boot %v", mgr.lastBoot)
+	}
+}
+
+// TestRouterRebooted_SlowReply verifies that the boot time is taken at the
+// middle of the read, so a reply that takes longer than the slack, as after a
+// reconnect, is no reboot.
+func TestRouterRebooted_SlowReply(t *testing.T) {
+	now := time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)
+	mock := &mockROS{systemResources: &ros.SystemResources{Uptime: "1h"}}
+	mgr := newTestManager(mock, baseConfig())
+	mgr.clock = func() time.Time { return now }
+	mgr.routerRebooted()
+
+	// An hour on, a read takes 80s; the router answers in its middle.
+	now = now.Add(time.Hour)
+	mock.systemResources = &ros.SystemResources{Uptime: "2h0m40s"}
+	mock.systemResourcesFunc = func(int32) { now = now.Add(80 * time.Second) }
+	if mgr.routerRebooted() {
+		t.Fatal("a slow reply is no reboot")
+	}
+}
+
+// TestStart_RebootDuringInitialReconcile verifies that a reboot while the
+// initial reconcile runs is reconciled: it removes what the pass added, and
+// the boot time is read before the pass, not after it.
+func TestStart_RebootDuringInitialReconcile(t *testing.T) {
+	setTestInitialCollectionTimings(t, time.Millisecond, time.Millisecond)
+	prev := rebootCheckInterval
+	rebootCheckInterval = time.Hour // only the watcher's first read
+	t.Cleanup(func() { rebootCheckInterval = prev })
+
+	mock := &mockROS{systemResources: &ros.SystemResources{Uptime: "1h"}}
+	mock.listAddressesFunc = func() error {
+		mock.systemResources = &ros.SystemResources{Uptime: "1s"} // rebooted during the pass
+		return nil
+	}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	stream := &mockStream{ActiveDecisionsFunc: func(context.Context) ([]*crowdsec.Decision, error) {
+		cancel()
+		return nil, nil
+	}}
+	mgr := newTestManagerWithStream(mock, stream, cfg)
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- mgr.Start(ctx) }()
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("Start returned unexpected error: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		cancel()
+		t.Fatal("expected the reboot during the initial reconcile reconciled")
+	}
+}
+
+// TestStart_BaselineFallsBackToPassStart verifies that when the uptime read
+// before the initial reconcile fails, a boot after the pass's start, past the
+// slack, still counts as a reboot.
+func TestStart_BaselineFallsBackToPassStart(t *testing.T) {
+	setTestInitialCollectionTimings(t, time.Millisecond, time.Millisecond)
+	prev := rebootCheckInterval
+	rebootCheckInterval = time.Hour // only the watcher's first read
+	t.Cleanup(func() { rebootCheckInterval = prev })
+
+	var mu sync.Mutex
+	now := time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)
+	mock := &mockROS{systemResourcesErr: errors.New("timeout")}
+	mock.listAddressesFunc = func() error {
+		// the router rebooted a minute into a two-minute pass
+		mu.Lock()
+		now = now.Add(2 * time.Minute)
+		mu.Unlock()
+		mock.systemResourcesErr = nil
+		mock.systemResources = &ros.SystemResources{Uptime: "1m"}
+		return nil
+	}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	stream := &mockStream{ActiveDecisionsFunc: func(context.Context) ([]*crowdsec.Decision, error) {
+		cancel()
+		return nil, nil
+	}}
+	mgr := newTestManagerWithStream(mock, stream, cfg)
+	mgr.clock = func() time.Time {
+		mu.Lock()
+		defer mu.Unlock()
+		return now
+	}
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- mgr.Start(ctx) }()
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("Start returned unexpected error: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		cancel()
+		t.Fatal("expected the reboot after a failed baseline read reconciled")
+	}
+}
+
 // TestWatchReboots_Signals verifies that the watcher reports a reboot on its
 // channel, and only then.
 func TestWatchReboots_Signals(t *testing.T) {
@@ -2709,6 +2832,181 @@ func TestProcessLiveDecisions_RebootReconcileRetried(t *testing.T) {
 	}
 	if calls != 2 {
 		t.Fatalf("expected 2 reconcile attempts, got %d", calls)
+	}
+}
+
+// TestProcessLiveDecisions_RetriedUntilSuccess verifies that a reconcile owed
+// runs again after each failure until one succeeds, and that a failed
+// snapshot, which says nothing about the router, backs off only up to
+// snapshotRetryMax: after an outage the router would otherwise stay empty for
+// up to reconcileRetryMax once LAPI is back.
+func TestProcessLiveDecisions_RetriedUntilSuccess(t *testing.T) {
+	prev, prevMax := reconcileRetryInterval, snapshotRetryMax
+	reconcileRetryInterval, snapshotRetryMax = 5*time.Millisecond, 10*time.Millisecond
+	t.Cleanup(func() { reconcileRetryInterval, snapshotRetryMax = prev, prevMax })
+
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var mgr *Manager
+	var delays []time.Duration
+	stream := &mockStream{ActiveDecisionsFunc: func(context.Context) ([]*crowdsec.Decision, error) {
+		delays = append(delays, mgr.retryDelay)
+		if len(delays) <= 3 {
+			return nil, errors.New("LAPI not reachable")
+		}
+		cancel()
+		return nil, nil
+	}}
+	mgr = newTestManagerWithStream(&mockROS{}, stream, cfg)
+	rebootC := make(chan struct{}, 1)
+	rebootC <- struct{}{}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- mgr.processLiveDecisions(ctx, make(chan *crowdsec.Decision), make(chan *crowdsec.Decision), make(chan error), nil, rebootC, nil)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		cancel()
+		t.Fatal("expected the reconcile retried until it succeeded")
+	}
+	want := []time.Duration{0, reconcileRetryInterval, snapshotRetryMax, snapshotRetryMax}
+	if !slices.Equal(delays, want) {
+		t.Fatalf("expected 4 attempts backing off to snapshotRetryMax, got %v", delays)
+	}
+	if mgr.retryDelay != 0 {
+		t.Fatalf("expected the success to reset the delay, got %v", mgr.retryDelay)
+	}
+}
+
+// TestProcessLiveDecisions_PeriodicSuccessClearsRetry verifies that a periodic
+// pass that succeeds settles a retry still pending, so it runs no second pass.
+func TestProcessLiveDecisions_PeriodicSuccessClearsRetry(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	stream := &mockStream{}
+	mgr := newTestManagerWithStream(&mockROS{}, stream, cfg)
+	mgr.retryDelay = time.Minute
+	reconcileC := make(chan time.Time, 1)
+	reconcileC <- time.Now()
+	retryC := time.After(20 * time.Millisecond)
+
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		cancel()
+	}()
+	if err := mgr.processLiveDecisions(ctx, make(chan *crowdsec.Decision), make(chan *crowdsec.Decision), make(chan error), reconcileC, nil, retryC); err != nil {
+		t.Fatalf("unexpected error %v", err)
+	}
+	stream.mu.Lock()
+	defer stream.mu.Unlock()
+	if stream.activeCalled != 1 || mgr.retryDelay != 0 {
+		t.Fatalf("expected one pass and the delay reset, got %d passes, delay %v", stream.activeCalled, mgr.retryDelay)
+	}
+}
+
+// TestProcessLiveDecisions_FailedBanReconciles verifies that a live ban whose
+// add failed without the router refusing it owes a reconcile: the router may
+// be unreachable without rebooting, and with crowdsec.reconciliation_interval
+// 0 nothing else would add the address when it is back.
+func TestProcessLiveDecisions_FailedBanReconciles(t *testing.T) {
+	prev := reconcileRetryInterval
+	reconcileRetryInterval = 5 * time.Millisecond
+	t.Cleanup(func() { reconcileRetryInterval = prev })
+
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	stream := &mockStream{ActiveDecisionsFunc: func(context.Context) ([]*crowdsec.Decision, error) {
+		cancel()
+		return nil, nil
+	}}
+	mgr := newTestManagerWithStream(&mockROS{addAddressErr: errors.New("i/o timeout")}, stream, cfg)
+	banCh := make(chan *crowdsec.Decision, 1)
+	banCh <- &crowdsec.Decision{Proto: "ip", Value: "10.0.0.1", Duration: time.Hour}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- mgr.processLiveDecisions(ctx, banCh, make(chan *crowdsec.Decision), make(chan error), nil, nil, nil)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		cancel()
+		t.Fatal("expected the failed ban to reconcile")
+	}
+}
+
+// TestProcessLiveDecisions_FailedBanNotHeldByBackOff verifies that the
+// reconcile a failed live ban owes runs after reconcileRetryInterval also while
+// a retry backed off far is pending: after a long outage the ban would wait for
+// up to reconcileRetryMax once the router is back.
+func TestProcessLiveDecisions_FailedBanNotHeldByBackOff(t *testing.T) {
+	prev := reconcileRetryInterval
+	reconcileRetryInterval = 5 * time.Millisecond
+	t.Cleanup(func() { reconcileRetryInterval = prev })
+
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	stream := &mockStream{ActiveDecisionsFunc: func(context.Context) ([]*crowdsec.Decision, error) {
+		cancel()
+		return nil, nil
+	}}
+	mgr := newTestManagerWithStream(&mockROS{addAddressErr: errors.New("i/o timeout")}, stream, cfg)
+	mgr.retryDelay, mgr.retryAt = time.Hour, time.Now().Add(time.Hour)
+	banCh := make(chan *crowdsec.Decision, 1)
+	banCh <- &crowdsec.Decision{Proto: "ip", Value: "10.0.0.1", Duration: time.Hour}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- mgr.processLiveDecisions(ctx, banCh, make(chan *crowdsec.Decision), make(chan error), nil, nil, time.After(time.Hour))
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		cancel()
+		t.Fatal("expected the failed ban to reconcile without waiting for the back-off")
+	}
+}
+
+// TestReconcileActiveDecisions_ReportsReconcileError verifies that a pass whose
+// router side failed reports it, so the caller retries.
+func TestReconcileActiveDecisions_ReportsReconcileError(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	mgr := newTestManagerWithStream(&mockROS{listAddressesErr: errors.New("timeout")}, &mockStream{}, cfg)
+
+	if err := mgr.reconcileActiveDecisions(context.Background()); err == nil {
+		t.Fatal("expected the listing error reported")
+	}
+}
+
+// TestReconcileAddresses_StopsBetweenProtocols verifies that a shutdown during
+// the IPv4 pass skips the IPv6 one.
+func TestReconcileAddresses_StopsBetweenProtocols(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	mock := &mockROS{listAddressesFunc: func() error {
+		cancel()
+		return nil
+	}}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = true
+	mgr := newTestManager(mock, cfg)
+
+	if err := mgr.reconcileAddresses(ctx, nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected the shutdown reported, got %v", err)
+	}
+	if mock.listAddressesCalls != 1 {
+		t.Fatalf("expected one listing, got %d", mock.listAddressesCalls)
 	}
 }
 
@@ -2786,12 +3084,12 @@ func TestScheduleReconcileRetry_BacksOff(t *testing.T) {
 	mgr := newTestManagerWithStream(&mockROS{}, &mockStream{}, cfg)
 	ms := time.Millisecond
 	for i, want := range []time.Duration{ms, 2 * ms, 4 * ms, 4 * ms} {
-		mgr.scheduleReconcileRetry(errors.New("refused"))
+		mgr.scheduleReconcileRetry(errors.New("refused"), reconcileRetryMax)
 		if mgr.retryDelay != want {
 			t.Fatalf("retry %d: expected %v, got %v", i+1, want, mgr.retryDelay)
 		}
 	}
-	if retryC := mgr.reconcileAfterReboot(context.Background()); retryC != nil || mgr.retryDelay != 0 {
+	if retryC := mgr.reconcileWithRetry(context.Background()); retryC != nil || mgr.retryDelay != 0 {
 		t.Fatalf("expected a successful pass to reset the delay, got %v", mgr.retryDelay)
 	}
 }
@@ -2843,8 +3141,8 @@ func TestStart_CanceledDuringInitialReconcile(t *testing.T) {
 	if err := waitForManagerResult(t, errCh); err != nil {
 		t.Fatalf("Start returned unexpected error: %v", err)
 	}
-	if got := mock.pollCount.Load(); got != 0 {
-		t.Fatalf("expected no uptime read, got %d", got)
+	if got := mock.pollCount.Load(); got != 1 {
+		t.Fatalf("expected only the read before the pass, got %d", got)
 	}
 }
 
@@ -2861,7 +3159,7 @@ func TestStart_WaitsForRebootWatcher(t *testing.T) {
 	release := make(chan struct{})
 	mock := &mockROS{}
 	mock.systemResourcesFunc = func(call int32) {
-		if call == 2 { // the first tick's read
+		if call == 2 { // the watcher's first read, after the one before the pass
 			close(entered)
 			<-release
 		}
