@@ -59,9 +59,10 @@ mikrotik:
   tls: false
   # Skip TLS certificate verification
   tls_insecure: false
-  # Connection timeout
+  # Time to connect and log in, at startup and on every reconnect
   connection_timeout: "10s"
-  # Command execution timeout
+  # Longest wait for the router while it answers a command; each part of a
+  # long answer, such as a large address list, starts it again
   command_timeout: "30s"
   # Number of parallel API connections for bulk operations (1-20, default: 4).
   # At startup the bouncer queries the router's API max-sessions and caps this

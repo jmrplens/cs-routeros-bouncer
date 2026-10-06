@@ -111,14 +111,8 @@ func newClientAndLogin(ctx context.Context, rwc io.ReadWriteCloser, username, pa
 	if err != nil {
 		return nil, fmt.Errorf("could not connect to router os: %w; close: %w", err, rwc.Close())
 	}
-	// RunArgsContext does not watch ctx, so its deadline goes on the connection
-	// for the login: a router that accepts and never answers fails the dial.
-	if deadline, ok := ctx.Deadline(); ok {
-		if d, isDeadliner := rwc.(deadliner); isDeadliner {
-			_ = d.SetDeadline(deadline)
-			defer func() { _ = d.SetDeadline(time.Time{}) }()
-		}
-	}
+	// RunArgsContext watches ctx, so the dial's timeout bounds the login too:
+	// a router that accepts the connection and never answers fails the dial.
 	err = c.LoginContext(ctx, username, password)
 	if err != nil {
 		return nil, fmt.Errorf("could not login: %w; close %w", err, c.Close())

@@ -5,6 +5,7 @@
 package routeros
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -61,6 +62,15 @@ func (m *mockConn) RunArgs(args []string) (*routeros.Reply, error) {
 	m.replies = m.replies[1:]
 	m.errors = m.errors[1:]
 	return r, e
+}
+
+// RunArgsContext answers as RunArgs, unless ctx is done: then it returns
+// ctx's error and records nothing, as a command cut short before its reply.
+func (m *mockConn) RunArgsContext(ctx context.Context, args []string) (*routeros.Reply, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return m.RunArgs(args)
 }
 
 // Close marks the mock as closed.

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"io"
 	"os"
@@ -166,7 +167,7 @@ func (f *fakeBenchmarkClient) FindAddress(_, _, address string) (*rosClient.Addr
 	return &rosClient.AddressEntry{ID: "found-" + address, Address: address}, nil
 }
 
-func (f *fakeBenchmarkClient) ListAddresses(_, list, _ string) ([]rosClient.AddressEntry, error) {
+func (f *fakeBenchmarkClient) ListAddresses(_ context.Context, _, list, _ string) ([]rosClient.AddressEntry, error) {
 	return []rosClient.AddressEntry{
 		{ID: "list-1", Address: "198.51.100.1", List: list},
 		{ID: "list-2", Address: "198.51.100.2", List: list},

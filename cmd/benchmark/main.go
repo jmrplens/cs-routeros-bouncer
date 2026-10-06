@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -29,7 +30,7 @@ type benchmarkClient interface {
 	GetIdentity() (string, error)
 	AddAddress(proto, list, address, timeout, comment string) (string, error)
 	FindAddress(proto, list, address string) (*rosClient.AddressEntry, error)
-	ListAddresses(proto, list, commentPrefix string) ([]rosClient.AddressEntry, error)
+	ListAddresses(ctx context.Context, proto, list, commentPrefix string) ([]rosClient.AddressEntry, error)
 	RemoveAddress(proto, id string) error
 	AddFirewallRule(proto, mode string, rule rosClient.FirewallRule) (string, error)
 	FindFirewallRuleByComment(proto, mode, comment string) (*rosClient.RuleEntry, error)
@@ -104,7 +105,7 @@ func benchmarkSingleOperations(client benchmarkClient) {
 	})
 
 	bench("List IPv4 (1 entry)", func() error {
-		_, err := client.ListAddresses("ip", benchmarkIPv4List, "")
+		_, err := client.ListAddresses(context.Background(), "ip", benchmarkIPv4List, "")
 		return err
 	})
 
@@ -217,7 +218,7 @@ func benchmarkBatchSize(client benchmarkClient, n int) {
 	fmt.Printf("  %-35s %8s  (%s/ip, failures=%d)\n", fmt.Sprintf("Add %d IPv4 (sequential)", n), elapsed.Round(time.Millisecond), (elapsed / time.Duration(n)).Round(time.Millisecond), failureCount)
 
 	listStart := time.Now()
-	entries, listErr := client.ListAddresses("ip", benchmarkIPv4List, "")
+	entries, listErr := client.ListAddresses(context.Background(), "ip", benchmarkIPv4List, "")
 	listElapsed := time.Since(listStart)
 	fmt.Printf("  %-35s %8s  (entries=%d)\n", fmt.Sprintf("List %d entries", n), listElapsed.Round(time.Millisecond), len(entries))
 	if listErr != nil {

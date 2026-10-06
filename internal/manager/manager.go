@@ -1444,8 +1444,12 @@ type reconcileResult struct {
 // reconcileProtocolAddresses applies the address-list diff for one RouterOS protocol.
 func (m *Manager) reconcileProtocolAddresses(ctx context.Context, proto string, decisions []*crowdsec.Decision, start time.Time) (reconcileResult, error) {
 	listName := m.getAddressListName(proto)
-	listed, err := m.ros.ListAddresses(proto, listName, "")
+	listed, err := m.ros.ListAddresses(ctx, proto, listName, "")
 	if err != nil {
+		if ctx.Err() != nil {
+			m.logger.Info().Str("proto", proto).Msg("shutdown stopped the address-list read of the reconciliation")
+			return reconcileResult{}, err
+		}
 		m.logger.Error().Err(err).Str("proto", proto).Msg("error listing current addresses")
 		metrics.RecordError("find")
 		return reconcileResult{}, err

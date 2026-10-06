@@ -1,6 +1,10 @@
 package routeros
 
-import routeros "github.com/jmrplens/cs-routeros-bouncer/internal/rosapi"
+import (
+	"context"
+
+	routeros "github.com/jmrplens/cs-routeros-bouncer/internal/rosapi"
+)
 
 // RouterConn abstracts the low-level RouterOS API connection.
 //
@@ -10,6 +14,9 @@ import routeros "github.com/jmrplens/cs-routeros-bouncer/internal/rosapi"
 type RouterConn interface {
 	// RunArgs sends a command sentence and waits for the reply.
 	RunArgs(args []string) (*routeros.Reply, error)
+	// RunArgsContext is RunArgs ended at once when ctx is done; the
+	// connection is then left mid-reply.
+	RunArgsContext(ctx context.Context, args []string) (*routeros.Reply, error)
 	// Close terminates the connection.
 	Close() error
 }

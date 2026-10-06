@@ -81,12 +81,12 @@ Tiempo máximo para conectar e iniciar sesión en la API, al arrancar y en cada 
 
 <ConfigOption path="mikrotik.command_timeout" />
 
-Tiempo máximo de espera para que se complete un único comando de la API. Auméntalo si tienes un router lento o address lists grandes.
+Tiempo máximo de espera al router mientras responde a un comando de la API: hasta que empieza la respuesta, y entre dos partes de una respuesta larga. Un router que deja de responder hace fallar el comando; una respuesta que sigue llegando, como una address-list grande en un router lento, no se corta. Auméntalo si tu router tarda en empezar a responder.
 
 :::tip
-El límite es por comando, no por pasada de reconciliación, y el comando más lento no es un bloque masivo — esos tardan unos 130 ms cada uno. Es la lectura de la address-list al principio de cada pasada, que escala con cuántas entradas guarda el router. Medida en un RB5009 con 22.332 entradas, esa lectura tarda ~1,8 s, así que el valor por defecto de `30s` tiene unas 17× de margen y solo pasa a ser la restricción activa bastante por encima de las 350.000 entradas.
+El límite vuelve a empezar con cada parte de una respuesta, así que no crece con la lista. El comando más largo es la lectura de la address-list al principio de cada pasada, que escala con cuántas entradas guarda el router (~1,8 s para 22.332 entradas en un RB5009), pero sus entradas llegan una tras otra; un bloque masivo tarda unos 130 ms.
 
-Súbelo si ves errores de tiempo de espera en un dispositivo lento o con una lista muy grande. Ambos tiempos de espera deben ser `>= 0`; `0` significa sin límite, y un valor negativo se rechaza al arrancar.
+Súbelo si ves errores de tiempo de espera en un dispositivo lento. Ambos tiempos de espera deben ser `>= 0`; `0` significa sin límite, y un valor negativo se rechaza al arrancar.
 :::
 
 ## Pool de conexiones
@@ -155,5 +155,5 @@ Medido en un RB5009 (RouterOS 7.24.4), cargando unas 24.400 decisiones al arranc
 - **En la LAN del router** (0,2 ms), `script` mediante `/execute` tardó unos 21 s y `api` con `pool_size: 1` unos 23 s, ambos con aproximadamente la mitad de CPU del router que un script guardado, que tardó unos 36 s. Con el `pool_size: 4` por defecto, `api` tardó lo mismo que un script guardado, porque aquí las sesiones extra solo compiten entre sí. Una pasada que añade unas pocas entradas tarda milisegundos con cualquiera de los dos.
 - **Con un enlace con latencia**, cada adición por la API paga un viaje de ida y vuelta, mientras que un script paga uno por cada 100 entradas mediante `/execute` y cuatro como script guardado. A 36 ms, `script` tardó unos 33 s mediante `/execute`, 70 s como script guardado, y `api` 76 s con `pool_size: 16`; a 33 ms había tardado 3,7 min con 4 y 13 min con 1.
 
-Las decisiones en vivo solo se procesan cuando ha terminado la primera reconciliación, y entre las pasadas siguientes. Un apagado detiene las adiciones y eliminaciones de una pasada en curso; el siguiente arranque las completa.
+Las decisiones en vivo solo se procesan cuando ha terminado la primera reconciliación, y entre las pasadas siguientes. Un apagado detiene una pasada en curso: la lectura de la address-list del principio, sus adiciones y sus eliminaciones. El siguiente arranque la completa.
 :::

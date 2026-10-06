@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/jmrplens/cs-routeros-bouncer/internal/config"
+	routeros "github.com/jmrplens/cs-routeros-bouncer/internal/rosapi"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -851,7 +852,7 @@ func TestListAddresses_FiltersCommentPrefix(t *testing.T) {
 		map[string]string{".id": "*3", "address": "3.3.3.3", "list": "blocked", "timeout": "2h", "comment": "crowdsec|test"},
 	))
 
-	entries, err := c.ListAddresses("ip", "blocked", "crowdsec|")
+	entries, err := c.ListAddresses(context.Background(), "ip", "blocked", "crowdsec|")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -871,7 +872,7 @@ func TestListAddresses_NoFilter(t *testing.T) {
 		map[string]string{".id": "*1", "address": "1.1.1.1", "list": "all", "timeout": "", "comment": "any"},
 	))
 
-	entries, err := c.ListAddresses("ip", "all", "")
+	entries, err := c.ListAddresses(context.Background(), "ip", "all", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -887,7 +888,7 @@ func TestListAddresses_Error(t *testing.T) {
 	mc.pushError(errors.New("fail"))
 	mc.pushError(errors.New("fail"))
 
-	_, err := c.ListAddresses("ip", "list", "")
+	_, err := c.ListAddresses(context.Background(), "ip", "list", "")
 	if err == nil || !strings.Contains(err.Error(), "list addresses") {
 		t.Fatalf("expected wrapped error, got: %v", err)
 	}
@@ -2650,5 +2651,87 @@ func TestAddAddressesEach_SetsIDs(t *testing.T) {
 	}
 	if entries[0].ID != "*A1" || entries[1].ID != "*A2" {
 		t.Fatalf("expected ids *A1 and *A2, got %q and %q", entries[0].ID, entries[1].ID)
+	}
+}
+
+// blockingConn is a RouterConn whose RunArgsContext blocks until ctx is done,
+// as a router still sending a long reply does.
+type blockingConn struct {
+	*mockConn
+}
+
+func (b *blockingConn) RunArgsContext(ctx context.Context, _ []string) (*routeros.Reply, error) {
+	<-ctx.Done()
+	return nil, fmt.Errorf("read: %w", ctx.Err())
+}
+
+// TestRunContext_CanceledDropsConnectionWithoutRetry verifies that a command
+// cut short by its context is not sent again on a new connection, as a
+// transport error is: the shutdown it serves would wait for the retry. Its
+// connection, left mid-reply, is closed, and the next command connects anew.
+func TestRunContext_CanceledDropsConnectionWithoutRetry(t *testing.T) {
+	bc := &blockingConn{mockConn: newMockConn()}
+	dials := 0
+	c := &Client{
+		conn: bc,
+		dialFunc: func(_ config.MikroTikConfig) (RouterConn, error) {
+			dials++
+			return bc, nil
+		},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(50*time.Millisecond, cancel)
+	_, err := c.ListAddresses(ctx, "ip", "crowdsec-banned", "")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+	if dials != 0 {
+		t.Fatalf("a canceled command must not reconnect and retry, dialed %d times", dials)
+	}
+	if !bc.closed || c.IsConnected() {
+		t.Fatalf("the connection left mid-reply must be closed (closed=%v, connected=%v)", bc.closed, c.IsConnected())
+	}
+
+	bc.pushReply(reReply())
+	if _, nextErr := c.Run("/system/identity/print"); nextErr != nil {
+		t.Fatalf("the next command should connect anew: %v", nextErr)
+	}
+	if dials != 1 {
+		t.Fatalf("expected one reconnect for the next command, got %d", dials)
+	}
+}
+
+// TestRun_FailedRetryDropsConnection verifies that a command whose retry fails
+// on the transport too leaves no connection behind: the retry may have read
+// half a reply, and the next command would take the rest of it for its own
+// (seen as "invalid RouterOS sentence word" with the tail of an address-list
+// listing, or worse, a valid sentence answering the wrong command).
+func TestRun_FailedRetryDropsConnection(t *testing.T) {
+	mc := newMockConn()
+	dials := 0
+	c := &Client{
+		conn: mc,
+		dialFunc: func(_ config.MikroTikConfig) (RouterConn, error) {
+			dials++
+			return mc, nil
+		},
+	}
+	mc.pushError(errors.New("i/o timeout"))
+	mc.pushError(errors.New("i/o timeout"))
+
+	if _, err := c.Run("/ip/firewall/address-list/print"); err == nil {
+		t.Fatal("expected the command to fail after its retry")
+	}
+	if c.IsConnected() {
+		t.Fatal("the connection the retry failed on must be dropped")
+	}
+
+	mc.pushReply(emptyReply())
+	if _, nextErr := c.Run("/system/identity/print"); nextErr != nil {
+		t.Fatalf("the next command should connect anew: %v", nextErr)
+	}
+	if dials != 2 {
+		t.Fatalf("expected a dial for the retry and one for the next command, got %d", dials)
 	}
 }
