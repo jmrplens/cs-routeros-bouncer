@@ -263,7 +263,7 @@ If fallback happens often:
 
 ### IPv6 addresses appear with `/128`
 
-RouterOS stores single IPv6 addresses in address lists with an explicit `/128` prefix. The bouncer normalizes IPv6 single addresses this way before add, find, and reconciliation operations. This is expected and does not mean CrowdSec sent a range.
+RouterOS stores single IPv6 addresses in address lists with an explicit `/128` prefix, and rewrites other forms as well: a range with host bits set has them cleared (`198.51.100.7/24` is listed as `198.51.100.0/24`), an IPv4 `/32` loses its prefix length, and IPv6 is written lowercase and compressed. The bouncer writes every address in the form RouterOS lists it before add, find, and reconciliation operations, so a decision matches its entry. An IPv4-mapped address (`::ffff:198.51.100.9`), which CrowdSec treats as IPv4, goes to the IPv4 list as the plain address, because that list refuses the mapped form. None of this means CrowdSec sent a different address or range.
 
 ## Logging and debugging
 

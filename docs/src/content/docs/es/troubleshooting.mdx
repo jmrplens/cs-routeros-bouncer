@@ -263,7 +263,7 @@ Si el fallback ocurre con frecuencia:
 
 ### Las direcciones IPv6 aparecen con `/128`
 
-RouterOS almacena las direcciones IPv6 individuales en las listas de direcciones con un prefijo `/128` explícito. El bouncer normaliza así las direcciones IPv6 individuales antes de las operaciones de adición, búsqueda y reconciliación. Esto es lo esperado y no significa que CrowdSec haya enviado un rango.
+RouterOS almacena las direcciones IPv6 individuales en las listas de direcciones con un prefijo `/128` explícito, y también reescribe otras formas: a un rango con bits de host se los pone a cero (`198.51.100.7/24` aparece como `198.51.100.0/24`), una IPv4 `/32` pierde la longitud de prefijo, y IPv6 se escribe en minúsculas y comprimida. El bouncer escribe cada dirección en la forma en que RouterOS la lista antes de las operaciones de adición, búsqueda y reconciliación, así que cada decisión coincide con su entrada. Una dirección IPv4 mapeada (`::ffff:198.51.100.9`), que CrowdSec trata como IPv4, va a la lista IPv4 como la dirección simple, porque esa lista rechaza la forma mapeada. Nada de esto significa que CrowdSec haya enviado otra dirección u otro rango.
 
 ## Registro y depuración
 

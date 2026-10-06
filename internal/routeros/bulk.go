@@ -69,90 +69,133 @@ const executeMaxScriptBytes = 64 * 1024
 // BulkAddAddresses adds many addresses through RouterOS scripts of up to
 // bulkChunkSize adds each (runChunk), so a chunk costs the same few round trips
 // however many entries it holds. An entry the script reports as not added, and
-// every entry of a chunk whose run failed, gets one AddAddress
-// (AddAddressesEach): a duplicate the router already holds then counts as
-// added, and failed holds what that retry could not add either. A stored
-// script cannot report back, so its chunk counts every entry as added. Once
-// ctx is done no further chunk runs, and its entries are failed too.
+// every entry of a chunk whose run failed, gets an add of its own (addEach);
+// a duplicate the router already holds is then refreshed and counts as added,
+// the duplicates of every chunk looked up together at the end
+// (settleDuplicates), and failed holds what the retry could not add either. A
+// stored script cannot report back, so its chunk counts every entry as added.
+// Once ctx is done no further chunk runs, and its entries are failed too.
 func (c *Client) BulkAddAddresses(ctx context.Context, proto, list string, entries []BulkEntry) (added int, failed []BulkEntry, err error) {
 	if len(entries) == 0 {
 		return 0, nil, nil
 	}
 
 	total := 0
+	var dups []*BulkEntry
+	var errs []error
 	for start := 0; start < len(entries); start += bulkChunkSize {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			failed = append(failed, entries[start:]...)
-			err = ctxErr
+			errs = append(errs, ctxErr)
 			break
 		}
 		end := min(start+bulkChunkSize, len(entries))
 		chunk := entries[start:end]
 
+		var retry []*BulkEntry
 		failedAt, scriptErr := c.runChunk(buildBulkAddScript(proto, list, chunk))
 		if scriptErr != nil {
 			log.Warn().Err(scriptErr).Int("chunk_size", len(chunk)).Msg("bulk script failed, falling back to individual adds")
-			fallbackAdded, fallbackFailed, fallbackErr := c.AddAddressesEach(ctx, proto, list, chunk)
-			total += fallbackAdded
-			failed = append(failed, fallbackFailed...)
-			if fallbackErr != nil {
-				err = fallbackErr
+			for i := range chunk {
+				retry = append(retry, &chunk[i])
 			}
-			continue
-		}
-		positions := recordedPositions(len(chunk), failedAt)
-		total += len(chunk) - len(positions)
-		if len(positions) > 0 {
-			retry := make([]BulkEntry, len(positions))
-			for k, i := range positions {
-				retry[k] = chunk[i]
-			}
-			retryAdded, retryFailed, retryErr := c.AddAddressesEach(ctx, proto, list, retry)
-			for k, i := range positions {
-				chunk[i].ID = retry[k].ID
-			}
-			total += retryAdded
-			failed = append(failed, retryFailed...)
-			if retryErr != nil {
-				err = retryErr
+		} else {
+			positions := recordedPositions(len(chunk), failedAt)
+			total += len(chunk) - len(positions)
+			for _, i := range positions {
+				retry = append(retry, &chunk[i])
 			}
 		}
+		retryAdded, retryFailed, retryDups, retryErrs := c.addEach(ctx, proto, list, retry)
+		total += retryAdded
+		failed = append(failed, retryFailed...)
+		dups = append(dups, retryDups...)
+		errs = append(errs, retryErrs...)
 	}
 
-	return total, failed, err
+	// The duplicates of every chunk together: each lookup walks the whole
+	// list, and duplicates spread over many chunks would cost one each.
+	refreshed, dupFailed, dupErrs := c.settleDuplicates(ctx, proto, list, dups)
+	total += refreshed
+	failed = append(failed, dupFailed...)
+	errs = append(errs, dupErrs...)
+
+	return total, failed, joinAddErrors(errs)
 }
 
-// AddAddressesEach adds entries with one AddAddress call each, never through a
-// script: the bulk_add_method "api" without a connection pool, and the retry
-// of a failed script chunk or of the adds a script reported as failed. It
-// counts every entry AddAddress accepts, including one the router already had,
-// whose timeout and comment AddAddress refreshes, and returns the entries whose
-// add failed. It sets ID on every entry it adds.
-// Once ctx is done it adds no more, and the entries left are failed too.
+// AddAddressesEach adds entries with one API call each, never through a
+// script: the bulk_add_method "api" without a connection pool. It counts every
+// entry the router accepts, and every one it already had and the bouncer
+// owns, whose timeout and comment it refreshes, as AddAddress does, but
+// finding those with one lookup per batch (refreshDuplicates), and returns the
+// entries whose add failed. It sets ID on every entry it adds or refreshes.
+// Once ctx is done it adds no more, and the entries left, and the duplicates
+// not yet refreshed, are failed too.
 func (c *Client) AddAddressesEach(ctx context.Context, proto, list string, chunk []BulkEntry) (added int, failed []BulkEntry, err error) {
-	var fallbackErrs []error
+	ptrs := make([]*BulkEntry, len(chunk))
 	for i := range chunk {
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			failed = append(failed, chunk[i:]...)
-			fallbackErrs = append(fallbackErrs, ctxErr)
-			break
-		}
-		entry := &chunk[i]
-		id, addErr := c.AddAddress(proto, list, entry.Address, entry.Timeout, entry.Comment)
-		if addErr != nil {
-			if !isDuplicateEntryError(addErr) {
-				fallbackErrs = append(fallbackErrs, addErr)
-				failed = append(failed, *entry)
-			}
-			continue
-		}
-		entry.ID = id
-		added++
+		ptrs[i] = &chunk[i]
 	}
-	if len(fallbackErrs) == 0 {
+	added, failed, dups, errs := c.addEach(ctx, proto, list, ptrs)
+	refreshed, dupFailed, dupErrs := c.settleDuplicates(ctx, proto, list, dups)
+	added += refreshed
+	failed = append(failed, dupFailed...)
+	errs = append(errs, dupErrs...)
+	if len(errs) == 0 {
 		return added, nil, nil
 	}
-	return added, failed, fmt.Errorf("%d add errors (last: %w)", len(fallbackErrs), fallbackErrs[len(fallbackErrs)-1])
+	return added, failed, joinAddErrors(errs)
+}
+
+// addEach sends one add per entry and sets ID on each one the router accepts.
+// It hands back the duplicates, for settleDuplicates, instead of looking each
+// one up. Once ctx is done it adds no more, and the entries left are failed.
+func (c *Client) addEach(ctx context.Context, proto, list string, entries []*BulkEntry) (added int, failed []BulkEntry, dups []*BulkEntry, errs []error) {
+	for i, entry := range entries {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			for _, e := range entries[i:] {
+				failed = append(failed, *e)
+			}
+			errs = append(errs, ctxErr)
+			break
+		}
+		id, duplicate, addErr := c.addAddressOnce(proto, list, entry.Address, entry.Timeout, entry.Comment)
+		switch {
+		case duplicate:
+			dups = append(dups, entry)
+		case addErr != nil:
+			errs = append(errs, addErr)
+			failed = append(failed, *entry)
+		default:
+			entry.ID = id
+			added++
+		}
+	}
+	return added, failed, dups, errs
+}
+
+// settleDuplicates refreshes dups with refreshDuplicates. Once ctx is done it
+// leaves them, failed, for the next pass: each lookup walks the whole list,
+// and a shutdown should not wait for it.
+func (c *Client) settleDuplicates(ctx context.Context, proto, list string, dups []*BulkEntry) (refreshed int, failed []BulkEntry, errs []error) {
+	if len(dups) == 0 {
+		return 0, nil, nil
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		for _, e := range dups {
+			failed = append(failed, *e)
+		}
+		return 0, failed, []error{ctxErr}
+	}
+	return c.refreshDuplicates(proto, list, dups)
+}
+
+// joinAddErrors sums up the errors of a run of adds, nil for none.
+func joinAddErrors(errs []error) error {
+	if len(errs) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%d add errors (last: %w)", len(errs), errs[len(errs)-1])
 }
 
 // BulkEntry represents an address to add in bulk.
