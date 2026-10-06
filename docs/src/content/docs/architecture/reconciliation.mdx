@@ -26,6 +26,8 @@ By default, reconciliation runs at startup and then every `15m`. Configure `crow
 
    Fetch all active decisions from CrowdSec and all address-list entries from MikroTik.
 
+   At startup the decisions are the CrowdSec stream's first answer, so the first reconciliation waits until the LAPI has answered. An unreachable LAPI produces no decisions at all, and reconciling on that empty set would remove every entry the bouncer owns; instead the bouncer logs a warning every 30 s and leaves the router's lists as they are. A periodic pass whose snapshot request fails is skipped for the same reason.
+
 2. **Diff**
 
    Compare the two sets to determine which IPs need to be added and which removed.

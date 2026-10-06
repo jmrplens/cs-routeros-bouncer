@@ -57,6 +57,21 @@ type mockStream struct {
 	activeDecisions     []*crowdsec.Decision
 	activeErr           error
 	activeCalled        int
+	// synced, when set, is returned by Synced; when nil the mock behaves as a
+	// LAPI that has already answered.
+	synced chan struct{}
+}
+
+// Synced implements CrowdSecStream.Synced.
+func (s *mockStream) Synced() <-chan struct{} {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.synced == nil {
+		answered := make(chan struct{})
+		close(answered)
+		return answered
+	}
+	return s.synced
 }
 
 // Init implements StreamIface.Init, counting calls and returning the configured
@@ -150,6 +165,120 @@ func TestReconcileActiveDecisions_AddsMissingAddress(t *testing.T) {
 	}
 	if got := mock.bulkAddCalls[0].Entries[0].Address; got != "1.2.3.4" {
 		t.Errorf("expected 1.2.3.4 to be reconciled, got %s", got)
+	}
+}
+
+// setTestInitialWaitLogInterval shortens the interval at which the startup
+// logs that it is still waiting for the LAPI.
+func setTestInitialWaitLogInterval(t *testing.T, d time.Duration) {
+	t.Helper()
+	orig := initialDecisionWaitLogInterval
+	initialDecisionWaitLogInterval = d
+	t.Cleanup(func() { initialDecisionWaitLogInterval = orig })
+}
+
+// readListState returns how often the address lists were read and how many
+// entries were removed, under the mock's lock.
+func readListState(mock *mockROS) (lists, removed int) {
+	mock.mu.RLock()
+	defer mock.mu.RUnlock()
+	return mock.listAddressesCalls, len(mock.removeAddressCalls)
+}
+
+// TestStart_WaitsForLAPIBeforeFirstReconciliation verifies that while the LAPI
+// has not answered, the first reconciliation does not run: with no answer the
+// startup set is empty, and reconciling on it would remove every entry the
+// bouncer owns. The lists must be left as they are until the LAPI answers.
+func TestStart_WaitsForLAPIBeforeFirstReconciliation(t *testing.T) {
+	setTestInitialCollectionTimings(t, 5*time.Millisecond, 5*time.Millisecond)
+	setTestInitialWaitLogInterval(t, 5*time.Millisecond)
+	mock := &mockROS{
+		addRuleID: "*1",
+		listAddresses: []ros.AddressEntry{
+			{ID: "*9", Address: "198.51.100.7", Comment: "crowdsec-bouncer|crowdsec|ssh-bf"},
+		},
+	}
+	stream := &mockStream{
+		synced: make(chan struct{}), // the LAPI never answers
+		RunFunc: func(ctx context.Context, _, _ chan<- *crowdsec.Decision) error {
+			<-ctx.Done()
+			return nil
+		},
+	}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	mgr := newTestManagerWithStream(mock, stream, cfg)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() { errCh <- mgr.Start(ctx) }()
+
+	// Many collection and wait cycles pass with no answer.
+	time.Sleep(100 * time.Millisecond)
+	if lists, removed := readListState(mock); lists != 0 || removed != 0 {
+		t.Fatalf("reconciled without an answer from the LAPI: %d list reads, %d removals", lists, removed)
+	}
+
+	cancel()
+	if err := waitForManagerResult(t, errCh); err != nil {
+		t.Fatalf("Start returned unexpected error: %v", err)
+	}
+	if _, removed := readListState(mock); removed != 0 {
+		t.Fatalf("removed %d entries without an answer from the LAPI", removed)
+	}
+}
+
+// TestStart_ReconcilesWhenLAPIAnswersLate verifies that once a late LAPI
+// answers, its decisions are collected and reconciled normally: the entry it
+// still bans stays, and the new one is added.
+func TestStart_ReconcilesWhenLAPIAnswersLate(t *testing.T) {
+	setTestInitialCollectionTimings(t, 5*time.Millisecond, 5*time.Millisecond)
+	setTestInitialWaitLogInterval(t, 5*time.Millisecond)
+	mock := &mockROS{
+		addRuleID:    "*1",
+		bulkAddCount: 1,
+		listAddresses: []ros.AddressEntry{
+			{ID: "*9", Address: "198.51.100.7", Comment: "crowdsec-bouncer|crowdsec|ssh-bf"},
+		},
+	}
+	synced := make(chan struct{})
+	stream := &mockStream{
+		synced: synced,
+		RunFunc: func(ctx context.Context, banCh, _ chan<- *crowdsec.Decision) error {
+			time.Sleep(50 * time.Millisecond) // the LAPI comes back after several waits
+			banCh <- &crowdsec.Decision{Proto: "ip", Value: "198.51.100.7", Duration: time.Hour, Origin: "crowdsec", Type: "ban"}
+			banCh <- &crowdsec.Decision{Proto: "ip", Value: "203.0.113.9", Duration: time.Hour, Origin: "crowdsec", Type: "ban"}
+			close(synced)
+			<-ctx.Done()
+			return nil
+		},
+	}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	mgr := newTestManagerWithStream(mock, stream, cfg)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() { errCh <- mgr.Start(ctx) }()
+
+	waitForManagerCondition(t, "the first reconciliation", func() bool {
+		mock.mu.RLock()
+		defer mock.mu.RUnlock()
+		return len(mock.bulkAddCalls) > 0
+	})
+	cancel()
+	if err := waitForManagerResult(t, errCh); err != nil {
+		t.Fatalf("Start returned unexpected error: %v", err)
+	}
+
+	mock.mu.RLock()
+	defer mock.mu.RUnlock()
+	if len(mock.removeAddressCalls) != 0 {
+		t.Errorf("removed %d entries the LAPI still bans", len(mock.removeAddressCalls))
+	}
+	entries := mock.bulkAddCalls[0].Entries
+	if len(entries) != 1 || entries[0].Address != "203.0.113.9" {
+		t.Errorf("expected only 203.0.113.9 to be added, got %+v", entries)
 	}
 }
 
@@ -614,7 +743,7 @@ func TestStart_DeleteChDrainFiltersDuringCollect(t *testing.T) {
 	deleteCh <- &crowdsec.Decision{Proto: "ip", Value: "10.0.0.99", Origin: "cscli", Type: "ban"}
 	banCh <- &crowdsec.Decision{Proto: "ip", Value: "10.0.0.100", Origin: "cscli", Type: "ban"}
 
-	initialBans, initialDeletes, err := mgr.collectInitialDecisions(context.Background(), banCh, deleteCh, errCh)
+	initialBans, initialDeletes, err := mgr.collectInitialDecisions(context.Background(), banCh, deleteCh, errCh, (&mockStream{}).Synced())
 	if err != nil {
 		t.Fatalf("collectInitialDecisions: %v", err)
 	}

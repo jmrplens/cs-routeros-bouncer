@@ -21,6 +21,11 @@ type CrowdSecStream interface {
 	// deleted decisions to deleteCh. It blocks until ctx is canceled.
 	Run(ctx context.Context, banCh, deleteCh chan<- *crowdsec.Decision) error
 
+	// Synced is closed once the first LAPI answer, empty or not, has been
+	// forwarded in full: the point from which an empty startup set means "no
+	// decisions" rather than "no answer yet".
+	Synced() <-chan struct{}
+
 	// ActiveDecisions fetches the current active decisions snapshot from LAPI.
 	ActiveDecisions(ctx context.Context) ([]*crowdsec.Decision, error)
 

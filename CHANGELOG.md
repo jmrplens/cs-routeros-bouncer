@@ -1,8 +1,15 @@
-## [Unreleased]
+## [1.7.2] - 2026-10-06
 
 ### Changed
 
 - **The Grafana dashboard screenshots are current** — the pair on the architecture page dated from February: release 1.3.1 built from a dirty tree, RouterOS 7.21.3 and a 24,400-entry list. They are now the bundled `grafana/dashboard.json` as it runs on the reference RB5009 with 1.7.1 and RouterOS 7.24.4, over the last hour, in both themes
+
+### Fixed
+
+- **An unreachable LAPI at startup no longer empties the router's lists** — with `crowdsec.retry_initial_connect` (the default), go-cs-bouncer retries an unreachable LAPI every 10 s and sends nothing, and the startup collection ended after 10 s with no decisions. The first reconciliation then treated "no answer" as "no decisions" and removed every entry the bouncer owned, so the router went unprotected until the LAPI came back and the stream re-added the list entry by entry. The same happened when a reachable LAPI took longer than 10 s to send its first answer. The stream now reports when the LAPI has answered (`Synced`, closed by the first answer even when it is empty), and the first reconciliation waits for it, logging a warning every 30 s and leaving the lists as they are; an answering LAPI with nothing banned still clears the stale entries. A periodic pass already skipped a failed snapshot. Reproduced and checked in a virtual RouterOS 7.24.4 against a stand-in LAPI: 1.7.1 emptied a 40-entry list 10 s after starting with the LAPI down; the fix kept it for 70 s, then added the 5 new entries when the LAPI came back
+- **The Docker line in the release notes names a tag that exists** — it read `docker pull ghcr.io/jmrplens/cs-routeros-bouncer:1.7.1`, but the images are tagged `v1.7.1`, so the command failed with "manifest unknown". The notes of the 17 published releases that carried that line, 1.0.0 to 1.7.1, have been corrected to the `v` tag; 1.5.0's notes were written by hand and never had it
+- **go-cs-bouncer's own log lines reach the bouncer's log** — the CrowdSec client logs through logrus' standard logger, which went to stderr in logrus' text format, outside `logging.file` and the JSON format. Among those lines is the only one that names why the LAPI refuses the bouncer at startup (`failed to connect to LAPI, retrying in 10s: …`, an unreachable address or a rejected API key or certificate). It is now routed into the bouncer's own log, component `go-cs-bouncer`
+- **The architecture page describes the address cache as it is** — `map[string]string`, address to RouterOS `.id`, not `map[string]struct{}`
 
 ## [1.7.1] - 2026-10-05
 

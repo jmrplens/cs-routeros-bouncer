@@ -189,7 +189,7 @@ Para la reconciliación inicial, el bouncer genera scripts de RouterOS que añad
 
 ### Caché de direcciones en memoria
 
-Un mapa en memoria (`map[string]struct{}` con `sync.RWMutex`) registra todas las direcciones presentes actualmente en el router. Esto proporciona:
+Un mapa en memoria (`map[string]string`, de dirección a `.id` de RouterOS, con `sync.RWMutex`) registra todas las direcciones presentes actualmente en el router. Esto proporciona:
 
 - **Búsquedas de unban en O(1)**: cuando se levanta el ban de una IP, primero se consulta la caché. Si la IP no está en la caché (por ejemplo, ya expiró en el router), la llamada a la API se omite por completo.
 - **Ruta rápida en O(1) para bans duplicados**: los eventos de ban repetidos para direcciones que ya se sabe que están en el router se resuelven de inmediato sin generar tráfico innecesario de gestión/API en RouterOS.

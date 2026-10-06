@@ -230,3 +230,22 @@ func logrusToZerologLevel(level logrus.Level) zerolog.Level {
 		return zerolog.InfoLevel
 	}
 }
+
+// RouteStandardLogger sends logrus' standard logger, which go-cs-bouncer and the
+// CrowdSec API client log through, to zl. Without it those lines go to stderr in
+// logrus' text format and never reach logging.file or the JSON format, and the
+// one that names why the LAPI refuses the bouncer at startup ("failed to connect
+// to LAPI, retrying in 10s: ...", an unreachable address or a rejected key or
+// certificate) is lost wherever stderr is not kept.
+func RouteStandardLogger(zl zerolog.Logger) {
+	std := logrus.StandardLogger()
+	std.SetOutput(io.Discard)
+	std.ReplaceHooks(make(logrus.LevelHooks))
+	std.AddHook(zerologHook{zl: zl})
+	// logrus decides before the hook runs, so let through what zerolog keeps.
+	if zerolog.GlobalLevel() <= zerolog.DebugLevel {
+		std.SetLevel(logrus.DebugLevel)
+	} else {
+		std.SetLevel(logrus.InfoLevel)
+	}
+}

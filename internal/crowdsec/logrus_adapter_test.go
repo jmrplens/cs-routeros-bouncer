@@ -498,3 +498,27 @@ func TestLogrusToZerologLevel(t *testing.T) {
 // Testing these would terminate the test process, so they are intentionally excluded.
 // Coverage for these 3 trivial one-line pass-throughs is not worth the complexity
 // of subprocess testing.
+
+// TestRouteStandardLogger verifies that a line go-cs-bouncer logs through
+// logrus' standard logger, such as why the LAPI refused a startup connection,
+// lands in the bouncer's zerolog output with its level and component.
+func TestRouteStandardLogger(t *testing.T) {
+	std := logrus.StandardLogger()
+	out, hooks, level := std.Out, std.ReplaceHooks(make(logrus.LevelHooks)), std.GetLevel()
+	t.Cleanup(func() {
+		std.SetOutput(out)
+		std.ReplaceHooks(hooks)
+		std.SetLevel(level)
+	})
+
+	var buf bytes.Buffer
+	RouteStandardLogger(zerolog.New(&buf).With().Str("component", "go-cs-bouncer").Logger())
+	logrus.Errorf("failed to connect to LAPI, retrying in 10s: %s", "API error: access forbidden")
+
+	got := buf.String()
+	for _, want := range []string{`"level":"error"`, `"component":"go-cs-bouncer"`, `failed to connect to LAPI, retrying in 10s: API error: access forbidden`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("routed line %q lacks %s", got, want)
+		}
+	}
+}
