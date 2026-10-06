@@ -57,7 +57,7 @@ How often to fetch a full active-decision snapshot from LAPI and reconcile it wi
 
 `crowdsec.reconciliation_interval` / `CROWDSEC_RECONCILIATION_INTERVAL` uses Go duration format, such as `1m`, `15m`, or `1h`.
 
-Set to `0` to disable periodic reconciliation. Any non-zero value must be at least `1m`. RouterOS keeps an address-list entry for at most `35w3d13h13m56s`; the entry of a longer decision ends then and is added again by the next pass, so with `0` it stays off the router for the rest of the decision.
+Set to `0` to disable periodic reconciliation. Any non-zero value must be at least `1m`. RouterOS keeps an address-list entry for at most `35w3d13h13m56s`; the entry of a longer decision ends then and is added again by the next pass, so with `0` it stays off the router for the rest of the decision. Independently of it, the bouncer reads the router's uptime before the first reconciliation and then every minute, and reconciles at once after a reboot, which removes every dynamic entry from the router. A reconcile that fails is retried until one succeeds, after a minute and then after twice the last wait: at most five minutes while LAPI does not answer, at most an hour after a pass that failed on the router. This holds for every reconcile, at startup, after a reboot and periodic, and a pass fails also when adds it made failed. A live ban whose add may not have reached the router, as while the router is unreachable, is followed by a reconcile a minute later.
 
 ```yaml
 crowdsec:

@@ -455,16 +455,33 @@ type SystemResources struct {
 
 // GetSystemResources queries /system/resource for CPU, memory, uptime, and version info.
 func (c *Client) GetSystemResources() (*SystemResources, error) {
-	result, err := c.Find("/system/resource", nil, []string{
+	return systemResources(c.Print)
+}
+
+// GetSystemResourcesContext is GetSystemResources ended at once when ctx is
+// done, as RunContext.
+func (c *Client) GetSystemResourcesContext(ctx context.Context) (*SystemResources, error) {
+	return systemResources(func(path string, query, proplist []string) ([]map[string]string, error) {
+		return c.PrintContext(ctx, path, query, proplist)
+	})
+}
+
+// systemResources reads /system/resource through printFn.
+func systemResources(printFn func(path string, query, proplist []string) ([]map[string]string, error)) (*SystemResources, error) {
+	results, err := printFn("/system/resource", nil, []string{
 		"cpu-load", "free-memory", "total-memory",
 		"uptime", "version", "board-name",
 	})
+	if err == nil && len(results) == 0 {
+		err = ErrNotFound
+	}
 	if errors.Is(err, ErrNotFound) {
 		return nil, fmt.Errorf("empty response from /system/resource/print: %w", err)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("querying system resources: %w", err)
 	}
+	result := results[0]
 
 	sr := &SystemResources{}
 	if v, ok := result["cpu-load"]; ok {

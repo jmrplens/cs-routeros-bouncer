@@ -78,6 +78,9 @@ type RouterOSClient interface {
 	// GetSystemResources returns RouterOS resource metrics, or network, timeout,
 	// permission, or RouterOS API errors.
 	GetSystemResources() (*ros.SystemResources, error)
+	// GetSystemResourcesContext is GetSystemResources ended at once when ctx
+	// is done.
+	GetSystemResourcesContext(ctx context.Context) (*ros.SystemResources, error)
 	// GetSystemHealth returns RouterOS health metrics, or network, timeout,
 	// permission, or RouterOS API errors.
 	GetSystemHealth() (*ros.SystemHealth, error)
