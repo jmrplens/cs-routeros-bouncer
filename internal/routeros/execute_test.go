@@ -39,12 +39,13 @@ func bulkEntries(n int) []BulkEntry {
 	return entries
 }
 
-// TestBulkAddAddresses_ExecuteCountsFromOutput verifies that a chunk goes out
-// as one /execute with as-string and that the count is the script's own output.
-func TestBulkAddAddresses_ExecuteCountsFromOutput(t *testing.T) {
+// TestBulkAddAddresses_ExecuteOneCall verifies that a chunk goes out as one
+// /execute with as-string and that a closing line without positions counts
+// every entry as added.
+func TestBulkAddAddresses_ExecuteOneCall(t *testing.T) {
 	mc := newMockConn()
 	c := newExecuteTestClient(mc)
-	mc.pushReply(doneReply(map[string]string{"ret": "2"}))
+	pushRun(mc, bulkDoneMarker)
 
 	added, failed, err := c.BulkAddAddresses(context.Background(), "ip", "list", bulkEntries(2))
 	if err != nil || added != 2 || len(failed) != 0 {
@@ -59,19 +60,58 @@ func TestBulkAddAddresses_ExecuteCountsFromOutput(t *testing.T) {
 	}
 }
 
-// TestBulkAddAddresses_ExecuteCountsOnlyWhatItAdded verifies that entries the
-// script skipped (already on the router) are not counted as added.
-func TestBulkAddAddresses_ExecuteCountsOnlyWhatItAdded(t *testing.T) {
+// pushRun queues the reply of an /execute bulk script run whose output is out.
+func pushRun(mc *mockConn, out string) {
+	mc.pushReply(doneReply(map[string]string{"ret": out}))
+}
+
+// TestBulkAddAddresses_ExecuteFailuresRetriedEach verifies that the positions
+// the script reported as failed get one AddAddress each: a duplicate the router
+// already holds, as after a script run repeated by a reconnect, counts as
+// added, and only a refused add stays failed. Repeated and out-of-range
+// positions count once or not at all.
+func TestBulkAddAddresses_ExecuteFailuresRetriedEach(t *testing.T) {
 	mc := newMockConn()
 	c := newExecuteTestClient(mc)
-	mc.pushReply(doneReply(map[string]string{"ret": "0"}))
+	entries := []BulkEntry{{Address: "1.1.1.1", Timeout: "1h"}, {Address: "2.2.2.2"}, {Address: "3.3.3.3"}}
 
-	added, failed, err := c.BulkAddAddresses(context.Background(), "ip", "list", bulkEntries(2))
-	if err != nil || added != 0 || len(failed) != 0 {
-		t.Fatalf("expected 0 added and no error, got %d, %v, %v", added, failed, err)
+	pushRun(mc, "noise\r\n"+bulkDoneMarker+"1,0,1,9,")
+	// retry 1.1.1.1: already on the router, found and refreshed
+	mc.pushError(newDuplicateDeviceError())
+	mc.pushReply(reReply(map[string]string{".id": "*A1", "address": "1.1.1.1", "list": "list", "comment": "old"}))
+	mc.pushReply(emptyReply())
+	mc.pushError(newDeviceError("failure: invalid value")) // retry 2.2.2.2: refused
+
+	added, failed, err := c.BulkAddAddresses(context.Background(), "ip", "list", entries)
+	if err == nil || added != 2 || len(failed) != 1 || failed[0].Address != "2.2.2.2" {
+		t.Fatalf("expected 2 added and 2.2.2.2 failed with an error, got %d, %+v, %v", added, failed, err)
 	}
-	if got := mc.callCount(); got != 1 {
-		t.Fatalf("expected no retry, got %d calls: %v", got, mc.calls)
+	if got := mc.callCount(); got != 5 {
+		t.Fatalf("expected the run, the duplicate's add, lookup and refresh, and one refused add, got %d calls", got)
+	}
+	if entries[0].ID != "*A1" {
+		t.Fatalf("expected the duplicate to keep the existing id *A1, got %q", entries[0].ID)
+	}
+}
+
+// TestBulkAddAddresses_ExecuteRetryKeepsIDs verifies that an entry retried
+// after the script reported it keeps the id its add returned, so its unban
+// deletes by id instead of looking the address up. A position outside the
+// chunk, negative included, is ignored.
+func TestBulkAddAddresses_ExecuteRetryKeepsIDs(t *testing.T) {
+	mc := newMockConn()
+	c := newExecuteTestClient(mc)
+	entries := []BulkEntry{{Address: "1.1.1.1"}, {Address: "2.2.2.2"}}
+
+	pushRun(mc, bulkDoneMarker+"-1,1,")
+	mc.pushReply(doneReply(map[string]string{"ret": "*B2"})) // retry 2.2.2.2
+
+	added, failed, err := c.BulkAddAddresses(context.Background(), "ip", "list", entries)
+	if err != nil || added != 2 || len(failed) != 0 {
+		t.Fatalf("expected both added, got %d, %+v, %v", added, failed, err)
+	}
+	if entries[1].ID != "*B2" {
+		t.Fatalf("expected the retried entry to keep id *B2, got %q", entries[1].ID)
 	}
 }
 
@@ -135,7 +175,7 @@ func TestBulkAddAddresses_RunnerFromVersion(t *testing.T) {
 	c := newTestClient(mc)
 	c.runnerKnown = false
 	mc.pushReply(reReply(map[string]string{"version": "7.24.4 (stable)"}))
-	mc.pushReply(doneReply(map[string]string{"ret": "1"}))
+	pushRun(mc, bulkDoneMarker)
 
 	if added, _, err := c.BulkAddAddresses(context.Background(), "ip", "list", bulkEntries(1)); err != nil || added != 1 {
 		t.Fatalf("expected 1 added, got %d, %v", added, err)
@@ -185,7 +225,7 @@ func TestBulkAddAddresses_VersionReadRetried(t *testing.T) {
 	}
 
 	mc.pushReply(reReply(map[string]string{"version": "7.24.4 (stable)"}))
-	mc.pushReply(doneReply(map[string]string{"ret": "1"}))
+	pushRun(mc, bulkDoneMarker)
 	if _, _, err := c.BulkAddAddresses(context.Background(), "ip", "list", bulkEntries(1)); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -235,7 +275,7 @@ func TestBulkAddAddresses_ExecuteOtherTrapKeepsExecute(t *testing.T) {
 		t.Fatalf("expected an entry-by-entry retry with /execute kept, got %v", mc.calls)
 	}
 
-	mc.pushReply(doneReply(map[string]string{"ret": "1"}))
+	pushRun(mc, bulkDoneMarker)
 	if _, _, err := c.BulkAddAddresses(context.Background(), "ip", "list", bulkEntries(1)); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

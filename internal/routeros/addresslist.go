@@ -82,6 +82,9 @@ func (c *Client) AddAddress(proto, list, address, timeout, comment string) (stri
 		if isDuplicateEntryError(err) {
 			return c.updateDuplicateAddress(path, proto, list, address, timeout, comment)
 		}
+		if isTrapError(err) {
+			return "", fmt.Errorf("add address %s to %s: %w: %w", address, list, ErrAddRefused, err)
+		}
 		return "", fmt.Errorf("add address %s to %s: %w", address, list, err)
 	}
 

@@ -18,6 +18,11 @@ const bulkScriptName = "crowdsec-bulk-import"
 // systemScriptPath is the RouterOS menu used to create and execute temporary scripts.
 const systemScriptPath = "/system/script"
 
+// bulkDoneMarker starts the line a bulk script prints last, followed by the
+// positions of the adds it could not make, as "1,5,". Output without it means
+// the run stopped early.
+const bulkDoneMarker = "crowdsec-bulk-done:"
+
 // bulkChunkSize limits addresses per script to keep the script source a
 // reasonable single API word.
 //
@@ -63,11 +68,12 @@ const executeMaxScriptBytes = 64 * 1024
 
 // BulkAddAddresses adds many addresses through RouterOS scripts of up to
 // bulkChunkSize adds each (runChunk), so a chunk costs the same few round trips
-// however many entries it holds. failed holds the entries of failed chunks that
-// the per-entry retry could not add either. Through /execute the count is the
-// script's own, without the entries it skipped; a stored script cannot report
-// one, so its chunk counts every entry as added. Once ctx is done no further
-// chunk runs, and its entries are failed too.
+// however many entries it holds. An entry the script reports as not added, and
+// every entry of a chunk whose run failed, gets one AddAddress
+// (AddAddressesEach): a duplicate the router already holds then counts as
+// added, and failed holds what that retry could not add either. A stored
+// script cannot report back, so its chunk counts every entry as added. Once
+// ctx is done no further chunk runs, and its entries are failed too.
 func (c *Client) BulkAddAddresses(ctx context.Context, proto, list string, entries []BulkEntry) (added int, failed []BulkEntry, err error) {
 	if len(entries) == 0 {
 		return 0, nil, nil
@@ -83,9 +89,7 @@ func (c *Client) BulkAddAddresses(ctx context.Context, proto, list string, entri
 		end := min(start+bulkChunkSize, len(entries))
 		chunk := entries[start:end]
 
-		script := buildBulkAddScript(proto, list, chunk)
-
-		n, scriptErr := c.runChunk(script)
+		failedAt, scriptErr := c.runChunk(buildBulkAddScript(proto, list, chunk))
 		if scriptErr != nil {
 			log.Warn().Err(scriptErr).Int("chunk_size", len(chunk)).Msg("bulk script failed, falling back to individual adds")
 			fallbackAdded, fallbackFailed, fallbackErr := c.AddAddressesEach(ctx, proto, list, chunk)
@@ -96,7 +100,23 @@ func (c *Client) BulkAddAddresses(ctx context.Context, proto, list string, entri
 			}
 			continue
 		}
-		total += n
+		positions := recordedPositions(len(chunk), failedAt)
+		total += len(chunk) - len(positions)
+		if len(positions) > 0 {
+			retry := make([]BulkEntry, len(positions))
+			for k, i := range positions {
+				retry[k] = chunk[i]
+			}
+			retryAdded, retryFailed, retryErr := c.AddAddressesEach(ctx, proto, list, retry)
+			for k, i := range positions {
+				chunk[i].ID = retry[k].ID
+			}
+			total += retryAdded
+			failed = append(failed, retryFailed...)
+			if retryErr != nil {
+				err = retryErr
+			}
+		}
 	}
 
 	return total, failed, err
@@ -104,9 +124,10 @@ func (c *Client) BulkAddAddresses(ctx context.Context, proto, list string, entri
 
 // AddAddressesEach adds entries with one AddAddress call each, never through a
 // script: the bulk_add_method "api" without a connection pool, and the retry
-// of a failed script chunk. It counts every entry AddAddress accepts, including
-// one the router already had, whose timeout and comment AddAddress refreshes,
-// and returns the entries whose add failed. It sets ID on every entry it adds.
+// of a failed script chunk or of the adds a script reported as failed. It
+// counts every entry AddAddress accepts, including one the router already had,
+// whose timeout and comment AddAddress refreshes, and returns the entries whose
+// add failed. It sets ID on every entry it adds.
 // Once ctx is done it adds no more, and the entries left are failed too.
 func (c *Client) AddAddressesEach(ctx context.Context, proto, list string, chunk []BulkEntry) (added int, failed []BulkEntry, err error) {
 	var fallbackErrs []error
@@ -168,7 +189,8 @@ func quoteScript(value string) string {
 	return value
 }
 
-// buildBulkAddScript generates a RouterOS script that adds addresses.
+// buildBulkAddScript generates a RouterOS script that adds addresses and
+// prints bulkDoneMarker with the positions of the adds that failed last.
 func buildBulkAddScript(proto, list string, entries []BulkEntry) string {
 	prefix := "/ip"
 	if proto == "ipv6" {
@@ -176,9 +198,9 @@ func buildBulkAddScript(proto, list string, entries []BulkEntry) string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString(":local count 0\n")
+	sb.WriteString(":local failed \"\"\n")
 
-	for _, e := range entries {
+	for i, e := range entries {
 		addr := NormalizeAddress(e.Address, proto)
 
 		sb.WriteString(":do {\n")
@@ -187,11 +209,10 @@ func buildBulkAddScript(proto, list string, entries []BulkEntry) string {
 		if e.Timeout != "" {
 			fmt.Fprintf(&sb, " timeout=\"%s\"", quoteScript(e.Timeout))
 		}
-		sb.WriteString("\n  :set count ($count + 1)\n")
-		sb.WriteString("} on-error={}\n") // silently skip duplicates
+		fmt.Fprintf(&sb, "\n} on-error={ :set failed ($failed . \"%d,\") }\n", i)
 	}
 
-	sb.WriteString(":put $count\n")
+	fmt.Fprintf(&sb, ":put (\"%s\" . $failed)\n", bulkDoneMarker)
 	return sb.String()
 }
 
@@ -199,26 +220,27 @@ func buildBulkAddScript(proto, list string, entries []BulkEntry) string {
 // parameter, as opposed to an error inside the script or any other trap.
 var errExecuteUnsupported = errors.New("routeros does not support /execute as-string")
 
-// runChunk runs one bulk-add script. On RouterOS 7.8rc1 and later it goes
-// through /execute with as-string: a single API call that runs the script
-// synchronously and hands back its :put output, so the count is exact and no
-// script is stored — nothing reaches the configuration or the router log,
+// runChunk runs one bulk-add script and returns the positions of the adds it
+// reported as failed. On RouterOS 7.8rc1 and later it goes through /execute
+// with as-string: a single API call that runs the script synchronously and
+// hands back its :put output, so the failed adds are known and no script is
+// stored — nothing reaches the configuration or the router log,
 // where a stored script's creation is logged with its whole source. Older
 // routers, a script over the /execute size limit, and a router that turns out
 // to lack /execute as-string get the stored /system/script of runBulkScript;
 // the last is remembered for the rest of the client's life.
-func (c *Client) runChunk(source string) (int, error) {
+func (c *Client) runChunk(source string) (failedAt []int, err error) {
 	if len(source) <= executeMaxScriptBytes && c.executeSupported() {
-		n, err := c.runExecuteScript(source)
+		failedAt, err = c.runExecuteScript(source)
 		if !errors.Is(err, errExecuteUnsupported) {
-			return n, err
+			return failedAt, err
 		}
 		c.runnerMu.Lock()
 		c.useExecute = false
 		c.runnerMu.Unlock()
 		log.Warn().Err(err).Msg("RouterOS lacks /execute as-string; bulk adds use a stored /system/script from now on")
 	}
-	return c.runBulkScript(source)
+	return nil, c.runBulkScript(source)
 }
 
 // executeSupported reports whether bulk-add scripts go through /execute. It
@@ -270,33 +292,75 @@ func executeAsStringSupported(version string) bool {
 }
 
 // runExecuteScript runs source through /execute with as-string and returns
-// the count its final :put printed. A device error saying the router lacks
+// the positions its final :put printed. A device error saying the router lacks
 // the command or its parameter is errExecuteUnsupported; any other error, and
-// anything but a number in the output, fails only this chunk, which
-// BulkAddAddresses then retries entry by entry. An :error or a syntax error
-// inside the script comes back as output text, not as an API error.
-func (c *Client) runExecuteScript(source string) (int, error) {
+// output parseBulkOutput cannot read, fails only this chunk, which
+// BulkAddAddresses then retries entry by entry.
+func (c *Client) runExecuteScript(source string) ([]int, error) {
 	start := time.Now()
 	reply, err := c.Run("/execute", "=script="+source, "=as-string=")
 	if err != nil {
 		if isDeviceError(err) && executeUnsupported(err) {
-			return 0, fmt.Errorf("%w: %w", errExecuteUnsupported, err)
+			return nil, fmt.Errorf("%w: %w", errExecuteUnsupported, err)
 		}
-		return 0, fmt.Errorf("execute bulk script: %w", err)
+		return nil, fmt.Errorf("execute bulk script: %w", err)
 	}
 	ret := ""
 	if reply != nil && reply.Done != nil {
-		ret = strings.TrimSpace(reply.Done.Map["ret"])
+		ret = reply.Done.Map["ret"]
 	}
-	n, convErr := strconv.Atoi(ret)
-	if convErr != nil {
-		if len(ret) > 200 {
-			ret = ret[:200] + "…"
+	failedAt, err := parseBulkOutput(ret)
+	if err != nil {
+		return nil, fmt.Errorf("execute bulk script: %w", err)
+	}
+	log.Debug().Dur("elapsed", time.Since(start)).Int("failed", len(failedAt)).Msg("bulk script executed")
+	return failedAt, nil
+}
+
+// parseBulkOutput reads the positions from the last line of a bulk script's
+// output. An :error or a syntax error inside the script comes back as output
+// text, not as an API error, so output whose last line does not start with
+// bulkDoneMarker is an error.
+func parseBulkOutput(out string) ([]int, error) {
+	out = strings.TrimRight(out, "\r\n")
+	last := out[strings.LastIndexAny(out, "\r\n")+1:]
+	positions, ok := strings.CutPrefix(last, bulkDoneMarker)
+	if !ok {
+		if len(out) > 200 {
+			out = out[:200] + "…"
 		}
-		return 0, fmt.Errorf("execute bulk script: output %q is not a count", ret)
+		return nil, fmt.Errorf("script stopped early: %q", out)
 	}
-	log.Debug().Dur("elapsed", time.Since(start)).Int("added", n).Msg("bulk script executed")
-	return n, nil
+	var failedAt []int
+	for field := range strings.SplitSeq(positions, ",") {
+		if field == "" {
+			continue
+		}
+		i, convErr := strconv.Atoi(field)
+		if convErr != nil {
+			return nil, fmt.Errorf("script output: %q is not a position", field)
+		}
+		failedAt = append(failedAt, i)
+	}
+	return failedAt, nil
+}
+
+// recordedPositions returns the recorded positions of a chunk of n entries,
+// each once and in order; a position outside the chunk is ignored.
+func recordedPositions(n int, positions []int) []int {
+	recorded := make([]bool, n)
+	for _, i := range positions {
+		if i >= 0 && i < n {
+			recorded[i] = true
+		}
+	}
+	var out []int
+	for i, ok := range recorded {
+		if ok {
+			out = append(out, i)
+		}
+	}
+	return out
 }
 
 // executeUnsupported reports whether a device error from /execute says the
@@ -310,16 +374,17 @@ func executeUnsupported(err error) bool {
 }
 
 // runBulkScript creates, executes, and cleans up a temporary RouterOS script.
-// Returns the number of addresses added (parsed from script output).
-func (c *Client) runBulkScript(source string) (int, error) {
+// A script run this way returns no output over the API, so the adds it could
+// not make stay unknown.
+func (c *Client) runBulkScript(source string) error {
 	// Remove any existing script with same name
 	existing, err := c.Find(systemScriptPath, []string{"?name=" + bulkScriptName}, []string{".id"})
 	if err != nil && !errors.Is(err, ErrNotFound) {
-		return 0, fmt.Errorf("find existing bulk script: %w", err)
+		return fmt.Errorf("find existing bulk script: %w", err)
 	}
 	if err == nil {
 		if removeErr := c.Remove(systemScriptPath, existing[".id"]); removeErr != nil {
-			return 0, fmt.Errorf("remove existing bulk script: %w", removeErr)
+			return fmt.Errorf("remove existing bulk script: %w", removeErr)
 		}
 	}
 
@@ -329,7 +394,7 @@ func (c *Client) runBulkScript(source string) (int, error) {
 		"source": source,
 	})
 	if err != nil {
-		return 0, fmt.Errorf("create bulk script: %w", err)
+		return fmt.Errorf("create bulk script: %w", err)
 	}
 
 	// Execute
@@ -341,14 +406,11 @@ func (c *Client) runBulkScript(source string) (int, error) {
 	_ = c.Remove(systemScriptPath, scriptID)
 
 	if err != nil {
-		return 0, fmt.Errorf("run bulk script: %w", err)
+		return fmt.Errorf("run bulk script: %w", err)
 	}
 
 	log.Debug().Dur("elapsed", elapsed).Msg("bulk script executed")
-
-	// We can't reliably get the :put output via API, so we estimate
-	// based on the number of entries (errors are silently skipped by on-error={})
-	return len(strings.Split(source, "address-list/add")) - 1, nil
+	return nil
 }
 
 // RemoveAddresses removes multiple address-list entries by their IDs.
