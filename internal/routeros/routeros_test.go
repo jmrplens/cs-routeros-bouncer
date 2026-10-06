@@ -32,7 +32,8 @@ func TestDurationToMikroTik(t *testing.T) {
 		{4 * time.Hour, "4h"},
 		{1 * time.Second, "1s"},
 		{7 * 24 * time.Hour, "7d"},
-		{365 * 24 * time.Hour, "365d"},
+		{maxTimeout, "248d13h13m56s"},
+		{maxTimeout - time.Second, "248d13h13m55s"},
 		{time.Hour + time.Second, "1h1s"},
 		{time.Minute + time.Second, "1m1s"},
 	}
@@ -765,12 +766,14 @@ func TestDurationToMikroTikSubSecond(t *testing.T) {
 	}
 }
 
-// TestDurationToMikroTikLarge verifies handling of very large durations.
+// TestDurationToMikroTikLarge verifies that a duration past what RouterOS
+// keeps becomes its longest timeout: /ip refuses a longer one and /ipv6 wraps
+// it, so a decision of a year either never reached the router or expired at
+// once.
 func TestDurationToMikroTikLarge(t *testing.T) {
-	// 1000 days
 	result := DurationToMikroTik(1000 * 24 * time.Hour)
-	if result != "1000d" {
-		t.Errorf("expected '1000d', got %q", result)
+	if result != "248d13h13m56s" {
+		t.Errorf("expected '248d13h13m56s', got %q", result)
 	}
 }
 

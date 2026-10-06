@@ -475,12 +475,19 @@ func (c *Client) GetSystemHealth() (*SystemHealth, error) {
 	return sh, nil
 }
 
-// DurationToMikroTik converts a Go duration to MikroTik timeout format.
+// maxTimeout is the longest address-list timeout RouterOS keeps: it refuses a
+// longer one on /ip and wraps it on /ipv6, where 365d becomes 0s (verified on
+// RouterOS 7.24.5).
+const maxTimeout = 248*24*time.Hour + 13*time.Hour + 13*time.Minute + 56*time.Second
+
+// DurationToMikroTik converts a Go duration to MikroTik timeout format, at
+// most maxTimeout.
 // MikroTik format: "1d2h3m4s" or "2h30m" etc.
 func DurationToMikroTik(d time.Duration) string {
 	if d <= 0 {
 		return "0s"
 	}
+	d = min(d, maxTimeout)
 
 	days := int(d.Hours()) / 24
 	hours := int(d.Hours()) % 24
