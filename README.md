@@ -150,7 +150,7 @@ Download the latest release from the [Releases page](https://github.com/jmrplens
 VERSION=$(curl -fsSL https://api.github.com/repos/jmrplens/cs-routeros-bouncer/releases/latest | sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p' | head -n1)
 [ -n "$VERSION" ] || { echo "could not resolve the latest version; pick a tag from the Releases page" >&2; exit 1; }
 
-# Download (replace with your architecture, e.g. x86_64, i386, arm64, armv6, armv7)
+# Download (replace with your architecture, e.g. x86_64, i386, arm64, armv5, armv6, armv7)
 ARCH=x86_64
 wget "https://github.com/jmrplens/cs-routeros-bouncer/releases/download/v${VERSION}/cs-routeros-bouncer_${VERSION}_linux_${ARCH}.tar.gz"
 tar xzf "cs-routeros-bouncer_${VERSION}_linux_${ARCH}.tar.gz"
@@ -192,7 +192,7 @@ sudo cs-routeros-bouncer uninstall \
 <summary><strong>Manual setup</strong></summary>
 
 ```bash
-# Download (e.g. x86_64, i386, arm64, armv6, armv7 — see the release assets for the full list)
+# Download (e.g. x86_64, i386, arm64, armv5, armv6, armv7 — see the release assets for the full list)
 VERSION=$(curl -fsSL https://api.github.com/repos/jmrplens/cs-routeros-bouncer/releases/latest | sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p' | head -n1)
 [ -n "$VERSION" ] || { echo "could not resolve the latest version; pick a tag from the Releases page" >&2; exit 1; }
 ARCH=x86_64

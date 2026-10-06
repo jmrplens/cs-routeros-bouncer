@@ -70,7 +70,7 @@ Todas las opciones de configuración pueden establecerse mediante variables de e
    VERSION=$(curl -fsSL https://api.github.com/repos/jmrplens/cs-routeros-bouncer/releases/latest | sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p' | head -n1)
    [ -n "$VERSION" ] || { echo "no se pudo resolver la última versión; elige una etiqueta en la página de Releases" >&2; exit 1; }
 
-   # Sustituye la arquitectura según necesites, p. ej. x86_64, i386, arm64, armv6, armv7
+   # Sustituye la arquitectura según necesites, p. ej. x86_64, i386, arm64, armv5, armv6, armv7
    ARCH=x86_64
 
    wget "https://github.com/jmrplens/cs-routeros-bouncer/releases/download/v${VERSION}/cs-routeros-bouncer_${VERSION}_linux_${ARCH}.tar.gz"
@@ -109,7 +109,7 @@ La configuración generada es `/etc/cs-routeros-bouncer/cs-routeros-bouncer.yaml
 <summary>Pasos de instalación manual (haz clic para expandir)</summary>
 
 ```bash
-# Descarga (p. ej. x86_64, i386, arm64, armv6, armv7 — consulta los assets de la release para la lista completa)
+# Descarga (p. ej. x86_64, i386, arm64, armv5, armv6, armv7 — consulta los assets de la release para la lista completa)
 VERSION=$(curl -fsSL https://api.github.com/repos/jmrplens/cs-routeros-bouncer/releases/latest | sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p' | head -n1)
 [ -n "$VERSION" ] || { echo "no se pudo resolver la última versión; elige una etiqueta en la página de Releases" >&2; exit 1; }
 ARCH=x86_64

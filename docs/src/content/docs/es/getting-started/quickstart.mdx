@@ -77,7 +77,7 @@ Para instalar cs-routeros-bouncer, registra el bouncer en CrowdSec (`cscli bounc
    VERSION=$(curl -fsSL https://api.github.com/repos/jmrplens/cs-routeros-bouncer/releases/latest | sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p' | head -n1)
    [ -n "$VERSION" ] || { echo "no se pudo resolver la última versión; elige una etiqueta en la página de Releases" >&2; exit 1; }
 
-   # Descarga (sustituye por tu arquitectura, p. ej. x86_64, i386, arm64, armv6, armv7)
+   # Descarga (sustituye por tu arquitectura, p. ej. x86_64, i386, arm64, armv5, armv6, armv7)
    ARCH=x86_64
    wget "https://github.com/jmrplens/cs-routeros-bouncer/releases/download/v${VERSION}/cs-routeros-bouncer_${VERSION}_linux_${ARCH}.tar.gz"
    tar xzf "cs-routeros-bouncer_${VERSION}_linux_${ARCH}.tar.gz"

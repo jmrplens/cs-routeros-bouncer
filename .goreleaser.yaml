@@ -28,6 +28,7 @@ builds:
       - mipsle
       - riscv64
     goarm:
+      - "5"
       - "6"
       - "7"
     ignore:
@@ -156,6 +157,7 @@ dockers_v2:
       - linux/amd64
       - linux/arm64
       - linux/arm/v7
+      - linux/arm/v5
     dockerfile: docker/Dockerfile.goreleaser
     labels:
       "org.opencontainers.image.title": "cs-routeros-bouncer"
