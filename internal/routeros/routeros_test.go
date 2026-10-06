@@ -343,9 +343,10 @@ func TestNormalizeAddressIPv4WithSlash(t *testing.T) {
 // TestNormalizeAddressIPv6FullAddress verifies that a full IPv6 address
 // without CIDR receives a /128 suffix.
 func TestNormalizeAddressIPv6FullAddress(t *testing.T) {
+	// RouterOS lists it compressed, as netip writes it.
 	result := NormalizeAddress("2001:0db8:85a3:0000:0000:8a2e:0370:7334", "ipv6")
-	if result != "2001:0db8:85a3:0000:0000:8a2e:0370:7334/128" {
-		t.Errorf("expected /128 suffix, got %s", result)
+	if result != "2001:db8:85a3::8a2e:370:7334/128" {
+		t.Errorf("expected the compressed form with /128, got %s", result)
 	}
 }
 

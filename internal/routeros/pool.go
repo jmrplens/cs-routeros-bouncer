@@ -195,14 +195,18 @@ func (p *Pool) AddAddresses(ctx context.Context, proto, list string, entries []B
 	// Each index is written by the one worker that takes it and read after
 	// ParallelExecContext has returned.
 	taken := make([]bool, len(entries))
+	var dups []*BulkEntry
 	errs = ParallelExecContext(ctx, p, indices, func(c *Client, i int) error {
 		taken[i] = true
 		entry := &entries[i]
-		id, err := c.AddAddress(proto, list, entry.Address, entry.Timeout, entry.Comment)
-		if err != nil {
-			if isDuplicateEntryError(err) {
-				return nil
-			}
+		id, duplicate, err := c.addAddressOnce(proto, list, entry.Address, entry.Timeout, entry.Comment)
+		switch {
+		case duplicate:
+			mu.Lock()
+			dups = append(dups, entry)
+			mu.Unlock()
+			return nil
+		case err != nil:
 			mu.Lock()
 			failed = append(failed, *entry)
 			mu.Unlock()
@@ -215,6 +219,42 @@ func (p *Pool) AddAddresses(ctx context.Context, proto, list string, entries []B
 	for i, entry := range entries {
 		if !taken[i] {
 			failed = append(failed, entry)
+		}
+	}
+	// The duplicates are refreshed together, one lookup per batch spread over
+	// the pool instead of one each; after a shutdown they are left for the
+	// next pass.
+	if ctx.Err() != nil {
+		for _, e := range dups {
+			failed = append(failed, *e)
+		}
+		return int(count.Load()), failed, errs
+	}
+	var batches [][]*BulkEntry
+	for start := 0; start < len(dups); start += duplicateLookupBatch {
+		batches = append(batches, dups[start:min(start+duplicateLookupBatch, len(dups))])
+	}
+	batchIdx := make([]int, len(batches))
+	for i := range batchIdx {
+		batchIdx[i] = i
+	}
+	batchTaken := make([]bool, len(batches)) // as taken above
+	batchErrs := ParallelExecContext(ctx, p, batchIdx, func(c *Client, b int) error {
+		batchTaken[b] = true
+		refreshed, dupFailed, dupErrs := c.refreshDuplicates(proto, list, batches[b])
+		count.Add(int64(refreshed))
+		mu.Lock()
+		failed = append(failed, dupFailed...)
+		errs = append(errs, dupErrs...)
+		mu.Unlock()
+		return nil
+	})
+	errs = append(errs, batchErrs...)
+	for b, batch := range batches {
+		if !batchTaken[b] {
+			for _, e := range batch {
+				failed = append(failed, *e)
+			}
 		}
 	}
 	return int(count.Load()), failed, errs

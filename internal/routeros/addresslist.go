@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/netip"
 	"strings"
 
 	"github.com/rs/zerolog/log"
@@ -37,9 +38,36 @@ func addressListPath(proto string) string {
 	return protoPrefix(proto) + "/firewall/address-list"
 }
 
-// NormalizeAddress prepares an address for MikroTik.
-// For IPv6 single addresses, appends /128 if no prefix length is present.
+// NormalizeAddress returns address in the form RouterOS stores and lists it,
+// so a decision and the entry it became compare equal: a prefix with its host
+// bits cleared (198.51.100.7/24 is listed as 198.51.100.0/24), an IPv4 /32 as
+// the bare address, an IPv6 address lowercase and compressed, with /128 when
+// it has no prefix length, and an IPv4 address embedded in IPv6 in hex except
+// in the ::ffff: form. Any other form never matched its entry: the
+// reconciliation removed and added it again on every pass. An IPv4-mapped
+// address (::ffff:192.0.2.1), which CrowdSec gives proto ip, becomes the
+// plain IPv4 address: the IPv4 list refuses the mapped form. An address
+// netip cannot parse keeps the old handling, /128 added to an IPv6 one.
 func NormalizeAddress(address, proto string) string {
+	if prefix, err := netip.ParsePrefix(address); err == nil {
+		prefix = prefix.Masked()
+		if proto != "ipv6" && prefix.Addr().Is4In6() && prefix.Bits() >= 96 {
+			prefix = netip.PrefixFrom(prefix.Addr().Unmap(), prefix.Bits()-96)
+		}
+		if prefix.Addr().Is4() && prefix.Bits() == 32 {
+			return prefix.Addr().String()
+		}
+		return prefix.String()
+	}
+	if addr, err := netip.ParseAddr(address); err == nil && addr.Zone() == "" {
+		if proto != "ipv6" {
+			addr = addr.Unmap()
+		}
+		if addr.Is4() {
+			return addr.String()
+		}
+		return addr.String() + "/128"
+	}
 	if proto == "ipv6" && !strings.Contains(address, "/") {
 		return address + "/128"
 	}
@@ -55,8 +83,22 @@ func DetectProto(address string) string {
 }
 
 // AddAddress adds an IP address to a MikroTik address list with a timeout.
-// Returns the MikroTik .id of the created entry.
+// Returns the MikroTik .id of the created entry. An entry the router already
+// holds is looked up and, when it is the bouncer's, refreshed with the timeout
+// and comment, and its id returned.
 func (c *Client) AddAddress(proto, list, address, timeout, comment string) (string, error) {
+	address = NormalizeAddress(address, proto)
+	id, duplicate, err := c.addAddressOnce(proto, list, address, timeout, comment)
+	if duplicate {
+		return c.updateDuplicateAddress(addressListPath(proto), proto, list, address, timeout, comment)
+	}
+	return id, err
+}
+
+// addAddressOnce sends one address-list add. An entry the router already
+// holds comes back as duplicate, with no error, for the caller to refresh:
+// updateDuplicateAddress for one add, refreshDuplicates for many.
+func (c *Client) addAddressOnce(proto, list, address, timeout, comment string) (id string, duplicate bool, err error) {
 	address = NormalizeAddress(address, proto)
 
 	attrs := map[string]string{
@@ -77,18 +119,98 @@ func (c *Client) AddAddress(proto, list, address, timeout, comment string) (stri
 		Str("timeout", timeout).
 		Msg("adding address to list")
 
-	id, err := c.Add(path, attrs)
+	id, err = c.Add(path, attrs)
 	if err != nil {
 		if isDuplicateEntryError(err) {
-			return c.updateDuplicateAddress(path, proto, list, address, timeout, comment)
+			return "", true, nil
 		}
 		if isTrapError(err) {
-			return "", fmt.Errorf("add address %s to %s: %w: %w", address, list, ErrAddRefused, err)
+			return "", false, fmt.Errorf("add address %s to %s: %w: %w", address, list, ErrAddRefused, err)
 		}
-		return "", fmt.Errorf("add address %s to %s: %w", address, list, err)
+		return "", false, fmt.Errorf("add address %s to %s: %w", address, list, err)
 	}
 
-	return id, nil
+	return id, false, nil
+}
+
+// duplicateLookupBatch is how many duplicate addresses refreshDuplicates finds
+// with one lookup. RouterOS walks the whole list for a query on it, whatever
+// the query matches: on a virtual RouterOS 7.24.4 holding 60,000 entries, one
+// address took 1.0 s to find and 100 OR'd in one query 6.3 s, against 102 s
+// one at a time.
+const duplicateLookupBatch = 100
+
+// refreshDuplicates settles adds the router answered as duplicates, as
+// AddAddress does for one: it finds their entries, duplicateLookupBatch per
+// lookup, and refreshes the timeout and comment of each one the bouncer owns.
+// It sets ID on every entry it refreshed and returns how many, and the entries
+// it could not refresh with why: no entry found
+// (ErrDuplicateReportedButNotFound), a foreign one (ErrForeignEntry), or a
+// failed lookup or update.
+func (c *Client) refreshDuplicates(proto, list string, dups []*BulkEntry) (refreshed int, failed []BulkEntry, errs []error) {
+	path := addressListPath(proto)
+	for start := 0; start < len(dups); start += duplicateLookupBatch {
+		batch := dups[start:min(start+duplicateLookupBatch, len(dups))]
+		addrs := make([]string, len(batch))
+		for i, e := range batch {
+			addrs[i] = NormalizeAddress(e.Address, proto)
+		}
+		found, err := c.findAddresses(proto, list, addrs)
+		if err != nil {
+			for _, e := range batch {
+				failed = append(failed, *e)
+			}
+			errs = append(errs, fmt.Errorf("refresh %d duplicate entries in %s: %w", len(batch), list, err))
+			continue
+		}
+		for i, e := range batch {
+			existing, ok := found[addrs[i]]
+			switch {
+			case !ok:
+				err = fmt.Errorf("add address %s to %s: %w", addrs[i], list, ErrDuplicateReportedButNotFound)
+			case !OwnedComment(existing.Comment, c.ownerPrefix):
+				err = fmt.Errorf("add address %s to %s: %w", addrs[i], list, ErrForeignEntry)
+			default:
+				err = nil
+				if attrs := duplicateAddressUpdateAttrs(e.Timeout, e.Comment); len(attrs) > 0 {
+					if setErr := c.Set(path, existing.ID, attrs); setErr != nil {
+						err = fmt.Errorf("add address %s to %s: duplicate entry and update failed: %w", addrs[i], list, setErr)
+					}
+				}
+			}
+			if err != nil {
+				failed = append(failed, *e)
+				errs = append(errs, err)
+				continue
+			}
+			e.ID = existing.ID
+			refreshed++
+		}
+	}
+	return refreshed, failed, errs
+}
+
+// findAddresses looks up the entries of list holding any of addrs, which must
+// be normalized, in one query, and returns them by address.
+func (c *Client) findAddresses(proto, list string, addrs []string) (map[string]AddressEntry, error) {
+	query := make([]string, 0, len(addrs)+2)
+	query = append(query, "?list="+list)
+	for _, a := range addrs {
+		query = append(query, "?address="+a)
+	}
+	if len(addrs) > 1 {
+		// OR the address conditions together, then AND the result with the list.
+		query = append(query, "?#"+strings.Repeat("|", len(addrs)-1)+"&")
+	}
+	results, err := c.Print(addressListPath(proto), query, []string{".id", "address", "comment"})
+	if err != nil {
+		return nil, fmt.Errorf("find %d addresses in %s: %w", len(addrs), list, err)
+	}
+	found := make(map[string]AddressEntry, len(results))
+	for _, r := range results {
+		found[r["address"]] = AddressEntry{ID: r[".id"], Address: r["address"], List: list, Comment: r["comment"]}
+	}
+	return found, nil
 }
 
 // OwnedComment reports whether an address-list comment belongs to the owner

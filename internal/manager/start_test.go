@@ -1389,14 +1389,14 @@ func TestUncertain_IPv6(t *testing.T) {
 }
 
 // TestUncertain_IPv4MappedSettledByIPListing verifies that an uncertain
-// IPv4-mapped IPv6 address, which CrowdSec gives proto ip, is settled by the
-// IPv4 listing it belongs to, although its key holds a colon.
+// IPv4-mapped IPv6 address, which CrowdSec gives proto ip, is keyed as the
+// plain IPv4 address the IPv4 list holds, and settled by that listing.
 func TestUncertain_IPv4MappedSettledByIPListing(t *testing.T) {
 	mock := &mockROS{addAddressErr: errors.New("i/o timeout")}
 	mgr := newTestManager(mock, baseConfig())
 
 	mgr.handleBan(&crowdsec.Decision{Proto: "ip", Value: "::ffff:10.0.0.1", Duration: time.Hour})
-	if _, ok := mgr.uncertain["::ffff:10.0.0.1"]; !ok {
+	if _, ok := mgr.uncertain["10.0.0.1"]; !ok {
 		t.Fatal("expected the failed ban uncertain before the listing")
 	}
 	if _, err := mgr.reconcileProtocolAddresses(context.Background(), "ip", nil, time.Now()); err != nil {
@@ -1736,6 +1736,38 @@ func TestReconcileAddresses_ListAddressesError(t *testing.T) {
 	// No bulk add should have been attempted
 	if len(mock.bulkAddCalls) != 0 {
 		t.Error("should not attempt bulk add when ListAddresses fails")
+	}
+}
+
+// TestReconcileAddresses_RouterOSFormsDoNotChurn verifies that decisions in a
+// form RouterOS rewrites match the entries it lists: a range with host bits, an
+// IPv4 /32 and an IPv4-mapped address. Before, each never matched its entry,
+// so every pass added it again (a duplicate, skipped) and then removed the
+// entry RouterOS held, which left the range unblocked until the next pass.
+func TestReconcileAddresses_RouterOSFormsDoNotChurn(t *testing.T) {
+	mock := &mockROS{
+		listAddresses: []ros.AddressEntry{
+			{ID: "*1", Address: "198.51.100.0/24", Comment: "crowdsec-bouncer|range"},
+			{ID: "*2", Address: "198.51.100.1", Comment: "crowdsec-bouncer|host"},
+			{ID: "*3", Address: "203.0.113.9", Comment: "crowdsec-bouncer|mapped"},
+		},
+	}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	mgr := newTestManager(mock, cfg)
+	mgr.pool = nil
+
+	mgr.reconcileAddresses(context.Background(), []*crowdsec.Decision{
+		{Proto: "ip", Value: "198.51.100.7/24", Origin: "cscli", Duration: time.Hour},
+		{Proto: "ip", Value: "198.51.100.1/32", Origin: "cscli", Duration: time.Hour},
+		{Proto: "ip", Value: "::ffff:203.0.113.9", Origin: "crowdsec", Duration: time.Hour},
+	})
+
+	mock.mu.Lock()
+	defer mock.mu.Unlock()
+	if len(mock.bulkAddCalls) != 0 || len(mock.addEachCalls) != 0 || len(mock.removeAddressCalls) != 0 {
+		t.Fatalf("expected no adds or removals, got %d bulk adds, %d per-entry adds, %d removals",
+			len(mock.bulkAddCalls), len(mock.addEachCalls), len(mock.removeAddressCalls))
 	}
 }
 
