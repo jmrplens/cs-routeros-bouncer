@@ -57,7 +57,7 @@ Con qué frecuencia se obtiene de la LAPI una instantánea completa de las decis
 
 `crowdsec.reconciliation_interval` / `CROWDSEC_RECONCILIATION_INTERVAL` usa el formato de duración de Go, como `1m`, `15m` o `1h`.
 
-Establécelo en `0` para deshabilitar la reconciliación periódica. Cualquier valor distinto de cero debe ser de al menos `1m`.
+Establécelo en `0` para deshabilitar la reconciliación periódica. Cualquier valor distinto de cero debe ser de al menos `1m`. RouterOS mantiene una entrada de address-list como mucho `35w3d13h13m56s`; la entrada de una decisión más larga termina entonces y la vuelve a añadir la siguiente pasada, así que con `0` queda fuera del router el resto de la decisión.
 
 ```yaml
 crowdsec:

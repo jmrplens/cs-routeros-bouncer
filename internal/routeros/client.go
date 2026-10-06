@@ -91,13 +91,22 @@ func defaultDial(cfg config.MikroTikConfig) (RouterConn, error) {
 	return conn, nil
 }
 
+// dialRaw connects and logs in. mikrotik.connection_timeout bounds both, so a
+// router that accepts the connection and never answers fails the dial instead
+// of holding it; 0 means no bound.
 func dialRaw(cfg config.MikroTikConfig) (*routeros.Client, error) {
 	if cfg.TLS {
 		tlsConfig := &tls.Config{
 			// #nosec G402 -- user-configurable option; RouterOS ships a self-signed cert by default.
 			InsecureSkipVerify: cfg.TLSInsecure,
 		}
+		if cfg.ConnectionTimeout > 0 {
+			return routeros.DialTLSTimeout(cfg.Address, cfg.Username, cfg.Password, tlsConfig, cfg.ConnectionTimeout)
+		}
 		return routeros.DialTLS(cfg.Address, cfg.Username, cfg.Password, tlsConfig)
+	}
+	if cfg.ConnectionTimeout > 0 {
+		return routeros.DialTimeout(cfg.Address, cfg.Username, cfg.Password, cfg.ConnectionTimeout)
 	}
 	return routeros.Dial(cfg.Address, cfg.Username, cfg.Password)
 }
@@ -461,12 +470,19 @@ func (c *Client) GetSystemHealth() (*SystemHealth, error) {
 	return sh, nil
 }
 
-// DurationToMikroTik converts a Go duration to MikroTik timeout format.
+// maxTimeout is the longest address-list timeout RouterOS keeps: it refuses a
+// longer one on /ip and wraps it on /ipv6, where 365d becomes 0s (verified on
+// RouterOS 7.24.5).
+const maxTimeout = 248*24*time.Hour + 13*time.Hour + 13*time.Minute + 56*time.Second
+
+// DurationToMikroTik converts a Go duration to MikroTik timeout format, at
+// most maxTimeout.
 // MikroTik format: "1d2h3m4s" or "2h30m" etc.
 func DurationToMikroTik(d time.Duration) string {
 	if d <= 0 {
 		return "0s"
 	}
+	d = min(d, maxTimeout)
 
 	days := int(d.Hours()) / 24
 	hours := int(d.Hours()) % 24
