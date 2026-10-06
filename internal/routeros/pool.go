@@ -166,15 +166,17 @@ func ParallelExecContext[T any](ctx context.Context, pool *Pool, items []T, fn f
 
 // parallelWorker runs fn on the items of work with one pool client until work
 // is empty, ctx is done or the pool yields no client, and reports fn's errors.
+// ctx is checked after an item arrives, as the wait for it can outlast a
+// shutdown; that item is then reported with ctx's error.
 func parallelWorker[T any](ctx context.Context, pool *Pool, work <-chan T, fn func(c *Client, item T) error, report func(error)) {
 	c := pool.Get()
 	if c == nil {
 		return
 	}
 	defer pool.Put(c)
-	for ctx.Err() == nil {
-		item, ok := <-work
-		if !ok {
+	for item := range work {
+		if err := ctx.Err(); err != nil {
+			report(err)
 			return
 		}
 		if err := fn(c, item); err != nil {

@@ -853,6 +853,48 @@ func TestPoolConnect_PartialFailure(t *testing.T) {
 	}
 }
 
+// TestParallelWorker_CanceledWhileWaiting verifies that an item a worker
+// receives after a shutdown is reported, not run: the cancellation can land
+// while the worker waits for the next item, after its last check.
+func TestParallelWorker_CanceledWhileWaiting(t *testing.T) {
+	mc := newMockConn()
+	p := NewPool(config.MikroTikConfig{}, 1)
+	p.newClient = func(_ config.MikroTikConfig) *Client {
+		return &Client{dialFunc: func(_ config.MikroTikConfig) (RouterConn, error) { return mc, nil }}
+	}
+	if err := p.Connect(); err != nil {
+		t.Fatalf("Connect() error: %v", err)
+	}
+	t.Cleanup(p.Close)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	work := make(chan int)
+	var ran, reported []int
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		parallelWorker(ctx, p, work, func(_ *Client, item int) error {
+			ran = append(ran, item)
+			return nil
+		}, func(err error) {
+			if errors.Is(err, context.Canceled) {
+				reported = append(reported, 1)
+			}
+		})
+	}()
+
+	work <- 1                         // runs
+	time.Sleep(20 * time.Millisecond) // the worker waits for the next item
+	cancel()
+	work <- 2 // arrives after the shutdown
+	close(work)
+	<-done
+
+	if len(ran) != 1 || len(reported) != 1 {
+		t.Fatalf("expected item 1 run and item 2 reported, got ran %v, reported %d", ran, len(reported))
+	}
+}
+
 // TestPoolRemoveAddresses_Canceled verifies that removals stop once ctx is
 // done: the entries left are reported with ctx's error and none is sent.
 func TestPoolRemoveAddresses_Canceled(t *testing.T) {
