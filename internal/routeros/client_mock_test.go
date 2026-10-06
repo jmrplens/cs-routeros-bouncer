@@ -2523,6 +2523,22 @@ func TestGetSystemResources_HappyPath(t *testing.T) {
 	}
 }
 
+// TestGetSystemResourcesContext_Canceled verifies that a read whose context
+// is done sends nothing and reports the context's error.
+func TestGetSystemResourcesContext_Canceled(t *testing.T) {
+	mc := newMockConn()
+	client := newTestClient(mc)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if _, err := client.GetSystemResourcesContext(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+	if got := mc.callCount(); got != 0 {
+		t.Fatalf("expected no command sent, got %d", got)
+	}
+}
+
 // TestGetSystemResources_Error verifies that GetSystemResources propagates
 // connection errors from the underlying RouterOS command.
 func TestGetSystemResources_Error(t *testing.T) {

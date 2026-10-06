@@ -232,7 +232,7 @@ func (m *Manager) Start(ctx context.Context) error {
 	// The boot time the reboot checks compare against, read before the pass:
 	// a reboot during it removes what it adds. Without a reading, the pass's
 	// start.
-	m.routerRebooted()
+	m.routerRebooted(ctx)
 	if m.lastBoot.IsZero() {
 		m.lastBoot = m.now()
 	}
@@ -243,6 +243,7 @@ func (m *Manager) Start(ctx context.Context) error {
 	var retryC <-chan time.Time
 	if err != nil {
 		retryC = m.scheduleReconcileRetry(err, reconcileRetryMax)
+		m.logger.Warn().Msg("first reconciliation incomplete, processing live decisions")
 	} else {
 		m.logger.Info().Msg("reconciliation complete, processing live decisions")
 	}
@@ -575,6 +576,9 @@ func (m *Manager) processLiveDecisions(ctx context.Context, banCh, deleteCh <-ch
 
 		case <-rebootC:
 			m.logger.Warn().Msg("router rebooted, reconciling the address lists")
+			// The router lost every dynamic entry: if this pass fails, its
+			// retry starts from the first wait, not from an earlier back-off.
+			m.retryDelay = 0
 			retryC = m.reconcileWithRetry(ctx)
 
 		case <-retryC:
@@ -624,7 +628,7 @@ func (m *Manager) watchReboots(ctx context.Context, rebootC chan<- struct{}) {
 	ticker := time.NewTicker(rebootCheckInterval)
 	defer ticker.Stop()
 	for {
-		if m.routerRebooted() {
+		if m.routerRebooted(ctx) {
 			select {
 			case rebootC <- struct{}{}:
 			default: // a reboot is already pending
@@ -641,13 +645,22 @@ func (m *Manager) watchReboots(ctx context.Context, rebootC chan<- struct{}) {
 // routerRebooted reads the router uptime and reports whether the router booted
 // since the last read: its boot time, now minus uptime, moved forward by more
 // than rebootSlack. Comparing boot times also catches a second reboot whose
-// uptime is already past the last read's. The first read, one that fails and
-// one whose uptime does not parse report no reboot.
-func (m *Manager) routerRebooted() bool {
+// uptime is already past the last read's. The first read, one that fails, one
+// that took longer than rebootSlack and one whose uptime does not parse report
+// no reboot. ctx ends the read at once.
+func (m *Manager) routerRebooted(ctx context.Context) bool {
 	before := m.now()
-	sr, err := m.ros.GetSystemResources()
+	sr, err := m.ros.GetSystemResourcesContext(ctx)
 	after := m.now()
 	if err != nil || sr == nil {
+		return false
+	}
+	// A read that took longer than the slack, most often one that waited for
+	// the client behind a long address-list read, says too little about when
+	// the router took its uptime: the router answers at the end of such a
+	// call, so its boot time would come out early, and the next prompt read
+	// would look like a reboot. The last reading stands.
+	if after.Sub(before) > rebootSlack {
 		return false
 	}
 	uptime := time.Duration(rosClient.ParseMikroTikUptime(sr.Uptime) * float64(time.Second))
@@ -701,12 +714,12 @@ func (m *Manager) reconcileActiveDecisions(ctx context.Context) error {
 	m.logger.Info().
 		Int("decisions", len(decisions)).
 		Dur("elapsed", time.Since(start)).
-		Msg("periodic reconciliation snapshot fetched")
+		Msg("reconciliation snapshot fetched")
 	err = m.reconcileAddresses(ctx, decisions)
 	if err != nil {
 		return err
 	}
-	m.logger.Info().Dur("elapsed", time.Since(start)).Msg("periodic reconciliation complete")
+	m.logger.Info().Dur("elapsed", time.Since(start)).Msg("reconciliation complete")
 	return nil
 }
 

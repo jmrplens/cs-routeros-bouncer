@@ -2680,40 +2680,40 @@ func TestRouterRebooted(t *testing.T) {
 	mgr := newTestManager(mock, baseConfig())
 	mgr.clock = func() time.Time { return now }
 
-	if mgr.routerRebooted() {
+	if mgr.routerRebooted(context.Background()) {
 		t.Fatal("the first read is no reboot")
 	}
 	now = now.Add(time.Hour)
 	mock.systemResources = &ros.SystemResources{Uptime: "2h0m2s"}
-	if mgr.routerRebooted() {
+	if mgr.routerRebooted(context.Background()) {
 		t.Fatal("an uptime that grew with the clock, give or take seconds, is no reboot")
 	}
 	mock.systemResourcesErr = errors.New("timeout")
-	if mgr.routerRebooted() {
+	if mgr.routerRebooted(context.Background()) {
 		t.Fatal("a failed read is no reboot")
 	}
 	mock.systemResourcesErr = nil
 	mock.systemResources = &ros.SystemResources{Uptime: "25s"}
-	if !mgr.routerRebooted() {
+	if !mgr.routerRebooted(context.Background()) {
 		t.Fatal("a falling uptime is a reboot")
 	}
 	// rebooted again 10s later: a minute on, the uptime (50s) is above the
 	// last read's (25s), but the boot moved forward by 35s
 	now = now.Add(time.Minute)
 	mock.systemResources = &ros.SystemResources{Uptime: "50s"}
-	if !mgr.routerRebooted() {
+	if !mgr.routerRebooted(context.Background()) {
 		t.Fatal("a second reboot within a check interval is a reboot")
 	}
 	// boot 20s later than the last read: within the slack
 	now = now.Add(10 * time.Minute)
 	mock.systemResources = &ros.SystemResources{Uptime: "10m30s"}
-	if mgr.routerRebooted() {
+	if mgr.routerRebooted(context.Background()) {
 		t.Fatal("a boot time 20s on is no reboot")
 	}
 	// boot 31s later than the last read: past the slack
 	now = now.Add(10 * time.Minute)
 	mock.systemResources = &ros.SystemResources{Uptime: "19m59s"}
-	if !mgr.routerRebooted() {
+	if !mgr.routerRebooted(context.Background()) {
 		t.Fatal("a boot time 31s on is a reboot")
 	}
 }
@@ -2725,12 +2725,12 @@ func TestRouterRebooted_Unreadable(t *testing.T) {
 	mock := &mockROS{systemResources: &ros.SystemResources{Uptime: "1h"}}
 	mgr := newTestManager(mock, baseConfig())
 	mgr.clock = func() time.Time { return now }
-	mgr.routerRebooted()
+	mgr.routerRebooted(context.Background())
 	boot := mgr.lastBoot
 
 	now = now.Add(time.Minute)
 	mock.systemResources = &ros.SystemResources{Uptime: "00:01:02"}
-	if mgr.routerRebooted() || !mgr.lastBoot.Equal(boot) {
+	if mgr.routerRebooted(context.Background()) || !mgr.lastBoot.Equal(boot) {
 		t.Fatalf("an unreadable uptime is no reading, got boot %v", mgr.lastBoot)
 	}
 }
@@ -2743,14 +2743,65 @@ func TestRouterRebooted_SlowReply(t *testing.T) {
 	mock := &mockROS{systemResources: &ros.SystemResources{Uptime: "1h"}}
 	mgr := newTestManager(mock, baseConfig())
 	mgr.clock = func() time.Time { return now }
-	mgr.routerRebooted()
+	mgr.routerRebooted(context.Background())
 
 	// An hour on, a read takes 80s; the router answers in its middle.
 	now = now.Add(time.Hour)
 	mock.systemResources = &ros.SystemResources{Uptime: "2h0m40s"}
 	mock.systemResourcesFunc = func(int32) { now = now.Add(80 * time.Second) }
-	if mgr.routerRebooted() {
+	if mgr.routerRebooted(context.Background()) {
 		t.Fatal("a slow reply is no reboot")
+	}
+}
+
+// TestRouterRebooted_QueuedRead verifies that a read that waited for the
+// client, behind a long address-list read, is no reading: the router takes its
+// uptime at the end of such a call, not in its middle, so its boot time comes
+// out early and the next prompt read would look like a reboot.
+func TestRouterRebooted_QueuedRead(t *testing.T) {
+	now := time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)
+	mock := &mockROS{systemResources: &ros.SystemResources{Uptime: "1h"}}
+	mgr := newTestManager(mock, baseConfig())
+	mgr.clock = func() time.Time { return now }
+	mgr.routerRebooted(context.Background())
+
+	// An hour on, the read waits 80s for the client; the router answers at its end.
+	now = now.Add(time.Hour)
+	mock.systemResources = &ros.SystemResources{Uptime: "2h1m20s"}
+	mock.systemResourcesFunc = func(int32) { now = now.Add(80 * time.Second) }
+	if mgr.routerRebooted(context.Background()) {
+		t.Fatal("a queued read is no reboot")
+	}
+	// A minute later, a prompt read.
+	mock.systemResourcesFunc = nil
+	now = now.Add(time.Minute)
+	mock.systemResources = &ros.SystemResources{Uptime: "2h2m20s"}
+	if mgr.routerRebooted(context.Background()) {
+		t.Fatal("a prompt read after a queued one is no reboot")
+	}
+}
+
+// TestWatchReboots_ReadEndsOnShutdown verifies that the watcher reads the
+// uptime with its own context, so a read at shutdown ends at once instead of
+// holding Start, and with it the removal of the firewall rules.
+func TestWatchReboots_ReadEndsOnShutdown(t *testing.T) {
+	mock := &mockROS{systemResources: &ros.SystemResources{Uptime: "1h"}}
+	mgr := newTestManager(mock, baseConfig())
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		mgr.watchReboots(ctx, make(chan struct{}, 1))
+		close(done)
+	}()
+	for mock.pollCount.Load() == 0 {
+		time.Sleep(time.Millisecond)
+	}
+	cancel()
+	<-done
+	mock.mu.Lock()
+	defer mock.mu.Unlock()
+	if mock.systemResourcesCtx == nil || mock.systemResourcesCtx.Err() == nil {
+		t.Fatalf("expected the read to get the watcher's context, got %v", mock.systemResourcesCtx)
 	}
 }
 
@@ -2955,6 +3006,35 @@ func TestProcessLiveDecisions_RetriedUntilSuccess(t *testing.T) {
 	}
 	if mgr.retryDelay != 0 {
 		t.Fatalf("expected the success to reset the delay, got %v", mgr.retryDelay)
+	}
+}
+
+// TestProcessLiveDecisions_RebootRestartsBackOff verifies that the pass a
+// reboot triggers starts from the first wait if it fails: the router lost
+// every dynamic entry, and an earlier back-off of up to an hour would keep it
+// empty that long.
+func TestProcessLiveDecisions_RebootRestartsBackOff(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var mgr *Manager
+	var seen time.Duration
+	stream := &mockStream{ActiveDecisionsFunc: func(context.Context) ([]*crowdsec.Decision, error) {
+		seen = mgr.retryDelay
+		cancel()
+		return nil, nil
+	}}
+	mgr = newTestManagerWithStream(&mockROS{}, stream, cfg)
+	mgr.retryDelay = time.Hour
+	rebootC := make(chan struct{}, 1)
+	rebootC <- struct{}{}
+
+	if err := mgr.processLiveDecisions(ctx, make(chan *crowdsec.Decision), make(chan *crowdsec.Decision), make(chan error), nil, rebootC, time.After(time.Hour)); err != nil {
+		t.Fatalf("unexpected error %v", err)
+	}
+	if seen != 0 {
+		t.Fatalf("expected the reboot pass to start without back-off, got %v", seen)
 	}
 }
 
@@ -3188,6 +3268,8 @@ func TestStart_InitialReconcileRetried(t *testing.T) {
 		return nil, nil
 	}}
 	mgr := newTestManagerWithStream(mock, stream, cfg)
+	var logs bytes.Buffer
+	mgr.logger = zerolog.New(&logs)
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- mgr.Start(ctx) }()
@@ -3196,6 +3278,10 @@ func TestStart_InitialReconcileRetried(t *testing.T) {
 	}
 	if stream.activeCalled != 1 {
 		t.Fatalf("expected the failed reconcile retried, got %d snapshots", stream.activeCalled)
+	}
+	// The line operators look for still says live decisions are processed.
+	if !strings.Contains(logs.String(), "processing live decisions") {
+		t.Fatalf("expected the live-decision line after a failed first pass, got %s", logs.String())
 	}
 }
 

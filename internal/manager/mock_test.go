@@ -91,6 +91,7 @@ type mockROS struct {
 	systemHealthErr     error
 	pollCount           atomic.Int32     // tracks GetSystemResources calls
 	systemResourcesFunc func(call int32) // called first, without mu held
+	systemResourcesCtx  context.Context  // the context of the last GetSystemResourcesContext
 
 	// Call tracking — inspected in assertions after calling the method under test.
 	connectCalls        int
@@ -349,6 +350,15 @@ func (m *mockROS) GetFirewallCounters(commentPrefix string) (*ros.FirewallCounte
 		return m.getCountersResult, m.getCountersErr
 	}
 	return &ros.FirewallCounters{}, m.getCountersErr
+}
+
+// GetSystemResourcesContext implements RouterOSClient.GetSystemResourcesContext:
+// GetSystemResources, recording ctx.
+func (m *mockROS) GetSystemResourcesContext(ctx context.Context) (*ros.SystemResources, error) {
+	m.mu.Lock()
+	m.systemResourcesCtx = ctx
+	m.mu.Unlock()
+	return m.GetSystemResources()
 }
 
 // GetSystemResources implements RouterOSClient.GetSystemResources and returns
