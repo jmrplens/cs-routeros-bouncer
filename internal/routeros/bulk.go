@@ -100,10 +100,17 @@ func (c *Client) BulkAddAddresses(ctx context.Context, proto, list string, entri
 			}
 			continue
 		}
-		retry := recordedEntries(chunk, failedAt)
-		total += len(chunk) - len(retry)
-		if len(retry) > 0 {
+		positions := recordedPositions(len(chunk), failedAt)
+		total += len(chunk) - len(positions)
+		if len(positions) > 0 {
+			retry := make([]BulkEntry, len(positions))
+			for k, i := range positions {
+				retry[k] = chunk[i]
+			}
 			retryAdded, retryFailed, retryErr := c.AddAddressesEach(ctx, proto, list, retry)
+			for k, i := range positions {
+				chunk[i].ID = retry[k].ID
+			}
 			total += retryAdded
 			failed = append(failed, retryFailed...)
 			if retryErr != nil {
@@ -118,9 +125,9 @@ func (c *Client) BulkAddAddresses(ctx context.Context, proto, list string, entri
 // AddAddressesEach adds entries with one AddAddress call each, never through a
 // script: the bulk_add_method "api" without a connection pool, and the retry
 // of a failed script chunk or of the adds a script reported as failed. It
-// counts every entry AddAddress accepts, including
-// one the router already had, whose timeout and comment AddAddress refreshes,
-// and returns the entries whose add failed. It sets ID on every entry it adds.
+// counts every entry AddAddress accepts, including one the router already had,
+// whose timeout and comment AddAddress refreshes, and returns the entries whose
+// add failed. It sets ID on every entry it adds.
 // Once ctx is done it adds no more, and the entries left are failed too.
 func (c *Client) AddAddressesEach(ctx context.Context, proto, list string, chunk []BulkEntry) (added int, failed []BulkEntry, err error) {
 	var fallbackErrs []error
@@ -338,22 +345,22 @@ func parseBulkOutput(out string) ([]int, error) {
 	return failedAt, nil
 }
 
-// recordedEntries returns the chunk's entries at the recorded positions, each
-// once, in chunk order; a position outside the chunk is ignored.
-func recordedEntries(chunk []BulkEntry, positions []int) []BulkEntry {
-	recorded := make([]bool, len(chunk))
+// recordedPositions returns the recorded positions of a chunk of n entries,
+// each once and in order; a position outside the chunk is ignored.
+func recordedPositions(n int, positions []int) []int {
+	recorded := make([]bool, n)
 	for _, i := range positions {
-		if i >= 0 && i < len(chunk) {
+		if i >= 0 && i < n {
 			recorded[i] = true
 		}
 	}
-	var entries []BulkEntry
-	for i, entry := range chunk {
-		if recorded[i] {
-			entries = append(entries, entry)
+	var out []int
+	for i, ok := range recorded {
+		if ok {
+			out = append(out, i)
 		}
 	}
-	return entries
+	return out
 }
 
 // executeUnsupported reports whether a device error from /execute says the

@@ -710,6 +710,30 @@ func TestAddAddress_RefusedIsErrAddRefused(t *testing.T) {
 	if _, err = c.AddAddress("ip", "crowdsec", "1.2.3.4", "4h", "c"); err == nil || errors.Is(err, ErrAddRefused) {
 		t.Fatalf("expected a transport error that is not ErrAddRefused, got %v", err)
 	}
+	// A !fatal ends the session: it does not say the add was not applied.
+	fatal := newDeviceError("session closed")
+	fatal.Sentence.Word = "!fatal"
+	mc.pushError(fatal)
+	if _, err = c.AddAddress("ip", "crowdsec", "1.2.3.4", "4h", "c"); err == nil || errors.Is(err, ErrAddRefused) {
+		t.Fatalf("expected a !fatal that is not ErrAddRefused, got %v", err)
+	}
+}
+
+// TestAddAddress_LoginTrapOnReconnectNotRefused verifies that a !trap from the
+// login of a reconnect, after the add's reply was lost, is no ErrAddRefused:
+// the add may have reached the router before the connection broke.
+func TestAddAddress_LoginTrapOnReconnectNotRefused(t *testing.T) {
+	mc := newMockConn()
+	c := newTestClient(mc)
+	c.dialFunc = func(_ config.MikroTikConfig) (RouterConn, error) {
+		return nil, newDeviceError("invalid user name or password (6)")
+	}
+	mc.pushError(errors.New("i/o timeout"))
+
+	_, err := c.AddAddress("ip", "crowdsec", "1.2.3.4", "4h", "c")
+	if err == nil || errors.Is(err, ErrAddRefused) {
+		t.Fatalf("expected a connection error that is not ErrAddRefused, got %v", err)
+	}
 }
 
 // TestAddAddress_DuplicateForeignLeftAlone verifies that with an owner prefix

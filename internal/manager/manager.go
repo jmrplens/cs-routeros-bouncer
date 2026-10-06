@@ -65,11 +65,12 @@ type Manager struct {
 	// is what lets handleUnban delete by id instead of paying a full table
 	// traversal to look one up. See handleUnban for why a stale id is safe.
 	addressCache map[string]string
-	// uncertain holds addresses whose reconcile add failed: the add may still
-	// have reached the router. They are not cached, so a live ban adds them,
-	// and an unban looks them up instead of skipping them. The next listing
-	// settles them. Same keys as addressCache, protected by cacheMu.
-	uncertain map[string]struct{}
+	// uncertain holds addresses whose add failed without the router refusing
+	// it: the add may still have reached the router. They are not cached, so a
+	// live ban adds them, and an unban looks them up instead of skipping them.
+	// The next listing of their protocol settles them. Same keys as
+	// addressCache, mapped to the protocol, protected by cacheMu.
+	uncertain map[string]string
 	cacheMu   sync.RWMutex
 
 	// lastBoot is when the router booted, as of the last reboot check; zero
@@ -789,10 +790,9 @@ func (m *Manager) handleBan(d *crowdsec.Decision) {
 	}
 	if err != nil {
 		if errors.Is(err, rosClient.ErrAddRefused) {
-			// The router refused the add: the address is not on it.
-			m.cacheMu.Lock()
-			delete(m.uncertain, addr)
-			m.cacheMu.Unlock()
+			m.forgetAddress(addr) // the router said it is not there
+		} else {
+			m.markUncertain(d.Proto, []rosClient.BulkEntry{{Address: d.Value}})
 		}
 		m.logger.Error().Err(err).Str("address", d.Value).Str("list", listName).Msg("error adding address to MikroTik")
 		metrics.RecordError("add")
@@ -800,10 +800,7 @@ func (m *Manager) handleBan(d *crowdsec.Decision) {
 	}
 
 	// Update address cache, keeping the id AddAddress just returned.
-	m.cacheMu.Lock()
-	m.addressCache[addr] = entryID
-	delete(m.uncertain, addr)
-	m.cacheMu.Unlock()
+	m.cacheAddress(addr, entryID)
 
 	metrics.RecordDecision("ban", metricsProto, d.Origin)
 	metrics.IncrActiveDecisions(metricsProto)
@@ -825,10 +822,7 @@ func (m *Manager) handleBan(d *crowdsec.Decision) {
 // which changes the log line but not the accounting: either way the address is
 // no longer enforced and the decision is settled.
 func (m *Manager) finishUnban(d *crowdsec.Decision, addr, metricsProto, listName string, start time.Time, alreadyGone bool) {
-	m.cacheMu.Lock()
-	delete(m.addressCache, addr)
-	delete(m.uncertain, addr)
-	m.cacheMu.Unlock()
+	m.forgetAddress(addr)
 
 	metrics.RecordDecision("unban", metricsProto, d.Origin)
 	metrics.DecrActiveDecisions(metricsProto)
@@ -870,12 +864,8 @@ func (m *Manager) handleUnban(d *crowdsec.Decision) {
 	addr := rosClient.NormalizeAddress(d.Value, d.Proto)
 
 	// Fast-path: check address cache — skip API call if address is not on router
-	m.cacheMu.RLock()
-	cachedID, inCache := m.addressCache[addr]
-	_, isUncertain := m.uncertain[addr]
-	m.cacheMu.RUnlock()
-
-	if !inCache && !isUncertain {
+	cachedID, known := m.knownAddress(addr)
+	if !known {
 		m.logger.Debug().
 			Str("address", d.Value).
 			Msg("address not in cache, skipping unban (already expired or never added)")
@@ -927,10 +917,7 @@ func (m *Manager) handleUnban(d *crowdsec.Decision) {
 	entry, err := m.ros.FindAddress(d.Proto, listName, d.Value)
 	if errors.Is(err, rosClient.ErrNotFound) {
 		// Remove from cache — it expired on MikroTik
-		m.cacheMu.Lock()
-		delete(m.addressCache, addr)
-		delete(m.uncertain, addr)
-		m.cacheMu.Unlock()
+		m.forgetAddress(addr)
 
 		m.logger.Debug().
 			Str("address", d.Value).
@@ -947,10 +934,7 @@ func (m *Manager) handleUnban(d *crowdsec.Decision) {
 	if entry == nil {
 		// Defensive guard for RouterOSClient implementations that violate the
 		// FindAddress contract and return (nil, nil).
-		m.cacheMu.Lock()
-		delete(m.addressCache, addr)
-		delete(m.uncertain, addr)
-		m.cacheMu.Unlock()
+		m.forgetAddress(addr)
 
 		m.logger.Debug().
 			Str("address", d.Value).
@@ -960,10 +944,7 @@ func (m *Manager) handleUnban(d *crowdsec.Decision) {
 
 	if !rosClient.OwnedComment(entry.Comment, m.commentPrefix()) {
 		// A foreign entry holds the address: not the bouncer's to remove.
-		m.cacheMu.Lock()
-		delete(m.addressCache, addr)
-		delete(m.uncertain, addr)
-		m.cacheMu.Unlock()
+		m.forgetAddress(addr)
 
 		m.logger.Info().
 			Str("address", d.Value).
@@ -1721,8 +1702,8 @@ func (m *Manager) refreshAddressCache(proto string, currentMap map[string]rosCli
 	}
 	// The listing is the router's state: no address of this protocol is
 	// uncertain any more.
-	for addr := range m.uncertain {
-		if strings.Contains(addr, ":") == (proto == "ipv6") {
+	for addr, addrProto := range m.uncertain {
+		if addrProto == proto {
 			delete(m.uncertain, addr)
 		}
 	}
@@ -1743,7 +1724,7 @@ func (m *Manager) addMissingAddresses(ctx context.Context, proto, listName, metr
 	addStart := time.Now()
 	added, failed, addErr := m.bulkAdd(ctx, proto, listName, toAdd)
 	if addErr != nil {
-		m.logger.Warn().Err(addErr).Int("unconfirmed", len(failed)).Msg("some addresses failed to add during reconciliation")
+		m.logger.Warn().Err(addErr).Str("proto", proto).Str("list", listName).Int("unconfirmed", len(failed)).Msg("some addresses failed to add during reconciliation")
 	}
 	m.addEntriesToCache(proto, confirmedEntries(toAdd, failed))
 	m.markUncertain(proto, failed)
@@ -1829,11 +1810,37 @@ func (m *Manager) markUncertain(proto string, entries []rosClient.BulkEntry) {
 	m.cacheMu.Lock()
 	defer m.cacheMu.Unlock()
 	if m.uncertain == nil {
-		m.uncertain = make(map[string]struct{})
+		m.uncertain = make(map[string]string)
 	}
 	for _, entry := range entries {
-		m.uncertain[rosClient.NormalizeAddress(entry.Address, proto)] = struct{}{}
+		m.uncertain[rosClient.NormalizeAddress(entry.Address, proto)] = proto
 	}
+}
+
+// knownAddress returns the cached id of addr, and whether an unban has to act
+// on it: the address is cached, or uncertain.
+func (m *Manager) knownAddress(addr string) (id string, known bool) {
+	m.cacheMu.RLock()
+	defer m.cacheMu.RUnlock()
+	id, cached := m.addressCache[addr]
+	_, uncertain := m.uncertain[addr]
+	return id, cached || uncertain
+}
+
+// cacheAddress records addr as on the router under the entry id.
+func (m *Manager) cacheAddress(addr, id string) {
+	m.cacheMu.Lock()
+	defer m.cacheMu.Unlock()
+	m.addressCache[addr] = id
+	delete(m.uncertain, addr)
+}
+
+// forgetAddress records addr as not on the router.
+func (m *Manager) forgetAddress(addr string) {
+	m.cacheMu.Lock()
+	defer m.cacheMu.Unlock()
+	delete(m.addressCache, addr)
+	delete(m.uncertain, addr)
 }
 
 // removeStaleAddresses removes obsolete RouterOS entries and records reconciliation metrics.

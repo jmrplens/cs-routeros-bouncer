@@ -53,8 +53,8 @@ var ErrDuplicateReportedButNotFound = errors.New("routeros reported duplicate en
 var ErrAddressDuplicate = errors.New("routeros address already exists")
 
 // ErrAddRefused reports that RouterOS refused an address-list add with a trap
-// other than a duplicate: the entry is not on the router. A transport error
-// leaves that open and does not carry it.
+// other than a duplicate: the entry is not on the router. A transport error or
+// a !fatal leaves that open and does not carry it.
 var ErrAddRefused = errors.New("routeros refused the address-list add")
 
 // ErrForeignEntry reports that an address-list add hit an existing entry whose
@@ -195,6 +195,19 @@ func isDeviceError(err error) bool {
 	return errors.As(err, &de)
 }
 
+// errNoConnection marks a command Run could not send, or not send again,
+// because connecting to the router failed. A !trap inside it is the login's.
+var errNoConnection = errors.New("no RouterOS connection")
+
+// isTrapError reports whether the router refused the command with a !trap. A
+// !fatal ends the session, and a !trap from the login of a reconnect refused
+// the login, so neither says anything about the command.
+func isTrapError(err error) bool {
+	var de *routeros.DeviceError
+	return errors.As(err, &de) && de.Sentence != nil && de.Sentence.Word == "!trap" &&
+		!errors.Is(err, errNoConnection)
+}
+
 // isNoSuchItemError reports whether RouterOS returned its missing-item trap text.
 func isNoSuchItemError(err error) bool {
 	if err == nil {
@@ -212,7 +225,7 @@ func (c *Client) Run(args ...string) (*routeros.Reply, error) {
 	defer c.mu.Unlock()
 
 	if err := c.ensureConnected(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", errNoConnection, err)
 	}
 
 	reply, err := c.conn.RunArgs(args)
@@ -229,7 +242,7 @@ func (c *Client) Run(args ...string) (*routeros.Reply, error) {
 		c.conn = nil
 
 		if reconnectErr := c.ensureConnected(); reconnectErr != nil {
-			return nil, fmt.Errorf("reconnect failed: %w", reconnectErr)
+			return nil, fmt.Errorf("reconnect failed: %w: %w", errNoConnection, reconnectErr)
 		}
 
 		reply, err = c.conn.RunArgs(args)

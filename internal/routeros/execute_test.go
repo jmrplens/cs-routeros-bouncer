@@ -88,6 +88,27 @@ func TestBulkAddAddresses_ExecuteFailuresRetriedEach(t *testing.T) {
 	}
 }
 
+// TestBulkAddAddresses_ExecuteRetryKeepsIDs verifies that an entry retried
+// after the script reported it keeps the id its add returned, so its unban
+// deletes by id instead of looking the address up. A position outside the
+// chunk, negative included, is ignored.
+func TestBulkAddAddresses_ExecuteRetryKeepsIDs(t *testing.T) {
+	mc := newMockConn()
+	c := newExecuteTestClient(mc)
+	entries := []BulkEntry{{Address: "1.1.1.1"}, {Address: "2.2.2.2"}}
+
+	pushRun(mc, bulkDoneMarker+"-1,1,")
+	mc.pushReply(doneReply(map[string]string{"ret": "*B2"})) // retry 2.2.2.2
+
+	added, failed, err := c.BulkAddAddresses(context.Background(), "ip", "list", entries)
+	if err != nil || added != 2 || len(failed) != 0 {
+		t.Fatalf("expected both added, got %d, %+v, %v", added, failed, err)
+	}
+	if entries[1].ID != "*B2" {
+		t.Fatalf("expected the retried entry to keep id *B2, got %q", entries[1].ID)
+	}
+}
+
 // TestBulkAddAddresses_ExecuteErrorRetriesEntryByEntry verifies that an :error
 // inside the script, which comes back as output rather than as an API error,
 // fails the chunk and retries it one add per entry.
