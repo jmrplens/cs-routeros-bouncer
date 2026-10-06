@@ -1214,6 +1214,25 @@ func TestReconcileAddresses_PassesContextToAdds(t *testing.T) {
 	}
 }
 
+// TestReconcileAddresses_PassesContextToList verifies that the listing at the
+// start of a pass gets the reconcile context: on a router holding tens of
+// thousands of entries it is the longest command of the pass, and a shutdown
+// must be able to end it.
+func TestReconcileAddresses_PassesContextToList(t *testing.T) {
+	type key struct{}
+	mock := &mockROS{}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	mgr := newTestManager(mock, cfg)
+	ctx := context.WithValue(context.Background(), key{}, "reconcile")
+
+	mgr.reconcileAddresses(ctx, nil)
+
+	if mock.listAddressesCtx == nil || mock.listAddressesCtx.Value(key{}) != "reconcile" {
+		t.Fatalf("expected the reconcile context at the listing, got %v", mock.listAddressesCtx)
+	}
+}
+
 // TestReconcileAddresses_ShutdownSkipsRemovals verifies that a shutdown during
 // a pass stops its removals too, sequential and pooled: thousands of them would
 // hold Start past the container runtime's grace period, and Shutdown would
@@ -1275,6 +1294,24 @@ func TestAddMissingAddresses_ShutdownIsNoWarning(t *testing.T) {
 
 	if strings.Contains(logs.String(), "failed to add") || !strings.Contains(logs.String(), "shutdown stopped the adds") {
 		t.Fatalf("expected one shutdown line and no add failure, got %s", logs.String())
+	}
+}
+
+// TestReconcileProtocolAddresses_ShutdownListingIsNoError verifies that a
+// listing a shutdown ended is not logged or counted as a failure.
+func TestReconcileProtocolAddresses_ShutdownListingIsNoError(t *testing.T) {
+	var logs bytes.Buffer
+	mock := &mockROS{listAddressesErr: fmt.Errorf("list addresses: %w", context.Canceled)}
+	mgr := newTestManager(mock, baseConfig())
+	mgr.logger = zerolog.New(&logs)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if _, err := mgr.reconcileProtocolAddresses(ctx, "ip", nil, time.Now()); err == nil {
+		t.Fatal("expected the listing error back")
+	}
+	if strings.Contains(logs.String(), "error listing") || !strings.Contains(logs.String(), "shutdown stopped the address-list read") {
+		t.Fatalf("expected one shutdown line and no listing error, got %s", logs.String())
 	}
 }
 

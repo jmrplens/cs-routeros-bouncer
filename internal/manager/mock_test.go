@@ -67,6 +67,7 @@ type mockROS struct {
 	bulkAddErr        error
 	bulkAddFailN      int             // the first n entries of a bulk add fail
 	bulkAddCtx        context.Context // the context of the last bulk add
+	listAddressesCtx  context.Context // the context of the last listing
 
 	addRuleID         string
 	addRuleIDs        []string
@@ -234,10 +235,11 @@ func (m *mockROS) RemoveAddress(proto, id string) error {
 
 // ListAddresses implements RouterOSClient.ListAddresses and returns the
 // pre-configured address list and error.
-func (m *mockROS) ListAddresses(proto, list, commentPrefix string) ([]ros.AddressEntry, error) {
+func (m *mockROS) ListAddresses(ctx context.Context, proto, list, commentPrefix string) ([]ros.AddressEntry, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.listAddressesCalls++
+	m.listAddressesCtx = ctx
 	m.listAddressesPrefix = commentPrefix
 	if m.listAddressesFunc != nil {
 		return m.listAddresses, m.listAddressesFunc()

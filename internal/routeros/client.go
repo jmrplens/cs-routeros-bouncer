@@ -1,6 +1,7 @@
 package routeros
 
 import (
+	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -203,37 +204,75 @@ func isNoSuchItemError(err error) bool {
 // (e.g. "already have such entry") are returned immediately without
 // triggering a reconnection, since the connection is still valid.
 func (c *Client) Run(args ...string) (*routeros.Reply, error) {
+	return c.run(nil, func(conn RouterConn) (*routeros.Reply, error) {
+		return conn.RunArgs(args)
+	})
+}
+
+// RunContext is Run ended at once when ctx is done. The command is then not
+// sent again: its connection, left mid-reply, is closed, and the next command
+// connects anew. A ctx already done sends nothing.
+func (c *Client) RunContext(ctx context.Context, args ...string) (*routeros.Reply, error) {
+	return c.run(ctx.Err, func(conn RouterConn) (*routeros.Reply, error) {
+		return conn.RunArgsContext(ctx, args)
+	})
+}
+
+// run sends one command through exec, with Run's reconnect and retry.
+// canceled, nil for a command nothing can end, reports why it must stop.
+func (c *Client) run(canceled func() error, exec func(RouterConn) (*routeros.Reply, error)) (*routeros.Reply, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	if canceled != nil {
+		if err := canceled(); err != nil {
+			return nil, err
+		}
+	}
 	if err := c.ensureConnected(); err != nil {
 		return nil, err
 	}
 
-	reply, err := c.conn.RunArgs(args)
-	if err != nil {
-		// Device errors mean the router understood the command but rejected it.
-		// The connection is fine — return the error without reconnecting.
-		if isDeviceError(err) {
-			return reply, err
-		}
-
-		// For connection/transport errors, try reconnect once.
-		c.logger.Warn().Err(err).Msg("RouterOS command failed, attempting reconnect")
-		_ = c.conn.Close()
-		c.conn = nil
-
-		if reconnectErr := c.ensureConnected(); reconnectErr != nil {
-			return nil, fmt.Errorf("reconnect failed: %w", reconnectErr)
-		}
-
-		reply, err = c.conn.RunArgs(args)
-		if err != nil {
-			return nil, fmt.Errorf("command failed after reconnect: %w", err)
-		}
+	reply, err := exec(c.conn)
+	switch {
+	case err == nil:
+		return reply, nil
+	case isDeviceError(err):
+		// The router understood the command but rejected it. The
+		// connection is fine — return the error without reconnecting.
+		return reply, err
+	case canceled != nil && canceled() != nil:
+		// Cut short mid-reply: sending it again would hold up whatever
+		// ended it.
+		c.dropConnLocked()
+		return nil, err
 	}
 
+	// For connection/transport errors, try reconnect once.
+	c.logger.Warn().Err(err).Msg("RouterOS command failed, attempting reconnect")
+	c.dropConnLocked()
+	if reconnectErr := c.ensureConnected(); reconnectErr != nil {
+		return nil, fmt.Errorf("reconnect failed: %w", reconnectErr)
+	}
+
+	reply, err = exec(c.conn)
+	if err != nil {
+		// Unless the router refused it, the retry failed on the transport
+		// too and may have left its reply half read: the next command
+		// would take the rest of it for its own.
+		if !isDeviceError(err) {
+			c.dropConnLocked()
+		}
+		return nil, fmt.Errorf("command failed after reconnect: %w", err)
+	}
 	return reply, nil
+}
+
+// dropConnLocked closes the connection; the next command connects anew.
+// Caller must hold c.mu.
+func (c *Client) dropConnLocked() {
+	_ = c.conn.Close()
+	c.conn = nil
 }
 
 // Add creates a new resource at the given path with the specified attributes.
@@ -289,6 +328,18 @@ func (c *Client) Remove(path, id string) error {
 
 // Print lists resources at the given path with optional query filters and property selection.
 func (c *Client) Print(path string, query, proplist []string) ([]map[string]string, error) {
+	return printWith(c.Run, path, query, proplist)
+}
+
+// PrintContext is Print ended at once when ctx is done, as RunContext.
+func (c *Client) PrintContext(ctx context.Context, path string, query, proplist []string) ([]map[string]string, error) {
+	return printWith(func(args ...string) (*routeros.Reply, error) {
+		return c.RunContext(ctx, args...)
+	}, path, query, proplist)
+}
+
+// printWith builds the print command and runs it through run.
+func printWith(run func(args ...string) (*routeros.Reply, error), path string, query, proplist []string) ([]map[string]string, error) {
 	args := []string{path + "/print"}
 
 	// Add property list
@@ -299,7 +350,7 @@ func (c *Client) Print(path string, query, proplist []string) ([]map[string]stri
 	// Add query filters
 	args = append(args, query...)
 
-	reply, err := c.Run(args...)
+	reply, err := run(args...)
 	if err != nil {
 		return nil, fmt.Errorf("print %s: %w", path, err)
 	}

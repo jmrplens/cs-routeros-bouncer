@@ -1,6 +1,7 @@
 package routeros
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -149,8 +150,9 @@ func (c *Client) RemoveAddress(proto, id string) error {
 }
 
 // ListAddresses returns all address-list entries matching the given list name and comment prefix.
-// An empty prefix returns every entry of the list.
-func (c *Client) ListAddresses(proto, list, commentPrefix string) ([]AddressEntry, error) {
+// An empty prefix returns every entry of the list. Once ctx is done the
+// listing ends at once with ctx's error.
+func (c *Client) ListAddresses(ctx context.Context, proto, list, commentPrefix string) ([]AddressEntry, error) {
 	path := addressListPath(proto)
 
 	query := []string{"?list=" + list}
@@ -168,7 +170,7 @@ func (c *Client) ListAddresses(proto, list, commentPrefix string) ([]AddressEntr
 	// serialize.
 	proplist := []string{".id", "address", "comment"}
 
-	results, err := c.Print(path, query, proplist)
+	results, err := c.PrintContext(ctx, path, query, proplist)
 	if err != nil {
 		return nil, fmt.Errorf("list addresses for %s: %w", list, err)
 	}

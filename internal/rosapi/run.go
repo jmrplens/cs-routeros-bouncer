@@ -2,8 +2,10 @@ package routeros
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -41,8 +43,11 @@ func (c *Client) RunArgs(sentences []string) (*Reply, error) {
 	return c.RunArgsContext(context.Background(), sentences)
 }
 
-// RunArgsContext sends a sentence to the RouterOS device and waits for the reply.
-func (c *Client) RunArgsContext(_ context.Context, sentences []string) (*Reply, error) {
+// RunArgsContext sends a sentence to the RouterOS device and waits for the
+// reply. Once ctx is done a blocked write or read ends at once and the error
+// wraps ctx's; the reply is then cut short and the connection must not be
+// used again. A ctx already done sends nothing.
+func (c *Client) RunArgsContext(ctx context.Context, sentences []string) (*Reply, error) {
 	c.logger().Debug("RunArgsContext", slog.Any("sentences", redactSecrets(sentences)))
 
 	// One command at a time, held across the reply. Without tags — pruned with
@@ -55,12 +60,20 @@ func (c *Client) RunArgsContext(_ context.Context, sentences []string) (*Reply, 
 	c.cmdMu.Lock()
 	defer c.cmdMu.Unlock()
 
-	if c.cmdTimeout > 0 {
-		if d, ok := c.rwc.(deadliner); ok {
-			// One deadline covers the write and the whole reply; cleared on
-			// the way out so an idle gap between commands can never trip it.
-			_ = d.SetDeadline(time.Now().Add(c.cmdTimeout))
-			defer func() { _ = d.SetDeadline(time.Time{}) }()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	var cd *commandDeadline
+	if d, ok := c.rwc.(deadliner); ok && (c.cmdTimeout > 0 || ctx.Done() != nil) {
+		cd = &commandDeadline{conn: d, timeout: c.cmdTimeout}
+		cd.extend()
+		// Cleared on the way out so an idle gap between commands can never
+		// trip it. Deferred first, so it runs after stop below.
+		defer cd.finish()
+		if ctx.Done() != nil {
+			stop := context.AfterFunc(ctx, cd.interrupt)
+			defer stop()
 		}
 	}
 
@@ -72,11 +85,61 @@ func (c *Client) RunArgsContext(_ context.Context, sentences []string) (*Reply, 
 	// runArgsContextSync ends the sentence itself. Upstream's async branch,
 	// pruned here, was the one that needed to end it early — it had to append
 	// a `.tag=` word first.
-	return c.runArgsContextSync()
+	reply, err := c.runArgsContextSync(cd)
+	if err != nil && ctx.Err() != nil {
+		return nil, fmt.Errorf("%w: %w", ctx.Err(), err)
+	}
+	return reply, err
+}
+
+// commandDeadline is the connection deadline of one command. With a command
+// timeout it starts at that timeout and moves forward each time a reply
+// sentence arrives, so it bounds a router that stops answering, not a long
+// reply that keeps coming, such as tens of thousands of address-list entries
+// on a slow router. interrupt puts it in the past, which ends a blocked write
+// or read at once; finish clears it.
+type commandDeadline struct {
+	mu      sync.Mutex
+	conn    deadliner
+	timeout time.Duration
+	done    bool // the command ended or was interrupted: extend no more
+}
+
+// extend moves the deadline to timeout from now, unless the command is done.
+// A nil commandDeadline or a zero timeout does nothing.
+func (cd *commandDeadline) extend() {
+	if cd == nil || cd.timeout <= 0 {
+		return
+	}
+	cd.mu.Lock()
+	defer cd.mu.Unlock()
+	if !cd.done {
+		_ = cd.conn.SetDeadline(time.Now().Add(cd.timeout))
+	}
+}
+
+// interrupt ends a blocked write or read of the command at once. It does
+// nothing once the command is done, so a late call leaves the connection's
+// next command alone.
+func (cd *commandDeadline) interrupt() {
+	cd.mu.Lock()
+	defer cd.mu.Unlock()
+	if !cd.done {
+		cd.done = true
+		_ = cd.conn.SetDeadline(time.Unix(1, 0))
+	}
+}
+
+// finish clears the deadline when the command ends.
+func (cd *commandDeadline) finish() {
+	cd.mu.Lock()
+	defer cd.mu.Unlock()
+	cd.done = true
+	_ = cd.conn.SetDeadline(time.Time{})
 }
 
 // runArgsContextSync - read command reply in sync mode and return
-func (c *Client) runArgsContextSync() (*Reply, error) {
+func (c *Client) runArgsContextSync(cd *commandDeadline) (*Reply, error) {
 	if err := c.w.EndSentence(); err != nil {
 		return nil, err
 	}
@@ -90,6 +153,7 @@ func (c *Client) runArgsContextSync() (*Reply, error) {
 		if err != nil {
 			return nil, err
 		}
+		cd.extend()
 
 		switch done, perr := out.processSentence(sen); {
 		case perr != nil && done:

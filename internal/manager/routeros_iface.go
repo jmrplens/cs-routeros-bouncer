@@ -40,7 +40,7 @@ type RouterOSClient interface {
 	RemoveAddress(proto, id string) error
 	// ListAddresses lists address-list entries matching the comment prefix,
 	// returning network, timeout, permission, or RouterOS API errors.
-	ListAddresses(proto, list, commentPrefix string) ([]ros.AddressEntry, error)
+	ListAddresses(ctx context.Context, proto, list, commentPrefix string) ([]ros.AddressEntry, error)
 	// BulkAddAddresses adds multiple address-list entries efficiently, returning
 	// the entries whose add failed and validation, partial-add, network,
 	// timeout, or RouterOS API errors.

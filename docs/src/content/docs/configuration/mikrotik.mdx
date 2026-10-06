@@ -81,12 +81,12 @@ Maximum time to connect and log in to the API, at startup and on every reconnect
 
 <ConfigOption path="mikrotik.command_timeout" />
 
-Maximum time to wait for a single API command to complete. Increase if you have a slow router or large address lists.
+Maximum time to wait for the router while it answers an API command: for the answer to start, and between two parts of a long one. A router that stops answering fails the command; an answer that keeps coming, such as a large address list on a slow router, is not cut off. Increase it if your router is slow to start an answer.
 
 :::tip
-The bound is per command, not per reconciliation pass, and the slowest single command is not a bulk chunk — those run in about 130 ms each. It is the address-list read at the start of every pass, which scales with how many entries the router holds. Measured on an RB5009 with 22,332 entries that read takes ~1.8 s, so the default `30s` has roughly 17× of headroom and only becomes the binding constraint somewhere north of 350,000 entries.
+The bound restarts with every part of an answer, so it does not grow with the list. The longest command is the address-list read at the start of every pass, which scales with how many entries the router holds (~1.8 s for 22,332 entries on an RB5009), but its entries arrive one after another; a bulk chunk takes about 130 ms.
 
-Raise it if you see timeout errors on a slow device or a very large list. Both timeouts must be `>= 0`; `0` means no bound, and a negative value is rejected at startup.
+Raise it if you see timeout errors on a slow device. Both timeouts must be `>= 0`; `0` means no bound, and a negative value is rejected at startup.
 :::
 
 ## Connection Pool
@@ -155,5 +155,5 @@ Measured on an RB5009 (RouterOS 7.24.4), loading about 24,400 decisions at start
 - **On the router's LAN** (0.2 ms), `script` through `/execute` took about 21 s and `api` with `pool_size: 1` about 23 s, each at roughly half the router CPU of a stored script, which took about 36 s. With the default `pool_size: 4`, `api` took as long as a stored script, because extra sessions only contend here. A pass that adds a few entries takes milliseconds either way.
 - **Over a link with latency**, every API add pays one round trip, where a script pays one per 100 entries through `/execute` and four as a stored script. At 36 ms, `script` took about 33 s through `/execute`, 70 s as a stored script, and `api` 76 s with `pool_size: 16`; at 33 ms it had taken 3.7 min with 4 and 13 min with 1.
 
-Live decisions are processed only once the first reconciliation has finished, and between later passes. A shutdown stops the adds and removals of a running pass; the next start finishes them.
+Live decisions are processed only once the first reconciliation has finished, and between later passes. A shutdown stops a running pass: the address-list read at its start, its adds and its removals. The next start finishes it.
 :::
