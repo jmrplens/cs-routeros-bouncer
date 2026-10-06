@@ -848,6 +848,11 @@ export default defineConfig({
 							slug: "getting-started/installation",
 						},
 						{
+							label: "Inside RouterOS",
+							translations: { es: "Dentro de RouterOS" },
+							slug: "getting-started/routeros-container",
+						},
+						{
 							label: "CLI Reference",
 							translations: { es: "Referencia CLI" },
 							slug: "getting-started/cli-reference",

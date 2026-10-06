@@ -22,6 +22,7 @@ Key behavior:
 
 - [Quick Start](https://jmrplens.github.io/cs-routeros-bouncer/getting-started/quickstart/): Get up and running in 5 minutes with Docker or systemd.
 - [Installation](https://jmrplens.github.io/cs-routeros-bouncer/getting-started/installation/): Installation methods and requirements.
+- [Running inside RouterOS](https://jmrplens.github.io/cs-routeros-bouncer/getting-started/routeros-container/): Running the bouncer as a container on the MikroTik router it protects: when it makes sense, requirements, and the RouterOS commands to set it up and remove it.
 - [CLI Reference](https://jmrplens.github.io/cs-routeros-bouncer/getting-started/cli-reference/): Command-line flags and usage.
 - [Router Setup](https://jmrplens.github.io/cs-routeros-bouncer/getting-started/router-setup/): Preparing the MikroTik RouterOS side (API user, permissions).
 - [Configuration Overview](https://jmrplens.github.io/cs-routeros-bouncer/configuration/): All configuration options explained with examples.
