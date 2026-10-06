@@ -3,6 +3,11 @@
 ### Added
 
 - **A `linux/arm/v5` image, and armv5 release archives** — RouterOS asks for arm/v5 on ARM routers that run no VFP code, such as the hEX S (2025, E60iUGS), where armv6 and armv7 binaries end with `Illegal instruction`; the image had no variant for them. The release image is now built on `busybox:1.38-uclibc`, which exists for every platform the release ships, with the CA bundle and the time zones taken from Alpine on the build platform, so building it runs no code of the target platform. The user, its ids, the healthcheck's `wget` and the entrypoint are unchanged. Verified on a hEX S (2025, RouterOS 7.24.5): RouterOS pulls a multi-arch image there with `archVariant=v5`, and the arm/v5 image started and passed its healthcheck
+- **A guide to running the bouncer inside RouterOS** — `getting-started/routeros-container` (en/es): when a container on the router itself makes sense (CrowdSec's LAPI elsewhere and no Linux host on the router's network, or a router that already runs containers) and when it does not, the requirements (the `container` package and `device-mode`, the architectures with an image, RouterOS 7.23 for the commands shown, bouncer 1.7.2 for the LAPI-at-boot fix, a persistent root), the veth and the single input rule that lets the API in, the envlist that configures it, `memory-max` with the RAM measured so far, and how to check, update and remove it, leftover rules included. The installation page points to it
+
+### Fixed
+
+- **Pull requests from forks are assigned again** — the auto-assign workflow ran on `pull_request`, where a fork's pull request gets a read-only token whatever the workflow's `permissions` ask for, so assigning it failed with "Resource not accessible by integration" (403); since the job only runs for authors other than the owner, its pull-request half had never worked. It now runs on `pull_request_target`, safe here because the job checks out nothing and runs no code from the pull request: it calls the API with the number
 
 ### Fixed
 
