@@ -1892,8 +1892,8 @@ func TestPool_CloseIdempotent(t *testing.T) {
 	p.Close() // should not panic
 }
 
-// TestParallelExec_Success verifies parallel execution with all successes.
-func TestParallelExec_Success(t *testing.T) {
+// TestParallelExecContext_Success verifies parallel execution with all successes.
+func TestParallelExecContext_Success(t *testing.T) {
 	cfg := config.MikroTikConfig{Address: "127.0.0.1"}
 	p := NewPool(cfg, 2)
 
@@ -1906,7 +1906,7 @@ func TestParallelExec_Success(t *testing.T) {
 	var mu sync.Mutex
 	var processed []string
 
-	errs := ParallelExec(p, items, func(c *Client, item string) error {
+	errs := ParallelExecContext(context.Background(), p, items, func(c *Client, item string) error {
 		mu.Lock()
 		processed = append(processed, item)
 		mu.Unlock()
@@ -1921,16 +1921,16 @@ func TestParallelExec_Success(t *testing.T) {
 	}
 }
 
-// TestParallelExec_ClosedPool verifies that a closed pool yields no client and
+// TestParallelExecContext_ClosedPool verifies that a closed pool yields no client and
 // no panic: every item is reported with ErrPoolClosed and fn is never called.
-func TestParallelExec_ClosedPool(t *testing.T) {
+func TestParallelExecContext_ClosedPool(t *testing.T) {
 	p := NewPool(config.MikroTikConfig{Address: "127.0.0.1"}, 2)
 	p.conns <- newTestClient(newMockConn())
 	p.conns <- newTestClient(newMockConn())
 	p.Close()
 
 	called := false
-	errs := ParallelExec(p, []string{"a", "b", "c"}, func(c *Client, item string) error {
+	errs := ParallelExecContext(context.Background(), p, []string{"a", "b", "c"}, func(c *Client, item string) error {
 		called = true
 		return nil
 	})
@@ -2071,14 +2071,14 @@ func TestBulkAddAddresses_Canceled(t *testing.T) {
 	}
 }
 
-// TestParallelExec_CollectsErrors verifies error collection.
-func TestParallelExec_CollectsErrors(t *testing.T) {
+// TestParallelExecContext_CollectsErrors verifies error collection.
+func TestParallelExecContext_CollectsErrors(t *testing.T) {
 	cfg := config.MikroTikConfig{Address: "127.0.0.1"}
 	p := NewPool(cfg, 1)
 	p.conns <- newTestClient(newMockConn())
 
 	items := []int{1, 2, 3}
-	errs := ParallelExec(p, items, func(c *Client, item int) error {
+	errs := ParallelExecContext(context.Background(), p, items, func(c *Client, item int) error {
 		if item == 2 {
 			return errors.New("fail on 2")
 		}
@@ -2090,12 +2090,12 @@ func TestParallelExec_CollectsErrors(t *testing.T) {
 	}
 }
 
-// TestParallelExec_EmptyItems verifies no-op with empty input.
-func TestParallelExec_EmptyItems(t *testing.T) {
+// TestParallelExecContext_EmptyItems verifies no-op with empty input.
+func TestParallelExecContext_EmptyItems(t *testing.T) {
 	cfg := config.MikroTikConfig{Address: "127.0.0.1"}
 	p := NewPool(cfg, 2)
 
-	errs := ParallelExec(p, []string{}, func(c *Client, item string) error {
+	errs := ParallelExecContext(context.Background(), p, []string{}, func(c *Client, item string) error {
 		t.Fatal("should not be called")
 		return nil
 	})
@@ -2105,8 +2105,8 @@ func TestParallelExec_EmptyItems(t *testing.T) {
 	}
 }
 
-// TestParallelExec_WorkersLimitedByItems verifies workers capped at item count.
-func TestParallelExec_WorkersLimitedByItems(t *testing.T) {
+// TestParallelExecContext_WorkersLimitedByItems verifies workers capped at item count.
+func TestParallelExecContext_WorkersLimitedByItems(t *testing.T) {
 	cfg := config.MikroTikConfig{Address: "127.0.0.1"}
 	p := NewPool(cfg, 10)
 
@@ -2114,7 +2114,7 @@ func TestParallelExec_WorkersLimitedByItems(t *testing.T) {
 	p.conns <- newTestClient(newMockConn())
 
 	called := false
-	errs := ParallelExec(p, []string{"only-one"}, func(c *Client, item string) error {
+	errs := ParallelExecContext(context.Background(), p, []string{"only-one"}, func(c *Client, item string) error {
 		called = true
 		return nil
 	})

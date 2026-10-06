@@ -113,15 +113,9 @@ func (p *Pool) Size() int {
 	return p.size
 }
 
-// ErrPoolClosed reports an item ParallelExec could not run because the pool
-// yielded no client.
+// ErrPoolClosed reports an item ParallelExecContext could not run because the
+// pool yielded no client.
 var ErrPoolClosed = errors.New("routeros connection pool closed")
-
-// ParallelExec runs fn concurrently using pool connections, as
-// ParallelExecContext without a context.
-func ParallelExec[T any](pool *Pool, items []T, fn func(c *Client, item T) error) []error {
-	return ParallelExecContext(context.Background(), pool, items, fn)
-}
 
 // ParallelExecContext runs fn concurrently using pool connections. items is
 // split across pool workers; errors are collected but don't stop other
