@@ -1795,3 +1795,30 @@ func TestCPULimit(t *testing.T) {
 		}
 	}
 }
+
+// TestCPULimitZeroTurnsItOff verifies that a 0 from the file or from the
+// environment stays 0, the value that turns the slowing down off, and is not
+// taken for an unset key and given the default.
+func TestCPULimitZeroTurnsItOff(t *testing.T) {
+	setMinimalEnv(t)
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(configPath, []byte("mikrotik:\n  cpu_limit: 0\n"), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.MikroTik.CPULimit != 0 {
+		t.Errorf("cpu_limit 0 from the file = %d, want 0", cfg.MikroTik.CPULimit)
+	}
+
+	t.Setenv("MIKROTIK_CPU_LIMIT", "0")
+	cfg, err = Load("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.MikroTik.CPULimit != 0 {
+		t.Errorf("cpu_limit 0 from the environment = %d, want 0", cfg.MikroTik.CPULimit)
+	}
+}
