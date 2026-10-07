@@ -217,9 +217,10 @@ func (p *Pacer) observe(ctx context.Context) {
 		return
 	}
 	if !p.lastRead.IsZero() && now.Sub(p.lastRead) > pacerStaleAfter {
-		// No reading for a while: the last pass is over, this one starts afresh.
+		// No reading for a while: a read hung, or the last pass ended without
+		// Rest. Start afresh; nothing read the CPU calm.
 		p.busy = 0
-		p.fullSpeedLocked(now, msgCalm)
+		p.fullSpeedLocked(now, msgStale)
 	}
 	p.lastRead = now
 	p.mu.Unlock()
@@ -267,10 +268,11 @@ func (p *Pacer) observe(ctx context.Context) {
 	}
 }
 
-// The two ways slowing down ends.
+// The ways slowing down ends.
 const (
-	msgCalm = "router CPU calm again, back to full speed"
-	msgRest = "reconciliation over, back to full speed"
+	msgCalm  = "router CPU calm again, back to full speed"
+	msgRest  = "reconciliation over, back to full speed"
+	msgStale = "no reading of the router CPU for a while, starting afresh at full speed"
 )
 
 // fullSpeedLocked ends slowing down, logging msg. The caller holds p.mu.

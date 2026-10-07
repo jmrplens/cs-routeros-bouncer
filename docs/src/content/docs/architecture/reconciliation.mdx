@@ -83,6 +83,12 @@ The prefix filter on the _present_ set is what makes reconciliation safe to poin
 
 The comparison is by normalised address, not by decision: several decisions for the same IP collapse to one wanted entry, and only the last one read supplies the timeout and comment written with it.
 
+### Live decisions during a pass
+
+A pass runs beside the decision loop, which keeps applying live bans and unbans as they arrive, also while the pass waits for a calm router (`mikrotik.cpu_limit`). The pass works from the snapshot and the listing it took at its start, so it expects what the last word of each live decision taken during it says. When the live decision added or removed the address, or found it held by a foreign entry or refused by the router, the pass leaves the address to the live path: it neither adds nor removes it, and its cache refresh leaves the address's entry as the live decision left it. When the live decision did nothing because the cache said there was nothing to do, the pass repairs the address as usual: the cache may be stale, after a reboot for instance. Once the pass ends, the bouncer brings each of those addresses to that last word, since a decision that arrived after the pass planned can still meet its adds and removals, and sets the active-decision gauges from what the pass expected and those last words. A decision is counted once.
+
+One pass runs at a time. A periodic tick, a retry or a reboot that arrives during a pass runs a single pass after it; the one a reboot asks for does not wait for a calm router.
+
 ## Performance
 
 Measured on a MikroTik RB5009UG+S+ (ARM64, 4 cores @ 1400 MHz, 1 GB RAM, RouterOS 7.22.1) with `mikrotik.pool_size: 10`:

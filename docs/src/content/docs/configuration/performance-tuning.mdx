@@ -55,7 +55,7 @@ If a bulk script fails, the bouncer logs a warning and falls back to individual 
 
 With the defaults, filling empty lists with 17,361 entries holds about 31% of
 this router's four cores for 13.7 seconds, with a 100 ms peak of 45%, and the
-bouncer is handling live decisions 18.5 seconds after it starts. Most of the
+first reconciliation is complete 18.5 seconds after the bouncer starts. Most of the
 RAM step comes when it connects, before the first entry; afterwards the router
 holds about 16 MiB more than without the bouncer. That is the cost of a start
 with empty lists, or of a pass that has to write much of the list again; a

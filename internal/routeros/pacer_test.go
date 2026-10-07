@@ -1,12 +1,17 @@
 package routeros
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 // fakeCPU answers the pacer's reads from a script of loads; the last one
@@ -396,6 +401,26 @@ func TestPacer_StaleStateStartsAfresh(t *testing.T) {
 
 	if tp.currentPause() != 0 || len(tp.sleeps()) != 0 {
 		t.Fatalf("expected a fresh start, pause %v, slept %v", tp.currentPause(), tp.sleeps())
+	}
+}
+
+// TestPacer_StaleResetSaysSo verifies that starting afresh after no reading
+// for a while logs that, not that the CPU calmed down: nothing read it calm.
+func TestPacer_StaleResetSaysSo(t *testing.T) {
+	var logs bytes.Buffer
+	prev := log.Logger
+	log.Logger = zerolog.New(&logs)
+	t.Cleanup(func() { log.Logger = prev })
+	tp, cpu := throttledPacer(2 * time.Second)
+	tp.advance(pacerStaleAfter + time.Second)
+	cpu.set(50)
+
+	if err := tp.Block(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if strings.Contains(logs.String(), "calm again") || !strings.Contains(logs.String(), "starting afresh") {
+		t.Fatalf("expected the stale reset logged as such, got %s", logs.String())
 	}
 }
 

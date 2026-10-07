@@ -62,8 +62,8 @@ type Manager struct {
 	// addressCache maps a normalised address to the RouterOS .id of its
 	// address-list entry, or "" when the id is not known. Storing the id costs
 	// nothing — refreshAddressCache already receives the full entries — and it
-	// is what lets handleUnban delete by id instead of paying a full table
-	// traversal to look one up. See handleUnban for why a stale id is safe.
+	// is what lets an unban delete by id instead of paying a full table
+	// traversal to look one up. See unban for why a stale id is safe.
 	addressCache map[string]string
 	// uncertain holds addresses whose add failed without the router refusing
 	// it: the add may still have reached the router. They are not cached, so a
@@ -89,8 +89,18 @@ type Manager struct {
 
 	// pacer slows reconciliation bulk work down while the router's CPU is
 	// busy (mikrotik.cpu_limit). nil, in tests that build a Manager by hand,
-	// never waits: see pacing.
-	pacer bulkPacer
+	// never waits: see pacing. routerPacer is the same pacer, for the
+	// connection pool's clients; nil leaves the pool unpaced.
+	pacer       bulkPacer
+	routerPacer *rosClient.Pacer
+
+	// passLive holds, while a reconciliation pass runs, the last live decision
+	// on each address it touched, by normalized address; nil when no pass
+	// runs. See livepass.go. passDesired is what that pass expected, per
+	// protocol it read. Both protected by passMu.
+	passLive    map[string]*liveDuringPass
+	passDesired map[string]map[string]*crowdsec.Decision
+	passMu      sync.Mutex
 }
 
 // rebootCheckInterval is how often watchReboots reads the router uptime to
@@ -171,6 +181,7 @@ func NewManager(cfg config.Config, version string) *Manager {
 		ruleIDs:      make(map[string]string),
 		addressCache: make(map[string]string),
 		pacer:        pacer,
+		routerPacer:  pacer,
 	}
 }
 
@@ -292,28 +303,30 @@ func (m *Manager) Start(ctx context.Context) error {
 	if m.lastBoot.IsZero() {
 		m.lastBoot = m.now()
 	}
-	err = m.reconcileAddresses(ctx, m.filterInitialBans(initialBans, initialDeletes))
-	if ctx.Err() != nil {
-		return nil
-	}
-	var retryC <-chan time.Time
-	if err != nil {
-		retryC = m.scheduleReconcileRetry(err, reconcileRetryMax)
-		m.logger.Warn().Msg("first reconciliation incomplete, processing live decisions")
-	} else {
-		m.logger.Info().Msg("reconciliation complete, processing live decisions")
-	}
 
-	reconcileC, stopReconcile := m.reconciliationChannel()
-	defer stopReconcile()
+	// The first pass runs beside the decision loop. The periodic ticker and
+	// the reboot watcher start once it has ended: the first tick comes an
+	// interval after it, and the watcher's first read catches a reboot
+	// during it.
+	var stopReconcile func() // set once the first pass has ended
+	defer func() {
+		if stopReconcile != nil {
+			stopReconcile()
+		}
+	}()
 	var watcher sync.WaitGroup
 	defer watcher.Wait() // after stopWatch: no reboot check outlives Start
 	watchCtx, stopWatch := context.WithCancel(ctx)
 	defer stopWatch()
 	rebootC := make(chan struct{}, 1)
-	watcher.Go(func() { m.watchReboots(watchCtx, rebootC) })
-
-	return m.processLiveDecisions(ctx, banCh, deleteCh, errCh, reconcileC, rebootC, retryC)
+	l := &decisionLoop{m: m, initial: m.filterInitialBans(initialBans, initialDeletes)}
+	l.afterFirst = func() {
+		l.reconcileC, stopReconcile = m.reconciliationChannel()
+		watcher.Go(func() { m.watchReboots(watchCtx, rebootC) })
+	}
+	l.start(ctx, passFirst)
+	m.logger.Info().Msg("first reconciliation started, live decisions are applied meanwhile")
+	return l.run(ctx, banCh, deleteCh, errCh, rebootC)
 }
 
 // configureConnectionPool creates the optional RouterOS connection pool used by
@@ -343,9 +356,7 @@ func (m *Manager) configureConnectionPool() {
 func (m *Manager) newConnectionPool(size int) *rosClient.Pool {
 	pool := rosClient.NewPool(m.cfg.MikroTik, size)
 	pool.SetOwnerPrefix(m.commentPrefix())
-	if p, ok := m.pacer.(*rosClient.Pacer); ok {
-		pool.SetPacer(p)
-	}
+	pool.SetPacer(m.routerPacer)
 	return pool
 }
 
@@ -607,64 +618,16 @@ func (m *Manager) reconciliationChannel() (reconcileC <-chan time.Time, stop fun
 }
 
 // processLiveDecisions handles live ban/unban events, stream errors,
-// reconciliation ticks and reboots. A reboot reconciles at once, a live ban
-// that may be missing on the router after reconcileRetryInterval. A reconcile
-// owed runs again on retryC (scheduleReconcileRetry) until a pass succeeds,
-// periodic ones included: active decisions send no live ban again, so with
-// crowdsec.reconciliation_interval 0 no other pass adds what is missing.
+// reconciliation ticks and reboots (decisionLoop). Live decisions are applied
+// as they arrive, also while a pass runs. A reboot reconciles at once, a live
+// ban that may be missing on the router after reconcileRetryInterval. A
+// reconcile owed runs again on retryC (scheduleReconcileRetry) until a pass
+// succeeds, periodic ones included: active decisions send no live ban again,
+// so with crowdsec.reconciliation_interval 0 no other pass adds what is
+// missing.
 func (m *Manager) processLiveDecisions(ctx context.Context, banCh, deleteCh <-chan *crowdsec.Decision, errCh <-chan error, reconcileC <-chan time.Time, rebootC <-chan struct{}, retryC <-chan time.Time) error {
-	for {
-		select {
-		case <-ctx.Done():
-			m.logger.Info().Msg("shutting down manager")
-			return nil
-
-		case streamErr := <-errCh:
-			return fmt.Errorf("CrowdSec stream error: %w", streamErr)
-
-		case d := <-banCh:
-			if m.handleBan(d) && (retryC == nil || time.Until(m.retryAt) > reconcileRetryInterval) {
-				retryC = m.reconcileSoon()
-			}
-
-		case d := <-deleteCh:
-			m.handleUnban(d)
-
-		case <-reconcileC:
-			if m.pacing().WaitCalm(ctx, reconcileCalmWaitMax) != nil {
-				continue // shutting down: the next turn returns
-			}
-			retryC = m.reconcileWithRetry(ctx)
-
-		case <-rebootC:
-			m.logger.Warn().Msg("router rebooted, reconciling the address lists")
-			// The router lost every dynamic entry: if this pass fails, its
-			// retry starts from the first wait, not from an earlier back-off.
-			m.retryDelay = 0
-			retryC = m.reconcileWithRetry(ctx)
-
-		case <-retryC:
-			if m.pacing().WaitCalm(ctx, reconcileCalmWaitMax) != nil {
-				continue // shutting down: the next turn returns
-			}
-			retryC = m.reconcileWithRetry(ctx)
-		}
-	}
-}
-
-// reconcileWithRetry reconciles and returns the channel of the retry still
-// owed, nil once a pass succeeded or ctx is done. While the snapshot fails the
-// wait grows to snapshotRetryMax only.
-func (m *Manager) reconcileWithRetry(ctx context.Context) <-chan time.Time {
-	if err := m.reconcileActiveDecisions(ctx); err != nil && ctx.Err() == nil {
-		limit := reconcileRetryMax
-		if errors.Is(err, errSnapshotFailed) {
-			limit = snapshotRetryMax
-		}
-		return m.scheduleReconcileRetry(err, limit)
-	}
-	m.retryDelay = 0
-	return nil
+	l := &decisionLoop{m: m, reconcileC: reconcileC, retryC: retryC}
+	return l.run(ctx, banCh, deleteCh, errCh, rebootC)
 }
 
 // scheduleReconcileRetry logs the failed reconcile and returns the channel of
@@ -861,21 +824,39 @@ func (m *Manager) pollSystemMetrics() {
 // handleBan processes a new ban decision.
 // Uses optimistic add: tries to add first, handles "already exists" by updating timeout.
 // This avoids the expensive FindAddress call (which scans entire address list).
-// It reports whether a reconcile is owed: the add failed without the router
-// refusing it, so the address may be missing on the router.
-func (m *Manager) handleBan(d *crowdsec.Decision) (reconcileOwed bool) {
+// The decision loop applies live bans through liveBan, which notes them for a
+// running pass and reports whether a reconcile is owed.
+func (m *Manager) handleBan(d *crowdsec.Decision) {
+	m.ban(d, true)
+}
+
+// banOutcome is what ban did with a decision.
+type banOutcome int
+
+const (
+	banIgnored   banOutcome = iota // no decision, or its protocol is off
+	banCached                      // the cache holds the address: nothing written
+	banAdded                       // added, or refreshed on the router
+	banLeftAlone                   // a foreign entry holds it, or the router refused it
+	banFailed                      // may not have reached the router: a reconcile is owed
+)
+
+// ban is handleBan, reporting what it did. count records the decision's
+// metrics when it adds the address: settleLive passes false for a decision
+// whose metrics were recorded when it arrived.
+func (m *Manager) ban(d *crowdsec.Decision, count bool) banOutcome {
 	if d == nil {
-		return false
+		return banIgnored
 	}
 
 	start := time.Now()
 
 	// Check if the protocol is enabled
 	if d.Proto == "ip" && !m.cfg.Firewall.IPv4.Enabled {
-		return false
+		return banIgnored
 	}
 	if d.Proto == "ipv6" && !m.cfg.Firewall.IPv6.Enabled {
-		return false
+		return banIgnored
 	}
 
 	metricsProto := "ipv4"
@@ -898,7 +879,7 @@ func (m *Manager) handleBan(d *crowdsec.Decision) (reconcileOwed bool) {
 			Str("address", d.Value).
 			Str("list", listName).
 			Msg("address already in cache, skipping duplicate ban")
-		return false
+		return banCached
 	}
 
 	timeout := ""
@@ -915,26 +896,28 @@ func (m *Manager) handleBan(d *crowdsec.Decision) (reconcileOwed bool) {
 	entryID, err := m.ros.AddAddress(d.Proto, listName, d.Value, timeout, comment)
 	if errors.Is(err, rosClient.ErrForeignEntry) {
 		m.logger.Info().Str("address", d.Value).Str("list", listName).Msg("address already held by a foreign entry, left alone")
-		return false
+		return banLeftAlone
 	}
 	if err != nil {
-		// A refusal is about this add only: an earlier add that failed in
-		// transit may still be on the router, so the address stays as it was.
-		if !errors.Is(err, rosClient.ErrAddRefused) {
-			m.markUncertain(d.Proto, []rosClient.BulkEntry{{Address: d.Value}})
-			reconcileOwed = true
-		}
 		m.logger.Error().Err(err).Str("address", d.Value).Str("list", listName).Msg("error adding address to MikroTik")
 		metrics.RecordError("add")
-		return reconcileOwed
+		// A refusal is about this add only: an earlier add that failed in
+		// transit may still be on the router, so the address stays as it was.
+		if errors.Is(err, rosClient.ErrAddRefused) {
+			return banLeftAlone
+		}
+		m.markUncertain(d.Proto, []rosClient.BulkEntry{{Address: d.Value}})
+		return banFailed
 	}
 
 	// Update address cache, keeping the id AddAddress just returned.
 	m.cacheAddress(addr, entryID)
 
-	metrics.RecordDecision("ban", metricsProto, d.Origin)
-	metrics.IncrActiveDecisions(metricsProto)
-	metrics.IncrActiveDecisionsByOrigin(d.Origin)
+	if count {
+		metrics.RecordDecision("ban", metricsProto, d.Origin)
+		metrics.IncrActiveDecisions(metricsProto)
+		metrics.IncrActiveDecisionsByOrigin(d.Origin)
+	}
 	metrics.ObserveOperationDuration("add", time.Since(start))
 
 	m.logger.Info().
@@ -944,20 +927,23 @@ func (m *Manager) handleBan(d *crowdsec.Decision) (reconcileOwed bool) {
 		Str("origin", d.Origin).
 		Str("scenario", d.Scenario).
 		Msg("banned address")
-	return false
+	return banAdded
 }
 
 // finishUnban records the cache eviction, metrics and log line shared by both
 // unban paths — the fast delete-by-cached-id and the FindAddress fallback.
 // alreadyGone distinguishes "we deleted it" from "it had already expired",
 // which changes the log line but not the accounting: either way the address is
-// no longer enforced and the decision is settled.
-func (m *Manager) finishUnban(d *crowdsec.Decision, addr, metricsProto, listName string, start time.Time, alreadyGone bool) {
+// no longer enforced and the decision is settled. count records the decision's
+// metrics, as in ban.
+func (m *Manager) finishUnban(d *crowdsec.Decision, addr, metricsProto, listName string, start time.Time, alreadyGone, count bool) {
 	m.forgetAddress(addr)
 
-	metrics.RecordDecision("unban", metricsProto, d.Origin)
-	metrics.DecrActiveDecisions(metricsProto)
-	metrics.DecrActiveDecisionsByOrigin(d.Origin)
+	if count {
+		metrics.RecordDecision("unban", metricsProto, d.Origin)
+		metrics.DecrActiveDecisions(metricsProto)
+		metrics.DecrActiveDecisionsByOrigin(d.Origin)
+	}
 	metrics.ObserveOperationDuration("remove", time.Since(start))
 
 	event := m.logger.Info().
@@ -969,21 +955,29 @@ func (m *Manager) finishUnban(d *crowdsec.Decision, addr, metricsProto, listName
 	event.Msg("unbanned address")
 }
 
-// handleUnban processes a decision deletion.
+// handleUnban processes a decision deletion. The decision loop applies live
+// unbans through liveUnban, which notes them for a running pass.
 // Uses address cache to skip FindAddress for addresses not on the router.
 func (m *Manager) handleUnban(d *crowdsec.Decision) {
+	m.unban(d, true)
+}
+
+// unban is handleUnban, reporting whether it finished the unban (finishUnban):
+// the entry is gone from the router, removed now or expired before. count is
+// as in ban.
+func (m *Manager) unban(d *crowdsec.Decision, count bool) (finished bool) {
 	if d == nil {
-		return
+		return false
 	}
 
 	start := time.Now()
 
 	// Check if the protocol is enabled
 	if d.Proto == "ip" && !m.cfg.Firewall.IPv4.Enabled {
-		return
+		return false
 	}
 	if d.Proto == "ipv6" && !m.cfg.Firewall.IPv6.Enabled {
-		return
+		return false
 	}
 
 	metricsProto := "ipv4"
@@ -1000,7 +994,7 @@ func (m *Manager) handleUnban(d *crowdsec.Decision) {
 		m.logger.Debug().
 			Str("address", d.Value).
 			Msg("address not in cache, skipping unban (already expired or never added)")
-		return
+		return false
 	}
 
 	// Delete by the cached id when there is one. This is the whole point of
@@ -1031,8 +1025,8 @@ func (m *Manager) handleUnban(d *crowdsec.Decision) {
 		switch {
 		case removeErr == nil, errors.Is(removeErr, rosClient.ErrNotFound):
 			m.finishUnban(d, addr, metricsProto, listName, start,
-				errors.Is(removeErr, rosClient.ErrNotFound))
-			return
+				errors.Is(removeErr, rosClient.ErrNotFound), count)
+			return true
 		default:
 			// Anything else (transport, auth, an unexpected device error) is
 			// not evidence about the id, so fall through to the slow path
@@ -1053,14 +1047,14 @@ func (m *Manager) handleUnban(d *crowdsec.Decision) {
 		m.logger.Debug().
 			Str("address", d.Value).
 			Msg("address not found in MikroTik (already expired?)")
-		return
+		return false
 	}
 	if err != nil {
 		m.logger.Error().Err(err).
 			Str("address", d.Value).
 			Msg("error finding address for unban")
 		metrics.RecordError("find")
-		return
+		return false
 	}
 	if entry == nil {
 		// Defensive guard for RouterOSClient implementations that violate the
@@ -1070,7 +1064,7 @@ func (m *Manager) handleUnban(d *crowdsec.Decision) {
 		m.logger.Debug().
 			Str("address", d.Value).
 			Msg("address not found in MikroTik (already expired?)")
-		return
+		return false
 	}
 
 	if !rosClient.OwnedComment(entry.Comment, m.commentPrefix()) {
@@ -1080,7 +1074,7 @@ func (m *Manager) handleUnban(d *crowdsec.Decision) {
 		m.logger.Info().
 			Str("address", d.Value).
 			Msg("address held by a foreign entry, not removed")
-		return
+		return false
 	}
 
 	// Remove the address
@@ -1090,10 +1084,11 @@ func (m *Manager) handleUnban(d *crowdsec.Decision) {
 			Str("id", entry.ID).
 			Msg("error removing address from MikroTik")
 		metrics.RecordError("remove")
-		return
+		return false
 	}
 
-	m.finishUnban(d, addr, metricsProto, listName, start, false)
+	m.finishUnban(d, addr, metricsProto, listName, start, false, count)
+	return true
 }
 
 // resolveLogPrefix returns the effective log-prefix for a rule type.
@@ -1714,7 +1709,10 @@ func (m *Manager) reconcileProtocolAddresses(ctx context.Context, proto string, 
 
 	existing, foreign := splitForeignAddresses(listed, m.commentPrefix())
 	diff := buildReconcileDiff(proto, decisions, existing, foreign, m.commentPrefix())
-	m.refreshAddressCache(proto, diff.currentMap)
+	live := m.liveFor(proto)
+	diff.leaveToLive(proto, live, foreign, m.commentPrefix())
+	m.notePassDesired(proto, diff.shouldExist)
+	m.refreshAddressCache(proto, diff.currentMap, live)
 	metricsProto := metricsProtoName(proto)
 	added, addErr := m.addMissingAddresses(ctx, proto, listName, metricsProto, diff.toAdd)
 	removed := m.removeStaleAddresses(ctx, proto, metricsProto, diff.toRemove)
@@ -1825,16 +1823,22 @@ func staleAddressEntries(shouldExist map[string]*crowdsec.Decision, currentMap m
 	return toRemove
 }
 
-// refreshAddressCache replaces the cache contents for one protocol after reconciliation.
-func (m *Manager) refreshAddressCache(proto string, currentMap map[string]rosClient.AddressEntry) {
+// refreshAddressCache replaces the cache contents for one protocol after
+// reconciliation. It leaves the addresses the live path owns during the pass
+// (liveDuringPass.owned) as the live path left them: the listing may predate
+// what it did.
+func (m *Manager) refreshAddressCache(proto string, currentMap map[string]rosClient.AddressEntry, live map[string]liveDuringPass) {
 	// Hold cacheMu through the full replacement for this protocol so concurrent
-	// handleBan/handleUnban calls never observe a partially refreshed cache.
+	// live bans and unbans never observe a partially refreshed cache.
 	// Large reconciliations may briefly block live handlers, but correctness wins
 	// over lower-latency cache updates here.
 	m.cacheMu.Lock()
 	defer m.cacheMu.Unlock()
 	for addr := range m.addressCache {
 		if strings.Contains(addr, ":") != (proto == "ipv6") {
+			continue
+		}
+		if e, noted := live[addr]; noted && e.owned() {
 			continue
 		}
 		if _, exists := currentMap[addr]; !exists {
@@ -1844,13 +1848,19 @@ func (m *Manager) refreshAddressCache(proto string, currentMap map[string]rosCli
 	// The listing is the router's state: no address of this protocol is
 	// uncertain any more.
 	for addr, addrProto := range m.uncertain {
+		if e, noted := live[addr]; noted && e.owned() {
+			continue
+		}
 		if addrProto == proto {
 			delete(m.uncertain, addr)
 		}
 	}
 	for addr, entry := range currentMap {
+		if e, noted := live[addr]; noted && e.owned() {
+			continue
+		}
 		// The id comes free here: currentMap is the print this reconcile pass
-		// already paid for. Throwing it away is what forced handleUnban to
+		// already paid for. Throwing it away is what forced an unban to
 		// re-discover it with a full traversal.
 		m.addressCache[addr] = entry.ID
 	}
@@ -1940,7 +1950,7 @@ func (m *Manager) addEntriesToCache(proto string, entries []rosClient.BulkEntry)
 		addr := rosClient.NormalizeAddress(entry.Address, proto)
 		// The per-entry adds of "api" set ID. The bulk script reports a count,
 		// not per-entry ids, so its keys carry none until the next reconcile
-		// pass fills them in; an empty id means handleUnban looks it up.
+		// pass fills them in; an empty id means an unban looks it up.
 		m.addressCache[addr] = entry.ID
 	}
 }

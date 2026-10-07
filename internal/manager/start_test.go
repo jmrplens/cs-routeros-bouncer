@@ -3245,7 +3245,9 @@ func TestScheduleReconcileRetry_BacksOff(t *testing.T) {
 			t.Fatalf("retry %d: expected %v, got %v", i+1, want, mgr.retryDelay)
 		}
 	}
-	if retryC := mgr.reconcileWithRetry(context.Background()); retryC != nil || mgr.retryDelay != 0 {
+	l := &decisionLoop{m: mgr, retryC: make(chan time.Time)}
+	l.afterPass(context.Background(), passPeriodic, nil)
+	if l.retryC != nil || mgr.retryDelay != 0 {
 		t.Fatalf("expected a successful pass to reset the delay, got %v", mgr.retryDelay)
 	}
 }
@@ -3268,7 +3270,7 @@ func TestStart_InitialReconcileRetried(t *testing.T) {
 		return nil, nil
 	}}
 	mgr := newTestManagerWithStream(mock, stream, cfg)
-	var logs bytes.Buffer
+	var logs syncBuffer
 	mgr.logger = zerolog.New(&logs)
 
 	errCh := make(chan error, 1)
@@ -3582,8 +3584,8 @@ func TestNewManager_BuildsThePacerFromConfig(t *testing.T) {
 		cfg := baseConfig()
 		cfg.MikroTik.CPULimit = limit
 		mgr := NewManager(cfg, "test")
-		if p, ok := mgr.pacer.(*ros.Pacer); !ok || p == nil {
-			t.Fatalf("cpu_limit %d: expected a *routeros.Pacer, got %T", limit, mgr.pacer)
+		if p, ok := mgr.pacer.(*ros.Pacer); !ok || p == nil || p != mgr.routerPacer {
+			t.Fatalf("cpu_limit %d: expected a *routeros.Pacer, also for the pool, got %T", limit, mgr.pacer)
 		}
 	}
 }

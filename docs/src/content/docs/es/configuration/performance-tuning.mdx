@@ -55,8 +55,8 @@ Si un script masivo falla, el bouncer registra un aviso y recurre a adiciones in
 
 Con la configuración por defecto, llenar listas vacías con 17.361 entradas
 ocupa alrededor del 31% de los cuatro núcleos de este router durante 13,7
-segundos, con un pico de 100 ms del 45%, y el bouncer ya atiende decisiones en
-vivo 18,5 segundos después de arrancar. La mayor parte del escalón de RAM llega
+segundos, con un pico de 100 ms del 45%, y la primera reconciliación termina
+18,5 segundos después de arrancar el bouncer. La mayor parte del escalón de RAM llega
 al conectarse, antes de la primera entrada; después, el router guarda unos
 16 MiB más que sin el bouncer. Ese es el coste de un arranque con las listas
 vacías, o de una pasada que tiene que volver a escribir buena parte de la

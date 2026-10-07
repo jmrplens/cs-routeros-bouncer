@@ -83,6 +83,12 @@ El filtro por prefijo sobre el conjunto _presente_ es lo que hace seguro apuntar
 
 La comparación es por dirección normalizada, no por decisión: varias decisiones sobre la misma IP se colapsan en una sola entrada deseada, y solo la última leída aporta el timeout y el comentario con los que se escribe.
 
+### Decisiones en vivo durante una pasada
+
+Una pasada corre al lado del bucle de decisiones, que sigue aplicando los baneos y desbaneos en vivo en cuanto llegan, también mientras la pasada espera a que el router esté tranquilo (`mikrotik.cpu_limit`). La pasada trabaja con la instantánea y el listado que tomó al empezar, así que espera lo que diga la última palabra de cada decisión en vivo tomada durante ella. Cuando la decisión en vivo añadió o quitó la dirección, o la encontró en manos de una entrada ajena o rechazada por el router, la pasada deja la dirección al camino en vivo: ni la añade ni la quita, y su refresco de la caché deja la entrada de esa dirección como la dejó la decisión en vivo. Cuando la decisión en vivo no hizo nada porque la caché decía que no había nada que hacer, la pasada repara la dirección como siempre: la caché puede estar desfasada, por ejemplo tras un reinicio. Cuando la pasada termina, el bouncer lleva cada una de esas direcciones a esa última palabra, porque una decisión que llegó después de que la pasada planificara aún puede cruzarse con sus adiciones y eliminaciones, y fija los gauges de decisiones activas a partir de lo que esperaba la pasada y de esas últimas palabras. Cada decisión se cuenta una sola vez.
+
+Solo corre una pasada a la vez. Un tic periódico, un reintento o un reinicio que llegan durante una pasada lanzan una sola pasada después de ella; la que pide un reinicio no espera a que el router esté tranquilo.
+
 ## Rendimiento
 
 Medido en un MikroTik RB5009UG+S+ (ARM64, 4 núcleos @ 1400 MHz, 1 GB de RAM, RouterOS 7.22.1) con `mikrotik.pool_size: 10`:
