@@ -128,7 +128,8 @@ func TestReconcile_LeavesLiveAddressesToTheLivePath(t *testing.T) {
 
 // TestReconcile_RefreshLeavesLiveCacheEntries verifies that the cache refresh
 // at the start of a pass neither forgets an address banned live after the
-// listing nor caches again one unbanned live after it.
+// listing nor caches again one unbanned live after it, and that the pass adds
+// a live ban that failed in transit, which settles whether it got there.
 func TestReconcile_RefreshLeavesLiveCacheEntries(t *testing.T) {
 	mock := &mockROS{
 		addAddressID:  "*x",
@@ -153,8 +154,14 @@ func TestReconcile_RefreshLeavesLiveCacheEntries(t *testing.T) {
 	if _, cached := mgr.addressCache["203.0.113.2"]; cached {
 		t.Fatal("expected the live unban to stay uncached")
 	}
-	if _, known := mgr.knownAddress("203.0.113.3"); !known {
-		t.Fatal("expected the failed live ban to stay uncertain")
+	var bulk []string
+	for _, call := range mock.bulkAddCalls {
+		for _, e := range call.Entries {
+			bulk = append(bulk, e.Address)
+		}
+	}
+	if !slices.Equal(bulk, []string{"203.0.113.3"}) {
+		t.Fatalf("expected the pass to add the failed live ban, got %v", bulk)
 	}
 	if got := removedIDs(mock); !slices.Equal(got, []string{"*y"}) {
 		t.Fatalf("expected only the live unban's removal, got %v", got)
@@ -826,5 +833,72 @@ func TestReconcile_LeavesLiveIPv6AddressesToTheLivePath(t *testing.T) {
 	}
 	if got := removedIDs(mock); len(got) != 0 {
 		t.Fatalf("expected the live IPv6 ban left alone, got removals %v", got)
+	}
+}
+
+// TestReconcile_RepairsAStaleCachedLiveBan verifies that a live ban the cache
+// answered, though the router had lost the entry (after a reboot, say), does
+// not keep the pass from adding the address again: the live path wrote
+// nothing, so the pass, whose listing lacks the address, adds it.
+func TestReconcile_RepairsAStaleCachedLiveBan(t *testing.T) {
+	const addr = "203.0.113.70"
+	mock := &mockROS{}
+	mgr := ipv4Manager(mock)
+	mgr.addressCache[addr] = "*gone"
+	mgr.beginPass()
+	mgr.liveBan(liveDecision(addr, "crowdsec")) // cached: nothing written
+
+	snapshot := []*crowdsec.Decision{liveDecision(addr, "crowdsec")}
+	if _, err := mgr.reconcileProtocolAddresses(context.Background(), "ip", snapshot, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	var bulk []string
+	for _, call := range mock.bulkAddCalls {
+		for _, e := range call.Entries {
+			bulk = append(bulk, e.Address)
+		}
+	}
+	if !slices.Equal(bulk, []string{addr}) {
+		t.Fatalf("expected the pass to add the address the router lost, got %v", bulk)
+	}
+}
+
+// TestReconcile_RemovesAListedUncachedLiveUnban verifies that a live unban
+// the cache did not know of, for an address the router still holds, does not
+// keep the pass from removing it: the live path removed nothing.
+func TestReconcile_RemovesAListedUncachedLiveUnban(t *testing.T) {
+	const addr = "203.0.113.71"
+	mock := &mockROS{listAddresses: []ros.AddressEntry{{ID: "*l", Address: addr, Comment: "crowdsec-bouncer|old"}}}
+	mgr := ipv4Manager(mock)
+	mgr.beginPass()
+	mgr.liveUnban(liveDecision(addr, "crowdsec")) // unknown: nothing removed
+
+	snapshot := []*crowdsec.Decision{liveDecision(addr, "crowdsec")} // taken before the unban
+	if _, err := mgr.reconcileProtocolAddresses(context.Background(), "ip", snapshot, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := removedIDs(mock); !slices.Equal(got, []string{"*l"}) {
+		t.Fatalf("expected the pass to remove the unbanned address, got %v", got)
+	}
+}
+
+// TestReconcile_LeavesARefusedLiveBanAlone verifies that the pass does not
+// send again an add the router refused live during it: the answer would be
+// the same, and a refused add fails the pass.
+func TestReconcile_LeavesARefusedLiveBanAlone(t *testing.T) {
+	const addr = "203.0.113.72"
+	mock := &mockROS{addAddressErr: ros.ErrAddRefused}
+	mgr := ipv4Manager(mock)
+	mgr.beginPass()
+	mgr.liveBan(liveDecision(addr, "crowdsec"))
+
+	snapshot := []*crowdsec.Decision{liveDecision(addr, "crowdsec")}
+	if _, err := mgr.reconcileProtocolAddresses(context.Background(), "ip", snapshot, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if len(mock.bulkAddCalls) != 0 {
+		t.Fatalf("expected the refused address left alone, got %d bulk adds", len(mock.bulkAddCalls))
 	}
 }

@@ -1710,7 +1710,7 @@ func (m *Manager) reconcileProtocolAddresses(ctx context.Context, proto string, 
 	existing, foreign := splitForeignAddresses(listed, m.commentPrefix())
 	diff := buildReconcileDiff(proto, decisions, existing, foreign, m.commentPrefix())
 	live := m.liveFor(proto)
-	diff.leaveToLive(proto, live)
+	diff.leaveToLive(proto, live, foreign, m.commentPrefix())
 	m.notePassDesired(proto, diff.shouldExist)
 	m.refreshAddressCache(proto, diff.currentMap, live)
 	metricsProto := metricsProtoName(proto)
@@ -1824,8 +1824,9 @@ func staleAddressEntries(shouldExist map[string]*crowdsec.Decision, currentMap m
 }
 
 // refreshAddressCache replaces the cache contents for one protocol after
-// reconciliation. It leaves the addresses of live decisions taken during the
-// pass as the live path left them: the listing may predate them.
+// reconciliation. It leaves the addresses the live path owns during the pass
+// (liveDuringPass.owned) as the live path left them: the listing may predate
+// what it did.
 func (m *Manager) refreshAddressCache(proto string, currentMap map[string]rosClient.AddressEntry, live map[string]liveDuringPass) {
 	// Hold cacheMu through the full replacement for this protocol so concurrent
 	// live bans and unbans never observe a partially refreshed cache.
@@ -1837,7 +1838,7 @@ func (m *Manager) refreshAddressCache(proto string, currentMap map[string]rosCli
 		if strings.Contains(addr, ":") != (proto == "ipv6") {
 			continue
 		}
-		if _, noted := live[addr]; noted {
+		if e, noted := live[addr]; noted && e.owned() {
 			continue
 		}
 		if _, exists := currentMap[addr]; !exists {
@@ -1847,7 +1848,7 @@ func (m *Manager) refreshAddressCache(proto string, currentMap map[string]rosCli
 	// The listing is the router's state: no address of this protocol is
 	// uncertain any more.
 	for addr, addrProto := range m.uncertain {
-		if _, noted := live[addr]; noted {
+		if e, noted := live[addr]; noted && e.owned() {
 			continue
 		}
 		if addrProto == proto {
@@ -1855,7 +1856,7 @@ func (m *Manager) refreshAddressCache(proto string, currentMap map[string]rosCli
 		}
 	}
 	for addr, entry := range currentMap {
-		if _, noted := live[addr]; noted {
+		if e, noted := live[addr]; noted && e.owned() {
 			continue
 		}
 		// The id comes free here: currentMap is the print this reconcile pass

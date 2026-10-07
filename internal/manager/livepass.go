@@ -16,9 +16,12 @@ import (
 // CPU is busy. The decision loop applies live bans and unbans meanwhile, and
 // notes each in a journal (passLive) that lives as long as the pass:
 //
-//   - the pass leaves a noted address to the live path: it neither adds nor
-//     removes it, its cache refresh does not touch it, and it expects what
-//     the decision's last word says (reconcileDiff.leaveToLive);
+//   - the pass expects what each noted decision's last word says, and leaves
+//     an address to the live path when the live path acted on it: it neither
+//     adds nor removes it, and its cache refresh does not touch it
+//     (reconcileDiff.leaveToLive). A decision that did nothing because the
+//     cache answered it, which may be stale (the router rebooted, an entry
+//     was removed by hand), leaves the address to the pass's repair;
 //   - once the pass ends, settleLive brings each noted address to that last
 //     word, since a decision noted after the pass planned can still meet the
 //     pass's adds and removals, and sets the active-decision gauges from what
@@ -37,6 +40,13 @@ type liveDuringPass struct {
 	// holds the address or the router refused it; trying again would get the
 	// same answer.
 	settled bool
+}
+
+// owned reports whether the live path acted on the router for e's address,
+// adding or removing it, or settled it for good: the pass then leaves the
+// address alone. counted is set exactly when the live path added or removed.
+func (e liveDuringPass) owned() bool {
+	return e.counted || e.settled
 }
 
 // beginPass opens the journal of the pass about to run.
@@ -134,9 +144,10 @@ func (m *Manager) notePassDesired(proto string, desired map[string]*crowdsec.Dec
 	}
 }
 
-// leaveToLive leaves the addresses of live decisions to the live path: the
-// pass neither adds nor removes them, and expects what their last word says.
-func (diff *reconcileDiff) leaveToLive(proto string, live map[string]liveDuringPass) {
+// leaveToLive makes the pass expect what each live decision's last word says,
+// and leaves the addresses the live path owns to it: the pass neither adds
+// nor removes those.
+func (diff *reconcileDiff) leaveToLive(proto string, live map[string]liveDuringPass, foreign map[string]struct{}, commentPrefix string) {
 	if len(live) == 0 {
 		return
 	}
@@ -147,13 +158,13 @@ func (diff *reconcileDiff) leaveToLive(proto string, live map[string]liveDuringP
 			delete(diff.shouldExist, addr)
 		}
 	}
-	diff.toAdd = slices.DeleteFunc(diff.toAdd, func(entry rosClient.BulkEntry) bool {
-		_, noted := live[rosClient.NormalizeAddress(entry.Address, proto)]
-		return noted
+	diff.toAdd = slices.DeleteFunc(missingAddressEntries(diff.shouldExist, diff.currentMap, foreign, commentPrefix), func(entry rosClient.BulkEntry) bool {
+		e, noted := live[rosClient.NormalizeAddress(entry.Address, proto)]
+		return noted && e.owned()
 	})
-	diff.toRemove = slices.DeleteFunc(diff.toRemove, func(entry rosClient.AddressEntry) bool {
-		_, noted := live[entry.Address]
-		return noted
+	diff.toRemove = slices.DeleteFunc(staleAddressEntries(diff.shouldExist, diff.currentMap), func(entry rosClient.AddressEntry) bool {
+		e, noted := live[entry.Address]
+		return noted && e.owned()
 	})
 }
 
