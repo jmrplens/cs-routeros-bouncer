@@ -20,6 +20,7 @@
 package manager
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -2352,6 +2353,7 @@ type fakePacer struct {
 	waitFunc  func(ctx context.Context) error
 	waitedSeq []time.Duration // successive Waited answers; the last repeats
 	rests     int
+	entryFunc func(ctx context.Context) error // called by Entry when set
 }
 
 func (f *fakePacer) Rest() {
@@ -2366,11 +2368,23 @@ func (f *fakePacer) restCount() int {
 	return f.rests
 }
 
-func (f *fakePacer) Entry(context.Context) (func(), error) {
+func (f *fakePacer) Entry(ctx context.Context) (func(), error) {
+	f.mu.Lock()
+	f.entries++
+	fn, err := f.entryFunc, f.entryErr
+	f.mu.Unlock()
+	if fn != nil {
+		if fnErr := fn(ctx); fnErr != nil {
+			return func() {}, fnErr
+		}
+	}
+	return func() {}, err
+}
+
+func (f *fakePacer) waitCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.entries++
-	return func() {}, f.entryErr
+	return f.waitCalls
 }
 
 func (f *fakePacer) WaitCalm(ctx context.Context, most time.Duration) error {
@@ -2396,4 +2410,23 @@ func (f *fakePacer) Waited() time.Duration {
 		f.waitedSeq = f.waitedSeq[1:]
 	}
 	return v
+}
+
+// syncBuffer is a bytes.Buffer safe for the loggers of several goroutines:
+// the decision loop and the pass beside it log at the same time.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }

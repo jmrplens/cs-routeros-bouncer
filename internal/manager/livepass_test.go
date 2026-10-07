@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/jmrplens/cs-routeros-bouncer/internal/config"
 	"github.com/jmrplens/cs-routeros-bouncer/internal/crowdsec"
 	"github.com/jmrplens/cs-routeros-bouncer/internal/metrics"
 	ros "github.com/jmrplens/cs-routeros-bouncer/internal/routeros"
@@ -327,5 +330,295 @@ func TestSettleLive_RecountsActiveDecisions(t *testing.T) {
 	origins := metrics.GetActiveDecisionsByOrigin()
 	if origins["recount-cs"] != 1 || origins["recount-capi"] != 1 {
 		t.Fatalf("expected one decision per origin, got %v", origins)
+	}
+}
+
+// blockingSnapshot returns a stream whose snapshot reports each request on
+// asked and waits for release, or for the pass's context to end; ended
+// counts the snapshots that returned.
+func blockingSnapshot(decisions []*crowdsec.Decision) (stream *mockStream, asked, release chan struct{}, ended *atomic.Int32) {
+	asked = make(chan struct{}, 8)
+	release = make(chan struct{})
+	ended = &atomic.Int32{}
+	stream = &mockStream{ActiveDecisionsFunc: func(ctx context.Context) ([]*crowdsec.Decision, error) {
+		defer ended.Add(1)
+		asked <- struct{}{}
+		select {
+		case <-release:
+			return decisions, nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}}
+	return stream, asked, release, ended
+}
+
+func waitSignal(t *testing.T, name string, c <-chan struct{}) {
+	t.Helper()
+	select {
+	case <-c:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timed out waiting for %s", name)
+	}
+}
+
+type loopChans struct {
+	ban, del   chan *crowdsec.Decision
+	err        chan error
+	reconcileC chan time.Time
+	rebootC    chan struct{}
+}
+
+func newLoopChans() loopChans {
+	return loopChans{
+		ban:        make(chan *crowdsec.Decision, 1),
+		del:        make(chan *crowdsec.Decision, 1),
+		err:        make(chan error, 1),
+		reconcileC: make(chan time.Time, 1),
+		rebootC:    make(chan struct{}, 1),
+	}
+}
+
+func (c loopChans) run(ctx context.Context, mgr *Manager) chan error {
+	result := make(chan error, 1)
+	go func() {
+		result <- mgr.processLiveDecisions(ctx, c.ban, c.del, c.err, c.reconcileC, c.rebootC, nil)
+	}()
+	return result
+}
+
+func ipv4Config() config.Config {
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	return cfg
+}
+
+// TestProcessLiveDecisions_LiveBanDuringPass verifies that a live ban reaches
+// the router while a pass runs, not when it ends.
+func TestProcessLiveDecisions_LiveBanDuringPass(t *testing.T) {
+	mock := &mockROS{addAddressID: "*1"}
+	stream, asked, release, _ := blockingSnapshot(nil)
+	mgr := newTestManagerWithStream(mock, stream, ipv4Config())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c := newLoopChans()
+	c.reconcileC <- time.Now()
+	result := c.run(ctx, mgr)
+
+	waitSignal(t, "the pass", asked)
+	c.ban <- liveDecision("203.0.113.30", "crowdsec")
+	waitForManagerCondition(t, "the live ban during the pass", func() bool { return len(addedAddresses(mock)) == 1 })
+	close(release)
+	cancel()
+	if err := waitForManagerResult(t, result); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestProcessLiveDecisions_LiveBanWhileWaitingForCalm verifies that a live ban
+// reaches the router while a periodic pass waits for the router's CPU.
+func TestProcessLiveDecisions_LiveBanWhileWaitingForCalm(t *testing.T) {
+	mock := &mockROS{addAddressID: "*1"}
+	mgr := newTestManagerWithStream(mock, &mockStream{}, ipv4Config())
+	release := make(chan struct{})
+	fp := &fakePacer{waitFunc: func(ctx context.Context) error {
+		select {
+		case <-release:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}}
+	mgr.pacer = fp
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c := newLoopChans()
+	c.reconcileC <- time.Now()
+	result := c.run(ctx, mgr)
+
+	waitForManagerCondition(t, "the wait for calm", func() bool { return fp.waitCount() == 1 })
+	c.ban <- liveDecision("203.0.113.31", "crowdsec")
+	waitForManagerCondition(t, "the live ban during the wait", func() bool { return len(addedAddresses(mock)) == 1 })
+	close(release)
+	cancel()
+	if err := waitForManagerResult(t, result); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestProcessLiveDecisions_StreamErrorStopsTheRunningPass verifies that a
+// stream error during a pass ends the pass and returns once it has ended.
+func TestProcessLiveDecisions_StreamErrorStopsTheRunningPass(t *testing.T) {
+	stream, asked, _, ended := blockingSnapshot(nil)
+	mgr := newTestManagerWithStream(&mockROS{}, stream, ipv4Config())
+	ctx := t.Context()
+	c := newLoopChans()
+	c.reconcileC <- time.Now()
+	result := c.run(ctx, mgr)
+
+	waitSignal(t, "the pass", asked)
+	c.err <- errors.New("stream down")
+	if err := waitForManagerResult(t, result); err == nil || !strings.Contains(err.Error(), "stream down") {
+		t.Fatalf("expected the stream error, got %v", err)
+	}
+	if ended.Load() != 1 {
+		t.Fatal("expected the pass ended before the loop returned")
+	}
+}
+
+// TestProcessLiveDecisions_ShutdownWaitsForTheRunningPass verifies that the
+// loop returns only once a running pass has ended, so Shutdown never runs
+// beside it.
+func TestProcessLiveDecisions_ShutdownWaitsForTheRunningPass(t *testing.T) {
+	stream, asked, _, ended := blockingSnapshot(nil)
+	mgr := newTestManagerWithStream(&mockROS{}, stream, ipv4Config())
+	ctx, cancel := context.WithCancel(context.Background())
+	c := newLoopChans()
+	c.reconcileC <- time.Now()
+	result := c.run(ctx, mgr)
+
+	waitSignal(t, "the pass", asked)
+	cancel()
+	if err := waitForManagerResult(t, result); err != nil {
+		t.Fatal(err)
+	}
+	if ended.Load() != 1 {
+		t.Fatal("expected the pass ended before the loop returned")
+	}
+}
+
+// TestProcessLiveDecisions_TickDuringPassRunsAfter verifies that a periodic
+// tick that arrives during a pass runs one pass once it ends.
+func TestProcessLiveDecisions_TickDuringPassRunsAfter(t *testing.T) {
+	stream, asked, release, _ := blockingSnapshot(nil)
+	mgr := newTestManagerWithStream(&mockROS{}, stream, ipv4Config())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c := newLoopChans()
+	c.reconcileC <- time.Now()
+	result := c.run(ctx, mgr)
+
+	waitSignal(t, "the first pass", asked)
+	c.reconcileC <- time.Now()
+	select {
+	case <-asked:
+		t.Fatal("a second pass ran beside the first")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(release)
+	waitSignal(t, "the owed pass", asked)
+	cancel()
+	if err := waitForManagerResult(t, result); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestProcessLiveDecisions_RebootDuringPassRunsAfterWithoutWait verifies that
+// a reboot during a pass runs one pass once it ends, without waiting for a
+// calm router, also when a periodic tick was owed first.
+func TestProcessLiveDecisions_RebootDuringPassRunsAfterWithoutWait(t *testing.T) {
+	stream, asked, release, _ := blockingSnapshot(nil)
+	mgr := newTestManagerWithStream(&mockROS{}, stream, ipv4Config())
+	fp := &fakePacer{}
+	mgr.pacer = fp
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c := newLoopChans()
+	c.reconcileC <- time.Now()
+	result := c.run(ctx, mgr)
+
+	waitSignal(t, "the first pass", asked)
+	c.reconcileC <- time.Now()
+	waitForManagerCondition(t, "the tick taken", func() bool { return len(c.reconcileC) == 0 })
+	c.rebootC <- struct{}{}
+	waitForManagerCondition(t, "the reboot taken", func() bool { return len(c.rebootC) == 0 })
+	close(release)
+	waitSignal(t, "the pass after the reboot", asked)
+	cancel()
+	if err := waitForManagerResult(t, result); err != nil {
+		t.Fatal(err)
+	}
+	if got := fp.waitCount(); got != 1 {
+		t.Fatalf("expected only the periodic pass to wait for calm, got %d waits", got)
+	}
+}
+
+// TestProcessLiveDecisions_PassLeavesLiveBanAlone verifies the journal is
+// open while a pass runs: an address banned live while the pass fetched its
+// snapshot is not removed by the pass, though the snapshot lacks it, and the
+// journal is closed once the pass has ended.
+func TestProcessLiveDecisions_PassLeavesLiveBanAlone(t *testing.T) {
+	mock := &mockROS{
+		addAddressID:  "*x",
+		listAddresses: []ros.AddressEntry{{ID: "*x", Address: "203.0.113.32", Comment: "crowdsec-bouncer|old"}},
+	}
+	stream, asked, release, ended := blockingSnapshot(nil)
+	mgr := newTestManagerWithStream(mock, stream, ipv4Config())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c := newLoopChans()
+	c.reconcileC <- time.Now()
+	result := c.run(ctx, mgr)
+
+	waitSignal(t, "the pass", asked)
+	c.ban <- liveDecision("203.0.113.32", "crowdsec")
+	waitForManagerCondition(t, "the live ban", func() bool { return len(addedAddresses(mock)) == 1 })
+	close(release)
+	waitForManagerCondition(t, "the pass settled", func() bool {
+		mgr.passMu.Lock()
+		defer mgr.passMu.Unlock()
+		return ended.Load() == 1 && mgr.passLive == nil
+	})
+	cancel()
+	if err := waitForManagerResult(t, result); err != nil {
+		t.Fatal(err)
+	}
+	if got := removedIDs(mock); len(got) != 0 {
+		t.Fatalf("expected the live ban left alone, got removals %v", got)
+	}
+}
+
+// TestStart_LiveBanDuringFirstPass verifies that live decisions are applied
+// while the first reconciliation runs, not once it ends.
+func TestStart_LiveBanDuringFirstPass(t *testing.T) {
+	setTestInitialCollectionTimings(t, time.Millisecond, time.Millisecond)
+	mock := &mockROS{
+		addAddressID:  "*1",
+		listAddresses: []ros.AddressEntry{{ID: "*s", Address: "203.0.113.40", Comment: "crowdsec-bouncer|stale"}},
+	}
+	sendLive := make(chan struct{})
+	stream := &mockStream{RunFunc: func(ctx context.Context, banCh, _ chan<- *crowdsec.Decision) error {
+		select {
+		case <-sendLive:
+			banCh <- liveDecision("203.0.113.41", "crowdsec")
+		case <-ctx.Done():
+		}
+		<-ctx.Done()
+		return nil
+	}}
+	mgr := newTestManagerWithStream(mock, stream, ipv4Config())
+	entered := make(chan struct{}, 1)
+	release := make(chan struct{})
+	mgr.pacer = &fakePacer{entryFunc: func(ctx context.Context) error {
+		entered <- struct{}{} // the first pass removes the stale entry
+		select {
+		case <-release:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	result := make(chan error, 1)
+	go func() { result <- mgr.Start(ctx) }()
+
+	waitSignal(t, "the first pass", entered)
+	close(sendLive)
+	waitForManagerCondition(t, "the live ban during the first pass", func() bool { return len(addedAddresses(mock)) == 1 })
+	close(release)
+	cancel()
+	if err := waitForManagerResult(t, result); err != nil {
+		t.Fatal(err)
 	}
 }

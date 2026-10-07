@@ -3245,7 +3245,9 @@ func TestScheduleReconcileRetry_BacksOff(t *testing.T) {
 			t.Fatalf("retry %d: expected %v, got %v", i+1, want, mgr.retryDelay)
 		}
 	}
-	if retryC := mgr.reconcileWithRetry(context.Background()); retryC != nil || mgr.retryDelay != 0 {
+	l := &decisionLoop{m: mgr, retryC: make(chan time.Time)}
+	l.afterPass(context.Background(), passPeriodic, nil)
+	if l.retryC != nil || mgr.retryDelay != 0 {
 		t.Fatalf("expected a successful pass to reset the delay, got %v", mgr.retryDelay)
 	}
 }
@@ -3268,7 +3270,7 @@ func TestStart_InitialReconcileRetried(t *testing.T) {
 		return nil, nil
 	}}
 	mgr := newTestManagerWithStream(mock, stream, cfg)
-	var logs bytes.Buffer
+	var logs syncBuffer
 	mgr.logger = zerolog.New(&logs)
 
 	errCh := make(chan error, 1)

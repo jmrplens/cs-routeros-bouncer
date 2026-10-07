@@ -193,3 +193,11 @@ func (m *Manager) recountActive(live map[string]*liveDuringPass, desired map[str
 		metrics.SetActiveDecisionsByOrigin(origin, count)
 	}
 }
+
+// dropPassJournal closes the pass's journal without settling it: the pass was
+// stopped on the way out.
+func (m *Manager) dropPassJournal() {
+	m.passMu.Lock()
+	defer m.passMu.Unlock()
+	m.passLive, m.passDesired = nil, nil
+}

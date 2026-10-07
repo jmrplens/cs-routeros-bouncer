@@ -300,28 +300,30 @@ func (m *Manager) Start(ctx context.Context) error {
 	if m.lastBoot.IsZero() {
 		m.lastBoot = m.now()
 	}
-	err = m.reconcileAddresses(ctx, m.filterInitialBans(initialBans, initialDeletes))
-	if ctx.Err() != nil {
-		return nil
-	}
-	var retryC <-chan time.Time
-	if err != nil {
-		retryC = m.scheduleReconcileRetry(err, reconcileRetryMax)
-		m.logger.Warn().Msg("first reconciliation incomplete, processing live decisions")
-	} else {
-		m.logger.Info().Msg("reconciliation complete, processing live decisions")
-	}
 
-	reconcileC, stopReconcile := m.reconciliationChannel()
-	defer stopReconcile()
+	// The first pass runs beside the decision loop. The periodic ticker and
+	// the reboot watcher start once it has ended: the first tick comes an
+	// interval after it, and the watcher's first read catches a reboot
+	// during it.
+	var stopReconcile func() // set once the first pass has ended
+	defer func() {
+		if stopReconcile != nil {
+			stopReconcile()
+		}
+	}()
 	var watcher sync.WaitGroup
 	defer watcher.Wait() // after stopWatch: no reboot check outlives Start
 	watchCtx, stopWatch := context.WithCancel(ctx)
 	defer stopWatch()
 	rebootC := make(chan struct{}, 1)
-	watcher.Go(func() { m.watchReboots(watchCtx, rebootC) })
-
-	return m.processLiveDecisions(ctx, banCh, deleteCh, errCh, reconcileC, rebootC, retryC)
+	l := &decisionLoop{m: m, initial: m.filterInitialBans(initialBans, initialDeletes)}
+	l.afterFirst = func() {
+		l.reconcileC, stopReconcile = m.reconciliationChannel()
+		watcher.Go(func() { m.watchReboots(watchCtx, rebootC) })
+	}
+	l.start(ctx, passFirst)
+	m.logger.Info().Msg("first reconciliation started, live decisions are applied meanwhile")
+	return l.run(ctx, banCh, deleteCh, errCh, rebootC)
 }
 
 // configureConnectionPool creates the optional RouterOS connection pool used by
@@ -615,64 +617,16 @@ func (m *Manager) reconciliationChannel() (reconcileC <-chan time.Time, stop fun
 }
 
 // processLiveDecisions handles live ban/unban events, stream errors,
-// reconciliation ticks and reboots. A reboot reconciles at once, a live ban
-// that may be missing on the router after reconcileRetryInterval. A reconcile
-// owed runs again on retryC (scheduleReconcileRetry) until a pass succeeds,
-// periodic ones included: active decisions send no live ban again, so with
-// crowdsec.reconciliation_interval 0 no other pass adds what is missing.
+// reconciliation ticks and reboots (decisionLoop). Live decisions are applied
+// as they arrive, also while a pass runs. A reboot reconciles at once, a live
+// ban that may be missing on the router after reconcileRetryInterval. A
+// reconcile owed runs again on retryC (scheduleReconcileRetry) until a pass
+// succeeds, periodic ones included: active decisions send no live ban again,
+// so with crowdsec.reconciliation_interval 0 no other pass adds what is
+// missing.
 func (m *Manager) processLiveDecisions(ctx context.Context, banCh, deleteCh <-chan *crowdsec.Decision, errCh <-chan error, reconcileC <-chan time.Time, rebootC <-chan struct{}, retryC <-chan time.Time) error {
-	for {
-		select {
-		case <-ctx.Done():
-			m.logger.Info().Msg("shutting down manager")
-			return nil
-
-		case streamErr := <-errCh:
-			return fmt.Errorf("CrowdSec stream error: %w", streamErr)
-
-		case d := <-banCh:
-			if m.handleBan(d) && (retryC == nil || time.Until(m.retryAt) > reconcileRetryInterval) {
-				retryC = m.reconcileSoon()
-			}
-
-		case d := <-deleteCh:
-			m.handleUnban(d)
-
-		case <-reconcileC:
-			if m.pacing().WaitCalm(ctx, reconcileCalmWaitMax) != nil {
-				continue // shutting down: the next turn returns
-			}
-			retryC = m.reconcileWithRetry(ctx)
-
-		case <-rebootC:
-			m.logger.Warn().Msg("router rebooted, reconciling the address lists")
-			// The router lost every dynamic entry: if this pass fails, its
-			// retry starts from the first wait, not from an earlier back-off.
-			m.retryDelay = 0
-			retryC = m.reconcileWithRetry(ctx)
-
-		case <-retryC:
-			if m.pacing().WaitCalm(ctx, reconcileCalmWaitMax) != nil {
-				continue // shutting down: the next turn returns
-			}
-			retryC = m.reconcileWithRetry(ctx)
-		}
-	}
-}
-
-// reconcileWithRetry reconciles and returns the channel of the retry still
-// owed, nil once a pass succeeded or ctx is done. While the snapshot fails the
-// wait grows to snapshotRetryMax only.
-func (m *Manager) reconcileWithRetry(ctx context.Context) <-chan time.Time {
-	if err := m.reconcileActiveDecisions(ctx); err != nil && ctx.Err() == nil {
-		limit := reconcileRetryMax
-		if errors.Is(err, errSnapshotFailed) {
-			limit = snapshotRetryMax
-		}
-		return m.scheduleReconcileRetry(err, limit)
-	}
-	m.retryDelay = 0
-	return nil
+	l := &decisionLoop{m: m, reconcileC: reconcileC, retryC: retryC}
+	return l.run(ctx, banCh, deleteCh, errCh, rebootC)
 }
 
 // scheduleReconcileRetry logs the failed reconcile and returns the channel of
