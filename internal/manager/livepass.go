@@ -33,6 +33,10 @@ type liveDuringPass struct {
 	d       *crowdsec.Decision
 	ban     bool // a ban; false, an unban
 	counted bool // its metrics were recorded when it arrived
+	// settled: the live path settled the ban for good, since a foreign entry
+	// holds the address or the router refused it; trying again would get the
+	// same answer.
+	settled bool
 }
 
 // beginPass opens the journal of the pass about to run.
@@ -69,15 +73,30 @@ func (m *Manager) markCounted(e *liveDuringPass) {
 	e.counted = true
 }
 
+// markSettled records that the live path settled e for good.
+func (m *Manager) markSettled(e *liveDuringPass) {
+	if e == nil {
+		return
+	}
+	m.passMu.Lock()
+	defer m.passMu.Unlock()
+	e.settled = true
+}
+
 // liveBan is the decision loop's ban: noted for the running pass, if any,
 // then applied as handleBan applies it.
 func (m *Manager) liveBan(d *crowdsec.Decision) (reconcileOwed bool) {
 	e := m.noteLive(d, true)
-	added, reconcileOwed := m.ban(d, true)
-	if added {
+	switch m.ban(d, true) {
+	case banAdded:
 		m.markCounted(e)
+	case banLeftAlone:
+		m.markSettled(e)
+	case banFailed:
+		return true
+	case banIgnored, banCached:
 	}
-	return reconcileOwed
+	return false
 }
 
 // liveUnban is the decision loop's unban: noted for the running pass, if any,
@@ -111,7 +130,7 @@ func (m *Manager) notePassDesired(proto string, desired map[string]*crowdsec.Dec
 	m.passMu.Lock()
 	defer m.passMu.Unlock()
 	if m.passDesired != nil {
-		m.passDesired[proto] = desired
+		m.passDesired[proto] = maps.Clone(desired)
 	}
 }
 
@@ -153,8 +172,9 @@ func (m *Manager) settleLive() (reconcileOwed bool) {
 	}
 	for _, e := range live {
 		if e.ban {
-			_, owed := m.ban(e.d, !e.counted)
-			reconcileOwed = reconcileOwed || owed
+			if !e.settled && m.ban(e.d, !e.counted) == banFailed {
+				reconcileOwed = true
+			}
 			continue
 		}
 		m.unban(e.d, !e.counted)

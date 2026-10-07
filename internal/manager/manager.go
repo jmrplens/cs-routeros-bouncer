@@ -62,8 +62,8 @@ type Manager struct {
 	// addressCache maps a normalised address to the RouterOS .id of its
 	// address-list entry, or "" when the id is not known. Storing the id costs
 	// nothing — refreshAddressCache already receives the full entries — and it
-	// is what lets handleUnban delete by id instead of paying a full table
-	// traversal to look one up. See handleUnban for why a stale id is safe.
+	// is what lets an unban delete by id instead of paying a full table
+	// traversal to look one up. See unban for why a stale id is safe.
 	addressCache map[string]string
 	// uncertain holds addresses whose add failed without the router refusing
 	// it: the add may still have reached the router. They are not cached, so a
@@ -824,29 +824,39 @@ func (m *Manager) pollSystemMetrics() {
 // handleBan processes a new ban decision.
 // Uses optimistic add: tries to add first, handles "already exists" by updating timeout.
 // This avoids the expensive FindAddress call (which scans entire address list).
-// It reports whether a reconcile is owed: the add failed without the router
-// refusing it, so the address may be missing on the router.
-func (m *Manager) handleBan(d *crowdsec.Decision) (reconcileOwed bool) {
-	_, reconcileOwed = m.ban(d, true)
-	return reconcileOwed
+// The decision loop applies live bans through liveBan, which notes them for a
+// running pass and reports whether a reconcile is owed.
+func (m *Manager) handleBan(d *crowdsec.Decision) {
+	m.ban(d, true)
 }
 
-// ban is handleBan, reporting also whether it added the address. count
-// records the decision's metrics when it does: settleLive passes false for a
-// decision whose metrics were recorded when it arrived.
-func (m *Manager) ban(d *crowdsec.Decision, count bool) (added, reconcileOwed bool) {
+// banOutcome is what ban did with a decision.
+type banOutcome int
+
+const (
+	banIgnored   banOutcome = iota // no decision, or its protocol is off
+	banCached                      // the cache holds the address: nothing written
+	banAdded                       // added, or refreshed on the router
+	banLeftAlone                   // a foreign entry holds it, or the router refused it
+	banFailed                      // may not have reached the router: a reconcile is owed
+)
+
+// ban is handleBan, reporting what it did. count records the decision's
+// metrics when it adds the address: settleLive passes false for a decision
+// whose metrics were recorded when it arrived.
+func (m *Manager) ban(d *crowdsec.Decision, count bool) banOutcome {
 	if d == nil {
-		return false, false
+		return banIgnored
 	}
 
 	start := time.Now()
 
 	// Check if the protocol is enabled
 	if d.Proto == "ip" && !m.cfg.Firewall.IPv4.Enabled {
-		return false, false
+		return banIgnored
 	}
 	if d.Proto == "ipv6" && !m.cfg.Firewall.IPv6.Enabled {
-		return false, false
+		return banIgnored
 	}
 
 	metricsProto := "ipv4"
@@ -869,7 +879,7 @@ func (m *Manager) ban(d *crowdsec.Decision, count bool) (added, reconcileOwed bo
 			Str("address", d.Value).
 			Str("list", listName).
 			Msg("address already in cache, skipping duplicate ban")
-		return false, false
+		return banCached
 	}
 
 	timeout := ""
@@ -886,18 +896,18 @@ func (m *Manager) ban(d *crowdsec.Decision, count bool) (added, reconcileOwed bo
 	entryID, err := m.ros.AddAddress(d.Proto, listName, d.Value, timeout, comment)
 	if errors.Is(err, rosClient.ErrForeignEntry) {
 		m.logger.Info().Str("address", d.Value).Str("list", listName).Msg("address already held by a foreign entry, left alone")
-		return false, false
+		return banLeftAlone
 	}
 	if err != nil {
-		// A refusal is about this add only: an earlier add that failed in
-		// transit may still be on the router, so the address stays as it was.
-		if !errors.Is(err, rosClient.ErrAddRefused) {
-			m.markUncertain(d.Proto, []rosClient.BulkEntry{{Address: d.Value}})
-			reconcileOwed = true
-		}
 		m.logger.Error().Err(err).Str("address", d.Value).Str("list", listName).Msg("error adding address to MikroTik")
 		metrics.RecordError("add")
-		return false, reconcileOwed
+		// A refusal is about this add only: an earlier add that failed in
+		// transit may still be on the router, so the address stays as it was.
+		if errors.Is(err, rosClient.ErrAddRefused) {
+			return banLeftAlone
+		}
+		m.markUncertain(d.Proto, []rosClient.BulkEntry{{Address: d.Value}})
+		return banFailed
 	}
 
 	// Update address cache, keeping the id AddAddress just returned.
@@ -917,7 +927,7 @@ func (m *Manager) ban(d *crowdsec.Decision, count bool) (added, reconcileOwed bo
 		Str("origin", d.Origin).
 		Str("scenario", d.Scenario).
 		Msg("banned address")
-	return true, false
+	return banAdded
 }
 
 // finishUnban records the cache eviction, metrics and log line shared by both
@@ -945,7 +955,8 @@ func (m *Manager) finishUnban(d *crowdsec.Decision, addr, metricsProto, listName
 	event.Msg("unbanned address")
 }
 
-// handleUnban processes a decision deletion.
+// handleUnban processes a decision deletion. The decision loop applies live
+// unbans through liveUnban, which notes them for a running pass.
 // Uses address cache to skip FindAddress for addresses not on the router.
 func (m *Manager) handleUnban(d *crowdsec.Decision) {
 	m.unban(d, true)
@@ -1817,7 +1828,7 @@ func staleAddressEntries(shouldExist map[string]*crowdsec.Decision, currentMap m
 // pass as the live path left them: the listing may predate them.
 func (m *Manager) refreshAddressCache(proto string, currentMap map[string]rosClient.AddressEntry, live map[string]liveDuringPass) {
 	// Hold cacheMu through the full replacement for this protocol so concurrent
-	// handleBan/handleUnban calls never observe a partially refreshed cache.
+	// live bans and unbans never observe a partially refreshed cache.
 	// Large reconciliations may briefly block live handlers, but correctness wins
 	// over lower-latency cache updates here.
 	m.cacheMu.Lock()
@@ -1848,7 +1859,7 @@ func (m *Manager) refreshAddressCache(proto string, currentMap map[string]rosCli
 			continue
 		}
 		// The id comes free here: currentMap is the print this reconcile pass
-		// already paid for. Throwing it away is what forced handleUnban to
+		// already paid for. Throwing it away is what forced an unban to
 		// re-discover it with a full traversal.
 		m.addressCache[addr] = entry.ID
 	}
@@ -1938,7 +1949,7 @@ func (m *Manager) addEntriesToCache(proto string, entries []rosClient.BulkEntry)
 		addr := rosClient.NormalizeAddress(entry.Address, proto)
 		// The per-entry adds of "api" set ID. The bulk script reports a count,
 		// not per-entry ids, so its keys carry none until the next reconcile
-		// pass fills them in; an empty id means handleUnban looks it up.
+		// pass fills them in; an empty id means an unban looks it up.
 		m.addressCache[addr] = entry.ID
 	}
 }

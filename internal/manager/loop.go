@@ -78,9 +78,6 @@ func (l *decisionLoop) run(ctx context.Context, banCh, deleteCh <-chan *crowdsec
 
 		case <-rebootC:
 			m.logger.Warn().Msg("router rebooted, reconciling the address lists")
-			// The router lost every dynamic entry: if this pass fails, its
-			// retry starts from the first wait, not from an earlier back-off.
-			m.retryDelay = 0
 			l.request(ctx, passReboot)
 
 		case <-l.retryC:
@@ -102,9 +99,14 @@ func (l *decisionLoop) passDone() <-chan error {
 }
 
 // request runs a pass of kind, or owes one if a pass is running: the owed
-// pass is a reboot's if any asked for one, so it does not wait for calm.
+// pass is a reboot's if any asked for one, so it does not wait for calm. A
+// retry is not owed: the running pass reconciles what it was for, and if
+// that pass fails, it schedules a retry of its own.
 func (l *decisionLoop) request(ctx context.Context, kind passKind) {
 	if l.pass != nil {
+		if kind == passRetry {
+			return
+		}
 		if !l.owed || kind == passReboot {
 			l.owedKind = kind
 		}
@@ -118,6 +120,11 @@ func (l *decisionLoop) request(ctx context.Context, kind passKind) {
 // decisions open.
 func (l *decisionLoop) start(ctx context.Context, kind passKind) {
 	m := l.m
+	if kind == passReboot {
+		// The router lost every dynamic entry: if this pass fails, its retry
+		// starts from the first wait, not from an earlier back-off.
+		m.retryDelay = 0
+	}
 	m.beginPass()
 	passCtx, cancel := context.WithCancel(ctx)
 	done := make(chan error, 1)

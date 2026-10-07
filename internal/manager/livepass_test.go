@@ -622,3 +622,209 @@ func TestStart_LiveBanDuringFirstPass(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestProcessLiveDecisions_RetryDuringASuccessfulPassIsDropped verifies that a
+// retry that fires during a pass that then succeeds runs no extra pass: the
+// pass reconciled what the retry was for, as on the loop before passes ran
+// beside it, where a successful pass cleared the retry.
+func TestProcessLiveDecisions_RetryDuringASuccessfulPassIsDropped(t *testing.T) {
+	stream, asked, release, ended := blockingSnapshot(nil)
+	mgr := newTestManagerWithStream(&mockROS{}, stream, ipv4Config())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c := newLoopChans()
+	c.reconcileC <- time.Now()
+	retryC := make(chan time.Time, 1)
+	result := make(chan error, 1)
+	go func() {
+		result <- mgr.processLiveDecisions(ctx, c.ban, c.del, c.err, c.reconcileC, c.rebootC, retryC)
+	}()
+
+	waitSignal(t, "the pass", asked)
+	retryC <- time.Now()
+	waitForManagerCondition(t, "the retry taken", func() bool { return len(retryC) == 0 })
+	close(release)
+	waitForManagerCondition(t, "the pass ended", func() bool { return ended.Load() == 1 })
+	select {
+	case <-asked:
+		t.Fatal("expected no extra pass after a successful one")
+	case <-time.After(50 * time.Millisecond):
+	}
+	cancel()
+	if err := waitForManagerResult(t, result); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestProcessLiveDecisions_RetryDuringAFailedPassWaitsItsTurn verifies that a
+// retry that fires during a pass that then fails does not run at once on top
+// of the retry the failure schedules, which would double the back-off.
+func TestProcessLiveDecisions_RetryDuringAFailedPassWaitsItsTurn(t *testing.T) {
+	prev := reconcileRetryInterval
+	reconcileRetryInterval = time.Hour
+	t.Cleanup(func() { reconcileRetryInterval = prev })
+
+	asked := make(chan struct{}, 8)
+	release := make(chan struct{})
+	stream := &mockStream{ActiveDecisionsFunc: func(ctx context.Context) ([]*crowdsec.Decision, error) {
+		asked <- struct{}{}
+		select {
+		case <-release:
+			return nil, errors.New("LAPI not reachable")
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}}
+	mgr := newTestManagerWithStream(&mockROS{}, stream, ipv4Config())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c := newLoopChans()
+	c.reconcileC <- time.Now()
+	retryC := make(chan time.Time, 1)
+	result := make(chan error, 1)
+	go func() {
+		result <- mgr.processLiveDecisions(ctx, c.ban, c.del, c.err, c.reconcileC, c.rebootC, retryC)
+	}()
+
+	waitSignal(t, "the pass", asked)
+	retryC <- time.Now()
+	waitForManagerCondition(t, "the retry taken", func() bool { return len(retryC) == 0 })
+	close(release)
+	select {
+	case <-asked:
+		t.Fatal("expected the failed pass's retry to wait its turn")
+	case <-time.After(50 * time.Millisecond):
+	}
+	cancel()
+	if err := waitForManagerResult(t, result); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestProcessLiveDecisions_RebootDuringAFailedPassStartsFromTheFirstWait
+// verifies that the pass a reboot asks for during a pass that then fails still
+// starts from the first wait: the router lost every dynamic entry.
+func TestProcessLiveDecisions_RebootDuringAFailedPassStartsFromTheFirstWait(t *testing.T) {
+	prev := reconcileRetryInterval
+	reconcileRetryInterval = time.Hour
+	t.Cleanup(func() { reconcileRetryInterval = prev })
+
+	var mgr *Manager
+	asked := make(chan time.Duration, 8)
+	release := make(chan struct{})
+	stream := &mockStream{ActiveDecisionsFunc: func(ctx context.Context) ([]*crowdsec.Decision, error) {
+		asked <- mgr.retryDelay
+		select {
+		case <-release:
+			return nil, errors.New("LAPI not reachable")
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}}
+	mgr = newTestManagerWithStream(&mockROS{}, stream, ipv4Config())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c := newLoopChans()
+	c.reconcileC <- time.Now()
+	result := c.run(ctx, mgr)
+
+	select {
+	case <-asked:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for the pass")
+	}
+	c.rebootC <- struct{}{}
+	waitForManagerCondition(t, "the reboot taken", func() bool { return len(c.rebootC) == 0 })
+	close(release)
+	select {
+	case delay := <-asked:
+		if delay != 0 {
+			t.Fatalf("expected the reboot's pass to start from the first wait, got a delay of %v", delay)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for the reboot's pass")
+	}
+	cancel()
+	if err := waitForManagerResult(t, result); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestSettleLive_LeavesAloneWhatTheLivePathSettled verifies that a live ban
+// the router refused, or a foreign entry holds, is not tried again once the
+// pass ends: the answer would be the same, and for a foreign entry it costs a
+// lookup that walks the whole list.
+func TestSettleLive_LeavesAloneWhatTheLivePathSettled(t *testing.T) {
+	for _, liveErr := range []error{ros.ErrForeignEntry, ros.ErrAddRefused} {
+		mock := &mockROS{addAddressErr: liveErr}
+		mgr := ipv4Manager(mock)
+		mgr.beginPass()
+		mgr.liveBan(liveDecision("203.0.113.50", "crowdsec"))
+
+		mgr.settleLive()
+
+		if got := addedAddresses(mock); len(got) != 1 {
+			t.Fatalf("%v: expected the live add only, got %v", liveErr, got)
+		}
+	}
+}
+
+// TestProcessLiveDecisions_LiveUnbanDuringPass verifies that a live unban
+// removes the entry while a pass runs, and that the pass, whose snapshot and
+// listing still have it, neither adds it back nor counts on it.
+func TestProcessLiveDecisions_LiveUnbanDuringPass(t *testing.T) {
+	const addr = "203.0.113.60"
+	mock := &mockROS{listAddresses: []ros.AddressEntry{{ID: "*u", Address: addr, Comment: "crowdsec-bouncer|old"}}}
+	stream, asked, release, ended := blockingSnapshot([]*crowdsec.Decision{liveDecision(addr, "crowdsec")})
+	mgr := newTestManagerWithStream(mock, stream, ipv4Config())
+	mgr.addressCache[addr] = "*u"
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c := newLoopChans()
+	c.reconcileC <- time.Now()
+	result := c.run(ctx, mgr)
+
+	waitSignal(t, "the pass", asked)
+	c.del <- liveDecision(addr, "crowdsec")
+	waitForManagerCondition(t, "the live unban during the pass", func() bool { return len(removedIDs(mock)) == 1 })
+	close(release)
+	waitForManagerCondition(t, "the pass settled", func() bool {
+		mgr.passMu.Lock()
+		defer mgr.passMu.Unlock()
+		return ended.Load() == 1 && mgr.passLive == nil
+	})
+	cancel()
+	if err := waitForManagerResult(t, result); err != nil {
+		t.Fatal(err)
+	}
+	if _, known := mgr.knownAddress(addr); known {
+		t.Fatal("expected the unbanned address unknown after the pass")
+	}
+	if len(mock.bulkAddCalls) != 0 || len(removedIDs(mock)) != 1 {
+		t.Fatalf("expected the pass to leave the address alone, got %d bulk adds and removals %v", len(mock.bulkAddCalls), removedIDs(mock))
+	}
+}
+
+// TestReconcile_LeavesLiveIPv6AddressesToTheLivePath verifies that the journal
+// matches an IPv6 address however the decision wrote it, and only on the
+// IPv6 pass.
+func TestReconcile_LeavesLiveIPv6AddressesToTheLivePath(t *testing.T) {
+	listed := ros.NormalizeAddress("2001:db8::5", "ipv6")
+	mock := &mockROS{
+		addAddressID:  "*6",
+		listAddresses: []ros.AddressEntry{{ID: "*6", Address: listed, Comment: "crowdsec-bouncer|old"}},
+	}
+	mgr := newTestManager(mock, baseConfig())
+	mgr.beginPass()
+	mgr.liveBan(&crowdsec.Decision{Value: "2001:DB8:0::5", Proto: "ipv6", Origin: "crowdsec", Duration: time.Hour})
+
+	if live := mgr.liveFor("ip"); len(live) != 0 {
+		t.Fatalf("expected no IPv6 record on the IPv4 pass, got %v", live)
+	}
+	if _, err := mgr.reconcileProtocolAddresses(context.Background(), "ipv6", nil, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if got := removedIDs(mock); len(got) != 0 {
+		t.Fatalf("expected the live IPv6 ban left alone, got removals %v", got)
+	}
+}
