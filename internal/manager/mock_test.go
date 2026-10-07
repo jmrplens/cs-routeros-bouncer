@@ -2341,3 +2341,46 @@ func TestCreateFirewallRules_AllFeaturesCombined(t *testing.T) { // NOSONAR: sce
 		t.Errorf("expected SrcAddressList=!v6-bypass on v6 output, got %q", v6out.Rule.SrcAddressList)
 	}
 }
+
+// fakePacer records how the manager waits on its pacer.
+type fakePacer struct {
+	mu        sync.Mutex
+	entries   int
+	entryErr  error
+	waitCalls int
+	waitMost  []time.Duration
+	waitFunc  func(ctx context.Context) error
+	waitedSeq []time.Duration // successive Waited answers; the last repeats
+}
+
+func (f *fakePacer) Entry(context.Context) (func(), error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.entries++
+	return func() {}, f.entryErr
+}
+
+func (f *fakePacer) WaitCalm(ctx context.Context, most time.Duration) error {
+	f.mu.Lock()
+	f.waitCalls++
+	f.waitMost = append(f.waitMost, most)
+	fn := f.waitFunc
+	f.mu.Unlock()
+	if fn != nil {
+		return fn(ctx)
+	}
+	return nil
+}
+
+func (f *fakePacer) Waited() time.Duration {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.waitedSeq) == 0 {
+		return 0
+	}
+	v := f.waitedSeq[0]
+	if len(f.waitedSeq) > 1 {
+		f.waitedSeq = f.waitedSeq[1:]
+	}
+	return v
+}

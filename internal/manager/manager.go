@@ -86,6 +86,11 @@ type Manager struct {
 	// retryAt is when the reconcile retry owed runs. Like retryDelay, used by
 	// Start and then only by processLiveDecisions.
 	retryAt time.Time
+
+	// pacer slows reconciliation bulk work down while the router's CPU is
+	// busy (mikrotik.cpu_limit). nil, in tests that build a Manager by hand,
+	// never waits: see pacing.
+	pacer bulkPacer
 }
 
 // rebootCheckInterval is how often watchReboots reads the router uptime to
@@ -111,6 +116,11 @@ var snapshotRetryMax = 5 * time.Minute
 // takes its time.
 const rebootSlack = 30 * time.Second
 
+// reconcileCalmWaitMax bounds how long a periodic pass, or a retry, waits for
+// the router's CPU to drop below mikrotik.cpu_limit before it starts anyway:
+// live decisions wait meanwhile, as they do during a pass.
+var reconcileCalmWaitMax = time.Minute
+
 type firewallRuleRef struct {
 	Comment string
 	ID      string
@@ -123,10 +133,33 @@ type routerOSPool interface {
 	AddAddresses(ctx context.Context, proto, list string, entries []rosClient.BulkEntry) (added int, failed []rosClient.BulkEntry, errs []error)
 }
 
+// bulkPacer is the part of routeros.Pacer the manager waits on.
+type bulkPacer interface {
+	Entry(ctx context.Context) (release func(), err error)
+	WaitCalm(ctx context.Context, most time.Duration) error
+	Waited() time.Duration
+}
+
+// noPacing never waits: the pacer of a Manager built without one.
+type noPacing struct{}
+
+func (noPacing) Entry(context.Context) (func(), error)         { return func() {}, nil }
+func (noPacing) WaitCalm(context.Context, time.Duration) error { return nil }
+func (noPacing) Waited() time.Duration                         { return 0 }
+
+// pacing returns the manager's pacer, or one that never waits.
+func (m *Manager) pacing() bulkPacer {
+	if m.pacer == nil {
+		return noPacing{}
+	}
+	return m.pacer
+}
+
 // NewManager creates a new bouncer manager.
 func NewManager(cfg config.Config, version string) *Manager {
 	client := rosClient.NewClient(cfg.MikroTik)
 	client.SetOwnerPrefix(commentPrefixOf(cfg))
+	pacer := newRouterPacer(cfg, client)
 	return &Manager{
 		cfg:          cfg,
 		ros:          client,
@@ -135,7 +168,28 @@ func NewManager(cfg config.Config, version string) *Manager {
 		version:      version,
 		ruleIDs:      make(map[string]string),
 		addressCache: make(map[string]string),
+		pacer:        pacer,
 	}
+}
+
+// newRouterPacer returns the pacer of mikrotik.cpu_limit, reading the
+// router's cpu-load through client and reporting to the metrics, and hands
+// it to client.
+func newRouterPacer(cfg config.Config, client *rosClient.Client) *rosClient.Pacer {
+	pacer := rosClient.NewPacer(cfg.MikroTik.CPULimit, func(ctx context.Context) (int, error) {
+		sr, err := client.GetSystemResourcesContext(ctx)
+		if err != nil {
+			return 0, err
+		}
+		return sr.CPULoad, nil
+	})
+	pacer.SetHooks(rosClient.PacerHooks{
+		Load:      func(load int) { metrics.SetRouterOSCPULoad(float64(load)) },
+		Throttled: metrics.SetRouterOSThrottled,
+		Waited:    func(d time.Duration) { metrics.AddRouterOSThrottleSeconds(d.Seconds()) },
+	})
+	client.SetPacer(pacer)
+	return pacer
 }
 
 // commentPrefix returns the effective comment prefix from config,
@@ -287,6 +341,9 @@ func (m *Manager) configureConnectionPool() {
 func (m *Manager) newConnectionPool(size int) *rosClient.Pool {
 	pool := rosClient.NewPool(m.cfg.MikroTik, size)
 	pool.SetOwnerPrefix(m.commentPrefix())
+	if p, ok := m.pacer.(*rosClient.Pacer); ok {
+		pool.SetPacer(p)
+	}
 	return pool
 }
 
@@ -572,6 +629,9 @@ func (m *Manager) processLiveDecisions(ctx context.Context, banCh, deleteCh <-ch
 			m.handleUnban(d)
 
 		case <-reconcileC:
+			if m.pacing().WaitCalm(ctx, reconcileCalmWaitMax) != nil {
+				continue // shutting down: the next turn returns
+			}
 			retryC = m.reconcileWithRetry(ctx)
 
 		case <-rebootC:
@@ -582,6 +642,9 @@ func (m *Manager) processLiveDecisions(ctx context.Context, banCh, deleteCh <-ch
 			retryC = m.reconcileWithRetry(ctx)
 
 		case <-retryC:
+			if m.pacing().WaitCalm(ctx, reconcileCalmWaitMax) != nil {
+				continue // shutting down: the next turn returns
+			}
 			retryC = m.reconcileWithRetry(ctx)
 		}
 	}
@@ -1632,6 +1695,7 @@ type reconcileResult struct {
 
 // reconcileProtocolAddresses applies the address-list diff for one RouterOS protocol.
 func (m *Manager) reconcileProtocolAddresses(ctx context.Context, proto string, decisions []*crowdsec.Decision, start time.Time) (reconcileResult, error) {
+	waitedBefore := m.pacing().Waited()
 	listName := m.getAddressListName(proto)
 	listed, err := m.ros.ListAddresses(ctx, proto, listName, "")
 	if err != nil {
@@ -1652,14 +1716,17 @@ func (m *Manager) reconcileProtocolAddresses(ctx context.Context, proto string, 
 	removed := m.removeStaleAddresses(ctx, proto, metricsProto, diff.toRemove)
 	m.recordReconciliationMetrics(metricsProto, len(diff.shouldExist), added, removed)
 
-	m.logger.Info().
+	event := m.logger.Info().
 		Str("proto", proto).
 		Int("existing", len(existing)).
 		Int("expected", len(diff.shouldExist)).
 		Int("added", added).
 		Int("removed", removed).
-		Dur("elapsed", time.Since(start)).
-		Msg("address reconciliation complete")
+		Dur("elapsed", time.Since(start))
+	if throttled := m.pacing().Waited() - waitedBefore; throttled > 0 {
+		event = event.Dur("throttled", throttled)
+	}
+	event.Msg("address reconciliation complete")
 
 	return reconcileResult{originCounts: originCounts(diff.shouldExist)}, addErr
 }
@@ -1966,7 +2033,12 @@ func (m *Manager) removeAddressesSequential(ctx context.Context, proto string, e
 		if ctx.Err() != nil {
 			break
 		}
+		release, err := m.pacing().Entry(ctx)
+		if err != nil {
+			break
+		}
 		removeErr := m.ros.RemoveAddress(proto, entry.ID)
+		release()
 		switch {
 		case removeErr == nil:
 			removed++
