@@ -151,6 +151,21 @@ func (p *Pacer) WaitCalm(ctx context.Context, most time.Duration) error {
 	}
 }
 
+// Rest ends the bulk work: a pacer slowing down goes back to full speed, and
+// the next work starts afresh, with a reading of its own. Without it, a pass
+// that ends slowed down would report it until the next pass.
+func (p *Pacer) Rest() {
+	if !p.enabled() {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.busy = 0
+	p.entries = 0
+	p.lastRead = time.Time{}
+	p.fullSpeedLocked(p.now(), msgRest)
+}
+
 // Waited returns all the time the pacer has spent waiting.
 func (p *Pacer) Waited() time.Duration {
 	if p == nil {
@@ -190,7 +205,7 @@ func (p *Pacer) observe(ctx context.Context) {
 	if !p.lastRead.IsZero() && now.Sub(p.lastRead) > pacerStaleAfter {
 		// No reading for a while: the last pass is over, this one starts afresh.
 		p.busy = 0
-		p.fullSpeedLocked(now)
+		p.fullSpeedLocked(now, msgCalm)
 	}
 	p.lastRead = now
 	p.mu.Unlock()
@@ -230,7 +245,7 @@ func (p *Pacer) observe(ctx context.Context) {
 		if p.pause > 0 {
 			p.pause /= 2
 			if p.pause < pacerMinPause {
-				p.fullSpeedLocked(now)
+				p.fullSpeedLocked(now, msgCalm)
 			}
 		}
 	default:
@@ -238,13 +253,19 @@ func (p *Pacer) observe(ctx context.Context) {
 	}
 }
 
-// fullSpeedLocked ends slowing down. The caller holds p.mu.
-func (p *Pacer) fullSpeedLocked(now time.Time) {
+// The two ways slowing down ends.
+const (
+	msgCalm = "router CPU calm again, back to full speed"
+	msgRest = "reconciliation over, back to full speed"
+)
+
+// fullSpeedLocked ends slowing down, logging msg. The caller holds p.mu.
+func (p *Pacer) fullSpeedLocked(now time.Time, msg string) {
 	if p.pause == 0 {
 		return
 	}
 	p.pause = 0
-	log.Info().Int("limit", p.limit).Dur("slowed_for", now.Sub(p.since)).Msg("router CPU calm again, back to full speed")
+	log.Info().Int("limit", p.limit).Dur("slowed_for", now.Sub(p.since)).Msg(msg)
 	if p.hooks.Throttled != nil {
 		p.hooks.Throttled(false)
 	}

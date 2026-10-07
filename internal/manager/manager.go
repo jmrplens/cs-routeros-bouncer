@@ -138,6 +138,7 @@ type bulkPacer interface {
 	Entry(ctx context.Context) (release func(), err error)
 	WaitCalm(ctx context.Context, most time.Duration) error
 	Waited() time.Duration
+	Rest()
 }
 
 // noPacing never waits: the pacer of a Manager built without one.
@@ -146,6 +147,7 @@ type noPacing struct{}
 func (noPacing) Entry(context.Context) (func(), error)         { return func() {}, nil }
 func (noPacing) WaitCalm(context.Context, time.Duration) error { return nil }
 func (noPacing) Waited() time.Duration                         { return 0 }
+func (noPacing) Rest()                                         {}
 
 // pacing returns the manager's pacer, or one that never waits.
 func (m *Manager) pacing() bulkPacer {
@@ -1638,6 +1640,8 @@ func (m *Manager) removeFirewallRules() {
 // reconcileAddresses synchronizes RouterOS address lists with the active CrowdSec decisions.
 // It reports ctx's error, or the protocols whose listing failed.
 func (m *Manager) reconcileAddresses(ctx context.Context, decisions []*crowdsec.Decision) error {
+	// However the pass ends, it ends the pacer's slowing down.
+	defer m.pacing().Rest()
 	if err := ctx.Err(); err != nil {
 		return err
 	}

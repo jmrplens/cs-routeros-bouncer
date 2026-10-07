@@ -2351,6 +2351,19 @@ type fakePacer struct {
 	waitMost  []time.Duration
 	waitFunc  func(ctx context.Context) error
 	waitedSeq []time.Duration // successive Waited answers; the last repeats
+	rests     int
+}
+
+func (f *fakePacer) Rest() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.rests++
+}
+
+func (f *fakePacer) restCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.rests
 }
 
 func (f *fakePacer) Entry(context.Context) (func(), error) {

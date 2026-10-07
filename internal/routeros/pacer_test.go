@@ -476,3 +476,57 @@ func TestPacer_HooksReportReadingsAndWaits(t *testing.T) {
 		t.Fatalf("expected %v waited, hook %v, Waited %v", pacerStartPause, waited, tp.Waited())
 	}
 }
+
+// TestPacer_RestEndsSlowingDown verifies that the end of the bulk work ends
+// slowing down at once, and that the next work starts with a reading of its
+// own: a pass that ends throttled must not leave the gauge at 1 until the next.
+func TestPacer_RestEndsSlowingDown(t *testing.T) {
+	tp, cpu := throttledPacer(2 * time.Second)
+	var states []bool
+	tp.SetHooks(PacerHooks{Throttled: func(on bool) { states = append(states, on) }})
+
+	tp.Rest()
+
+	if tp.currentPause() != 0 || len(states) != 1 || states[0] {
+		t.Fatalf("expected full speed and Throttled(false), pause %v, hook %v", tp.currentPause(), states)
+	}
+	cpu.set(50)
+	if err := tp.Block(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if cpu.readCount() != 1 || len(tp.sleeps()) != 0 {
+		t.Fatalf("expected a fresh reading and no wait, reads %d, slept %v", cpu.readCount(), tp.sleeps())
+	}
+}
+
+// TestPacer_RestForgetsABusyReading verifies that one busy reading at the end
+// of a pass and one at the start of the next do not add up to slowing down.
+func TestPacer_RestForgetsABusyReading(t *testing.T) {
+	cpu := &fakeCPU{loads: []int{95}}
+	tp := newTestPacer(80, cpu)
+
+	tp.blockEverySecond(t, 1)
+	tp.Rest()
+	tp.blockEverySecond(t, 1)
+
+	if tp.currentPause() != 0 {
+		t.Fatalf("expected full speed, pause %v", tp.currentPause())
+	}
+}
+
+// TestPacer_RestAtFullSpeedReportsNothing verifies that Rest on a pacer that
+// was not slowing down fires no hook, and that nil and disabled pacers take it.
+func TestPacer_RestAtFullSpeedReportsNothing(t *testing.T) {
+	tp := newTestPacer(80, &fakeCPU{loads: []int{50}})
+	var states []bool
+	tp.SetHooks(PacerHooks{Throttled: func(on bool) { states = append(states, on) }})
+
+	tp.Rest()
+	var nilPacer *Pacer
+	nilPacer.Rest()
+	NewPacer(0, nil).Rest()
+
+	if len(states) != 0 {
+		t.Fatalf("expected no hook, got %v", states)
+	}
+}

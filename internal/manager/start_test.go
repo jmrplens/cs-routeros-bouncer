@@ -3587,3 +3587,25 @@ func TestNewManager_BuildsThePacerFromConfig(t *testing.T) {
 		}
 	}
 }
+
+// TestReconcileAddresses_RestsThePacer verifies that every pass ends the
+// pacer's slowing down, a failed one too: otherwise a pass that ends throttled
+// leaves crowdsec_bouncer_routeros_throttled at 1 until the next pass.
+func TestReconcileAddresses_RestsThePacer(t *testing.T) {
+	mock := &mockROS{}
+	mgr := newTestManager(mock, baseConfig())
+	fp := &fakePacer{}
+	mgr.pacer = fp
+
+	if err := mgr.reconcileAddresses(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+	mock.listAddressesErr = errors.New("listing failed")
+	if err := mgr.reconcileAddresses(context.Background(), nil); err == nil {
+		t.Fatal("expected the listing error")
+	}
+
+	if fp.restCount() != 2 {
+		t.Fatalf("expected the pacer to rest after both passes, got %d", fp.restCount())
+	}
+}
