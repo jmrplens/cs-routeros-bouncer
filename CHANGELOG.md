@@ -1,4 +1,4 @@
-## [Unreleased]
+## [1.9.0] - 2026-10-07
 
 ### Added
 
@@ -7,6 +7,7 @@
 ### Changed
 
 - **Live decisions are applied while a reconciliation runs** — each pass, the first one included, now runs beside the decision loop, which applies live bans and unbans as they arrive, also while a periodic pass waits for a calm router. Before, they waited for the whole pass, which `mikrotik.cpu_limit` can stretch to minutes: on a virtual router held at 50% with `cpu_limit: 55`, a ban 11 s into a 30,000-entry pass reached the router 52–75 s later, and now in the same second. A pass expects what each live decision taken during it says, and leaves to the live path the addresses that decision added or removed; once it ends, the bouncer brings each such address to the decision's last word and sets the active-decision gauges from it, and a decision is counted once. An unban for an address the pass still has to add takes effect when the pass ends, as before. One pass runs at a time: a tick, retry or reboot during one runs a single pass after it
+- **Dependencies (2026-10-07)** — Go 1.27.1, every direct Go module, the pinned Go tools, the Docker base images and the Actions pins were already the newest releases; the Go closure moved `mattn/go-colorable` 0.1.15 → 0.1.16. pnpm 12.9.1 → 12.10.1. Documentation site: `astro` 7.3.6, `@astrojs/markdown-remark` 7.3.2 and `typescript-eslint` 8.71.1; TypeScript stays at 6, as `@astrojs/check` still asks for `^5` or `^6`. `pnpm audit` found four advisories in build-time tools. Three have patched releases their parents do not allow yet, so they are now overrides in `pnpm-workspace.yaml`: `smol-toml` 1.9.0 (GHSA-r4xh-jqrq-34v2), `katex` 0.18 (GHSA-238p-pmpm-9mq7) and `postcss-selector-parser` 7.1.6 (GHSA-rj75-hqrm-r3gf). The built site is byte-identical with them. `braces` ≤ 3.0.3 (GHSA-vfj7-8cjw-p6xm) still has no patched release; it reaches only `markdownlint-cli2`, a lint tool that never ships
 
 ## [1.8.0] - 2026-10-06
 
