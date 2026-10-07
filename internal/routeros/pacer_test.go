@@ -292,6 +292,66 @@ func TestPacer_EntryOneAtATimeWhileSlowing(t *testing.T) {
 	}
 }
 
+// TestPacer_EntryPauseStopsTheOtherEntries verifies that while slowing down a
+// due pause stops every entry, not only the one that waits it: with a pool, a
+// worker that slept alone while the others went on would leave the router a
+// continuous stream, pool_size times the promised pace.
+func TestPacer_EntryPauseStopsTheOtherEntries(t *testing.T) {
+	tp, _ := throttledPacer(400 * time.Millisecond)
+	var pausing atomic.Bool
+	var duringPause atomic.Int32
+	fakeSleep := tp.sleep
+	tp.sleep = func(ctx context.Context, d time.Duration) error {
+		pausing.Store(true)
+		time.Sleep(5 * time.Millisecond) // real time for the other workers to run
+		pausing.Store(false)
+		return fakeSleep(ctx, d)
+	}
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Go(func() {
+			for range 100 {
+				release, err := tp.Entry(context.Background())
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				if pausing.Load() {
+					duringPause.Add(1)
+				}
+				release()
+			}
+		})
+	}
+	wg.Wait()
+	if len(tp.sleeps()) == 0 {
+		t.Fatal("expected the entries to pause")
+	}
+	if n := duringPause.Load(); n != 0 {
+		t.Fatalf("expected no entry to run during a pause, %d did", n)
+	}
+}
+
+// TestPacer_EntryThatStartsSlowingWaitsOnce verifies that the entry whose
+// reading starts slowing down waits the first pause once, not again for its
+// turn.
+func TestPacer_EntryThatStartsSlowingWaitsOnce(t *testing.T) {
+	tp := newTestPacer(80, &fakeCPU{loads: []int{95}})
+	tp.blockEverySecond(t, 1) // the first busy reading
+
+	for range pacerBlockEntries {
+		release, err := tp.Entry(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		release()
+	}
+
+	if got := tp.sleeps(); len(got) != 1 || got[0] != pacerStartPause {
+		t.Fatalf("expected one pause of %v, got %v", pacerStartPause, got)
+	}
+}
+
 // TestPacer_EntryFullSpeedRunsTogether verifies that at full speed entries do
 // not wait for each other.
 func TestPacer_EntryFullSpeedRunsTogether(t *testing.T) {

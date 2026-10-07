@@ -91,8 +91,10 @@ func (p *Pacer) Block(ctx context.Context) error {
 }
 
 // Entry is Block for per-entry work: every pacerBlockEntries calls it waits as
-// Block does, and while slowing down it lets one entry through at a time.
-// The caller calls release once the entry is done, also after an error.
+// Block does, and while slowing down it lets one entry through at a time and
+// waits that pause holding the turn, so a pause stops every entry, not only
+// the one that waits it. The caller calls release once the entry is done,
+// also after an error.
 func (p *Pacer) Entry(ctx context.Context) (release func(), err error) {
 	noop := func() {}
 	if !p.enabled() {
@@ -105,20 +107,32 @@ func (p *Pacer) Entry(ctx context.Context) (release func(), err error) {
 		p.entries = 0
 	}
 	p.mu.Unlock()
-	if due {
-		if blockErr := p.Block(ctx); blockErr != nil {
-			return noop, blockErr
-		}
-	}
 	if p.currentPause() == 0 {
-		return noop, nil
+		if due {
+			// The reading this wait makes can start slowing down; it has
+			// waited the first pause already.
+			if blockErr := p.Block(ctx); blockErr != nil {
+				return noop, blockErr
+			}
+			due = false
+		}
+		if p.currentPause() == 0 {
+			return noop, nil
+		}
 	}
 	select {
 	case p.serial <- struct{}{}:
-		return func() { <-p.serial }, nil
 	case <-ctx.Done():
 		return noop, ctx.Err()
 	}
+	release = func() { <-p.serial }
+	if due {
+		if blockErr := p.Block(ctx); blockErr != nil {
+			release()
+			return noop, blockErr
+		}
+	}
+	return release, nil
 }
 
 // WaitCalm waits while the router's CPU is at or above the limit, at most
