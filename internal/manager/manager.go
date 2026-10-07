@@ -91,6 +91,14 @@ type Manager struct {
 	// busy (mikrotik.cpu_limit). nil, in tests that build a Manager by hand,
 	// never waits: see pacing.
 	pacer bulkPacer
+
+	// passLive holds, while a reconciliation pass runs, the last live decision
+	// on each address it touched, by normalized address; nil when no pass
+	// runs. See livepass.go. passDesired is what that pass expected, per
+	// protocol it read. Both protected by passMu.
+	passLive    map[string]*liveDuringPass
+	passDesired map[string]map[string]*crowdsec.Decision
+	passMu      sync.Mutex
 }
 
 // rebootCheckInterval is how often watchReboots reads the router uptime to
@@ -1735,7 +1743,10 @@ func (m *Manager) reconcileProtocolAddresses(ctx context.Context, proto string, 
 
 	existing, foreign := splitForeignAddresses(listed, m.commentPrefix())
 	diff := buildReconcileDiff(proto, decisions, existing, foreign, m.commentPrefix())
-	m.refreshAddressCache(proto, diff.currentMap)
+	live := m.liveFor(proto)
+	diff.leaveToLive(proto, live)
+	m.notePassDesired(proto, diff.shouldExist)
+	m.refreshAddressCache(proto, diff.currentMap, live)
 	metricsProto := metricsProtoName(proto)
 	added, addErr := m.addMissingAddresses(ctx, proto, listName, metricsProto, diff.toAdd)
 	removed := m.removeStaleAddresses(ctx, proto, metricsProto, diff.toRemove)
@@ -1846,8 +1857,10 @@ func staleAddressEntries(shouldExist map[string]*crowdsec.Decision, currentMap m
 	return toRemove
 }
 
-// refreshAddressCache replaces the cache contents for one protocol after reconciliation.
-func (m *Manager) refreshAddressCache(proto string, currentMap map[string]rosClient.AddressEntry) {
+// refreshAddressCache replaces the cache contents for one protocol after
+// reconciliation. It leaves the addresses of live decisions taken during the
+// pass as the live path left them: the listing may predate them.
+func (m *Manager) refreshAddressCache(proto string, currentMap map[string]rosClient.AddressEntry, live map[string]liveDuringPass) {
 	// Hold cacheMu through the full replacement for this protocol so concurrent
 	// handleBan/handleUnban calls never observe a partially refreshed cache.
 	// Large reconciliations may briefly block live handlers, but correctness wins
@@ -1858,6 +1871,9 @@ func (m *Manager) refreshAddressCache(proto string, currentMap map[string]rosCli
 		if strings.Contains(addr, ":") != (proto == "ipv6") {
 			continue
 		}
+		if _, noted := live[addr]; noted {
+			continue
+		}
 		if _, exists := currentMap[addr]; !exists {
 			delete(m.addressCache, addr)
 		}
@@ -1865,11 +1881,17 @@ func (m *Manager) refreshAddressCache(proto string, currentMap map[string]rosCli
 	// The listing is the router's state: no address of this protocol is
 	// uncertain any more.
 	for addr, addrProto := range m.uncertain {
+		if _, noted := live[addr]; noted {
+			continue
+		}
 		if addrProto == proto {
 			delete(m.uncertain, addr)
 		}
 	}
 	for addr, entry := range currentMap {
+		if _, noted := live[addr]; noted {
+			continue
+		}
 		// The id comes free here: currentMap is the print this reconcile pass
 		// already paid for. Throwing it away is what forced handleUnban to
 		// re-discover it with a full traversal.
