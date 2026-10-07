@@ -33,6 +33,10 @@ type Client struct {
 	// entries; empty means every entry counts as its own.
 	ownerPrefix string
 
+	// pacer slows reconciliation bulk work down while the router's CPU is
+	// busy (SetPacer); nil never waits. Live adds and removals never use it.
+	pacer *Pacer
+
 	// runnerMu guards how bulk-add scripts run (see runChunk): runnerKnown is
 	// set once the router's version has been read, useExecute when that
 	// version takes /execute with as-string and the router has not refused it.
@@ -72,6 +76,12 @@ func (c *Client) SetOwnerPrefix(prefix string) {
 // OwnerPrefix returns the prefix set with SetOwnerPrefix.
 func (c *Client) OwnerPrefix() string {
 	return c.ownerPrefix
+}
+
+// SetPacer sets the pacer the client's bulk work waits on: BulkAddAddresses,
+// AddAddressesEach and the duplicate lookups. Live adds and removals never wait.
+func (c *Client) SetPacer(p *Pacer) {
+	c.pacer = p
 }
 
 // NewClient creates a new RouterOS API client.

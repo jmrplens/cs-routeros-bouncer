@@ -25,6 +25,7 @@ type Pool struct {
 	newClient func(config.MikroTikConfig) *Client // injectable for testing
 
 	ownerPrefix string // handed to every client, see Client.SetOwnerPrefix
+	pacer       *Pacer // per item in ParallelExecContext and in every client, see SetPacer
 }
 
 // SetOwnerPrefix sets the owner prefix of the clients Connect opens. Call it
@@ -36,6 +37,12 @@ func (p *Pool) SetOwnerPrefix(prefix string) {
 // OwnerPrefix returns the prefix set with SetOwnerPrefix.
 func (p *Pool) OwnerPrefix() string {
 	return p.ownerPrefix
+}
+
+// SetPacer sets the pacer the pool's work waits on: per item in
+// ParallelExecContext, and in the clients Connect opens. Call it before Connect.
+func (p *Pool) SetPacer(pacer *Pacer) {
+	p.pacer = pacer
 }
 
 // NewPool creates a pool of n RouterOS client connections.
@@ -64,6 +71,7 @@ func (p *Pool) Connect() error {
 			return fmt.Errorf("pool connection %d: newClient returned nil client", i)
 		}
 		c.SetOwnerPrefix(p.ownerPrefix)
+		c.SetPacer(p.pacer)
 		if err := c.Connect(); err != nil {
 			p.Close()
 			return fmt.Errorf("pool connection %d: %w", i, err)
@@ -122,6 +130,7 @@ var ErrPoolClosed = errors.New("routeros connection pool closed")
 // workers. Once ctx is done the workers take no more items. Every item left
 // untaken, also when the pool is closed and yields no client, is reported as
 // an error of its own (ctx.Err(), else ErrPoolClosed) without calling fn.
+// Each item waits on the pool's pacer first (Pacer.Entry).
 func ParallelExecContext[T any](ctx context.Context, pool *Pool, items []T, fn func(c *Client, item T) error) []error {
 	if len(items) == 0 {
 		return nil
@@ -173,7 +182,14 @@ func parallelWorker[T any](ctx context.Context, pool *Pool, work <-chan T, fn fu
 			report(err)
 			return
 		}
-		if err := fn(c, item); err != nil {
+		release, err := pool.pacer.Entry(ctx)
+		if err != nil {
+			report(err)
+			return
+		}
+		err = fn(c, item)
+		release()
+		if err != nil {
 			report(err)
 		}
 	}
@@ -241,7 +257,7 @@ func (p *Pool) AddAddresses(ctx context.Context, proto, list string, entries []B
 	batchTaken := make([]bool, len(batches)) // as taken above
 	batchErrs := ParallelExecContext(ctx, p, batchIdx, func(c *Client, b int) error {
 		batchTaken[b] = true
-		refreshed, dupFailed, dupErrs := c.refreshDuplicates(proto, list, batches[b])
+		refreshed, dupFailed, dupErrs := c.refreshDuplicates(ctx, proto, list, batches[b])
 		count.Add(int64(refreshed))
 		mu.Lock()
 		failed = append(failed, dupFailed...)

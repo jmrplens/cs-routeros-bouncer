@@ -75,6 +75,7 @@ const executeMaxScriptBytes = 64 * 1024
 // (settleDuplicates), and failed holds what the retry could not add either. A
 // stored script cannot report back, so its chunk counts every entry as added.
 // Once ctx is done no further chunk runs, and its entries are failed too.
+// Each chunk waits on the client's pacer first (Pacer.Block).
 func (c *Client) BulkAddAddresses(ctx context.Context, proto, list string, entries []BulkEntry) (added int, failed []BulkEntry, err error) {
 	if len(entries) == 0 {
 		return 0, nil, nil
@@ -87,6 +88,11 @@ func (c *Client) BulkAddAddresses(ctx context.Context, proto, list string, entri
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			failed = append(failed, entries[start:]...)
 			errs = append(errs, ctxErr)
+			break
+		}
+		if paceErr := c.pacer.Block(ctx); paceErr != nil {
+			failed = append(failed, entries[start:]...)
+			errs = append(errs, paceErr)
 			break
 		}
 		end := min(start+bulkChunkSize, len(entries))
@@ -150,6 +156,7 @@ func (c *Client) AddAddressesEach(ctx context.Context, proto, list string, chunk
 // addEach sends one add per entry and sets ID on each one the router accepts.
 // It hands back the duplicates, for settleDuplicates, instead of looking each
 // one up. Once ctx is done it adds no more, and the entries left are failed.
+// Each add waits on the client's pacer (Pacer.Entry).
 func (c *Client) addEach(ctx context.Context, proto, list string, entries []*BulkEntry) (added int, failed []BulkEntry, dups []*BulkEntry, errs []error) {
 	for i, entry := range entries {
 		if ctxErr := ctx.Err(); ctxErr != nil {
@@ -159,7 +166,16 @@ func (c *Client) addEach(ctx context.Context, proto, list string, entries []*Bul
 			errs = append(errs, ctxErr)
 			break
 		}
+		release, paceErr := c.pacer.Entry(ctx)
+		if paceErr != nil {
+			for _, e := range entries[i:] {
+				failed = append(failed, *e)
+			}
+			errs = append(errs, paceErr)
+			break
+		}
 		id, duplicate, addErr := c.addAddressOnce(proto, list, entry.Address, entry.Timeout, entry.Comment)
+		release()
 		switch {
 		case duplicate:
 			dups = append(dups, entry)
@@ -187,7 +203,7 @@ func (c *Client) settleDuplicates(ctx context.Context, proto, list string, dups 
 		}
 		return 0, failed, []error{ctxErr}
 	}
-	return c.refreshDuplicates(proto, list, dups)
+	return c.refreshDuplicates(ctx, proto, list, dups)
 }
 
 // joinAddErrors sums up the errors of a run of adds, nil for none.

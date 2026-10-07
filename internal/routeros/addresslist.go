@@ -146,48 +146,69 @@ const duplicateLookupBatch = 100
 // It sets ID on every entry it refreshed and returns how many, and the entries
 // it could not refresh with why: no entry found
 // (ErrDuplicateReportedButNotFound), a foreign one (ErrForeignEntry), or a
-// failed lookup or update.
-func (c *Client) refreshDuplicates(proto, list string, dups []*BulkEntry) (refreshed int, failed []BulkEntry, errs []error) {
-	path := addressListPath(proto)
+// failed lookup or update. Each lookup waits on the client's pacer first: it
+// walks the whole list on the router.
+func (c *Client) refreshDuplicates(ctx context.Context, proto, list string, dups []*BulkEntry) (refreshed int, failed []BulkEntry, errs []error) {
 	for start := 0; start < len(dups); start += duplicateLookupBatch {
+		if err := c.pacer.Block(ctx); err != nil {
+			for _, e := range dups[start:] {
+				failed = append(failed, *e)
+			}
+			errs = append(errs, err)
+			break
+		}
 		batch := dups[start:min(start+duplicateLookupBatch, len(dups))]
-		addrs := make([]string, len(batch))
-		for i, e := range batch {
-			addrs[i] = NormalizeAddress(e.Address, proto)
-		}
-		found, err := c.findAddresses(proto, list, addrs)
-		if err != nil {
-			for _, e := range batch {
-				failed = append(failed, *e)
-			}
-			errs = append(errs, fmt.Errorf("refresh %d duplicate entries in %s: %w", len(batch), list, err))
-			continue
-		}
-		for i, e := range batch {
-			existing, ok := found[addrs[i]]
-			switch {
-			case !ok:
-				err = fmt.Errorf("add address %s to %s: %w", addrs[i], list, ErrDuplicateReportedButNotFound)
-			case !OwnedComment(existing.Comment, c.ownerPrefix):
-				err = fmt.Errorf("add address %s to %s: %w", addrs[i], list, ErrForeignEntry)
-			default:
-				err = nil
-				if attrs := duplicateAddressUpdateAttrs(e.Timeout, e.Comment); len(attrs) > 0 {
-					if setErr := c.Set(path, existing.ID, attrs); setErr != nil {
-						err = fmt.Errorf("add address %s to %s: duplicate entry and update failed: %w", addrs[i], list, setErr)
-					}
-				}
-			}
-			if err != nil {
-				failed = append(failed, *e)
-				errs = append(errs, err)
-				continue
-			}
-			e.ID = existing.ID
-			refreshed++
-		}
+		n, batchFailed, batchErrs := c.refreshDuplicateBatch(proto, list, batch)
+		refreshed += n
+		failed = append(failed, batchFailed...)
+		errs = append(errs, batchErrs...)
 	}
 	return refreshed, failed, errs
+}
+
+// refreshDuplicateBatch settles one batch of refreshDuplicates with a single
+// lookup.
+func (c *Client) refreshDuplicateBatch(proto, list string, batch []*BulkEntry) (refreshed int, failed []BulkEntry, errs []error) {
+	addrs := make([]string, len(batch))
+	for i, e := range batch {
+		addrs[i] = NormalizeAddress(e.Address, proto)
+	}
+	found, err := c.findAddresses(proto, list, addrs)
+	if err != nil {
+		for _, e := range batch {
+			failed = append(failed, *e)
+		}
+		return 0, failed, []error{fmt.Errorf("refresh %d duplicate entries in %s: %w", len(batch), list, err)}
+	}
+	path := addressListPath(proto)
+	for i, e := range batch {
+		if refreshErr := c.refreshDuplicate(path, list, addrs[i], e, found); refreshErr != nil {
+			failed = append(failed, *e)
+			errs = append(errs, refreshErr)
+			continue
+		}
+		refreshed++
+	}
+	return refreshed, failed, errs
+}
+
+// refreshDuplicate refreshes the entry the batch lookup found for addr, when
+// the bouncer owns it, and sets its ID on e.
+func (c *Client) refreshDuplicate(path, list, addr string, e *BulkEntry, found map[string]AddressEntry) error {
+	existing, ok := found[addr]
+	switch {
+	case !ok:
+		return fmt.Errorf("add address %s to %s: %w", addr, list, ErrDuplicateReportedButNotFound)
+	case !OwnedComment(existing.Comment, c.ownerPrefix):
+		return fmt.Errorf("add address %s to %s: %w", addr, list, ErrForeignEntry)
+	}
+	if attrs := duplicateAddressUpdateAttrs(e.Timeout, e.Comment); len(attrs) > 0 {
+		if err := c.Set(path, existing.ID, attrs); err != nil {
+			return fmt.Errorf("add address %s to %s: duplicate entry and update failed: %w", addr, list, err)
+		}
+	}
+	e.ID = existing.ID
+	return nil
 }
 
 // findAddresses looks up the entries of list holding any of addrs, which must
