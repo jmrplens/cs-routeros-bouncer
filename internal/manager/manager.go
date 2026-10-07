@@ -864,18 +864,26 @@ func (m *Manager) pollSystemMetrics() {
 // It reports whether a reconcile is owed: the add failed without the router
 // refusing it, so the address may be missing on the router.
 func (m *Manager) handleBan(d *crowdsec.Decision) (reconcileOwed bool) {
+	_, reconcileOwed = m.ban(d, true)
+	return reconcileOwed
+}
+
+// ban is handleBan, reporting also whether it added the address. count
+// records the decision's metrics when it does: settleLive passes false for a
+// decision whose metrics were recorded when it arrived.
+func (m *Manager) ban(d *crowdsec.Decision, count bool) (added, reconcileOwed bool) {
 	if d == nil {
-		return false
+		return false, false
 	}
 
 	start := time.Now()
 
 	// Check if the protocol is enabled
 	if d.Proto == "ip" && !m.cfg.Firewall.IPv4.Enabled {
-		return false
+		return false, false
 	}
 	if d.Proto == "ipv6" && !m.cfg.Firewall.IPv6.Enabled {
-		return false
+		return false, false
 	}
 
 	metricsProto := "ipv4"
@@ -898,7 +906,7 @@ func (m *Manager) handleBan(d *crowdsec.Decision) (reconcileOwed bool) {
 			Str("address", d.Value).
 			Str("list", listName).
 			Msg("address already in cache, skipping duplicate ban")
-		return false
+		return false, false
 	}
 
 	timeout := ""
@@ -915,7 +923,7 @@ func (m *Manager) handleBan(d *crowdsec.Decision) (reconcileOwed bool) {
 	entryID, err := m.ros.AddAddress(d.Proto, listName, d.Value, timeout, comment)
 	if errors.Is(err, rosClient.ErrForeignEntry) {
 		m.logger.Info().Str("address", d.Value).Str("list", listName).Msg("address already held by a foreign entry, left alone")
-		return false
+		return false, false
 	}
 	if err != nil {
 		// A refusal is about this add only: an earlier add that failed in
@@ -926,15 +934,17 @@ func (m *Manager) handleBan(d *crowdsec.Decision) (reconcileOwed bool) {
 		}
 		m.logger.Error().Err(err).Str("address", d.Value).Str("list", listName).Msg("error adding address to MikroTik")
 		metrics.RecordError("add")
-		return reconcileOwed
+		return false, reconcileOwed
 	}
 
 	// Update address cache, keeping the id AddAddress just returned.
 	m.cacheAddress(addr, entryID)
 
-	metrics.RecordDecision("ban", metricsProto, d.Origin)
-	metrics.IncrActiveDecisions(metricsProto)
-	metrics.IncrActiveDecisionsByOrigin(d.Origin)
+	if count {
+		metrics.RecordDecision("ban", metricsProto, d.Origin)
+		metrics.IncrActiveDecisions(metricsProto)
+		metrics.IncrActiveDecisionsByOrigin(d.Origin)
+	}
 	metrics.ObserveOperationDuration("add", time.Since(start))
 
 	m.logger.Info().
@@ -944,20 +954,23 @@ func (m *Manager) handleBan(d *crowdsec.Decision) (reconcileOwed bool) {
 		Str("origin", d.Origin).
 		Str("scenario", d.Scenario).
 		Msg("banned address")
-	return false
+	return true, false
 }
 
 // finishUnban records the cache eviction, metrics and log line shared by both
 // unban paths — the fast delete-by-cached-id and the FindAddress fallback.
 // alreadyGone distinguishes "we deleted it" from "it had already expired",
 // which changes the log line but not the accounting: either way the address is
-// no longer enforced and the decision is settled.
-func (m *Manager) finishUnban(d *crowdsec.Decision, addr, metricsProto, listName string, start time.Time, alreadyGone bool) {
+// no longer enforced and the decision is settled. count records the decision's
+// metrics, as in ban.
+func (m *Manager) finishUnban(d *crowdsec.Decision, addr, metricsProto, listName string, start time.Time, alreadyGone, count bool) {
 	m.forgetAddress(addr)
 
-	metrics.RecordDecision("unban", metricsProto, d.Origin)
-	metrics.DecrActiveDecisions(metricsProto)
-	metrics.DecrActiveDecisionsByOrigin(d.Origin)
+	if count {
+		metrics.RecordDecision("unban", metricsProto, d.Origin)
+		metrics.DecrActiveDecisions(metricsProto)
+		metrics.DecrActiveDecisionsByOrigin(d.Origin)
+	}
 	metrics.ObserveOperationDuration("remove", time.Since(start))
 
 	event := m.logger.Info().
@@ -972,18 +985,25 @@ func (m *Manager) finishUnban(d *crowdsec.Decision, addr, metricsProto, listName
 // handleUnban processes a decision deletion.
 // Uses address cache to skip FindAddress for addresses not on the router.
 func (m *Manager) handleUnban(d *crowdsec.Decision) {
+	m.unban(d, true)
+}
+
+// unban is handleUnban, reporting whether it finished the unban (finishUnban):
+// the entry is gone from the router, removed now or expired before. count is
+// as in ban.
+func (m *Manager) unban(d *crowdsec.Decision, count bool) (finished bool) {
 	if d == nil {
-		return
+		return false
 	}
 
 	start := time.Now()
 
 	// Check if the protocol is enabled
 	if d.Proto == "ip" && !m.cfg.Firewall.IPv4.Enabled {
-		return
+		return false
 	}
 	if d.Proto == "ipv6" && !m.cfg.Firewall.IPv6.Enabled {
-		return
+		return false
 	}
 
 	metricsProto := "ipv4"
@@ -1000,7 +1020,7 @@ func (m *Manager) handleUnban(d *crowdsec.Decision) {
 		m.logger.Debug().
 			Str("address", d.Value).
 			Msg("address not in cache, skipping unban (already expired or never added)")
-		return
+		return false
 	}
 
 	// Delete by the cached id when there is one. This is the whole point of
@@ -1031,8 +1051,8 @@ func (m *Manager) handleUnban(d *crowdsec.Decision) {
 		switch {
 		case removeErr == nil, errors.Is(removeErr, rosClient.ErrNotFound):
 			m.finishUnban(d, addr, metricsProto, listName, start,
-				errors.Is(removeErr, rosClient.ErrNotFound))
-			return
+				errors.Is(removeErr, rosClient.ErrNotFound), count)
+			return true
 		default:
 			// Anything else (transport, auth, an unexpected device error) is
 			// not evidence about the id, so fall through to the slow path
@@ -1053,14 +1073,14 @@ func (m *Manager) handleUnban(d *crowdsec.Decision) {
 		m.logger.Debug().
 			Str("address", d.Value).
 			Msg("address not found in MikroTik (already expired?)")
-		return
+		return false
 	}
 	if err != nil {
 		m.logger.Error().Err(err).
 			Str("address", d.Value).
 			Msg("error finding address for unban")
 		metrics.RecordError("find")
-		return
+		return false
 	}
 	if entry == nil {
 		// Defensive guard for RouterOSClient implementations that violate the
@@ -1070,7 +1090,7 @@ func (m *Manager) handleUnban(d *crowdsec.Decision) {
 		m.logger.Debug().
 			Str("address", d.Value).
 			Msg("address not found in MikroTik (already expired?)")
-		return
+		return false
 	}
 
 	if !rosClient.OwnedComment(entry.Comment, m.commentPrefix()) {
@@ -1080,7 +1100,7 @@ func (m *Manager) handleUnban(d *crowdsec.Decision) {
 		m.logger.Info().
 			Str("address", d.Value).
 			Msg("address held by a foreign entry, not removed")
-		return
+		return false
 	}
 
 	// Remove the address
@@ -1090,10 +1110,11 @@ func (m *Manager) handleUnban(d *crowdsec.Decision) {
 			Str("id", entry.ID).
 			Msg("error removing address from MikroTik")
 		metrics.RecordError("remove")
-		return
+		return false
 	}
 
-	m.finishUnban(d, addr, metricsProto, listName, start, false)
+	m.finishUnban(d, addr, metricsProto, listName, start, false, count)
+	return true
 }
 
 // resolveLogPrefix returns the effective log-prefix for a rule type.
