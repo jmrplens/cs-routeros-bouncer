@@ -70,6 +70,10 @@ type MikroTikConfig struct {
 	// before that; "api" adds each entry with its own API call, spread over
 	// the connection pool, and never runs a script. Empty is "script".
 	BulkAddMethod string `yaml:"bulk_add_method" mapstructure:"bulk_add_method"`
+	// CPULimit is the router CPU load, in percent of all its cores, at which
+	// the bouncer slows its reconciliation bulk work down (routeros.Pacer); 0
+	// turns that off. Live bans and unbans never wait.
+	CPULimit int `yaml:"cpu_limit" mapstructure:"cpu_limit"`
 }
 
 // Bulk add methods for mikrotik.bulk_add_method.
@@ -492,6 +496,7 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("mikrotik.command_timeout", "30s")
 	v.SetDefault("mikrotik.pool_size", 4)
 	v.SetDefault("mikrotik.bulk_add_method", "script")
+	v.SetDefault("mikrotik.cpu_limit", 80)
 
 	v.SetDefault("firewall.ipv4.enabled", true)
 	v.SetDefault("firewall.ipv4.address_list", "crowdsec-banned")
@@ -548,6 +553,7 @@ func Load(configPath string) (*Config, error) {
 		"mikrotik.command_timeout":    "MIKROTIK_CMD_TIMEOUT",
 		"mikrotik.pool_size":          "MIKROTIK_POOL_SIZE",
 		"mikrotik.bulk_add_method":    "MIKROTIK_BULK_ADD_METHOD",
+		"mikrotik.cpu_limit":          "MIKROTIK_CPU_LIMIT",
 		// Firewall
 		"firewall.ipv4.enabled":                    "FIREWALL_IPV4_ENABLED",
 		"firewall.ipv4.address_list":               "FIREWALL_IPV4_ADDRESS_LIST",
@@ -1154,6 +1160,9 @@ func (c *Config) validateIntervals() error {
 	}
 	if c.MikroTik.CommandTimeout < 0 {
 		return errors.New("mikrotik.command_timeout must be >= 0 (0 means no timeout)")
+	}
+	if c.MikroTik.CPULimit < 0 || c.MikroTik.CPULimit > 100 {
+		return errors.New("mikrotik.cpu_limit must be between 0 and 100 (0 turns it off)")
 	}
 
 	return nil

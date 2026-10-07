@@ -3431,3 +3431,181 @@ func TestAddEntriesToCacheKeepsIDs(t *testing.T) {
 		t.Fatalf("expected 2.2.2.2 cached without an id, got %q (present %v)", got, ok)
 	}
 }
+
+// TestProcessLiveDecisions_PeriodicPassWaitsForCalmRouter verifies that a
+// periodic pass waits on the pacer, at most reconcileCalmWaitMax, before it
+// reads the address list: one command the pacer cannot spread out.
+func TestProcessLiveDecisions_PeriodicPassWaitsForCalmRouter(t *testing.T) {
+	mock := &mockROS{}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	ctx, cancel := context.WithCancel(context.Background())
+	stream := &mockStream{ActiveDecisionsFunc: func(context.Context) ([]*crowdsec.Decision, error) {
+		cancel()
+		return nil, nil
+	}}
+	mgr := newTestManagerWithStream(mock, stream, cfg)
+	fp := &fakePacer{}
+	mgr.pacer = fp
+	reconcileC := make(chan time.Time, 1)
+	reconcileC <- time.Now()
+
+	if err := mgr.processLiveDecisions(ctx, make(chan *crowdsec.Decision), make(chan *crowdsec.Decision), make(chan error), reconcileC, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if fp.waitCalls != 1 || fp.waitMost[0] != reconcileCalmWaitMax {
+		t.Fatalf("expected one wait of at most %v, got %d %v", reconcileCalmWaitMax, fp.waitCalls, fp.waitMost)
+	}
+	if stream.activeCalled != 1 {
+		t.Fatalf("expected the pass to run after the wait, snapshot fetched %d times", stream.activeCalled)
+	}
+}
+
+// TestProcessLiveDecisions_RetryWaitsForCalmRouter verifies that a retried
+// pass waits on the pacer too.
+func TestProcessLiveDecisions_RetryWaitsForCalmRouter(t *testing.T) {
+	mock := &mockROS{}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	ctx, cancel := context.WithCancel(context.Background())
+	stream := &mockStream{ActiveDecisionsFunc: func(context.Context) ([]*crowdsec.Decision, error) {
+		cancel()
+		return nil, nil
+	}}
+	mgr := newTestManagerWithStream(mock, stream, cfg)
+	fp := &fakePacer{}
+	mgr.pacer = fp
+	retryC := make(chan time.Time, 1)
+	retryC <- time.Now()
+
+	if err := mgr.processLiveDecisions(ctx, make(chan *crowdsec.Decision), make(chan *crowdsec.Decision), make(chan error), nil, nil, retryC); err != nil {
+		t.Fatal(err)
+	}
+	if fp.waitCalls != 1 || stream.activeCalled != 1 {
+		t.Fatalf("expected one wait and one pass, got %d waits, %d passes", fp.waitCalls, stream.activeCalled)
+	}
+}
+
+// TestProcessLiveDecisions_RebootPassDoesNotWait verifies that the pass after
+// a reboot starts at once: the router has just lost every dynamic entry.
+func TestProcessLiveDecisions_RebootPassDoesNotWait(t *testing.T) {
+	mock := &mockROS{}
+	cfg := baseConfig()
+	cfg.Firewall.IPv6.Enabled = false
+	ctx, cancel := context.WithCancel(context.Background())
+	stream := &mockStream{ActiveDecisionsFunc: func(context.Context) ([]*crowdsec.Decision, error) {
+		cancel()
+		return nil, nil
+	}}
+	mgr := newTestManagerWithStream(mock, stream, cfg)
+	fp := &fakePacer{}
+	mgr.pacer = fp
+	rebootC := make(chan struct{}, 1)
+	rebootC <- struct{}{}
+
+	if err := mgr.processLiveDecisions(ctx, make(chan *crowdsec.Decision), make(chan *crowdsec.Decision), make(chan error), nil, rebootC, nil); err != nil {
+		t.Fatal(err)
+	}
+	if fp.waitCalls != 0 || stream.activeCalled != 1 {
+		t.Fatalf("expected the reboot pass at once, got %d waits, %d passes", fp.waitCalls, stream.activeCalled)
+	}
+}
+
+// TestProcessLiveDecisions_ShutdownWhileWaitingForCalm verifies that a
+// shutdown during the wait skips the pass and returns.
+func TestProcessLiveDecisions_ShutdownWhileWaitingForCalm(t *testing.T) {
+	mock := &mockROS{}
+	cfg := baseConfig()
+	ctx, cancel := context.WithCancel(context.Background())
+	stream := &mockStream{}
+	mgr := newTestManagerWithStream(mock, stream, cfg)
+	mgr.pacer = &fakePacer{waitFunc: func(context.Context) error {
+		cancel()
+		return context.Canceled
+	}}
+	reconcileC := make(chan time.Time, 1)
+	reconcileC <- time.Now()
+
+	if err := mgr.processLiveDecisions(ctx, make(chan *crowdsec.Decision), make(chan *crowdsec.Decision), make(chan error), reconcileC, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if stream.activeCalled != 0 {
+		t.Fatalf("expected no pass after the shutdown, snapshot fetched %d times", stream.activeCalled)
+	}
+}
+
+// TestRemoveAddressesSequential_WaitsOnThePacer verifies that sequential
+// removals wait on the pacer, and stop when it reports a shutdown.
+func TestRemoveAddressesSequential_WaitsOnThePacer(t *testing.T) {
+	entries := []ros.AddressEntry{{ID: "*1"}, {ID: "*2"}, {ID: "*3"}}
+	mock := &mockROS{}
+	mgr := newTestManager(mock, baseConfig())
+	fp := &fakePacer{}
+	mgr.pacer = fp
+
+	if got := mgr.removeAddressesSequential(context.Background(), "ip", entries); got != 3 {
+		t.Fatalf("expected 3 removed, got %d", got)
+	}
+	if fp.entries != 3 {
+		t.Fatalf("expected a wait before each removal, got %d", fp.entries)
+	}
+
+	mock2 := &mockROS{}
+	mgr2 := newTestManager(mock2, baseConfig())
+	mgr2.pacer = &fakePacer{entryErr: context.Canceled}
+	if got := mgr2.removeAddressesSequential(context.Background(), "ip", entries); got != 0 || len(mock2.removeAddressCalls) != 0 {
+		t.Fatalf("expected no removal once the pacer reports a shutdown, got %d removed, %d calls", got, len(mock2.removeAddressCalls))
+	}
+}
+
+// TestReconcileProtocolAddresses_LogsThrottledTime verifies that a pass that
+// waited for the router's CPU says how long.
+func TestReconcileProtocolAddresses_LogsThrottledTime(t *testing.T) {
+	var logs bytes.Buffer
+	mock := &mockROS{}
+	mgr := newTestManager(mock, baseConfig())
+	mgr.logger = zerolog.New(&logs)
+	mgr.pacer = &fakePacer{waitedSeq: []time.Duration{0, 2 * time.Second}}
+
+	if _, err := mgr.reconcileProtocolAddresses(context.Background(), "ip", nil, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(logs.String(), `"throttled":2000`) {
+		t.Fatalf("expected the throttled time in the log, got %s", logs.String())
+	}
+}
+
+// TestNewManager_BuildsThePacerFromConfig verifies that NewManager makes a
+// router pacer, also with cpu_limit 0, where it never waits.
+func TestNewManager_BuildsThePacerFromConfig(t *testing.T) {
+	for _, limit := range []int{80, 0} {
+		cfg := baseConfig()
+		cfg.MikroTik.CPULimit = limit
+		mgr := NewManager(cfg, "test")
+		if p, ok := mgr.pacer.(*ros.Pacer); !ok || p == nil {
+			t.Fatalf("cpu_limit %d: expected a *routeros.Pacer, got %T", limit, mgr.pacer)
+		}
+	}
+}
+
+// TestReconcileAddresses_RestsThePacer verifies that every pass ends the
+// pacer's slowing down, a failed one too: otherwise a pass that ends throttled
+// leaves crowdsec_bouncer_routeros_throttled at 1 until the next pass.
+func TestReconcileAddresses_RestsThePacer(t *testing.T) {
+	mock := &mockROS{}
+	mgr := newTestManager(mock, baseConfig())
+	fp := &fakePacer{}
+	mgr.pacer = fp
+
+	if err := mgr.reconcileAddresses(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+	mock.listAddressesErr = errors.New("listing failed")
+	if err := mgr.reconcileAddresses(context.Background(), nil); err == nil {
+		t.Fatal("expected the listing error")
+	}
+
+	if fp.restCount() != 2 {
+		t.Fatalf("expected the pacer to rest after both passes, got %d", fp.restCount())
+	}
+}

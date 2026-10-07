@@ -341,6 +341,19 @@
       "doc": "BulkAddMethod is how reconciliation adds missing address-list entries: \"script\" sends chunks of 100 entries as RouterOS scripts, one /execute call each on RouterOS 7.8rc1 and later and a temporary /system/script before that; \"api\" adds each entry with its own API call, spread over the connection pool, and never runs a script. Empty is \"script\".",
       "needsProse": null
     },
+    "mikrotik.cpu_limit": {
+      "path": "mikrotik.cpu_limit",
+      "type": "integer",
+      "section": false,
+      "env": "MIKROTIK_CPU_LIMIT",
+      "envAliases": [],
+      "requirement": "optional",
+      "requirementCondition": null,
+      "default": 80,
+      "defaultSource": "explicit",
+      "doc": "CPULimit is the router CPU load, in percent of all its cores, at which the bouncer slows its reconciliation bulk work down (routeros.Pacer); 0 turns that off. Live bans and unbans never wait.",
+      "needsProse": null
+    },
     "firewall": {
       "path": "firewall",
       "type": "object",

@@ -69,6 +69,12 @@ Through the stored scripts RouterOS before 7.8rc1 gets, the same entries took
 22.8 seconds over ten sessions. [Benchmarking](/cs-routeros-bouncer/development/benchmarking/#the-first-reconciliation-by-bulk-add-method)
 has the three side by side and how they were measured.
 
+## Router CPU
+
+`mikrotik.cpu_limit` (default `80`) slows the bouncer's reconciliation work down while the router's CPU is busy; [MikroTik Configuration](/cs-routeros-bouncer/configuration/mikrotik/) describes how. Lower it on a router that must keep more headroom for routing. Raise it, or set `0`, on a router that runs near its limit all the time and would otherwise load every list at the slowest pace. `crowdsec_bouncer_routeros_throttled` and `crowdsec_bouncer_routeros_throttle_seconds_total` show when the bouncer slowed down and for how long.
+
+A CHR on an oversubscribed host can be short of CPU without its `cpu-load` showing it: time the host takes away does not count as busy inside RouterOS. The limit does not see that case; the bouncer's commands just take longer.
+
 ## Timeouts
 
 Increase `mikrotik.command_timeout` if RouterOS is slow during large list operations:

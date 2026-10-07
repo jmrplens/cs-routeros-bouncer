@@ -295,7 +295,19 @@ When `metrics.routeros_poll_interval` is non-zero, the bouncer collects MikroTik
 
 <Badge text="Gauge" variant="note" />
 
-CPU load percentage (0–100).
+CPU load percentage (0–100). While the bouncer slows down for the router's CPU, its readings update this gauge every second.
+
+### `crowdsec_bouncer_routeros_throttled`
+
+<Badge text="Gauge" variant="note" />
+
+`1` while the bouncer slows its reconciliation work down because the router's CPU is at or above `mikrotik.cpu_limit`, `0` otherwise. It does not depend on `metrics.routeros_poll_interval`.
+
+### `crowdsec_bouncer_routeros_throttle_seconds_total`
+
+<Badge text="Counter" variant="note" />
+
+Time the bouncer spent waiting for the router's CPU: pauses between blocks of reconciliation work, and waits before periodic passes.
 
 ### `crowdsec_bouncer_routeros_memory_total_bytes`
 

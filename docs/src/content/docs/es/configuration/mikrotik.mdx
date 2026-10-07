@@ -157,3 +157,22 @@ Medido en un RB5009 (RouterOS 7.24.4), cargando unas 24.400 decisiones al arranc
 
 Las decisiones en vivo solo se procesan cuando ha terminado la primera reconciliación, y entre las pasadas siguientes. Un apagado detiene una pasada en curso: la lectura de la address-list del principio, sus adiciones y sus eliminaciones. El siguiente arranque la completa.
 :::
+
+## CPU del router
+
+### `mikrotik.cpu_limit` <Badge text="Opcional" variant="note" />
+
+<ConfigOption path="mikrotik.cpu_limit" />
+
+La carga de CPU del router, en porcentaje de todos sus núcleos, a partir de la cual el bouncer baja el ritmo de sus reconciliaciones. Mientras la carga está en ese valor o por encima, el bouncer hace una pausa antes de cada bloque de trabajo (un script de 100 altas, 100 altas o bajas sueltas, una búsqueda de duplicados) y usa una sola conexión de la API cada vez. La pausa empieza en 200 ms, se duplica por cada segundo ocupado hasta 5 s y se reduce a la mitad por cada segundo en que la carga está 10 puntos por debajo del límite, hasta volver a pleno ritmo. Una pasada periódica también espera hasta un minuto a que baje la carga antes de leer la address-list. Los baneos y desbaneos en vivo no se frenan nunca, ni tampoco el apagado; pero, como siempre, los que llegan durante una pasada se aplican cuando esta termina, así que una pasada frenada también los retiene más tiempo: minutos, con una lista grande al ritmo más lento. `0` lo desactiva.
+
+La carga es el propio `cpu-load` de RouterOS: la media de todos los núcleos durante el último segundo, leída como mucho una vez por segundo mientras hay trabajo masivo. Un solo segundo ocupado, como las tareas periódicas del propio router, no frena nada: hacen falta dos seguidos.
+
+```yaml
+mikrotik:
+  cpu_limit: 80
+```
+
+:::note
+Al ritmo más lento, una reconciliación añade unas 20 entradas por segundo: la lista comunitaria de 17.000 entradas tarda entonces unos 14 minutos en lugar de 14 segundos, pero sigue avanzando. En un RB5009 el método por script por defecto se queda en torno al 30 % de la CPU, así que el `80` por defecto nunca lo frena.
+:::

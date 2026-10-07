@@ -1517,3 +1517,27 @@ func TestReplaceActiveDecisionsByOrigin(t *testing.T) {
 		t.Errorf("an empty picture should leave no origins, got %v", left)
 	}
 }
+
+// TestRouterOSThrottleMetrics verifies the gauge and the counter of the
+// router CPU pacer, and that a reading updates the CPU gauge.
+func TestRouterOSThrottleMetrics(t *testing.T) {
+	SetRouterOSThrottled(true)
+	if got := testutil.ToFloat64(routerosThrottled); got != 1 {
+		t.Errorf("throttled = %v, want 1", got)
+	}
+	SetRouterOSThrottled(false)
+	if got := testutil.ToFloat64(routerosThrottled); got != 0 {
+		t.Errorf("throttled = %v, want 0", got)
+	}
+
+	before := testutil.ToFloat64(routerosThrottleSeconds)
+	AddRouterOSThrottleSeconds(1.5)
+	if got := testutil.ToFloat64(routerosThrottleSeconds) - before; got != 1.5 {
+		t.Errorf("throttle seconds grew by %v, want 1.5", got)
+	}
+
+	SetRouterOSCPULoad(42)
+	if got := testutil.ToFloat64(routerosCPULoad); got != 42 {
+		t.Errorf("cpu load = %v, want 42", got)
+	}
+}
