@@ -89,8 +89,10 @@ type Manager struct {
 
 	// pacer slows reconciliation bulk work down while the router's CPU is
 	// busy (mikrotik.cpu_limit). nil, in tests that build a Manager by hand,
-	// never waits: see pacing.
-	pacer bulkPacer
+	// never waits: see pacing. routerPacer is the same pacer, for the
+	// connection pool's clients; nil leaves the pool unpaced.
+	pacer       bulkPacer
+	routerPacer *rosClient.Pacer
 
 	// passLive holds, while a reconciliation pass runs, the last live decision
 	// on each address it touched, by normalized address; nil when no pass
@@ -179,6 +181,7 @@ func NewManager(cfg config.Config, version string) *Manager {
 		ruleIDs:      make(map[string]string),
 		addressCache: make(map[string]string),
 		pacer:        pacer,
+		routerPacer:  pacer,
 	}
 }
 
@@ -353,9 +356,7 @@ func (m *Manager) configureConnectionPool() {
 func (m *Manager) newConnectionPool(size int) *rosClient.Pool {
 	pool := rosClient.NewPool(m.cfg.MikroTik, size)
 	pool.SetOwnerPrefix(m.commentPrefix())
-	if p, ok := m.pacer.(*rosClient.Pacer); ok {
-		pool.SetPacer(p)
-	}
+	pool.SetPacer(m.routerPacer)
 	return pool
 }
 

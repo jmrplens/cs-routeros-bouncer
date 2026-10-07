@@ -3584,8 +3584,8 @@ func TestNewManager_BuildsThePacerFromConfig(t *testing.T) {
 		cfg := baseConfig()
 		cfg.MikroTik.CPULimit = limit
 		mgr := NewManager(cfg, "test")
-		if p, ok := mgr.pacer.(*ros.Pacer); !ok || p == nil {
-			t.Fatalf("cpu_limit %d: expected a *routeros.Pacer, got %T", limit, mgr.pacer)
+		if p, ok := mgr.pacer.(*ros.Pacer); !ok || p == nil || p != mgr.routerPacer {
+			t.Fatalf("cpu_limit %d: expected a *routeros.Pacer, also for the pool, got %T", limit, mgr.pacer)
 		}
 	}
 }
