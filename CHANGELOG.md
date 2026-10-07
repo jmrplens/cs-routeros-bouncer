@@ -1,3 +1,9 @@
+## [Unreleased]
+
+### Added
+
+- **The bouncer slows down while the router's CPU is busy** — `mikrotik.cpu_limit` (default `80`, `0` turns it off): while RouterOS' `cpu-load`, the average of all cores over the last second, is at or above it for two seconds in a row, reconciliations pause before each block of work (a script of 100 adds, 100 single adds or removals, a duplicate lookup) and use one API connection at a time. The pause doubles up to 5 s while the load stays high and halves back to full speed once it is 10 points under, and a periodic pass waits up to a minute for the load to drop before it reads the list. Live bans and unbans never wait, nor does a shutdown. The load the API reports matched mikroscope's kernel series on an RB5009 to within a point at a one-second lag; spacing 100-entry chunks lowered a virtual router's CPU in proportion (42% with no pause, 11.6% with 100 ms, 3.2% with 300 ms). `crowdsec_bouncer_routeros_throttled` and `crowdsec_bouncer_routeros_throttle_seconds_total` show when and how long it slowed down. Asked for on the MikroTik forum
+
 ## [1.8.0] - 2026-10-06
 
 ### Added

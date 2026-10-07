@@ -70,6 +70,12 @@ tiempo de CPU, y `bulk_add_method: api` tardó 22,8 segundos con diez sesiones.
 [Benchmarking](/cs-routeros-bouncer/es/development/benchmarking/#la-primera-reconciliación-según-el-método-de-adición-masiva)
 muestra las tres juntas y cómo se midieron.
 
+## CPU del router
+
+`mikrotik.cpu_limit` (por defecto `80`) baja el ritmo de las reconciliaciones mientras la CPU del router está ocupada; [Configuración de MikroTik](/cs-routeros-bouncer/es/configuration/mikrotik/) explica cómo. Bájalo en un router que deba guardar más margen para enrutar. Súbelo, o pon `0`, en un router que vive siempre cerca de su límite y si no cargaría cada lista al ritmo más lento. `crowdsec_bouncer_routeros_throttled` y `crowdsec_bouncer_routeros_throttle_seconds_total` muestran cuándo y durante cuánto tiempo frenó el bouncer.
+
+Un CHR en un host sobresuscrito puede quedarse sin CPU sin que su `cpu-load` lo muestre: el tiempo que le quita el host no cuenta como ocupado dentro de RouterOS. El límite no ve ese caso; solo tardan más los comandos del bouncer.
+
 ## Tiempos de espera
 
 Aumenta `mikrotik.command_timeout` si RouterOS es lento durante operaciones con listas grandes:
