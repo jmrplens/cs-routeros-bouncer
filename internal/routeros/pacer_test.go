@@ -161,7 +161,7 @@ func TestPacer_TwoBusyReadingsSlowDown(t *testing.T) {
 
 	tp.blockEverySecond(t, 2)
 
-	if got := tp.sleptTotal(); got != pacerStartPause {
+	if tp.sleptTotal() != pacerStartPause {
 		t.Fatalf("expected one pause of %v, slept %v", pacerStartPause, tp.sleeps())
 	}
 	if len(events) != 1 || !events[0] {
@@ -265,7 +265,7 @@ func TestPacer_EntryWaitsEveryBlockOfEntries(t *testing.T) {
 		release()
 	}
 
-	if got := len(tp.sleeps()); got != 2 {
+	if len(tp.sleeps()) != 2 {
 		t.Fatalf("expected a pause at entries %d and %d, got %v", pacerBlockEntries, 2*pacerBlockEntries, tp.sleeps())
 	}
 }
@@ -523,7 +523,7 @@ func TestPacer_WaitCalm(t *testing.T) {
 	if err := tp.WaitCalm(context.Background(), time.Minute); err != nil {
 		t.Fatal(err)
 	}
-	if got := tp.sleptTotal(); got != 2*time.Second {
+	if tp.sleptTotal() != 2*time.Second {
 		t.Fatalf("expected to wait 2s for the calm reading, slept %v", tp.sleeps())
 	}
 
@@ -533,7 +533,7 @@ func TestPacer_WaitCalm(t *testing.T) {
 	if err := tp.WaitCalm(context.Background(), 3*time.Second); err != nil {
 		t.Fatal(err)
 	}
-	if got := tp.sleptTotal(); got != 3*time.Second {
+	if tp.sleptTotal() != 3*time.Second {
 		t.Fatalf("expected to give up after 3s, slept %v", tp.sleeps())
 	}
 	if got := tp.Waited(); got != 5*time.Second {

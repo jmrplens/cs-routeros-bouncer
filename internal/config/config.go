@@ -1062,12 +1062,18 @@ func (c *Config) validateRejectOptions() error {
 var rejectWithIPv6 = map[string]string{
 	"icmp-network-unreachable":  "icmp-no-route",
 	"icmp-host-unreachable":     "icmp-address-unreachable",
-	"icmp-port-unreachable":     "icmp-port-unreachable",
-	"icmp-protocol-unreachable": "icmp-port-unreachable",
-	"icmp-net-prohibited":       "icmp-admin-prohibited",
-	"icmp-host-prohibited":      "icmp-admin-prohibited",
-	"icmp-admin-prohibited":     "icmp-admin-prohibited",
+	icmpPortUnreachable:         icmpPortUnreachable,
+	"icmp-protocol-unreachable": icmpPortUnreachable,
+	"icmp-net-prohibited":       icmpAdminProhibited,
+	"icmp-host-prohibited":      icmpAdminProhibited,
+	icmpAdminProhibited:         icmpAdminProhibited,
 }
+
+// The two reject-with values both families take.
+const (
+	icmpPortUnreachable = "icmp-port-unreachable"
+	icmpAdminProhibited = "icmp-admin-prohibited"
+)
 
 // normalizeRejectWith maps "icmp-network-prohibited", which this project
 // documented and validated but RouterOS never accepted, to RouterOS's own

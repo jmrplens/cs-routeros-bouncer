@@ -32,7 +32,7 @@ func TestBulkAddAddresses_WaitsOnThePacerPerChunk(t *testing.T) {
 	if err != nil || added != len(entries) || len(failed) != 0 {
 		t.Fatalf("expected all %d added, got %d, %d failed, %v", len(entries), added, len(failed), err)
 	}
-	if got := len(tp.sleeps()); got != 3 {
+	if len(tp.sleeps()) != 3 {
 		t.Fatalf("expected a pause before each of the 3 chunks, got %v", tp.sleeps())
 	}
 }
@@ -80,7 +80,7 @@ func TestAddAddressesEach_WaitsEveryHundredEntries(t *testing.T) {
 	if err != nil || added != len(entries) || len(failed) != 0 {
 		t.Fatalf("expected all added, got %d, %d failed, %v", added, len(failed), err)
 	}
-	if got := len(tp.sleeps()); got != 2 {
+	if len(tp.sleeps()) != 2 {
 		t.Fatalf("expected 2 pauses for %d entries, got %v", len(entries), tp.sleeps())
 	}
 }
@@ -112,7 +112,7 @@ func TestRefreshDuplicates_WaitsPerLookup(t *testing.T) {
 	if refreshed != len(dups) || len(failed) != 0 || len(errs) != 0 {
 		t.Fatalf("expected all refreshed, got %d, %d failed, %v", refreshed, len(failed), errs)
 	}
-	if got := len(tp.sleeps()); got != 2 {
+	if len(tp.sleeps()) != 2 {
 		t.Fatalf("expected a pause before each of the 2 lookups, got %v", tp.sleeps())
 	}
 }

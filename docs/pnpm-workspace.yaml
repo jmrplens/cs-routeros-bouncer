@@ -6,3 +6,16 @@ minimumReleaseAge: 0
 allowBuilds:
   esbuild: true
   sharp: true
+
+# Patched releases of transitive build-time tools that their parents do not
+# allow yet (pnpm audit, 2026-10-07):
+# - smol-toml 1.9.0 (GHSA-r4xh-jqrq-34v2): markdownlint-cli2 pins 1.8.0.
+# - katex 0.18.2+ (GHSA-238p-pmpm-9mq7): mermaid and micromark-extension-math
+#   ask for ^0.16; no diagram here uses math.
+# - postcss-selector-parser 7.1.6 (GHSA-rj75-hqrm-r3gf): postcss-nested 6,
+#   under expressive-code, asks for ^6.
+# The built site is byte-identical with them. Drop each once its parent moves.
+overrides:
+  smol-toml: 1.9.0
+  katex: ^0.18.2
+  postcss-selector-parser: 7.1.6
