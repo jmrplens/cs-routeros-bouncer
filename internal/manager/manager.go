@@ -154,10 +154,18 @@ type bulkPacer interface {
 // noPacing never waits: the pacer of a Manager built without one.
 type noPacing struct{}
 
-func (noPacing) Entry(context.Context) (func(), error)         { return func() {}, nil }
+func (noPacing) Entry(context.Context) (func(), error) {
+	return func() {
+		// Nothing to release: noPacing never takes a turn.
+	}, nil
+}
+
 func (noPacing) WaitCalm(context.Context, time.Duration) error { return nil }
 func (noPacing) Waited() time.Duration                         { return 0 }
-func (noPacing) Rest()                                         {}
+
+func (noPacing) Rest() {
+	// Nothing to end: noPacing never slows down.
+}
 
 // pacing returns the manager's pacer, or one that never waits.
 func (m *Manager) pacing() bulkPacer {
@@ -1834,35 +1842,30 @@ func (m *Manager) refreshAddressCache(proto string, currentMap map[string]rosCli
 	// over lower-latency cache updates here.
 	m.cacheMu.Lock()
 	defer m.cacheMu.Unlock()
+	liveOwns := func(addr string) bool {
+		e, noted := live[addr]
+		return noted && e.owned()
+	}
 	for addr := range m.addressCache {
-		if strings.Contains(addr, ":") != (proto == "ipv6") {
-			continue
-		}
-		if e, noted := live[addr]; noted && e.owned() {
-			continue
-		}
-		if _, exists := currentMap[addr]; !exists {
+		_, listed := currentMap[addr]
+		if strings.Contains(addr, ":") == (proto == "ipv6") && !listed && !liveOwns(addr) {
 			delete(m.addressCache, addr)
 		}
 	}
 	// The listing is the router's state: no address of this protocol is
 	// uncertain any more.
 	for addr, addrProto := range m.uncertain {
-		if e, noted := live[addr]; noted && e.owned() {
-			continue
-		}
-		if addrProto == proto {
+		if addrProto == proto && !liveOwns(addr) {
 			delete(m.uncertain, addr)
 		}
 	}
 	for addr, entry := range currentMap {
-		if e, noted := live[addr]; noted && e.owned() {
-			continue
-		}
 		// The id comes free here: currentMap is the print this reconcile pass
 		// already paid for. Throwing it away is what forced an unban to
 		// re-discover it with a full traversal.
-		m.addressCache[addr] = entry.ID
+		if !liveOwns(addr) {
+			m.addressCache[addr] = entry.ID
+		}
 	}
 }
 

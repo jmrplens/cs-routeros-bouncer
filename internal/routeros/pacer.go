@@ -96,7 +96,9 @@ func (p *Pacer) Block(ctx context.Context) error {
 // the one that waits it. The caller calls release once the entry is done,
 // also after an error.
 func (p *Pacer) Entry(ctx context.Context) (release func(), err error) {
-	noop := func() {}
+	noop := func() {
+		// Nothing to release: no turn was taken.
+	}
 	if !p.enabled() {
 		return noop, nil
 	}
@@ -210,20 +212,10 @@ func (p *Pacer) calmBelow() int {
 // observe reads the router's load if the last read is a second old or more,
 // and moves the pacer on. It reads outside the lock: the others skip the read.
 func (p *Pacer) observe(ctx context.Context) {
-	p.mu.Lock()
-	now := p.now()
-	if !p.lastRead.IsZero() && now.Sub(p.lastRead) < pacerReadEvery {
-		p.mu.Unlock()
+	now, due := p.claimRead()
+	if !due {
 		return
 	}
-	if !p.lastRead.IsZero() && now.Sub(p.lastRead) > pacerStaleAfter {
-		// No reading for a while: a read hung, or the last pass ended without
-		// Rest. Start afresh; nothing read the CPU calm.
-		p.busy = 0
-		p.fullSpeedLocked(now, msgStale)
-	}
-	p.lastRead = now
-	p.mu.Unlock()
 
 	load, err := p.read(ctx)
 
@@ -240,31 +232,65 @@ func (p *Pacer) observe(ctx context.Context) {
 	}
 	switch {
 	case load >= p.limit:
-		if p.pause > 0 {
-			p.pause = min(2*p.pause, pacerMaxPause)
-			return
-		}
-		p.busy++
-		if p.busy < pacerBusyReadings {
-			return
-		}
-		p.busy = 0
-		p.pause = pacerStartPause
-		p.since = now
-		log.Info().Int("cpu_load", load).Int("limit", p.limit).Msg("router CPU busy, slowing the bouncer down")
-		if p.hooks.Throttled != nil {
-			p.hooks.Throttled(true)
-		}
+		p.busyLocked(load, now)
 	case load < p.calmBelow():
-		p.busy = 0
-		if p.pause > 0 {
-			p.pause /= 2
-			if p.pause < pacerMinPause {
-				p.fullSpeedLocked(now, msgCalm)
-			}
-		}
+		p.calmLocked(now)
 	default:
 		p.busy = 0
+	}
+}
+
+// claimRead claims the read that is due a second after the last one, and
+// returns the time it claimed it at. After pacerStaleAfter without a reading
+// it starts afresh.
+func (p *Pacer) claimRead() (now time.Time, due bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	now = p.now()
+	if !p.lastRead.IsZero() && now.Sub(p.lastRead) < pacerReadEvery {
+		return now, false
+	}
+	if !p.lastRead.IsZero() && now.Sub(p.lastRead) > pacerStaleAfter {
+		// No reading for a while: a read hung, or the last pass ended without
+		// Rest. Start afresh; nothing read the CPU calm.
+		p.busy = 0
+		p.fullSpeedLocked(now, msgStale)
+	}
+	p.lastRead = now
+	return now, true
+}
+
+// busyLocked moves the pacer on with a reading at or above the limit: twice
+// the pause while slowing down, or the start of slowing down at the second
+// busy reading in a row. The caller holds p.mu.
+func (p *Pacer) busyLocked(load int, now time.Time) {
+	if p.pause > 0 {
+		p.pause = min(2*p.pause, pacerMaxPause)
+		return
+	}
+	p.busy++
+	if p.busy < pacerBusyReadings {
+		return
+	}
+	p.busy = 0
+	p.pause = pacerStartPause
+	p.since = now
+	log.Info().Int("cpu_load", load).Int("limit", p.limit).Msg("router CPU busy, slowing the bouncer down")
+	if p.hooks.Throttled != nil {
+		p.hooks.Throttled(true)
+	}
+}
+
+// calmLocked moves the pacer on with a calm reading: half the pause, and full
+// speed under pacerMinPause. The caller holds p.mu.
+func (p *Pacer) calmLocked(now time.Time) {
+	p.busy = 0
+	if p.pause == 0 {
+		return
+	}
+	p.pause /= 2
+	if p.pause < pacerMinPause {
+		p.fullSpeedLocked(now, msgCalm)
 	}
 }
 

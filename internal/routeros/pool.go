@@ -203,6 +203,24 @@ func parallelWorker[T any](ctx context.Context, pool *Pool, work <-chan T, fn fu
 // Once ctx is done no more entries are added; those left are failed too.
 func (p *Pool) AddAddresses(ctx context.Context, proto, list string, entries []BulkEntry) (added int, failed []BulkEntry, errs []error) {
 	var count atomic.Int64
+	dups, failed, errs := p.addEntries(ctx, proto, list, entries, &count)
+	// The duplicates are refreshed together, one lookup per batch spread over
+	// the pool instead of one each; after a shutdown they are left for the
+	// next pass.
+	if ctx.Err() != nil {
+		for _, e := range dups {
+			failed = append(failed, *e)
+		}
+		return int(count.Load()), failed, errs
+	}
+	dupFailed, dupErrs := p.refreshDuplicateBatches(ctx, proto, list, dups, &count)
+	return int(count.Load()), append(failed, dupFailed...), append(errs, dupErrs...)
+}
+
+// addEntries is the first half of AddAddresses: one add per entry over the
+// pool. It counts the entries added in count, and returns the duplicates to
+// refresh, the entries that failed or were never taken, and the errors.
+func (p *Pool) addEntries(ctx context.Context, proto, list string, entries []BulkEntry, count *atomic.Int64) (dups []*BulkEntry, failed []BulkEntry, errs []error) {
 	var mu sync.Mutex
 	indices := make([]int, len(entries))
 	for i := range indices {
@@ -211,7 +229,6 @@ func (p *Pool) AddAddresses(ctx context.Context, proto, list string, entries []B
 	// Each index is written by the one worker that takes it and read after
 	// ParallelExecContext has returned.
 	taken := make([]bool, len(entries))
-	var dups []*BulkEntry
 	errs = ParallelExecContext(ctx, p, indices, func(c *Client, i int) error {
 		taken[i] = true
 		entry := &entries[i]
@@ -237,15 +254,15 @@ func (p *Pool) AddAddresses(ctx context.Context, proto, list string, entries []B
 			failed = append(failed, entry)
 		}
 	}
-	// The duplicates are refreshed together, one lookup per batch spread over
-	// the pool instead of one each; after a shutdown they are left for the
-	// next pass.
-	if ctx.Err() != nil {
-		for _, e := range dups {
-			failed = append(failed, *e)
-		}
-		return int(count.Load()), failed, errs
-	}
+	return dups, failed, errs
+}
+
+// refreshDuplicateBatches is the second half of AddAddresses: the duplicates
+// looked up and refreshed in batches over the pool. It counts the entries
+// refreshed in count, and returns the entries that failed or whose batch was
+// never taken, and the errors.
+func (p *Pool) refreshDuplicateBatches(ctx context.Context, proto, list string, dups []*BulkEntry, count *atomic.Int64) (failed []BulkEntry, errs []error) {
+	var mu sync.Mutex
 	var batches [][]*BulkEntry
 	for start := 0; start < len(dups); start += duplicateLookupBatch {
 		batches = append(batches, dups[start:min(start+duplicateLookupBatch, len(dups))])
@@ -254,7 +271,7 @@ func (p *Pool) AddAddresses(ctx context.Context, proto, list string, entries []B
 	for i := range batchIdx {
 		batchIdx[i] = i
 	}
-	batchTaken := make([]bool, len(batches)) // as taken above
+	batchTaken := make([]bool, len(batches)) // as in addEntries
 	batchErrs := ParallelExecContext(ctx, p, batchIdx, func(c *Client, b int) error {
 		batchTaken[b] = true
 		refreshed, dupFailed, dupErrs := c.refreshDuplicates(ctx, proto, list, batches[b])
@@ -273,7 +290,7 @@ func (p *Pool) AddAddresses(ctx context.Context, proto, list string, entries []B
 			}
 		}
 	}
-	return int(count.Load()), failed, errs
+	return failed, errs
 }
 
 // RemoveAddresses removes address-list entries concurrently through the pool.
