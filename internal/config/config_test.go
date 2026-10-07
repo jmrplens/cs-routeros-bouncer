@@ -1801,6 +1801,7 @@ func TestCPULimit(t *testing.T) {
 // taken for an unset key and given the default.
 func TestCPULimitZeroTurnsItOff(t *testing.T) {
 	setMinimalEnv(t)
+	t.Setenv("MIKROTIK_CPU_LIMIT", "") // an inherited value would win over the file
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(configPath, []byte("mikrotik:\n  cpu_limit: 0\n"), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
