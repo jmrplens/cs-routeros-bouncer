@@ -93,6 +93,16 @@ var (
 		Help: "RouterOS CPU load percentage (0-100).",
 	})
 
+	routerosThrottled = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "crowdsec_bouncer_routeros_throttled",
+		Help: "1 while the bouncer slows its reconciliation work down because the router's CPU is at or above mikrotik.cpu_limit.",
+	})
+
+	routerosThrottleSeconds = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "crowdsec_bouncer_routeros_throttle_seconds_total",
+		Help: "Time the bouncer spent waiting for the router's CPU (mikrotik.cpu_limit), in seconds.",
+	})
+
 	routerosMemoryUsed = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "crowdsec_bouncer_routeros_memory_used_bytes",
 		Help: "RouterOS used memory in bytes.",
@@ -486,6 +496,27 @@ func SetRouterOSSystemMetrics(cpuLoad float64, memUsed, memTotal uint64) {
 	routerosCPULoad.Set(cpuLoad)
 	routerosMemoryUsed.Set(float64(memUsed))
 	routerosMemoryTotal.Set(float64(memTotal))
+}
+
+// SetRouterOSCPULoad updates the RouterOS CPU load gauge alone: the readings
+// the router CPU pacer takes between the system metrics polls.
+func SetRouterOSCPULoad(load float64) {
+	routerosCPULoad.Set(load)
+}
+
+// SetRouterOSThrottled sets whether the bouncer is slowing its reconciliation
+// work down for the router's CPU.
+func SetRouterOSThrottled(on bool) {
+	if on {
+		routerosThrottled.Set(1)
+		return
+	}
+	routerosThrottled.Set(0)
+}
+
+// AddRouterOSThrottleSeconds adds time spent waiting for the router's CPU.
+func AddRouterOSThrottleSeconds(seconds float64) {
+	routerosThrottleSeconds.Add(seconds)
 }
 
 // SetRouterOSCPUTemperature updates the RouterOS CPU temperature gauge.
