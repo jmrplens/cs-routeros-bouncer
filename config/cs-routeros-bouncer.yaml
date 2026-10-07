@@ -77,6 +77,10 @@ mikrotik:
   # with its own API call, spread over the pool, runs no script, and caches
   # each entry's id so an unban needs no lookup.
   bulk_add_method: "script"
+  # Router CPU load, in percent of all its cores, at which reconciliations
+  # slow down: pauses between blocks of work, one connection at a time. Live
+  # bans never wait. 0 turns it off.
+  cpu_limit: 80
 
 firewall:
   ipv4:

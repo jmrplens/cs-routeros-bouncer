@@ -1758,3 +1758,40 @@ func TestRejectWithFor(t *testing.T) {
 		}
 	}
 }
+
+// TestCPULimit verifies the default 80, the environment override and the
+// 0..100 range of mikrotik.cpu_limit.
+func TestCPULimit(t *testing.T) {
+	setMinimalEnv(t)
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.MikroTik.CPULimit != 80 {
+		t.Errorf("default cpu_limit = %d, want 80", cfg.MikroTik.CPULimit)
+	}
+
+	t.Setenv("MIKROTIK_CPU_LIMIT", "50")
+	cfg, err = Load("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.MikroTik.CPULimit != 50 {
+		t.Errorf("cpu_limit from the environment = %d, want 50", cfg.MikroTik.CPULimit)
+	}
+
+	for _, v := range []int{-1, 101} {
+		c := validCfg()
+		c.MikroTik.CPULimit = v
+		if verr := c.Validate(); verr == nil || !strings.Contains(verr.Error(), "cpu_limit") {
+			t.Errorf("cpu_limit %d: expected an error naming cpu_limit, got %v", v, verr)
+		}
+	}
+	for _, v := range []int{0, 100} {
+		c := validCfg()
+		c.MikroTik.CPULimit = v
+		if verr := c.Validate(); verr != nil {
+			t.Errorf("cpu_limit %d should be valid: %v", v, verr)
+		}
+	}
+}
