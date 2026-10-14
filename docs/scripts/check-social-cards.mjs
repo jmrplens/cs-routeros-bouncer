@@ -23,7 +23,7 @@ import { fileURLToPath } from "node:url";
 
 const DOCS = fileURLToPath(new URL("..", import.meta.url));
 const DIST = path.join(DOCS, "dist");
-const SITE = "https://jmrplens.github.io/cs-routeros-bouncer/";
+const SITE = "https://docs.jmrp.io/cs-routeros-bouncer/";
 
 /** Every file under `dir` matching `suffix`, recursively. */
 function walk(dir, suffix, out = []) {

@@ -1,3 +1,9 @@
+## [Unreleased]
+
+### Changed
+
+- **The documentation lives at `https://docs.jmrp.io/cs-routeros-bouncer/`**: the site's canonical URLs, sitemap, social cards, JSON-LD, `robots.txt`, `llms.txt` and `llms-full.txt` name the new origin, and so do the README, the release notes header and the bug report template. The path is the same, and GitHub redirects the old `https://jmrplens.github.io/cs-routeros-bouncer/` addresses there; `https://jmrp.io/docs/cs-routeros-bouncer/` keeps redirecting for old links. The links to mikroscope's documentation moved to `https://docs.jmrp.io/mikroscope/` too
+
 ## [1.9.0] - 2026-10-07
 
 ### Added

@@ -3,7 +3,7 @@
 # the InfluxDB 3 database that `mikroscope forward` writes to.
 #
 # This repository does not ship a router instrumentation tool any more. It was
-# removed in favour of mikroscope (https://jmrp.io/docs/mikroscope/), which runs
+# removed in favour of mikroscope (https://docs.jmrp.io/mikroscope/), which runs
 # the sampler on the router and forwards to InfluxDB. This script is the
 # read-back side: it answers "what did the router's CPU do between these two
 # times" without deploying anything.

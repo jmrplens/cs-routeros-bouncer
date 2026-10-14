@@ -249,7 +249,7 @@ Cortex-A72, RouterOS 7.24.2), en una ventana de 300 segundos en régimen estable
 con el colector enviando a InfluxDB 3, el 2026-09-18. Es la misma placa en la
 que se toman las cifras de este bouncer, que es lo que hace comparables las
 dos; no se traslada a ninguna otra placa. [Lo que
-cuesta](https://jmrp.io/docs/mikroscope/es/cost/) explica cómo se toma la cifra
+cuesta](https://docs.jmrp.io/mikroscope/es/cost/) explica cómo se toma la cifra
 y cómo tomarla en tu propio dispositivo.
 
 :::caution
@@ -287,7 +287,7 @@ con un origen fuera de la address-list `LANs`. El síntoma conviene reconocerlo
 porque nada lo registra: el ICMP al contenedor responde mientras su TCP
 saliente no genera entrada de conntrack ni contador de masquerade, y el sniffer
 no muestra nada. [Las dos trampas del
-cortafuegos](https://jmrp.io/docs/mikroscope/es/install/firewall/) es la versión
+cortafuegos](https://docs.jmrp.io/mikroscope/es/install/firewall/) es la versión
 larga.
 
 ### Grabar una ventana y dibujarla
@@ -366,9 +366,9 @@ extremos, y un bin parcial de `date_bin` en el borde de una ventana promedia
 sobre menos de un segundo.
 
 [Medidas en InfluxDB y
-SQL](https://jmrp.io/docs/mikroscope/es/reference/measurements/) es la lista de
+SQL](https://docs.jmrp.io/mikroscope/es/reference/measurements/) es la lista de
 columnas de cada tabla, y [el sink de
-InfluxDB](https://jmrp.io/docs/mikroscope/es/sinks/influxdb/) es lo que las
+InfluxDB](https://docs.jmrp.io/mikroscope/es/sinks/influxdb/) es lo que las
 escribe. Que Grafana lea esa misma base de datos es el camino más corto a una
 gráfica; el `grafana/dashboard.json` de este repositorio es solo de Prometheus
 y cubre las métricas del bouncer, no el kernel del router.
