@@ -4,6 +4,10 @@
 
 - **The documentation lives at `https://docs.jmrp.io/cs-routeros-bouncer/`**: the site's canonical URLs, sitemap, social cards, JSON-LD, `robots.txt`, `llms.txt` and `llms-full.txt` name the new origin, and so do the README, the release notes header and the bug report template. The path is the same, and GitHub redirects the old `https://jmrplens.github.io/cs-routeros-bouncer/` addresses there; `https://jmrp.io/docs/cs-routeros-bouncer/` keeps redirecting for old links. The links to mikroscope's documentation moved to `https://docs.jmrp.io/mikroscope/` too
 
+### Security
+
+- **Go 1.27.2 and `golang.org/x/net` 0.60.0**: the Go toolchain moves from 1.27.1 to 1.27.2 (the `go` directive, the CI and CodeQL `GO_VERSION`, the CI `GOTOOLCHAIN`, the Docker build image and the documented prerequisite in both locales) and the indirect `golang.org/x/net` from 0.59.0 to 0.60.0, to fix GO-2026-6617 (HTTP/2 server crash due to an HPACK encoder race in `net/http`), which govulncheck reported against both. The same two releases fix eight more advisories govulncheck found reachable from the bouncer's code: GO-2026-6603, GO-2026-6610, GO-2026-6611 and GO-2026-6612 (HTTP/2 in `net/http` and `x/net`), GO-2026-6605 and GO-2026-6613 (HTTP/1 connection desynchronization around `CONNECT`), GO-2026-6608 (`net/textproto` MIME header memory limit) and GO-2026-6607 (`crypto/tls` Encrypted Client Hello). govulncheck now reports none. Go 1.27.2 also changes the compiler's export data format, which `staticcheck` 0.8.1 cannot read, so its pin moves to 0.8.2, the first release that can
+
 ## [1.9.0] - 2026-10-07
 
 ### Added

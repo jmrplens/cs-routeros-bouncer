@@ -23,7 +23,7 @@ export GOTOOLCHAIN := $(GO_TOOLCHAIN)
 GOLANGCI_LINT_VERSION := v2.14.0
 GOSEC_VERSION         := v2.29.0
 ACTIONLINT_VERSION    := v1.7.12
-STATICCHECK_VERSION   := v0.8.1
+STATICCHECK_VERSION   := v0.8.2
 GOVULNCHECK_VERSION   := v1.8.0
 # goimports and modernize both ship from golang.org/x/tools.
 GOTOOLS_VERSION       := v0.51.0
