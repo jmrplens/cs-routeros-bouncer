@@ -395,7 +395,7 @@ function mermaidTheme(scheme) {
 }
 
 export default defineConfig({
-	site: "https://jmrplens.github.io/cs-routeros-bouncer",
+	site: "https://docs.jmrp.io/cs-routeros-bouncer",
 	base: "/cs-routeros-bouncer",
 	markdown: {
 		rehypePlugins: [
@@ -733,16 +733,15 @@ export default defineConfig({
 							personNode,
 							{
 								"@type": "WebSite",
-								"@id":
-									"https://jmrplens.github.io/cs-routeros-bouncer/#website",
+								"@id": "https://docs.jmrp.io/cs-routeros-bouncer/#website",
 								name: "cs-routeros-bouncer",
-								url: "https://jmrplens.github.io/cs-routeros-bouncer/",
+								url: "https://docs.jmrp.io/cs-routeros-bouncer/",
 								description:
 									"CrowdSec bouncer for MikroTik RouterOS: automatic firewall management via the RouterOS API",
 								inLanguage: ["en", "es"],
 								image: {
 									"@type": "ImageObject",
-									url: "https://jmrplens.github.io/cs-routeros-bouncer/og-image.png",
+									url: "https://docs.jmrp.io/cs-routeros-bouncer/og-image.png",
 									width: 1200,
 									height: 630,
 								},
@@ -770,13 +769,13 @@ export default defineConfig({
 									"https://github.com/jmrplens/cs-routeros-bouncer/releases",
 								image: {
 									"@type": "ImageObject",
-									url: "https://jmrplens.github.io/cs-routeros-bouncer/og-image.png",
+									url: "https://docs.jmrp.io/cs-routeros-bouncer/og-image.png",
 									width: 1200,
 									height: 630,
 								},
 								screenshot: {
 									"@type": "ImageObject",
-									url: "https://jmrplens.github.io/cs-routeros-bouncer/grafana-dashboard.png",
+									url: "https://docs.jmrp.io/cs-routeros-bouncer/grafana-dashboard.png",
 									width: 1600,
 									height: 4633,
 									caption:
@@ -784,7 +783,7 @@ export default defineConfig({
 								},
 								softwareHelp: {
 									"@type": "CreativeWork",
-									url: "https://jmrplens.github.io/cs-routeros-bouncer/",
+									url: "https://docs.jmrp.io/cs-routeros-bouncer/",
 								},
 								softwareRequirements:
 									"CrowdSec 1.5+ with the Local API (LAPI) reachable from the bouncer host; MikroTik RouterOS 7.x with the API service enabled",

@@ -14,21 +14,21 @@ A [CrowdSec](https://www.crowdsec.net/) remediation component (bouncer) for [Mik
 
 ## Documentation
 
-**📖 [Full documentation](https://jmrp.io/docs/cs-routeros-bouncer/)** — available in English and Spanish.
+**📖 [Full documentation](https://docs.jmrp.io/cs-routeros-bouncer/)** — available in English and Spanish.
 
-This README covers installation and the settings most deployments need. The documentation site carries the rest, and carries it more reliably: its [configuration reference](https://jmrp.io/docs/cs-routeros-bouncer/configuration/) is **generated from `internal/config/config.go`** and regenerated in CI, which fails on any diff. The [firewall rule listing](https://jmrp.io/docs/cs-routeros-bouncer/architecture/firewall-rules/) is not generated but is single-sourced: one module, read field by field out of `internal/manager`, rendered on every page that shows the rules — so the three copies that used to disagree are now one. A hand-written copy here would be a fourth, and the last one drifted.
+This README covers installation and the settings most deployments need. The documentation site carries the rest, and carries it more reliably: its [configuration reference](https://docs.jmrp.io/cs-routeros-bouncer/configuration/) is **generated from `internal/config/config.go`** and regenerated in CI, which fails on any diff. The [firewall rule listing](https://docs.jmrp.io/cs-routeros-bouncer/architecture/firewall-rules/) is not generated but is single-sourced: one module, read field by field out of `internal/manager`, rendered on every page that shows the rules — so the three copies that used to disagree are now one. A hand-written copy here would be a fourth, and the last one drifted.
 
 | If you want to | Go to |
 | --- | --- |
-| Every setting, its default and env var | [Configuration reference](https://jmrp.io/docs/cs-routeros-bouncer/configuration/) |
-| Worked config examples | [Examples](https://jmrp.io/docs/cs-routeros-bouncer/configuration/examples/) |
-| Exactly what gets written to the router | [Firewall rules](https://jmrp.io/docs/cs-routeros-bouncer/architecture/firewall-rules/) |
-| How reconciliation works and what it costs | [Reconciliation](https://jmrp.io/docs/cs-routeros-bouncer/architecture/reconciliation/) |
-| Metrics, health checks, Grafana | [Monitoring](https://jmrp.io/docs/cs-routeros-bouncer/monitoring/prometheus/) |
-| Tuning for large CAPI lists | [Performance tuning](https://jmrp.io/docs/cs-routeros-bouncer/configuration/performance-tuning/) |
-| Measured numbers on real hardware | [Benchmarking](https://jmrp.io/docs/cs-routeros-bouncer/development/benchmarking/) |
+| Every setting, its default and env var | [Configuration reference](https://docs.jmrp.io/cs-routeros-bouncer/configuration/) |
+| Worked config examples | [Examples](https://docs.jmrp.io/cs-routeros-bouncer/configuration/examples/) |
+| Exactly what gets written to the router | [Firewall rules](https://docs.jmrp.io/cs-routeros-bouncer/architecture/firewall-rules/) |
+| How reconciliation works and what it costs | [Reconciliation](https://docs.jmrp.io/cs-routeros-bouncer/architecture/reconciliation/) |
+| Metrics, health checks, Grafana | [Monitoring](https://docs.jmrp.io/cs-routeros-bouncer/monitoring/prometheus/) |
+| Tuning for large CAPI lists | [Performance tuning](https://docs.jmrp.io/cs-routeros-bouncer/configuration/performance-tuning/) |
+| Measured numbers on real hardware | [Benchmarking](https://docs.jmrp.io/cs-routeros-bouncer/development/benchmarking/) |
 
-For machine consumption: [llms.txt](https://jmrp.io/docs/cs-routeros-bouncer/llms.txt) and [llms-full.txt](https://jmrp.io/docs/cs-routeros-bouncer/llms-full.txt).
+For machine consumption: [llms.txt](https://docs.jmrp.io/cs-routeros-bouncer/llms.txt) and [llms-full.txt](https://docs.jmrp.io/cs-routeros-bouncer/llms-full.txt).
 
 ## Highlights
 
@@ -295,7 +295,7 @@ logging:
 | `metrics.enabled` | `METRICS_ENABLED` | `false` | Serve `/metrics` and `/health` |
 | `logging.level` | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
 
-That is 14 of 94 keys. The other 80 — decision filtering, TLS material, per-protocol rule placement, chain selection, logging to file, pprof — are in the **[generated configuration reference](https://jmrp.io/docs/cs-routeros-bouncer/configuration/)**, which is built from the Go struct and fails CI when it disagrees with it.
+That is 14 of 94 keys. The other 80 — decision filtering, TLS material, per-protocol rule placement, chain selection, logging to file, pprof — are in the **[generated configuration reference](https://docs.jmrp.io/cs-routeros-bouncer/configuration/)**, which is built from the Go struct and fails CI when it disagrees with it.
 
 ---
 
@@ -307,9 +307,9 @@ That is 14 of 94 keys. The other 80 — decision filtering, TLS material, per-pr
 
 **On shutdown** (SIGTERM/SIGINT) it removes the firewall rules it created. Address-list entries are left to expire via their MikroTik timeout, so a restart does not leave your router unprotected.
 
-A stock configuration writes **eight** firewall rules — a deny rule and a passthrough counting rule, in both the `filter` and `raw` tables, for both IPv4 and IPv6. The counting rules come from `metrics.track_processed`, which defaults to `true`; set it to `false` and you get four. Each rule, its exact RouterOS command and its placement is listed on the [firewall rules page](https://jmrp.io/docs/cs-routeros-bouncer/architecture/firewall-rules/), which renders from the same module the daemon reads.
+A stock configuration writes **eight** firewall rules — a deny rule and a passthrough counting rule, in both the `filter` and `raw` tables, for both IPv4 and IPv6. The counting rules come from `metrics.track_processed`, which defaults to `true`; set it to `false` and you get four. Each rule, its exact RouterOS command and its placement is listed on the [firewall rules page](https://docs.jmrp.io/cs-routeros-bouncer/architecture/firewall-rules/), which renders from the same module the daemon reads.
 
-For what reconciliation costs on real hardware, and how to size the interval for your list, see [reconciliation](https://jmrp.io/docs/cs-routeros-bouncer/architecture/reconciliation/) and [performance tuning](https://jmrp.io/docs/cs-routeros-bouncer/configuration/performance-tuning/).
+For what reconciliation costs on real hardware, and how to size the interval for your list, see [reconciliation](https://docs.jmrp.io/cs-routeros-bouncer/architecture/reconciliation/) and [performance tuning](https://docs.jmrp.io/cs-routeros-bouncer/configuration/performance-tuning/).
 
 ---
 
@@ -328,7 +328,7 @@ Metrics cover decisions processed, active decisions by origin, operation latenci
 
 Neither endpoint is authenticated, and `metrics.listen_addr` defaults to `0.0.0.0` — so enabling metrics exposes them on every interface the host has. Bind them to `127.0.0.1`, or firewall the port, unless the scrape genuinely comes from elsewhere. The same applies with more force to `metrics.pprof_enabled`: a heap profile carries fragments of whatever the process has held, including the CrowdSec API key and the RouterOS password.
 
-The full metric list, a ready-made Grafana dashboard and alerting examples are in [Monitoring](https://jmrp.io/docs/cs-routeros-bouncer/monitoring/prometheus/).
+The full metric list, a ready-made Grafana dashboard and alerting examples are in [Monitoring](https://docs.jmrp.io/cs-routeros-bouncer/monitoring/prometheus/).
 
 ## Troubleshooting
 
@@ -376,7 +376,7 @@ The full metric list, a ready-made Grafana dashboard and alerting examples are i
 
 </details>
 
-More failure modes, each with the check that identifies it, are on the [troubleshooting page](https://jmrp.io/docs/cs-routeros-bouncer/troubleshooting/).
+More failure modes, each with the check that identifies it, are on the [troubleshooting page](https://docs.jmrp.io/cs-routeros-bouncer/troubleshooting/).
 
 ---
 
@@ -401,7 +401,7 @@ tests/functional/run_tests.sh                            # all but the CAPI stre
 tests/functional/run_tests.sh --capi                     # include it
 ```
 
-There is also a developer benchmark (`go run ./cmd/benchmark`). Measuring the router itself — per-core CPU and memory at 10 Hz, read from inside the device — is done with [mikroscope](https://github.com/jmrplens/mikroscope), the spin-off this repository's own instrumentation grew into; `cmd/perfmon` was removed once mikroscope shipped. Both, and the method for measuring against a live router without fooling yourself, are covered in [Benchmarking](https://jmrp.io/docs/cs-routeros-bouncer/development/benchmarking/).
+There is also a developer benchmark (`go run ./cmd/benchmark`). Measuring the router itself — per-core CPU and memory at 10 Hz, read from inside the device — is done with [mikroscope](https://github.com/jmrplens/mikroscope), the spin-off this repository's own instrumentation grew into; `cmd/perfmon` was removed once mikroscope shipped. Both, and the method for measuring against a live router without fooling yourself, are covered in [Benchmarking](https://docs.jmrp.io/cs-routeros-bouncer/development/benchmarking/).
 
 ## Security
 

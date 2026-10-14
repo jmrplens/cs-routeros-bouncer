@@ -2,7 +2,7 @@
 
 > Companion reference to llms.txt: complete CLI flags and configuration key/env-var reference for cs-routeros-bouncer, a CrowdSec bouncer for MikroTik RouterOS. Manually maintained from the configuration docs, not auto-generated — if it looks stale, trust the live docs pages linked below.
 
-Source of truth: this file summarizes https://jmrplens.github.io/cs-routeros-bouncer/getting-started/cli-reference/ and the configuration reference pages. When in doubt, follow the live docs.
+Source of truth: this file summarizes https://docs.jmrp.io/cs-routeros-bouncer/getting-started/cli-reference/ and the configuration reference pages. When in doubt, follow the live docs.
 
 ## CLI
 
@@ -93,6 +93,6 @@ Valid range is 1-20; the effective pool is always capped to the router's API `ma
 
 ## Links
 
-- [llms.txt](https://jmrplens.github.io/cs-routeros-bouncer/llms.txt): concise overview and page index.
-- [Full documentation](https://jmrplens.github.io/cs-routeros-bouncer/): rendered docs site (Starlight).
+- [llms.txt](https://docs.jmrp.io/cs-routeros-bouncer/llms.txt): concise overview and page index.
+- [Full documentation](https://docs.jmrp.io/cs-routeros-bouncer/): rendered docs site (Starlight).
 - [Repository](https://github.com/jmrplens/cs-routeros-bouncer): source, issues, releases.

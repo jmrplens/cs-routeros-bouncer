@@ -241,7 +241,7 @@ agent's own cgroup on an RB5009UG+S+ (4 × 1.4 GHz Cortex-A72, RouterOS 7.24.2),
 over one 300-second window at steady state with the collector forwarding to
 InfluxDB 3, on 2026-09-18. That is the same board this bouncer's own numbers
 are taken on, which is what makes the two comparable; it transfers to no other
-board. [What it costs](https://jmrp.io/docs/mikroscope/cost/) says how the
+board. [What it costs](https://docs.jmrp.io/mikroscope/cost/) says how the
 figure is taken and how to take it on your own device.
 
 :::caution
@@ -278,7 +278,7 @@ a source outside the `LANs` address list. The signature is worth recognising
 because nothing logs it: ICMP to the container answers while its outbound TCP
 produces no conntrack entry and no masquerade counter, and the sniffer shows
 nothing. [The two firewall
-traps](https://jmrp.io/docs/mikroscope/install/firewall/) is the long version.
+traps](https://docs.jmrp.io/mikroscope/install/firewall/) is the long version.
 
 ### Recording a window and drawing it
 
@@ -352,9 +352,9 @@ deltas, so they must be summed rather than differenced, and a partial
 `date_bin` bin at the edge of a window averages over less than a second.
 
 [InfluxDB and SQL
-measurements](https://jmrp.io/docs/mikroscope/reference/measurements/) is the
+measurements](https://docs.jmrp.io/mikroscope/reference/measurements/) is the
 column list for every table, and [the InfluxDB
-sink](https://jmrp.io/docs/mikroscope/sinks/influxdb/) is what writes them.
+sink](https://docs.jmrp.io/mikroscope/sinks/influxdb/) is what writes them.
 Grafana reading the same database is the shortest path to a chart; this
 repository's own `grafana/dashboard.json` is Prometheus-only and covers the
 bouncer's metrics, not the router's kernel.
