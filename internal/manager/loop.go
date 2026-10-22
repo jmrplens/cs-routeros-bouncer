@@ -160,7 +160,11 @@ func (l *decisionLoop) stopPass() {
 		return
 	}
 	l.pass.cancel()
-	<-l.pass.done
+	// The receive only waits for the canceled pass to return: its error is
+	// the cancellation, or a failure the returning loop no longer acts on.
+	// errcheck 1.30 reports a discarded receive, and the `_ =` form it
+	// accepts is the one staticcheck rejects (S1005).
+	<-l.pass.done //nolint:errcheck // deliberate discard, see above
 	l.pass = nil
 	l.m.dropPassJournal()
 	l.m.retryDelay = 0 // as a pass a shutdown ended
