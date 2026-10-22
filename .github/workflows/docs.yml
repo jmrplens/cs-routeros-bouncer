@@ -34,7 +34,7 @@ jobs:
           # has the latest commit, so every page would show the same date.
           fetch-depth: 0
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@v6.1.0
         with:
           package_json_file: docs/package.json
           cache: true
