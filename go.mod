@@ -1,6 +1,6 @@
 module github.com/jmrplens/cs-routeros-bouncer
 
-go 1.27.2
+go 1.27.3
 
 require (
 	github.com/crowdsecurity/crowdsec v1.8.1
