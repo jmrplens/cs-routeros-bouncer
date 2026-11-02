@@ -102,7 +102,7 @@ function routerosLanguage() {
 // purpose: this build runs on a CI runner, and jmrp.io sits behind Cloudflare,
 // CrowdSec and a MikroTik bouncer, where a blocked runner IP would silently
 // degrade this site to a stale snapshot. GitHub serves the same bytes and is
-// already a hard dependency of the build — the checkout comes from it.
+// already a hard dependency of the build: the checkout comes from it.
 const CANONICAL_IDENTITY_URL =
 	"https://raw.githubusercontent.com/jmrplens/jmrp.io/main/public/identity/person.jsonld";
 
@@ -162,7 +162,7 @@ const canonicalPerson = Object.fromEntries(
 /**
  * Topics specific to this project, kept alongside the canonical expertise list
  * rather than replacing it. `knowsAbout` is multi-valued, so the two sets merge
- * instead of conflicting — which is why these may stay local while the
+ * instead of conflicting, which is why these may stay local while the
  * single-valued properties above may not. The full original set is listed, not
  * just the entries the canonical lacks, so this site keeps asserting its own
  * topics even if the canonical list changes.
@@ -235,14 +235,14 @@ const personNode = (() => {
 
 /* --- Mermaid, in the project palette ------------------------------------
  *
- * Every diagram is rendered twice — once light, once dark — and rehype-mermaid
+ * Every diagram is rendered twice (once light, once dark), and rehype-mermaid
  * wraps the pair in a <picture> whose dark <source> the theme-swap script
  * further down toggles. Both renders are coloured from `src/styles/theme.css`,
  * READ here rather than restated: a hex copied into this file is a second
  * palette, and a second palette drifts the first time the real one moves.
  *
  * In that sheet `:root` carries the DARK palette and `:root[data-theme="light"]`
- * overrides it, so the light palette is base + overrides — the same reading
+ * overrides it, so the light palette is base + overrides, the same reading
  * `scripts/check-contrast.mjs` performs on the same file.
  */
 const themeSheet = fs.readFileSync(
@@ -291,8 +291,8 @@ const PALETTES = {
  * `themeVariables`; the others derive their own from a handful of seeds and
  * overwrite most of what is passed in. A MISSPELLED variable name is not an
  * error in mermaid: it is dropped in silence and the stock colour ships. Half
- * of that is caught here — every value goes through `stop()`, which throws on a
- * token theme.css does not declare — but nothing checks the KEYS, so after
+ * of that is caught here (every value goes through `stop()`, which throws on a
+ * token theme.css does not declare), but nothing checks the KEYS, so after
  * editing this map, decode one built diagram out of `dist/` (the `srcset` of a
  * `<picture><source>` is a percent-encoded SVG) and confirm the palette is
  * really in the SVG's own `<style>` block. A mermaid-stock grey there means a
@@ -300,7 +300,7 @@ const PALETTES = {
  *
  * When you grep, mind the form: `themeVariables` values survive as the hex
  * written here, but everything routed through `themeCSS` goes through the
- * browser's CSSOM, which rewrites colours — the accent comes out of the build
+ * browser's CSSOM, which rewrites colours: the accent comes out of the build
  * as an `rgb(r, g, b)` triplet rather than the `#rrggbb` theme.css declares, so
  * grepping the SVG for the hex alone reads as a failure when the colour is
  * right there.
@@ -309,7 +309,7 @@ const PALETTES = {
  *   SOLID edge  = a WRITE. Router state changes.
  *   DASHED edge = a READ, a filter or a discard. The router is untouched.
  * Line pattern carries it, colour repeats it (`themeCSS` below), and every
- * diagram prints a legend — so the distinction survives greyscale, colour
+ * diagram prints a legend, so the distinction survives greyscale, colour
  * vision deficiency and a black-and-white printout.
  *
  * @param {"dark" | "light"} scheme
@@ -338,7 +338,7 @@ function mermaidTheme(scheme) {
 			tertiaryColor: stop("surface"),
 			tertiaryBorderColor: stop("border"),
 			tertiaryTextColor: stop("heading"),
-			// Solid edges — writes. The highest-emphasis stop the palette has.
+			// Solid edges: writes. The highest-emphasis stop the palette has.
 			lineColor: stop("heading"),
 			textColor: stop("body"),
 			mainBkg: stop("surface-raised"),
@@ -363,7 +363,7 @@ function mermaidTheme(scheme) {
 			noteBkgColor: stop("accent-soft"),
 			// xychart derives NOTHING from the stops above: without an explicit
 			// block its first plot colour ships as a cream (#FFF4DD) that is
-			// invisible on the light page — which is exactly how the first
+			// invisible on the light page, which is exactly how the first
 			// benchmark chart rendered as axes with no line on them.
 			xyChart: {
 				backgroundColor: stop("page"),
@@ -407,7 +407,7 @@ export default defineConfig({
 					// image and emit <picture><source id="mermaid-dark-…">, which the
 					// theme-swap script below keys off. `dark: true` would render that
 					// twin with mermaid's STOCK dark theme, so the edge colours would
-					// stop matching the legend printed inside every diagram — on the
+					// stop matching the legend printed inside every diagram, on the
 					// theme this site defaults to. The dark twin of the same config
 					// keeps the pair identical apart from the palette.
 					dark: mermaidTheme("dark"),
@@ -471,7 +471,7 @@ export default defineConfig({
 				// Starlight declares inside `@layer starlight.base` without
 				// needing `!important`; and it is first so every sheet after it
 				// can read the tokens it declares. The rest are single-concern
-				// sheets, ordered so later ones may override earlier ones —
+				// sheets, ordered so later ones may override earlier ones:
 				// a11y last, so focus and skip-link styling always wins.
 				"./src/styles/theme.css",
 				"./src/styles/typography.css",
@@ -486,7 +486,7 @@ export default defineConfig({
 				"./src/styles/rules.css",
 				// Figures: the box around a mermaid diagram, and the light/dark
 				// image pairs ThemeImage.astro renders. It reaches no diagram
-				// internals — those are an <img> with an SVG data URI, coloured
+				// internals: those are an <img> with an SVG data URI, coloured
 				// at build time by the mermaid config near the top of this file.
 				"./src/styles/diagram.css",
 				// The lockup, after the sheets whose header and type rules it has
@@ -589,7 +589,7 @@ export default defineConfig({
 					// allows 'unsafe-inline' for script-src/style-src because this page
 					// ships literal inline <script type="application/ld+json"> blocks
 					// (with per-page dynamic content, so build-time hashes won't match)
-					// and Starlight's scoped inline styles — a static GitHub Pages site
+					// and Starlight's scoped inline styles; a static GitHub Pages site
 					// can't mint per-request nonces either. Its value is narrowing
 					// default-src/connect-src/base-uri/form-action to 'self', not
 					// blocking inline script execution.
@@ -599,8 +599,8 @@ export default defineConfig({
 						// script-src needs 'wasm-unsafe-eval' (and 'unsafe-eval' as a
 						// fallback for browsers that don't yet support the narrower
 						// directive, e.g. Safari) because Starlight's Pagefind search
-						// runs its index as WebAssembly — see
-						// https://pagefind.app/docs/hosting/#content-security-policy.
+						// runs its index as WebAssembly (see
+						// https://pagefind.app/docs/hosting/#content-security-policy).
 						content:
 							"default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' 'unsafe-eval'; connect-src 'self'; base-uri 'self'; form-action 'self'",
 					},
@@ -632,8 +632,8 @@ export default defineConfig({
 					// array, i.e. last in document order. Some Chromium versions
 					// otherwise prefer an earlier .ico with an exact/declared size
 					// over a later SVG; marking it "any" makes it the least-specific
-					// candidate so the SVG — which browsers that support it always
-					// prefer — wins. This is the same technique documented in
+					// candidate so the SVG (which browsers that support it always
+					// prefer) wins. This is the same technique documented in
 					// https://evilmartians.com/chronicles/how-to-favicon-in-2021-six-files-that-fit-most-needs.
 					tag: "link",
 					attrs: {
@@ -726,8 +726,8 @@ export default defineConfig({
 					content: JSON.stringify({
 						"@context": "https://schema.org",
 						"@graph": [
-							// The canonical Person entity, fetched at build time — see the
-							// "Canonical identity" block above. Spliced verbatim so this document
+							// The canonical Person entity, fetched at build time (see the
+							// "Canonical identity" block above). Spliced verbatim so this document
 							// and jmrp.io describe the same node with the same values, instead of
 							// two hand-maintained copies that drift.
 							personNode,
@@ -787,7 +787,7 @@ export default defineConfig({
 								},
 								softwareRequirements:
 									"CrowdSec 1.5+ with the Local API (LAPI) reachable from the bouncer host; MikroTik RouterOS 7.x with the API service enabled",
-								license: "https://opensource.org/licenses/MIT",
+								license: "https://opensource.org/license/MIT",
 								isAccessibleForFree: true,
 								keywords:
 									"CrowdSec, bouncer, MikroTik, RouterOS, firewall, network security, Go",
@@ -812,7 +812,7 @@ export default defineConfig({
 									"https://github.com/jmrplens/cs-routeros-bouncer",
 								programmingLanguage: "Go",
 								runtimePlatform: "Linux",
-								license: "https://opensource.org/licenses/MIT",
+								license: "https://opensource.org/license/MIT",
 								isPartOf: {
 									"@id":
 										"https://github.com/jmrplens/cs-routeros-bouncer#software",
