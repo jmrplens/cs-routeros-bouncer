@@ -44,8 +44,8 @@ const API_REFERENCE_PAGES = new Set([
 
 /**
  * Only these groups have their own index page (via a `slug:` frontmatter
- * override in their index.mdx). The others — getting-started, monitoring,
- * development — have no group-level page, so an intermediate breadcrumb for
+ * override in their index.mdx). The others (getting-started, monitoring,
+ * development) have no group-level page, so an intermediate breadcrumb for
  * them would link to a URL that 404s. Those segments are skipped instead.
  */
 const SEGMENT_INDEX_PAGES = new Set(["configuration", "architecture"]);
@@ -212,8 +212,8 @@ const strippedId =
 		: id;
 
 const canonicalUrl = Astro.url.href;
-// The cards are generated from the docs collection, so membership in it — not
-// the presence of an entry — is what says a page has one. Starlight synthesises
+// The cards are generated from the docs collection, so membership in it, not
+// the presence of an entry, is what says a page has one. Starlight synthesises
 // a route for 404 with an entry of its own and no collection page behind it,
 // which pointed that page at a card nothing ever rendered.
 const CARD_IDS = new Set(
@@ -263,7 +263,7 @@ const techArticle = entry
 	: null;
 
 // Skip breadcrumbs on the homepage itself (stripped id === "", i.e. `/` or
-// `/es/`) — a single "Home" crumb adds no value.
+// `/es/`): a single "Home" crumb adds no value.
 const segments = strippedId ? strippedId.split("/") : [];
 const segmentLabels = SEGMENT_LABELS[lang] ?? SEGMENT_LABELS.en;
 const breadcrumbList =
@@ -279,7 +279,7 @@ const breadcrumbList =
 						item: `${SITE_URL}${localePathPrefix}`,
 					},
 					// Only emit an intermediate crumb when the segment has a real page
-					// of its own (see SEGMENT_INDEX_PAGES) — otherwise skip it rather
+					// of its own (see SEGMENT_INDEX_PAGES); otherwise skip it rather
 					// than link to a URL that 404s, then renumber positions to stay
 					// sequential as schema.org's BreadcrumbList requires.
 					...segments
@@ -331,12 +331,12 @@ const DATASET_TEXT: Record<string, { name: string; description: string }> = {
 	en: {
 		name: "cs-routeros-bouncer RouterOS operation benchmarks",
 		description:
-			"Operation latency, bulk-import timings and router-side CPU/RAM for cs-routeros-bouncer measured on a MikroTik RB5009UG+S+ (RouterOS 7.24.1) at 100 ms sampling resolution: ~1–3 ms per cache-first add, ~400 ms per check-first add, ~22,000 CAPI-origin entries imported in ~29 s at a sustained ~31% router CPU, a ~1.9–2.1 s steady reconcile, and, on RouterOS 7.24.4, 17,361 entries written in 13.7 s through /execute (the default), 24.1 s through stored scripts and 22.8 s with bulk_add_method: api, at ~31–35% router CPU.",
+			"Operation latency, bulk-import timings and router-side CPU/RAM for cs-routeros-bouncer measured on a MikroTik RB5009UG+S+ (RouterOS 7.24.1) at 100 ms sampling resolution: ~1 to 3 ms per cache-first add, ~400 ms per check-first add, ~22,000 CAPI-origin entries imported in ~29 s at a sustained ~31% router CPU, a ~1.9 to 2.1 s steady reconcile, and, on RouterOS 7.24.4, 17,361 entries written in 13.7 s through /execute (the default), 24.1 s through stored scripts and 22.8 s with bulk_add_method: api, at ~31 to 35% router CPU.",
 	},
 	es: {
 		name: "Benchmarks de operaciones RouterOS de cs-routeros-bouncer",
 		description:
-			"Latencia de operaciones, tiempos de importación masiva y CPU/RAM del router de cs-routeros-bouncer medidos en un MikroTik RB5009UG+S+ (RouterOS 7.24.1) con muestreo a 100 ms: ~1–3 ms por adición cache-first, ~400 ms por adición check-first, ~22.000 entradas de origen CAPI importadas en ~29 s con una CPU sostenida del ~31% en el router, una reconciliación estable de ~1,9–2,1 s y, en RouterOS 7.24.4, 17.361 entradas escritas en 13,7 s mediante /execute (lo predeterminado), 24,1 s con scripts guardados y 22,8 s con bulk_add_method: api, con un ~31–35% de CPU del router.",
+			"Latencia de operaciones, tiempos de importación masiva y CPU/RAM del router de cs-routeros-bouncer medidos en un MikroTik RB5009UG+S+ (RouterOS 7.24.1) con muestreo a 100 ms: ~1 a 3 ms por adición cache-first, ~400 ms por adición check-first, ~22.000 entradas de origen CAPI importadas en ~29 s con una CPU sostenida del ~31% en el router, una reconciliación estable de ~1,9 a 2,1 s y, en RouterOS 7.24.4, 17.361 entradas escritas en 13,7 s mediante /execute (lo predeterminado), 24,1 s con scripts guardados y 22,8 s con bulk_add_method: api, con un ~31 a 35% de CPU del router.",
 	},
 };
 const datasetText = DATASET_TEXT[lang] ?? DATASET_TEXT.en;
@@ -349,7 +349,7 @@ const dataset =
 				name: datasetText.name,
 				description: datasetText.description,
 				url: canonicalUrl,
-				license: "https://opensource.org/licenses/MIT",
+				license: "https://opensource.org/license/MIT",
 				creator: { "@id": AUTHOR_ID },
 				about: { "@id": SOFTWARE_ID },
 				isPartOf: { "@id": WEBSITE_ID },
@@ -375,12 +375,12 @@ const dataset =
 dedicated tags removes the ambiguity for other card-consuming crawlers. */}
 {/* Emitted here rather than in the global `head` array because the card is
 per page. Starlight renders `<Default>` above, so these come after its own
-tags — later wins for the scrapers that take the last value, and the global
+tags: later wins for the scrapers that take the last value, and the global
 array no longer declares a competing one either way. */}
 <meta property="og:image" content={cardUrl} />
 <meta name="twitter:image" content={cardUrl} />
 {title && (
-	<meta property="og:image:alt" content={`${title} — cs-routeros-bouncer`} />
+	<meta property="og:image:alt" content={`${title} (cs-routeros-bouncer)`} />
 )}
 
 {title && <meta name="twitter:title" content={title} />}
