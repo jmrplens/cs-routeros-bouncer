@@ -7,6 +7,7 @@ import fs from "node:fs";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { getLatestRelease, gitAvailable } from "./src/lib/latest-release.mjs";
+import { releasePlatforms } from "./src/data/repo-stats.mjs";
 
 const docsRoot = fileURLToPath(new URL(".", import.meta.url));
 const siteBase = "/cs-routeros-bouncer";
@@ -761,7 +762,12 @@ export default defineConfig({
 									"https://github.com/jmrplens/cs-routeros-bouncer#software",
 								name: "cs-routeros-bouncer",
 								applicationCategory: "SecurityApplication",
-								operatingSystem: "Linux",
+								// Every operating system a release ships binaries for, read from the
+								// `goos` list in .goreleaser.yaml: "Linux, macOS, Windows, FreeBSD".
+								// The container image is a Linux image and the `setup` installer needs
+								// systemd; the installation page says how to run the binary elsewhere.
+								operatingSystem:
+									releasePlatforms.operatingSystemNames.join(", "),
 								softwareVersion: latestRelease.version,
 								dateModified: latestRelease.date,
 								url: "https://github.com/jmrplens/cs-routeros-bouncer",
@@ -811,7 +817,11 @@ export default defineConfig({
 								codeRepository:
 									"https://github.com/jmrplens/cs-routeros-bouncer",
 								programmingLanguage: "Go",
-								runtimePlatform: "Linux",
+								// No `runtimePlatform`. schema.org defines it as "runtime platform or
+								// script interpreter dependencies (example: Java v1, Python 2.3, .NET
+								// Framework 3.0)", and the binary is built with CGO_ENABLED=0: it needs
+								// no runtime and no interpreter. The operating systems it runs on are
+								// `operatingSystem` on the `#software` node this code is part of.
 								license: "https://opensource.org/license/MIT",
 								isPartOf: {
 									"@id":
