@@ -176,7 +176,7 @@ release:
   prerelease: auto
   name_template: "v{{ .Version }}"
   header: |
-    ## CrowdSec Bouncer for MikroTik RouterOS — {{ .Tag }}
+    ## CrowdSec Bouncer for MikroTik RouterOS {{ .Tag }}
 
     Install via binary download, Docker, or build from source.
     See [documentation](https://docs.jmrp.io/cs-routeros-bouncer/) for setup instructions.
