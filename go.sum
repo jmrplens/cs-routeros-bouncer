@@ -4,8 +4,8 @@ github.com/cenkalti/backoff/v5 v5.0.3 h1:ZN+IMa753KfX5hd8vVaMixjnqRZ3y8CuJKRKj1x
 github.com/cenkalti/backoff/v5 v5.0.3/go.mod h1:rkhZdG3JZukswDf7f0cwqPNk4K0sa+F97BxZthm/crw=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
 github.com/cespare/xxhash/v2 v2.3.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
-github.com/crowdsecurity/crowdsec v1.8.1 h1:dR/i56ng6/qGz/l767mdJY6DD7uJJrzgS5X7dk8o+U0=
-github.com/crowdsecurity/crowdsec v1.8.1/go.mod h1:Ou7BNb6T7cSrFwzqRc27MJ09HVEhlFnGuycv2RqjcCg=
+github.com/crowdsecurity/crowdsec v1.8.2 h1:AiLb5cvmGsXmsHxjmBgcv+U3j/renaT4xIeGAj3+1aU=
+github.com/crowdsecurity/crowdsec v1.8.2/go.mod h1:aj2F1dUo5ePuNoiEW2fpXXalzT4E38J75FccHkZRz+o=
 github.com/crowdsecurity/go-cs-bouncer v0.0.21 h1:arPz0VtdVSaz+auOSfHythzkZVLyy18CzYvYab8UJDU=
 github.com/crowdsecurity/go-cs-bouncer v0.0.21/go.mod h1:4JiH0XXA4KKnnWThItUpe5+heJHWzsLOSA2IWJqUDBA=
 github.com/crowdsecurity/go-cs-lib v0.0.25 h1:Ov6VPW9yV+OPsbAIQk1iTkEWhwkpaG0v3lrBzeqjzj4=
