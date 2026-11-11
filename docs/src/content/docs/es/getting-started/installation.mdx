@@ -1,11 +1,11 @@
 ---
 title: Instalación
-description: Instala cs-routeros-bouncer con Docker Compose, como binario con el instalador de systemd integrado o compilando desde el código fuente — y verifica que funciona.
+description: Instala cs-routeros-bouncer con Docker Compose, como binario con el instalador de systemd integrado o compilando desde el código fuente, y verifica que funciona.
 ---
 
 import { Steps, Tabs, TabItem, LinkCard } from "@astrojs/starlight/components";
 
-cs-routeros-bouncer se distribuye como imagen de contenedor multiarquitectura, binarios precompilados para Linux, macOS, Windows y FreeBSD, y código fuente Go compilable. Usa **Docker Compose** si ya ejecutas CrowdSec en contenedores; usa el **instalador de systemd** (`cs-routeros-bouncer setup`) en un host Linux sin contenedores; **compila desde el código fuente** solo si necesitas una plataforma sin release o quieres modificar el código. El instalador escribe una unidad de systemd, así que solo funciona en Linux con systemd: en macOS, Windows y FreeBSD, descarga el archivo comprimido de tu sistema desde la [página de Releases](https://github.com/jmrplens/cs-routeros-bouncer/releases) y arranca el binario con `-c` y tu archivo de configuración, como muestra la [Referencia CLI](/cs-routeros-bouncer/es/getting-started/cli-reference/#ejecutar-el-bouncer). La imagen también puede ejecutarse como contenedor en el propio router, para cuando CrowdSec está en otro sitio y no hay un equipo Linux en la red del router: consulta [Ejecutarlo dentro de RouterOS](/cs-routeros-bouncer/es/getting-started/routeros-container/).
+cs-routeros-bouncer se distribuye como imagen de contenedor multiarquitectura, binarios precompilados para Linux, macOS, Windows y FreeBSD, y código fuente Go compilable. Usa **Docker Compose** si ya ejecutas CrowdSec en contenedores; usa el **instalador de systemd** (`cs-routeros-bouncer setup`) en un host Linux sin contenedores; **compila desde el código fuente** solo si necesitas una plataforma sin release o quieres modificar el código. El instalador escribe una unidad de systemd, así que solo funciona en Linux con systemd: en macOS, Windows y FreeBSD, descarga el archivo comprimido de tu sistema desde la [página de Releases](https://github.com/jmrplens/cs-routeros-bouncer/releases), rellena `crowdsec.api_key` y la dirección, el usuario y la contraseña del router (`mikrotik`) en el `config/cs-routeros-bouncer.yaml` que incluye, y arranca el binario desde la carpeta extraída con ese archivo: `./cs-routeros-bouncer -c config/cs-routeros-bouncer.yaml`, o `cs-routeros-bouncer.exe -c config\cs-routeros-bouncer.yaml` en Windows. La [Referencia CLI](/cs-routeros-bouncer/es/getting-started/cli-reference/#ejecutar-el-bouncer) lista sus opciones. La imagen también puede ejecutarse como contenedor en el propio router, para cuando CrowdSec está en otro sitio y no hay un equipo Linux en la red del router: consulta [Ejecutarlo dentro de RouterOS](/cs-routeros-bouncer/es/getting-started/routeros-container/).
 
 <Tabs>
   <TabItem label="Docker Compose" icon="seti:docker">
@@ -109,7 +109,7 @@ La configuración generada es `/etc/cs-routeros-bouncer/cs-routeros-bouncer.yaml
 <summary>Pasos de instalación manual (haz clic para expandir)</summary>
 
 ```bash
-# Descarga (p. ej. x86_64, i386, arm64, armv5, armv6, armv7 — consulta los assets de la release para la lista completa)
+# Descarga (p. ej. x86_64, i386, arm64, armv5, armv6, armv7; consulta los assets de la release para la lista completa)
 VERSION=$(curl -fsSL https://api.github.com/repos/jmrplens/cs-routeros-bouncer/releases/latest | sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p' | head -n1)
 [ -n "$VERSION" ] || { echo "no se pudo resolver la última versión; elige una etiqueta en la página de Releases" >&2; exit 1; }
 ARCH=x86_64
@@ -177,8 +177,8 @@ Consulta la [Referencia de la CLI](/cs-routeros-bouncer/es/getting-started/cli-r
 
 ### Requisitos previos
 
-- **Go 1.27.3+** — [Descargar](https://go.dev/dl/)
-- **Make** — normalmente preinstalado en Linux
+- **Go 1.27.3+**: [Descargar](https://go.dev/dl/)
+- **Make**: normalmente preinstalado en Linux
 
 ### Compilar e instalar
 
