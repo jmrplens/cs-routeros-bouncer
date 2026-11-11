@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.27.3-alpine AS builder
+FROM golang:1.27.4-alpine AS builder
 
 ARG VERSION=dev
 ARG COMMIT=unknown
@@ -46,7 +46,7 @@ LABEL org.opencontainers.image.title="cs-routeros-bouncer" \
 EXPOSE 2112
 
 # Exec form, no shell: busybox wget exits 0 on success and 1 on every failure
-# mode (refused, DNS, timeout, 404, 500 — verified empirically on alpine 3.24),
+# mode (refused, DNS, timeout, 404, 500; verified empirically on alpine 3.24),
 # so the traditional `|| exit 1` normalisation has nothing to normalise here.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD ["wget", "-qO-", "http://localhost:2112/health"]

@@ -3,7 +3,7 @@
 # Replaces GitHub's default setup so the Go job can install the toolchain the
 # module requires: the default-setup environment pins GOTOOLCHAIN=local to the
 # runner's Go, which breaks every time go.mod moves to a Go version the CodeQL
-# runtime has not shipped yet (first hit here: Go 1.27.0, 2026-08 — autobuild
+# runtime has not shipped yet (first hit here: Go 1.27.0, 2026-08, when autobuild
 # reported "go.mod requires go >= 1.27.0 (running go 1.26.6; GOTOOLCHAIN=local)").
 # Coverage keeps what default setup analyzed (actions, go) and adds
 # javascript-typescript for the Astro/Starlight documentation site under docs/,
@@ -15,7 +15,7 @@ on:
   push:
     branches: [main]
   # No base-branch filter: a stacked PR targets the branch below it, and
-  # filtering on [main] left those PRs with no checks at all — they sat
+  # filtering on [main] left those PRs with no checks at all: they sat
   # "expected" forever and could only be merged by overriding the gate.
   pull_request:
   schedule:
@@ -25,7 +25,7 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: "1.27.3"
+  GO_VERSION: "1.27.4"
 
 jobs:
   analyze:
