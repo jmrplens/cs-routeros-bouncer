@@ -2,7 +2,7 @@ name: CI
 
 on:
   # No base-branch filter: a stacked PR targets the branch below it, and
-  # filtering on [main] left those PRs with no checks at all — they sat
+  # filtering on [main] left those PRs with no checks at all: they sat
   # "expected" forever and could only be merged by overriding the gate.
   pull_request:
   push:
@@ -12,8 +12,8 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: "1.27.3"
-  GOTOOLCHAIN: go1.27.3
+  GO_VERSION: "1.27.4"
+  GOTOOLCHAIN: go1.27.4
   NODE_VERSION: "24"
 
 jobs:

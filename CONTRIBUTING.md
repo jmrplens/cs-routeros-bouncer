@@ -6,10 +6,10 @@ Thank you for your interest in contributing! This guide will help you get starte
 
 ### Prerequisites
 
-- **Go 1.27.3+** — [Download](https://go.dev/dl/)
-- **Analysis tools** — `make tools` installs every linter at the version pinned in the `Makefile` into `bin/tools/`. Do not install them by hand: the pins are what keep local runs and CI in agreement
-- **Docker** (optional) — for container builds and testing
-- **MikroTik router** (optional) — for integration testing
+- **Go 1.27.4+**: [Download](https://go.dev/dl/)
+- **Analysis tools**: `make tools` installs every linter at the version pinned in the `Makefile` into `bin/tools/`. Do not install them by hand: the pins are what keep local runs and CI in agreement
+- **Docker** (optional): for container builds and testing
+- **MikroTik router** (optional): for integration testing
 
 ### Setup
 
@@ -39,7 +39,7 @@ tests/integration/          # Integration tests
 ## Development Workflow
 
 1. **Fork the repository** and create a feature branch from `main`
-2. **Make your changes** — keep commits focused and well-described
+2. **Make your changes**: keep commits focused and well-described
 3. **Run tests**: `make test`
 4. **Run linter**: `make lint`
 5. **Build**: `make build`
@@ -63,8 +63,8 @@ Prefixes: `feat`, `fix`, `docs`, `test`, `ci`, `chore`, `refactor`, `perf`.
 - Follow standard Go conventions (`gofmt`, `go vet`)
 - Use `golangci-lint` (config in `.golangci.yml`)
 - Add comments for exported types and functions
-- Use structured logging (`zerolog`) — never `fmt.Println` or `log.*`
-- Handle errors explicitly — never silently ignore them
+- Use structured logging (`zerolog`), never `fmt.Println` or `log.*`
+- Handle errors explicitly; never silently ignore them
 
 ## Testing
 
@@ -101,8 +101,8 @@ When testing against a real router:
 
 - **Use a dedicated API user** with minimal permissions
 - **Use a test chain/list** to avoid affecting production firewall rules
-- **RouterOS 7.x is required** — the API behavior differs from v6
-- **Be aware of rate limits** — the RouterOS API can be slow with large batches
+- **RouterOS 7.x is required**: the API behavior differs from v6
+- **Be aware of rate limits**: the RouterOS API can be slow with large batches
 
 ## Reporting Issues
 
