@@ -5,7 +5,16 @@ description: Install cs-routeros-bouncer with Docker Compose, as a binary with t
 
 import { Steps, Tabs, TabItem, LinkCard } from "@astrojs/starlight/components";
 
-cs-routeros-bouncer ships as a multi-arch container image, prebuilt binaries for Linux, macOS, Windows and FreeBSD, and buildable Go source. Use **Docker Compose** if you already run CrowdSec in containers; use the **systemd installer** (`cs-routeros-bouncer setup`) on a bare-metal Linux host; **build from source** only if you need an unreleased platform or want to hack on the code. The installer writes a systemd unit, so it works only on Linux with systemd: on macOS, Windows and FreeBSD, take the archive for your system from the [Releases page](https://github.com/jmrplens/cs-routeros-bouncer/releases), fill in `crowdsec.api_key` and the router's `mikrotik` address, username and password in the `config/cs-routeros-bouncer.yaml` it contains, and start the binary from the extracted folder with that file: `./cs-routeros-bouncer -c config/cs-routeros-bouncer.yaml`, or `cs-routeros-bouncer.exe -c config\cs-routeros-bouncer.yaml` on Windows. The [CLI Reference](/cs-routeros-bouncer/getting-started/cli-reference/#run-the-bouncer) lists its flags. The image can also run as a container on the router itself, for when CrowdSec runs elsewhere and there is no Linux host on the router's network: see [Running inside RouterOS](/cs-routeros-bouncer/getting-started/routeros-container/).
+cs-routeros-bouncer ships as a multi-arch container image, prebuilt binaries for Linux, macOS, Windows and FreeBSD, and buildable Go source. Use **Docker Compose** if you already run CrowdSec in containers; use the **systemd installer** (`cs-routeros-bouncer setup`) on a bare-metal Linux host; **build from source** only if you need an unreleased platform or want to hack on the code. The image can also run as a container on the router itself, for when CrowdSec runs elsewhere and there is no Linux host on the router's network: see [Running inside RouterOS](/cs-routeros-bouncer/getting-started/routeros-container/).
+
+The installer writes a systemd unit, so it works only on Linux with systemd. On macOS, Windows and FreeBSD, run the binary yourself:
+
+1. Take the archive for your system from the [Releases page](https://github.com/jmrplens/cs-routeros-bouncer/releases) and extract it.
+2. Its `config/cs-routeros-bouncer.yaml` will hold the CrowdSec API key and the router password, so keep it to your user first: `chmod 600 config/cs-routeros-bouncer.yaml` on macOS and FreeBSD.
+3. In that file, fill in `crowdsec.api_key`, set `crowdsec.api_url` when the CrowdSec LAPI runs on another host (it points at `http://localhost:8080/`), and fill in the router's `mikrotik` address, username and password.
+4. Start the bouncer from the extracted folder: `./cs-routeros-bouncer -c config/cs-routeros-bouncer.yaml`, or `.\cs-routeros-bouncer.exe -c config\cs-routeros-bouncer.yaml` in PowerShell on Windows.
+
+The [CLI Reference](/cs-routeros-bouncer/getting-started/cli-reference/#run-the-bouncer) lists its flags.
 
 <Tabs>
   <TabItem label="Docker Compose" icon="seti:docker">
