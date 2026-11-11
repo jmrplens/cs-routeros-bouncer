@@ -3,7 +3,7 @@ module github.com/jmrplens/cs-routeros-bouncer
 go 1.27.4
 
 require (
-	github.com/crowdsecurity/crowdsec v1.8.1
+	github.com/crowdsecurity/crowdsec v1.8.2
 	github.com/crowdsecurity/go-cs-bouncer v0.0.21
 	github.com/prometheus/client_golang v1.25.0
 	github.com/rs/zerolog v1.35.1
