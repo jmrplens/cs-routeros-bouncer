@@ -373,6 +373,24 @@ export const supportedDecisionTypes = (() => {
 })();
 
 /**
+ * The name each Go `GOOS` value goes by outside Go.
+ *
+ * Not a fact about this repository but a vocabulary for reading one:
+ * `.goreleaser.yaml` says `darwin`, and people and schema.org readers look for
+ * macOS. Which operating systems a release ships still comes from that file
+ * alone. The entries are in the order jmrp.io/projects/ lists this project's
+ * platforms, so both documents state the same string. A `goos` with no entry
+ * here stops the build (see `releasePlatforms`) rather than dropping out of the
+ * list.
+ */
+const OPERATING_SYSTEM_NAMES = Object.freeze({
+	linux: "Linux",
+	darwin: "macOS",
+	windows: "Windows",
+	freebsd: "FreeBSD",
+});
+
+/**
  * The platforms a release actually publishes.
  *
  * Source: `.goreleaser.yaml` — the `builds` entry's `goos`/`goarch` matrix
@@ -383,8 +401,10 @@ export const supportedDecisionTypes = (() => {
  * `binaries` maps each OS to the architectures built for it, in the file's own
  * order; `armVersions` lists the ARM variants those `arm` entries expand into;
  * `binaryCount` is the number of binaries a release produces, counting each ARM
- * variant separately, exactly as the archives do.
- * @type {{ operatingSystems: string[], binaries: Record<string, string[]>, armVersions: string[], binaryCount: number, docker: string[] }}
+ * variant separately, exactly as the archives do. `operatingSystemNames` gives
+ * the same operating systems by the names people know them by (`darwin` is
+ * macOS), for the `operatingSystem` of the site's JSON-LD.
+ * @type {{ operatingSystems: string[], operatingSystemNames: string[], binaries: Record<string, string[]>, armVersions: string[], binaryCount: number, docker: string[] }}
  */
 export const releasePlatforms = (() => {
 	const goreleaser = readSource(GORELEASER);
@@ -443,8 +463,28 @@ export const releasePlatforms = (() => {
 		);
 	}
 
+	const unnamed = operatingSystems.filter(
+		(goos) => !Object.hasOwn(OPERATING_SYSTEM_NAMES, goos),
+	);
+	if (unnamed.length > 0) {
+		throw new Error(
+			`repo-stats.mjs: ${GORELEASER} builds for \`${unnamed.join("`, `")}\`, ` +
+				"which OPERATING_SYSTEM_NAMES has no name for. Add it there, or the site would leave out a platform the release ships.",
+		);
+	}
+	const operatingSystemNames = Object.entries(OPERATING_SYSTEM_NAMES)
+		.filter(([goos]) => operatingSystems.includes(goos))
+		.map(([, name]) => name);
+
 	const dockers = yamlBlock(goreleaser, "dockers_v2", GORELEASER);
 	const docker = yamlList(dockers, "platforms", GORELEASER);
 
-	return { operatingSystems, binaries, armVersions, binaryCount, docker };
+	return {
+		operatingSystems,
+		operatingSystemNames,
+		binaries,
+		armVersions,
+		binaryCount,
+		docker,
+	};
 })();
